@@ -1,0 +1,52 @@
+<Window x:Class="CodexController.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        MinWidth="320"
+        MaxWidth="480"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Focusable="False"
+        AutomationProperties.LiveSetting="Polite"
+        AutomationProperties.Name="Codex Micro 通知"
+        WindowStartupLocation="Manual">
+    <Border x:Name="RootBorder"
+            Margin="8"
+            Style="{StaticResource Overlay.Toast}"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="40" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Image Width="36"
+                   Height="30"
+                   Source="Assets/AgentController.png"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1"
+                        Margin="9,0,0,0"
+                        VerticalAlignment="Center">
+                <TextBlock x:Name="OverlayTitle"
+                           Text="右摇杆 · 思考强度"
+                           Foreground="{StaticResource Brush.Text.Secondary}"
+                           FontSize="{StaticResource Font.Size.Caption}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="OverlayValue"
+                           Text="High"
+                           Margin="0,3,0,0"
+                           Foreground="{StaticResource Brush.Text.Primary}"
+                           FontSize="{StaticResource Font.Size.Title}"
+                           FontWeight="{StaticResource Font.Weight.Semibold}"
+                           TextWrapping="Wrap"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

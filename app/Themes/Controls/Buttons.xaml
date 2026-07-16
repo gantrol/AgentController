@@ -1,0 +1,91 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="Focus.Ring" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="-3"
+                            BorderBrush="{StaticResource Brush.Focus.Ring}"
+                            BorderThickness="2"
+                            CornerRadius="{StaticResource Radius.MD}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Button.Base" TargetType="Button">
+        <Setter Property="Height" Value="{StaticResource Control.H.MD}" />
+        <Setter Property="MinWidth" Value="72" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.Body}" />
+        <Setter Property="FontWeight" Value="{StaticResource Font.Weight.Medium}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource Radius.MD}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root"
+                                    Property="Opacity"
+                                    Value="0.88" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root"
+                                    Property="Opacity"
+                                    Value="0.72" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root"
+                                    Property="Opacity"
+                                    Value="0.42" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Button.Primary"
+           TargetType="Button"
+           BasedOn="{StaticResource Button.Base}">
+        <Setter Property="Background" Value="{StaticResource Brush.Bg.Inverse}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Bg.Inverse}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Inverse}" />
+        <Setter Property="FontWeight" Value="{StaticResource Font.Weight.Semibold}" />
+    </Style>
+
+    <Style x:Key="Button.Secondary"
+           TargetType="Button"
+           BasedOn="{StaticResource Button.Base}">
+        <Setter Property="Background" Value="{StaticResource Brush.Bg.Surface}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border.Subtle}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
+    </Style>
+
+    <Style x:Key="Button.Ghost"
+           TargetType="Button"
+           BasedOn="{StaticResource Button.Base}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Secondary}" />
+    </Style>
+
+    <Style x:Key="PrimaryButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource Button.Primary}" />
+    <Style x:Key="SecondaryButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource Button.Secondary}" />
+</ResourceDictionary>

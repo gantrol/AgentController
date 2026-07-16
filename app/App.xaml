@@ -1,0 +1,30 @@
+<Application x:Class="CodexController.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Tokens.Colors.xaml" />
+                <ResourceDictionary Source="Themes/Tokens.Typography.xaml" />
+                <ResourceDictionary Source="Themes/Tokens.Metrics.xaml" />
+                <ResourceDictionary Source="Themes/Tokens.Elevation.xaml" />
+                <ResourceDictionary Source="Themes/Tokens.Motion.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Buttons.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Segments.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Cards.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Inputs.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Lists.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Status.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Overlay.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style TargetType="Window">
+                <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
+                <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+                <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

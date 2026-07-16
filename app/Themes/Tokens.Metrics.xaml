@@ -1,0 +1,23 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <sys:Double x:Key="Space.1">4</sys:Double>
+    <sys:Double x:Key="Space.2">8</sys:Double>
+    <sys:Double x:Key="Space.3">12</sys:Double>
+    <sys:Double x:Key="Space.4">16</sys:Double>
+    <sys:Double x:Key="Space.5">20</sys:Double>
+    <sys:Double x:Key="Space.6">24</sys:Double>
+    <sys:Double x:Key="Space.8">32</sys:Double>
+    <Thickness x:Key="Pad.Card">16</Thickness>
+    <Thickness x:Key="Pad.CardDense">12</Thickness>
+    <CornerRadius x:Key="Radius.XS">4</CornerRadius>
+    <CornerRadius x:Key="Radius.SM">6</CornerRadius>
+    <CornerRadius x:Key="Radius.MD">8</CornerRadius>
+    <CornerRadius x:Key="Radius.LG">12</CornerRadius>
+    <CornerRadius x:Key="Radius.XL">16</CornerRadius>
+    <sys:Double x:Key="Control.H.SM">28</sys:Double>
+    <sys:Double x:Key="Control.H.MD">32</sys:Double>
+    <sys:Double x:Key="Control.H.LG">36</sys:Double>
+</ResourceDictionary>

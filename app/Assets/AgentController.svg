@@ -1,0 +1,52 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="title"
+>
+  <title id="title">Agent Controller</title>
+
+  <g transform="translate(0 -28)">
+    <path
+      d="M183 126
+         C151 124 125 136 104 158
+         C88 175 80 197 74 220
+         L43 341
+         C34 376 42 408 67 426
+         C91 444 122 438 143 410
+         L176 366
+         C185 354 200 347 215 347
+         H297
+         C312 347 327 354 336 366
+         L369 410
+         C390 438 421 444 445 426
+         C470 408 478 376 469 341
+         L438 220
+         C432 197 424 175 408 158
+         C387 136 361 124 329 126
+         C318 127 308 131 300 139
+         L280 158
+         H232
+         L212 139
+         C204 131 194 127 183 126Z"
+      fill="#FFFFFF"
+      stroke="#10A37F"
+      stroke-width="20"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+
+    <path
+      d="M150 256
+         C150 208 202 202 256 256
+         C310 310 362 304 362 256
+         C362 208 310 202 256 256
+         C202 310 150 304 150 256Z"
+      fill="none"
+      stroke="#176B5B"
+      stroke-width="28"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+</svg>

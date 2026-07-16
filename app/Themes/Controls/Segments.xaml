@@ -1,0 +1,75 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="Segment.Base" TargetType="RadioButton">
+        <Setter Property="Height" Value="{StaticResource Control.H.SM}" />
+        <Setter Property="MinWidth" Value="56" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Margin" Value="2,0" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Secondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.Label}" />
+        <Setter Property="FontWeight" Value="{StaticResource Font.Weight.Medium}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Root"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource Radius.SM}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root"
+                                    Property="Background"
+                                    Value="{StaticResource Brush.Bg.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Root"
+                                    Property="Background"
+                                    Value="{StaticResource Brush.Bg.Inverse}" />
+                            <Setter TargetName="Root"
+                                    Property="BorderBrush"
+                                    Value="{StaticResource Brush.Bg.Inverse}" />
+                            <Setter Property="Foreground"
+                                    Value="{StaticResource Brush.Text.Inverse}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.42" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Nav.Segment"
+           TargetType="RadioButton"
+           BasedOn="{StaticResource Segment.Base}">
+        <Setter Property="Height" Value="{StaticResource Control.H.LG}" />
+        <Setter Property="Padding" Value="15,0" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.BodyLg}" />
+    </Style>
+
+    <Style x:Key="Tab.Segment"
+           TargetType="RadioButton"
+           BasedOn="{StaticResource Segment.Base}" />
+
+    <Style x:Key="NavButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource Button.Ghost}">
+        <Setter Property="Height" Value="{StaticResource Control.H.LG}" />
+        <Setter Property="Padding" Value="15,0" />
+        <Setter Property="Margin" Value="2,0" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.BodyLg}" />
+    </Style>
+</ResourceDictionary>

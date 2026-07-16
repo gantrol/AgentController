@@ -1,0 +1,22 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
+    <FontFamily x:Key="Font.Mono">Cascadia Mono, Consolas</FontFamily>
+
+    <sys:Double x:Key="Font.Size.Caption">10</sys:Double>
+    <sys:Double x:Key="Font.Size.Label">11</sys:Double>
+    <sys:Double x:Key="Font.Size.Body">12</sys:Double>
+    <sys:Double x:Key="Font.Size.BodyLg">13</sys:Double>
+    <sys:Double x:Key="Font.Size.Title">15</sys:Double>
+    <sys:Double x:Key="Font.Size.TitleLg">17</sys:Double>
+    <sys:Double x:Key="Font.Size.Display">20</sys:Double>
+    <sys:Double x:Key="Font.Size.Hero">24</sys:Double>
+
+    <FontWeight x:Key="Font.Weight.Regular">Normal</FontWeight>
+    <FontWeight x:Key="Font.Weight.Medium">Medium</FontWeight>
+    <FontWeight x:Key="Font.Weight.Semibold">SemiBold</FontWeight>
+    <FontWeight x:Key="Font.Weight.Bold">Bold</FontWeight>
+</ResourceDictionary>

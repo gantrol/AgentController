@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>AgentController</AssemblyName>
+    <RootNamespace>CodexController</RootNamespace>
+    <AssemblyTitle>Agent Controller</AssemblyTitle>
+    <Product>Agent Controller</Product>
+    <Description>Windows desktop gamepad controller for AI agents; the current integration targets Codex.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AgentController.ico</ApplicationIcon>
+    <Version>0.3.0</Version>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+    <FileVersion>0.3.0.0</FileVersion>
+    <InformationalVersion>0.3.0</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\controller.png" />
+    <Resource Include="Assets\AgentController.ico" />
+    <Resource Include="Assets\AgentController.png" />
+    <Content Include="ThirdParty\CREATRBOI-White-XBOX-Controller\ATTRIBUTION.md"
+             Link="THIRD-PARTY\CREATRBOI-White-XBOX-Controller-ATTRIBUTION.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="ThirdParty\CREATRBOI-White-XBOX-Controller\LICENSE.txt"
+             Link="THIRD-PARTY\CREATRBOI-White-XBOX-Controller-LICENSE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.18" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,7 @@
+- Repo: 后续仅提交 app（Windows 应用）跟 todo；README 中英双语，以 app 为准
+- Opensource to github: `gantrol/codex-controller`
+- Test in Xbox、Flydigi、8BitDo
+- For more operations, I have an idea.
+  - thinking about editing(send & cancel?)
+- Not only codex, but only claude code
+- Not only windows? Change `app` directory to `windows`

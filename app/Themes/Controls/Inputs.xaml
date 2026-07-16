@@ -1,0 +1,39 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="TextBox.Token" TargetType="TextBox">
+        <Setter Property="Height" Value="{StaticResource Control.H.MD}" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border.Subtle}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{StaticResource Brush.Bg.Surface}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.Body}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+    </Style>
+
+    <Style TargetType="TextBox"
+           BasedOn="{StaticResource TextBox.Token}" />
+
+    <Style x:Key="CheckBox.Token" TargetType="CheckBox">
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.Body}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+    </Style>
+
+    <Style TargetType="CheckBox"
+           BasedOn="{StaticResource CheckBox.Token}" />
+
+    <Style x:Key="Slider.Token" TargetType="Slider">
+        <Setter Property="Height" Value="{StaticResource Control.H.MD}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="IsSnapToTickEnabled" Value="True" />
+    </Style>
+
+    <Style TargetType="Slider"
+           BasedOn="{StaticResource Slider.Token}" />
+</ResourceDictionary>

@@ -1,0 +1,28 @@
+# This repository intentionally tracks only the application, its tests,
+# and the two root project documents.
+/*
+!/.gitignore
+!/README.md
+!/todo.md
+!/app/
+!/app.Tests/
+
+# Build and IDE output
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Local configuration and diagnostics
+*.log
+.env
+.env.*
+appsettings.local.json
+
+# Editor / operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
