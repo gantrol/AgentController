@@ -1,15 +1,19 @@
-# This repository intentionally tracks only the application, its tests,
-# and the two root project documents.
+# This repository intentionally tracks the application, its tests,
+# root project documents, and design specifications.
 /*
 !/.gitignore
 !/README.md
+!/README.zh-CN.md
 !/todo.md
 !/app/
 !/app.Tests/
+!/docs/
+!/docs/**
 
 # Build and IDE output
 **/bin/
 **/obj/
+**/.artifacts/
 .vs/
 *.user
 *.suo

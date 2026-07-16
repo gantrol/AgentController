@@ -9,6 +9,9 @@ public sealed class SettingsPageViewModel : ObservableObject
     private bool _onlyWhenAgentForeground = true;
     private bool _hapticFeedback = true;
     private bool _showOverlay = true;
+    private string _radialMenuMode = RadialMenuModes.Learning;
+    private IReadOnlyList<LocalizedRadialMenuOption>
+        _radialMenuOptions = [];
     private bool _startWithWindows;
     private bool _minimizeToTray = true;
     private double _deadZone = 0.58;
@@ -118,6 +121,23 @@ public sealed class SettingsPageViewModel : ObservableObject
         set => SetProperty(ref _showOverlay, value);
     }
 
+    public string RadialMenuMode
+    {
+        get => _radialMenuMode;
+        set => SetProperty(
+            ref _radialMenuMode,
+            RadialMenuModes.Normalize(value));
+    }
+
+    public IReadOnlyList<LocalizedRadialMenuOption>
+        RadialMenuOptions
+    {
+        get => _radialMenuOptions;
+        private set => SetProperty(
+            ref _radialMenuOptions,
+            value);
+    }
+
     public bool StartWithWindows
     {
         get => _startWithWindows;
@@ -210,6 +230,18 @@ public sealed class SettingsPageViewModel : ObservableObject
                     controllerSoftwareName);
         OpenAgentSettingsText =
             strings.SettingsOpenAgent(agentName);
+        RadialMenuOptions =
+        [
+            new(
+                RadialMenuModes.Always,
+                strings.SettingsRadialMenuAlways),
+            new(
+                RadialMenuModes.Learning,
+                strings.SettingsRadialMenuLearning),
+            new(
+                RadialMenuModes.Off,
+                strings.SettingsRadialMenuOff),
+        ];
         CanOpenVendorTool = canOpenVendorTool;
         CanOpenAgentSettings = canOpenAgentSettings;
     }
@@ -220,6 +252,7 @@ public sealed class SettingsPageViewModel : ObservableObject
         OnlyWhenAgentForeground = settings.OnlyWhenCodexForeground;
         HapticFeedback = settings.HapticFeedback;
         ShowOverlay = settings.ShowOverlay;
+        RadialMenuMode = settings.RadialMenuMode;
         StartWithWindows = settings.StartWithWindows;
         MinimizeToTray = settings.MinimizeToTray;
         DeadZone = settings.DeadZone;
@@ -234,6 +267,8 @@ public sealed class SettingsPageViewModel : ObservableObject
         settings.OnlyWhenCodexForeground = OnlyWhenAgentForeground;
         settings.HapticFeedback = HapticFeedback;
         settings.ShowOverlay = ShowOverlay;
+        settings.RadialMenuMode =
+            RadialMenuModes.Normalize(RadialMenuMode);
         settings.StartWithWindows = StartWithWindows;
         settings.MinimizeToTray = MinimizeToTray;
         settings.DeadZone = Math.Round(DeadZone, 2);
@@ -242,3 +277,7 @@ public sealed class SettingsPageViewModel : ObservableObject
         settings.Language = LanguageSetting;
     }
 }
+
+public sealed record LocalizedRadialMenuOption(
+    string Value,
+    string DisplayName);

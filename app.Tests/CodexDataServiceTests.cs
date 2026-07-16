@@ -1,6 +1,7 @@
 using CodexController.Localization;
 using CodexController.Models;
 using CodexController.Services;
+using Microsoft.Data.Sqlite;
 using System.Reflection;
 using System.Text.Json;
 
@@ -45,6 +46,9 @@ public sealed class CodexDataServiceTests
             {
                 Assert.Equal(SidebarLayer.Pinned, entry.Layer);
                 Assert.True(entry.IsPinned);
+                Assert.Equal(
+                    SidebarScope.PinnedTasks,
+                    entry.NavigationScope);
             });
 
         var pinnedProject = Assert.Single(pinnedProjects);
@@ -52,17 +56,55 @@ public sealed class CodexDataServiceTests
         Assert.True(pinnedProject.IsPinned);
         Assert.True(pinnedProject.ProjectIsPinned);
         Assert.Null(pinnedProject.ThreadId);
+        Assert.Equal(
+            SidebarScope.PinnedProjects,
+            pinnedProject.NavigationScope);
 
         var regularProject = Assert.Single(projects);
         Assert.Equal(fixture.RegularProject.Path, regularProject.Id);
         Assert.False(regularProject.IsPinned);
         Assert.False(regularProject.ProjectIsPinned);
         Assert.Null(regularProject.ThreadId);
+        Assert.Equal(
+            SidebarScope.Projects,
+            regularProject.NavigationScope);
 
         var projectlessTask = Assert.Single(projectlessTasks);
         Assert.Equal(fixture.ProjectlessTask.Id, projectlessTask.Id);
         Assert.Equal(0, projectlessTask.NativeListIndex);
         Assert.Equal(SidebarLayer.Tasks, projectlessTask.Layer);
+        Assert.Equal(
+            SidebarScope.ProjectlessTasks,
+            projectlessTask.NavigationScope);
+    }
+
+    [Fact]
+    public void BuildUnifiedEntries_UsesContinuousRootOrder()
+    {
+        var fixture = CreateSnapshot();
+
+        var entries = _service.BuildUnifiedEntries(fixture.Snapshot);
+
+        Assert.Equal(
+            new[]
+            {
+                fixture.PinnedRegularProjectTask.Id,
+                fixture.PinnedPinnedProjectTask.Id,
+                fixture.PinnedProject.Path,
+                fixture.RegularProject.Path,
+                fixture.ProjectlessTask.Id,
+            },
+            entries.Select(entry => entry.Id));
+        Assert.Equal(
+            new[]
+            {
+                SidebarScope.PinnedTasks,
+                SidebarScope.PinnedTasks,
+                SidebarScope.PinnedProjects,
+                SidebarScope.Projects,
+                SidebarScope.ProjectlessTasks,
+            },
+            entries.Select(entry => entry.NavigationScope));
     }
 
     [Fact]
@@ -91,13 +133,62 @@ public sealed class CodexDataServiceTests
         Assert.Equal(fixture.PinnedProject.Path, pinnedTask.ProjectPath);
         Assert.True(pinnedTask.IsPinned);
         Assert.True(pinnedTask.ProjectIsPinned);
-        Assert.Equal(SidebarLayer.Pinned, pinnedTask.Layer);
+        Assert.Equal(SidebarLayer.Tasks, pinnedTask.Layer);
 
         var regularTask = entries[1];
         Assert.Equal(fixture.PinnedProject.Path, regularTask.ProjectPath);
         Assert.False(regularTask.IsPinned);
         Assert.True(regularTask.ProjectIsPinned);
         Assert.Equal(SidebarLayer.Tasks, regularTask.Layer);
+    }
+
+    [Fact]
+    public void BuildEntries_ProjectTasksPreserveProjectOrderAcrossPinBadges()
+    {
+        const string projectPath = @"D:\projects\ordered";
+        var regularFirst = Thread(
+            "regular-first",
+            projectPath,
+            isPinned: false,
+            DateTimeOffset.UtcNow.AddMinutes(-3));
+        var pinnedMiddle = Thread(
+            "pinned-middle",
+            projectPath,
+            isPinned: true,
+            DateTimeOffset.UtcNow);
+        var regularLast = Thread(
+            "regular-last",
+            projectPath,
+            isPinned: false,
+            DateTimeOffset.UtcNow.AddMinutes(-1));
+        var snapshot = new CodexSnapshot
+        {
+            Threads = [pinnedMiddle, regularLast, regularFirst],
+            PinnedThreads = [pinnedMiddle],
+            Projects =
+            [
+                new CodexProject(
+                    projectPath,
+                    "ordered",
+                    IsPinned: true,
+                    Threads: [regularFirst, pinnedMiddle, regularLast]),
+            ],
+        };
+
+        var entries = _service.BuildEntries(
+            snapshot,
+            SidebarScope.ProjectTasks,
+            projectPath);
+
+        Assert.Equal(
+            new[] { "regular-first", "pinned-middle", "regular-last" },
+            entries.Select(entry => entry.Id));
+        Assert.Equal(
+            new[] { false, true, false },
+            entries.Select(entry => entry.IsPinned));
+        Assert.All(
+            entries,
+            entry => Assert.Equal(SidebarLayer.Tasks, entry.Layer));
     }
 
     [Fact]
@@ -208,6 +299,243 @@ public sealed class CodexDataServiceTests
     }
 
     [Fact]
+    public void LoadSnapshot_PrefersSqliteRecencyOverStaleSessionIndex()
+    {
+        var codexHome = Path.Combine(
+            Path.GetTempPath(),
+            $"AgentController-tests-{Guid.NewGuid():N}");
+        var sessionsPath = Path.Combine(codexHome, "sessions");
+        var archivedSessionsPath = Path.Combine(
+            codexHome,
+            "archived_sessions");
+        Directory.CreateDirectory(sessionsPath);
+        Directory.CreateDirectory(archivedSessionsPath);
+
+        try
+        {
+            var staleFirstId = Guid.NewGuid().ToString();
+            var freshFirstId = Guid.NewGuid().ToString();
+            var staleFirstRollout = Path.Combine(
+                sessionsPath,
+                $"rollout-{staleFirstId}.jsonl");
+            var freshFirstRollout = Path.Combine(
+                sessionsPath,
+                $"rollout-{freshFirstId}.jsonl");
+            File.WriteAllText(staleFirstRollout, string.Empty);
+            File.WriteAllText(freshFirstRollout, string.Empty);
+
+            File.WriteAllLines(
+                Path.Combine(codexHome, "session_index.jsonl"),
+                [
+                    JsonSerializer.Serialize(new
+                    {
+                        id = staleFirstId,
+                        thread_name = "stale-index-first",
+                        updated_at =
+                            DateTimeOffset.UtcNow.ToString("O"),
+                    }),
+                    JsonSerializer.Serialize(new
+                    {
+                        id = freshFirstId,
+                        thread_name = "sqlite-recency-first",
+                        updated_at =
+                            DateTimeOffset.UtcNow
+                                .AddDays(-30)
+                                .ToString("O"),
+                    }),
+                ]);
+            File.WriteAllText(
+                Path.Combine(codexHome, ".codex-global-state.json"),
+                "{}");
+
+            var staleRecency = DateTimeOffset.UtcNow.AddDays(-10);
+            var freshRecency = DateTimeOffset.UtcNow.AddMinutes(-1);
+            var databasePath = Path.Combine(
+                codexHome,
+                "state_1.sqlite");
+            var connectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = databasePath,
+                Pooling = false,
+            }.ToString();
+            using (var connection = new SqliteConnection(connectionString))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    CREATE TABLE threads (
+                        id TEXT PRIMARY KEY,
+                        archived INTEGER NOT NULL,
+                        preview TEXT NOT NULL,
+                        thread_source TEXT NOT NULL,
+                        cwd TEXT NOT NULL,
+                        rollout_path TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        updated_at_ms INTEGER NOT NULL,
+                        recency_at_ms INTEGER NOT NULL
+                    );
+                    INSERT INTO threads (
+                        id,
+                        archived,
+                        preview,
+                        thread_source,
+                        cwd,
+                        rollout_path,
+                        updated_at,
+                        updated_at_ms,
+                        recency_at_ms
+                    ) VALUES (
+                        $staleId,
+                        0,
+                        'preview',
+                        'cli',
+                        '',
+                        $staleRollout,
+                        $staleUpdatedSeconds,
+                        $staleUpdatedMilliseconds,
+                        $staleRecencyMilliseconds
+                    );
+                    INSERT INTO threads (
+                        id,
+                        archived,
+                        preview,
+                        thread_source,
+                        cwd,
+                        rollout_path,
+                        updated_at,
+                        updated_at_ms,
+                        recency_at_ms
+                    ) VALUES (
+                        $freshId,
+                        0,
+                        'preview',
+                        'cli',
+                        '',
+                        $freshRollout,
+                        $freshUpdatedSeconds,
+                        $freshUpdatedMilliseconds,
+                        $freshRecencyMilliseconds
+                    );
+                    """;
+                command.Parameters.AddWithValue(
+                    "$staleId",
+                    staleFirstId);
+                command.Parameters.AddWithValue(
+                    "$staleRollout",
+                    staleFirstRollout);
+                command.Parameters.AddWithValue(
+                    "$staleUpdatedSeconds",
+                    staleRecency.ToUnixTimeSeconds());
+                command.Parameters.AddWithValue(
+                    "$staleUpdatedMilliseconds",
+                    staleRecency.ToUnixTimeMilliseconds());
+                command.Parameters.AddWithValue(
+                    "$staleRecencyMilliseconds",
+                    staleRecency.ToUnixTimeMilliseconds());
+                command.Parameters.AddWithValue(
+                    "$freshId",
+                    freshFirstId);
+                command.Parameters.AddWithValue(
+                    "$freshRollout",
+                    freshFirstRollout);
+                command.Parameters.AddWithValue(
+                    "$freshUpdatedSeconds",
+                    freshRecency.ToUnixTimeSeconds());
+                command.Parameters.AddWithValue(
+                    "$freshUpdatedMilliseconds",
+                    freshRecency.ToUnixTimeMilliseconds());
+                command.Parameters.AddWithValue(
+                    "$freshRecencyMilliseconds",
+                    freshRecency.ToUnixTimeMilliseconds());
+                command.ExecuteNonQuery();
+            }
+
+            var service = CreateServiceForCodexHome(codexHome);
+            var snapshot = service.LoadSnapshot();
+
+            Assert.Equal(
+                new[] { freshFirstId, staleFirstId },
+                snapshot.Threads.Select(thread => thread.Id));
+            Assert.Equal(
+                new[] { freshFirstId, staleFirstId },
+                snapshot.ProjectlessThreads.Select(thread => thread.Id));
+            Assert.Equal(
+                freshRecency.ToUnixTimeMilliseconds(),
+                snapshot.Threads[0].UpdatedAt.ToUnixTimeMilliseconds());
+        }
+        finally
+        {
+            Directory.Delete(codexHome, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LoadSnapshot_ProjectlessTasksPreferPersistedSidebarOrder()
+    {
+        var codexHome = Path.Combine(
+            Path.GetTempPath(),
+            $"AgentController-tests-{Guid.NewGuid():N}");
+        var sessionsPath = Path.Combine(codexHome, "sessions");
+        Directory.CreateDirectory(sessionsPath);
+
+        try
+        {
+            var olderId = Guid.NewGuid().ToString();
+            var newerId = Guid.NewGuid().ToString();
+            File.WriteAllText(
+                Path.Combine(
+                    sessionsPath,
+                    $"rollout-{olderId}.jsonl"),
+                string.Empty);
+            File.WriteAllText(
+                Path.Combine(
+                    sessionsPath,
+                    $"rollout-{newerId}.jsonl"),
+                string.Empty);
+            File.WriteAllLines(
+                Path.Combine(codexHome, "session_index.jsonl"),
+                [
+                    JsonSerializer.Serialize(new
+                    {
+                        id = olderId,
+                        thread_name = "older",
+                        updated_at = DateTimeOffset.UtcNow
+                            .AddDays(-2)
+                            .ToString("O"),
+                    }),
+                    JsonSerializer.Serialize(new
+                    {
+                        id = newerId,
+                        thread_name = "newer",
+                        updated_at = DateTimeOffset.UtcNow.ToString("O"),
+                    }),
+                ]);
+            File.WriteAllText(
+                Path.Combine(codexHome, ".codex-global-state.json"),
+                JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["projectless-thread-ids"] =
+                        new[] { newerId, olderId },
+                }));
+
+            var service = CreateServiceForCodexHome(codexHome);
+            var snapshot = service.LoadSnapshot();
+
+            Assert.Equal(
+                new[] { newerId, olderId },
+                snapshot.Threads.Select(thread => thread.Id));
+            Assert.Equal(
+                new[] { olderId, newerId },
+                snapshot.ProjectlessThreads.Select(thread => thread.Id));
+        }
+        finally
+        {
+            Directory.Delete(codexHome, recursive: true);
+        }
+    }
+
+    [Fact]
     public void BuildEntries_LocalizesPresentationAndRebuildsAfterSwitch()
     {
         var now = new DateTimeOffset(
@@ -271,7 +599,7 @@ public sealed class CodexDataServiceTests
                 selectedProjectPath: null));
         Assert.Equal("2 tasks", englishPinnedProject.Subtitle);
         Assert.Equal("Pinned", englishPinnedProject.PinBadge);
-        Assert.Equal("Enter", englishPinnedProject.ActionHint);
+        Assert.Equal("→ Enter", englishPinnedProject.ActionHint);
 
         var englishRegularProject = Assert.Single(
             service.BuildEntries(
@@ -280,7 +608,7 @@ public sealed class CodexDataServiceTests
                 selectedProjectPath: null));
         Assert.Equal("1 task", englishRegularProject.Subtitle);
         Assert.Equal(string.Empty, englishRegularProject.PinBadge);
-        Assert.Equal("Enter", englishRegularProject.ActionHint);
+        Assert.Equal("→ Enter", englishRegularProject.ActionHint);
 
         var englishTasks = service.BuildEntries(
             snapshot,
@@ -291,7 +619,7 @@ public sealed class CodexDataServiceTests
             "Pinned · 2 hours ago",
             englishTasks[0].Subtitle);
         Assert.Equal("Pinned", englishTasks[0].PinBadge);
-        Assert.Equal("Open", englishTasks[0].ActionHint);
+        Assert.Equal("A Open", englishTasks[0].ActionHint);
         Assert.Equal(string.Empty, englishTasks[1].PinBadge);
         Assert.Equal("4 minutes ago", englishTasks[1].Subtitle);
 
@@ -304,7 +632,7 @@ public sealed class CodexDataServiceTests
                 selectedProjectPath: null));
         Assert.Equal("2 个任务", chinesePinnedProject.Subtitle);
         Assert.Equal("置顶", chinesePinnedProject.PinBadge);
-        Assert.Equal("进入", chinesePinnedProject.ActionHint);
+        Assert.Equal("→ 进入", chinesePinnedProject.ActionHint);
 
         var chineseTasks = service.BuildEntries(
             snapshot,
@@ -315,7 +643,7 @@ public sealed class CodexDataServiceTests
             "置顶 · 2 小时前",
             chineseTasks[0].Subtitle);
         Assert.Equal("置顶", chineseTasks[0].PinBadge);
-        Assert.Equal("打开", chineseTasks[0].ActionHint);
+        Assert.Equal("A 打开", chineseTasks[0].ActionHint);
         Assert.Equal("4 分钟前", chineseTasks[1].Subtitle);
     }
 

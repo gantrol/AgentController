@@ -135,6 +135,12 @@ public sealed class AgentTargetTests
                 "model",
                 new(),
                 CancellationToken.None);
+        var dial = target
+            .ComposerOrUnavailable()
+            .DialStep(1, new());
+        var dialProbe = target
+            .ComposerOrUnavailable()
+            .ProbeDialState();
 
         Assert.Empty(snapshot.Threads);
         Assert.False(sidebar.Succeeded);
@@ -145,6 +151,14 @@ public sealed class AgentTargetTests
         Assert.Equal(
             AgentCapabilityFallbacks.CapabilityUnavailable,
             composer.Error);
+        Assert.False(dial.Succeeded);
+        Assert.Equal(
+            AgentCapabilityFallbacks.CapabilityUnavailable,
+            dial.Error);
+        Assert.False(dialProbe.Succeeded);
+        Assert.Equal(
+            AgentCapabilityFallbacks.CapabilityUnavailable,
+            dialProbe.Error);
     }
 
     private sealed class TestAgentTarget : IAgentTarget

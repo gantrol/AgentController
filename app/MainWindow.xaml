@@ -133,7 +133,7 @@
                                FontSize="{StaticResource Font.Size.Caption}" />
                 </StackPanel>
                 <TextBlock x:Name="FooterVersionText"
-                           Text="v0.3"
+                           Text="v0.4b"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource Brush.Text.Secondary}"

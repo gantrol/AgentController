@@ -7,6 +7,8 @@ namespace CodexController.Views;
 public partial class DevicePageView :
     System.Windows.Controls.UserControl
 {
+    private bool _voiceActive;
+
     public DevicePageView()
     {
         InitializeComponent();
@@ -72,10 +74,13 @@ public partial class DevicePageView :
             state.Buttons.HasFlag(ControllerButtons.LeftShoulder) ? 1 : 0;
         RightShoulderHalo.Opacity =
             state.Buttons.HasFlag(ControllerButtons.RightShoulder) ? 1 : 0;
-        LeftTriggerHalo.Opacity =
+        var physicalLeftTriggerOpacity =
             state.LeftTrigger > 0.03
                 ? Math.Clamp(0.25 + state.LeftTrigger * 0.75, 0, 1)
                 : 0;
+        LeftTriggerHalo.Opacity = Math.Max(
+            _voiceActive ? 1 : 0,
+            physicalLeftTriggerOpacity);
         RightTriggerHalo.Opacity =
             state.RightTrigger > 0.03
                 ? Math.Clamp(0.25 + state.RightTrigger * 0.75, 0, 1)
@@ -84,7 +89,8 @@ public partial class DevicePageView :
 
     public void SetVoiceHalo(bool active)
     {
-        ButtonAHalo.Opacity = active ? 1 : 0;
+        _voiceActive = active;
+        LeftTriggerHalo.Opacity = active ? 1 : 0;
     }
 
     private void SidebarList_SelectionChanged(

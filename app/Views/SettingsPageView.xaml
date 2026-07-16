@@ -43,6 +43,29 @@
                               Content="{Binding Strings.SettingsOverlay,
                                                 ElementName=Root}"
                               IsChecked="{Binding ShowOverlay}" />
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="220" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Strings.SettingsRadialMenu,
+                                                ElementName=Root}"
+                                   VerticalAlignment="Center"
+                                   FontSize="{StaticResource Font.Size.Label}" />
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding RadialMenuOptions}"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding RadialMenuMode,
+                                                          Mode=TwoWay,
+                                                          UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+                    <TextBlock Text="{Binding Strings.SettingsRadialMenuDescription,
+                                            ElementName=Root}"
+                               Margin="0,5,0,0"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="{StaticResource Font.Size.Label}"
+                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 

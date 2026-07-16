@@ -23,6 +23,28 @@ public sealed class SettingsServiceTests
     }
 
     [Theory]
+    [InlineData(null, "learning")]
+    [InlineData("", "learning")]
+    [InlineData("unknown", "learning")]
+    [InlineData(" ALWAYS ", "always")]
+    [InlineData("Learning", "learning")]
+    [InlineData("OFF", "off")]
+    public void LoadNormalizesRadialMenuMode(
+        string? mode,
+        string expected)
+    {
+        using var store = new TemporarySettingsStore();
+        store.Write(new AppSettings
+        {
+            RadialMenuMode = mode!,
+        });
+
+        var settings = store.Service.Load();
+
+        Assert.Equal(expected, settings.RadialMenuMode);
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(2)]
@@ -157,6 +179,7 @@ public sealed class SettingsServiceTests
             Version = 99,
             Language = "invalid-language",
             ActiveAgentId = " Mixed-Agent ",
+            RadialMenuMode = " ALWAYS ",
             StartWithWindows = true,
             DeadZone = double.NaN,
             RepeatDelayMs = 1,
@@ -169,6 +192,7 @@ public sealed class SettingsServiceTests
         Assert.Equal(99, source.Version);
         Assert.Equal("invalid-language", source.Language);
         Assert.Equal(" Mixed-Agent ", source.ActiveAgentId);
+        Assert.Equal(" ALWAYS ", source.RadialMenuMode);
         Assert.True(double.IsNaN(source.DeadZone));
         Assert.Equal(1, source.RepeatDelayMs);
         Assert.Equal(999, source.RepeatIntervalMs);
@@ -178,6 +202,7 @@ public sealed class SettingsServiceTests
         Assert.Equal(1, persisted.Version);
         Assert.Equal("auto", persisted.Language);
         Assert.Equal("mixed-agent", persisted.ActiveAgentId);
+        Assert.Equal("always", persisted.RadialMenuMode);
         Assert.Equal(0.58, persisted.DeadZone);
         Assert.Equal(220, persisted.RepeatDelayMs);
         Assert.Equal(300, persisted.RepeatIntervalMs);

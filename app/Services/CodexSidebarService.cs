@@ -17,6 +17,15 @@ public sealed record SidebarAutomationResult(
             : new AgentAutomationError(Error, ErrorDetail);
 }
 
+internal enum SidebarFocusRoute
+{
+    None,
+    Project,
+    ProjectTask,
+    Task,
+    PinnedTask,
+}
+
 public sealed class ProjectDisclosureLease
 {
     public ProjectDisclosureLease(
@@ -82,16 +91,9 @@ public sealed class CodexSidebarService
                     AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
-            var target = entry.Layer switch
+            var target = ResolveFocusRoute(entry) switch
             {
-                SidebarLayer.Projects =>
-                    FindProjectButton(
-                        window,
-                        entry.NativeTitle ?? entry.Title,
-                        entry.ProjectIsPinned,
-                        cancellationToken,
-                        disclosureLease),
-                SidebarLayer.Tasks =>
+                SidebarFocusRoute.ProjectTask =>
                     FindTaskRow(
                         window,
                         entry,
@@ -99,7 +101,22 @@ public sealed class CodexSidebarService
                         entry.ProjectIsPinned,
                         cancellationToken,
                         disclosureLease),
-                SidebarLayer.Pinned =>
+                SidebarFocusRoute.Project =>
+                    FindProjectButton(
+                        window,
+                        entry.NativeTitle ?? entry.Title,
+                        entry.ProjectIsPinned,
+                        cancellationToken,
+                        disclosureLease),
+                SidebarFocusRoute.Task =>
+                    FindTaskRow(
+                        window,
+                        entry,
+                        projectName,
+                        entry.ProjectIsPinned,
+                        cancellationToken,
+                        disclosureLease),
+                SidebarFocusRoute.PinnedTask =>
                     FindPinnedTaskRow(
                         window,
                         entry.NativeTitle ?? entry.Title,
@@ -148,6 +165,24 @@ public sealed class CodexSidebarService
                 AgentAutomationErrorCodes.Unexpected,
                 exception.Message);
         }
+    }
+
+    internal static SidebarFocusRoute ResolveFocusRoute(
+        SidebarEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (entry.NavigationScope == SidebarScope.ProjectTasks)
+        {
+            return SidebarFocusRoute.ProjectTask;
+        }
+
+        return entry.Layer switch
+        {
+            SidebarLayer.Projects => SidebarFocusRoute.Project,
+            SidebarLayer.Tasks => SidebarFocusRoute.Task,
+            SidebarLayer.Pinned => SidebarFocusRoute.PinnedTask,
+            _ => SidebarFocusRoute.None,
+        };
     }
 
     public string? TryGetCurrentThreadTitle()
@@ -479,16 +514,27 @@ public sealed class CodexSidebarService
                 return row;
             }
 
-            if (EnsureSectionExpanded(
-                    window,
-                    "Tasks",
-                    disclosureLease: null,
-                    isPinnedSection: false))
+            EnsureSectionExpanded(
+                window,
+                "Tasks",
+                disclosureLease: null,
+                isPinnedSection: false);
+            for (var page = 0; page < 24; page++)
             {
-                return WaitForElement(
+                row = WaitForElement(
                     () => FindTaskRowAtIndex(window, nativeListIndex),
                     cancellationToken,
-                    timeoutMs: 700);
+                    timeoutMs: page == 0 ? 700 : 550);
+                if (row is not null)
+                {
+                    return row;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!TryInvokeShowMore(window, "Tasks"))
+                {
+                    break;
+                }
             }
 
             return null;

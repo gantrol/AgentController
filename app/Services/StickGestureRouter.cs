@@ -8,6 +8,7 @@ public readonly record struct StickGestureSample(
 public sealed class StickGestureRouter
 {
     private StickAxis _lockedAxis;
+    private int _horizontalDirection;
     private bool _requiresNeutral;
 
     public StickGestureSample Update(
@@ -26,6 +27,7 @@ public sealed class StickGestureRouter
         if (blocked)
         {
             _lockedAxis = StickAxis.None;
+            _horizontalDirection = 0;
             _requiresNeutral = !neutral;
             return default;
         }
@@ -36,6 +38,7 @@ public sealed class StickGestureRouter
             {
                 _requiresNeutral = false;
                 _lockedAxis = StickAxis.None;
+                _horizontalDirection = 0;
             }
 
             return default;
@@ -44,6 +47,7 @@ public sealed class StickGestureRouter
         if (neutral)
         {
             _lockedAxis = StickAxis.None;
+            _horizontalDirection = 0;
             return default;
         }
 
@@ -52,8 +56,11 @@ public sealed class StickGestureRouter
             if (absX >= engageZone && absX >= absY * 1.15)
             {
                 _lockedAxis = StickAxis.Horizontal;
-                var direction = x > 0 ? 1 : -1;
-                return new(0, direction, HorizontalStarted: true);
+                _horizontalDirection = x > 0 ? 1 : -1;
+                return new(
+                    0,
+                    _horizontalDirection,
+                    HorizontalStarted: true);
             }
 
             if (absY >= engageZone && absY >= absX * 1.15)
@@ -68,7 +75,15 @@ public sealed class StickGestureRouter
 
         if (_lockedAxis == StickAxis.Horizontal)
         {
-            return default;
+            if (absX < releaseZone)
+            {
+                return default;
+            }
+
+            return new(
+                0,
+                _horizontalDirection,
+                HorizontalStarted: false);
         }
 
         if (absY < releaseZone)
@@ -87,12 +102,14 @@ public sealed class StickGestureRouter
     {
         _requiresNeutral = true;
         _lockedAxis = StickAxis.None;
+        _horizontalDirection = 0;
     }
 
     public void Reset()
     {
         _requiresNeutral = false;
         _lockedAxis = StickAxis.None;
+        _horizontalDirection = 0;
     }
 
     private enum StickAxis

@@ -256,7 +256,8 @@
                                    Text="{Binding LeftStickHint}"
                                    Margin="0,4,0,0"
                                    Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Caption}" />
+                                   FontSize="{StaticResource Font.Size.Caption}"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="{loc:Loc control.right-stick}"
@@ -266,7 +267,8 @@
                                    Text="{Binding RightStickHint}"
                                    Margin="0,4,0,0"
                                    Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Caption}" />
+                                   FontSize="{StaticResource Font.Size.Caption}"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>
             </Grid>
@@ -279,10 +281,32 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0"
                     Style="{StaticResource Card.Dense}"
                     Margin="0,0,5,0">
+                <StackPanel>
+                    <TextBlock x:Name="PrimaryGlyphText"
+                               Text="{Binding PrimaryGlyph}"
+                               Foreground="{StaticResource Brush.Text.Accent}"
+                               FontSize="{StaticResource Font.Size.TitleLg}"
+                               FontWeight="Bold" />
+                    <TextBlock x:Name="PrimaryActionTitle"
+                               Text="{Binding PrimaryActionTitle}"
+                               Margin="0,4,0,0"
+                               FontSize="{StaticResource Font.Size.Body}"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc control.primary-description}"
+                               Margin="0,3,0,0"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="{StaticResource Font.Size.Caption}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1"
+                    Style="{StaticResource Card.Dense}"
+                    Margin="3,0">
                 <StackPanel>
                     <TextBlock x:Name="VoiceGlyphText"
                                Text="{Binding VoiceGlyph}"
@@ -301,7 +325,7 @@
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1"
+            <Border Grid.Column="2"
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
@@ -321,7 +345,7 @@
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="2"
+            <Border Grid.Column="3"
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
@@ -342,7 +366,7 @@
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="3"
+            <Border Grid.Column="4"
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
@@ -363,7 +387,7 @@
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="4"
+            <Border Grid.Column="5"
                     Style="{StaticResource Card.Dense}"
                     Margin="5,0,0,0">
                 <StackPanel>
@@ -425,40 +449,18 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </Grid>
-                <Grid Grid.Row="1" Margin="0,13,0,11">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <RadioButton x:Name="ReasoningModeTab"
-                                 Grid.Column="0"
-                                 GroupName="ComposerMode"
-                                 IsChecked="{Binding IsReasoningMode,
-                                                     Mode=OneWay}"
-                                 IsHitTestVisible="False"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc term.reasoning-effort}"
-                                 Margin="0,0,3,0" />
-                    <RadioButton x:Name="ModelModeTab"
-                                 Grid.Column="1"
-                                 GroupName="ComposerMode"
-                                 IsChecked="{Binding IsModelMode,
-                                                     Mode=OneWay}"
-                                 IsHitTestVisible="False"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc term.model}"
-                                 Margin="2,0" />
-                    <RadioButton x:Name="SpeedModeTab"
-                                 Grid.Column="2"
-                                 GroupName="ComposerMode"
-                                 IsChecked="{Binding IsSpeedMode,
-                                                     Mode=OneWay}"
-                                 IsHitTestVisible="False"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc term.speed}"
-                                 Margin="3,0,0,0" />
-                </Grid>
+                <Border Grid.Row="1"
+                        Margin="0,13,0,11"
+                        Padding="12,8"
+                        Background="{StaticResource Brush.Bg.Sunken}"
+                        CornerRadius="{StaticResource Radius.MD}">
+                    <TextBlock Text="{Binding RightStickHint}"
+                               HorizontalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="{StaticResource Font.Size.Label}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap" />
+                </Border>
                 <Border Grid.Row="2"
                         Background="{StaticResource Brush.Bg.Panel}"
                         BorderBrush="{StaticResource Brush.Border.Subtle}"
@@ -471,12 +473,13 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="30" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="↓"
+                        <TextBlock Text="←"
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource MutedBrush}"
                                    FontSize="{StaticResource Font.Size.Title}" />
                         <StackPanel Grid.Column="1"
-                                    HorizontalAlignment="Center">
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Center">
                             <TextBlock x:Name="RightModeLabel"
                                        Text="{Binding RightModeLabel}"
                                        HorizontalAlignment="Center"
@@ -485,12 +488,17 @@
                             <TextBlock x:Name="RightModeValue"
                                        Text="{Binding RightModeValue}"
                                        Margin="0,4,0,0"
-                                       HorizontalAlignment="Center"
-                                       FontSize="{StaticResource Font.Size.TitleLg}"
+                                       HorizontalAlignment="Stretch"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxHeight="42"
+                                       LineHeight="20"
+                                       FontSize="{StaticResource Font.Size.Title}"
                                        FontWeight="SemiBold" />
                         </StackPanel>
                         <TextBlock Grid.Column="2"
-                                   Text="↑"
+                                   Text="→"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource MutedBrush}"
@@ -510,7 +518,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid>
-                    <StackPanel>
+                    <StackPanel Margin="0,0,82,0">
                         <TextBlock x:Name="SidebarTitleText"
                                    Text="{Binding SidebarTitle}"
                                    FontSize="{StaticResource Font.Size.BodyLg}"
@@ -519,14 +527,100 @@
                                    Text="{Binding SidebarContextText}"
                                    Margin="0,3,0,0"
                                    Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="{StaticResource Font.Size.Caption}" />
+                                   FontSize="{StaticResource Font.Size.Caption}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility"
+                                            Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsProjectDirectory}"
+                                                     Value="True">
+                                            <Setter Property="Visibility"
+                                                    Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <StackPanel Margin="0,5,0,0"
+                                    Orientation="Horizontal">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsProjectDirectory}"
+                                                     Value="True">
+                                            <Setter Property="Visibility"
+                                                    Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <Border Padding="7,3"
+                                    Background="{StaticResource Brush.Bg.Sunken}"
+                                    BorderBrush="{StaticResource Brush.Border.Subtle}"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <TextBlock Text="{Binding SidebarProjectName}"
+                                           Foreground="{StaticResource Brush.Text.Primary}"
+                                           FontSize="{StaticResource Font.Size.Caption}"
+                                           FontWeight="SemiBold"
+                                           MaxWidth="150"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
+                            <TextBlock Margin="7,0"
+                                       Text="›"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Text.Tertiary}"
+                                       FontSize="{StaticResource Font.Size.Caption}" />
+                            <Border Padding="7,3"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background"
+                                                Value="{StaticResource Brush.Bg.Surface}" />
+                                        <Setter Property="BorderBrush"
+                                                Value="{StaticResource Brush.Border.Subtle}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsProjectTasksPinnedOnly}"
+                                                         Value="True">
+                                                <Setter Property="Background"
+                                                        Value="{StaticResource Brush.Accent.Soft}" />
+                                                <Setter Property="BorderBrush"
+                                                        Value="{StaticResource Brush.Border.Accent}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding SidebarProjectFilterText}"
+                                           FontSize="{StaticResource Font.Size.Caption}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground"
+                                                    Value="{StaticResource Brush.Text.Secondary}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsProjectTasksPinnedOnly}"
+                                                             Value="True">
+                                                    <Setter Property="Foreground"
+                                                            Value="{StaticResource Brush.Text.Accent}" />
+                                                    <Setter Property="FontWeight"
+                                                            Value="SemiBold" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
-                     <Button HorizontalAlignment="Right"
+                    <Button HorizontalAlignment="Right"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Height="28"
-                             Padding="9,0"
-                             Content="{loc:Loc sidebar.refresh}"
-                             Command="{Binding RefreshCommand}" />
+                            Padding="9,0"
+                            Content="{loc:Loc sidebar.refresh}"
+                            Command="{Binding RefreshCommand}" />
                 </Grid>
                 <Grid Grid.Row="1" Margin="0,12,0,8">
                     <Grid.ColumnDefinitions>

@@ -116,6 +116,12 @@ public sealed class LocalizationTests
         Assert.Equal(
             "Controller disconnected",
             en[StringKeys.DeviceDisconnected]);
+        Assert.Equal(
+            "学习期显示",
+            zh[StringKeys.SettingsRadialMenuLearning]);
+        Assert.Equal(
+            "Default dispatch",
+            en[StringKeys.DispatchDefault]);
     }
 
     [Fact]

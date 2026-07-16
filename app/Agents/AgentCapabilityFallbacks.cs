@@ -47,6 +47,10 @@ public static class AgentCapabilityFallbacks
             SidebarScope scope,
             string? selectedProjectPath) =>
             [];
+
+        public IReadOnlyList<SidebarEntry> BuildUnifiedEntries(
+            CodexSnapshot snapshot) =>
+            [];
     }
 
     private sealed class UnavailableSidebarAutomation :
@@ -102,6 +106,10 @@ public static class AgentCapabilityFallbacks
 
         public string? TryReadComposerButtonName() => null;
 
+        public string? TryReadDispatchButtonName() => null;
+
+        public bool IsActionAvailable(params string[] actionNames) => false;
+
         public ComposerAutomationResult InvokeAction(
             AppSettings settings,
             params string[] actionNames) =>
@@ -114,6 +122,20 @@ public static class AgentCapabilityFallbacks
             params string[] actionNames) =>
             Task.FromResult(Failed());
 
+        public ComposerDialResult ProbeDialState() =>
+            DialFailed();
+
+        public ComposerDialResult DialStep(
+            int delta,
+            AppSettings settings) =>
+            DialFailed();
+
+        public ComposerDialResult DialPress(AppSettings settings) =>
+            DialFailed();
+
+        public ComposerDialResult DialCancel(AppSettings settings) =>
+            DialFailed();
+
         public ComposerAutomationResult Submit(AppSettings settings) =>
             Failed();
 
@@ -122,5 +144,10 @@ public static class AgentCapabilityFallbacks
 
         private static ComposerAutomationResult Failed() =>
             new(false, CapabilityUnavailable);
+
+        private static ComposerDialResult DialFailed() =>
+            new(
+                false,
+                Error: CapabilityUnavailable);
     }
 }

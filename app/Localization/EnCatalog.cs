@@ -32,10 +32,15 @@ public sealed class EnCatalog : DictionaryStringCatalog
 
             [StringKeys.ControlLeftStick] = "Left stick",
             [StringKeys.ControlLeftStickHint] =
-                "↑↓ Move focus · → Enter / open · ← Back · {0} changes root",
+                "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "↑↓ Adjust · ←→ / {0} switches reasoning / model / speed",
+                "← / → Control · {0} Open · hold {0} Settings",
+            [StringKeys.ControlRightStickHintOpen] =
+                "← / → Option · {0} Select · {1} Close",
+            [StringKeys.ControlPrimary] = "{0} · Open task",
+            [StringKeys.ControlPrimaryDescription] =
+                "Open the focused task; use → to enter a project",
             [StringKeys.ControlHoldToTalk] = "{0} · Hold to talk",
             [StringKeys.ControlHoldToTalkDescription] =
                 "Release to finish dictation",
@@ -54,9 +59,18 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Bring {0} to front and unlock controller input",
 
             [StringKeys.ComposerRightStickAdjustment] =
-                "Right-stick adjustment",
+                "Right-stick virtual dial",
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
+            [StringKeys.ComposerDialReady] =
+                "Move left or right to choose a control",
+            [StringKeys.ComposerConnectController] =
+                "Connect a controller to begin",
+            [StringKeys.ComposerDialSettingsOpened] =
+                "Controller settings opened",
+            [StringKeys.ComposerDialCanceled] =
+                "Current picker closed",
+            [StringKeys.TermVirtualDial] = "Virtual dial",
             [StringKeys.TermReasoningEffort] = "Reasoning effort",
             [StringKeys.TermModel] = "Model",
             [StringKeys.TermSpeed] = "Speed",
@@ -71,8 +85,8 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Tasks without a project",
             [StringKeys.SidebarRecentEvents] = "Recent events",
             [StringKeys.SidebarPinnedBadge] = "Pinned",
-            [StringKeys.SidebarEnterAction] = "Enter",
-            [StringKeys.SidebarOpenAction] = "Open",
+            [StringKeys.SidebarEnterAction] = "→ Enter",
+            [StringKeys.SidebarOpenAction] = "A Open",
             [StringKeys.SidebarProjectTaskCountOne] =
                 "{0} task",
             [StringKeys.SidebarProjectTaskCountMany] =
@@ -97,24 +111,24 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ConfigMoveFocus] = "↑↓",
             [StringKeys.ConfigMoveFocusDescription] =
                 "Select an item at the current level and sync focus with the native {0} sidebar",
-            [StringKeys.ConfigEnterBack] = "→ / ←",
+            [StringKeys.ConfigEnterBack] = "→ / ← / A",
             [StringKeys.ConfigEnterBackDescription] =
-                "→ Enter project tasks or open a task; ← return to root",
+                "→ enters the focused project; ← exits to its parent; A opens a focused task",
             [StringKeys.ConfigRootProjectGlyphs] = "{0} / {1}",
             [StringKeys.ConfigRootProjectDescription] =
                 "{0} cycles four root scopes; {1} enters the owning project and toggles all / pinned-only within it",
             [StringKeys.ConfigSidebarBehavior] =
-                "Vertical movement only syncs {0} sidebar focus and never opens a conversation automatically. Pinning and project expansion are independent; ordinary child tasks expand on demand, and only levels expanded by this app are restored on exit.",
+                "↑↓ follows this app's stable wheel and syncs {0} sidebar focus without opening a conversation. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A opens tasks only. Pinning and project expansion remain independent.",
             [StringKeys.ConfigRightStickComposer] =
-                "Right stick · Composer parameters",
-            [StringKeys.ConfigIncreaseDecrease] = "↑↓",
+                "Right stick · Virtual dial",
+            [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "Increase / decrease the current value",
+                "Previous / next composer control; traverse options after opening a menu",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "Reasoning ↔ model ↔ speed; return to center before switching again",
+                "Click to open or select; hold for 500 ms to open controller settings",
             [StringKeys.ConfigSelectionBehavior] =
-                "↑↓ only updates the preview. After the stick settles, the native {0} menu applies the exact choice; shortcuts are fallback only.",
+                "Model, reasoning, speed, and the new-task Project picker share one dial path. B closes an open picker first; outside a picker it cancels the current action or recording and can undo a recent task navigation.",
             [StringKeys.ConfigAgentShortcuts] = "{0} shortcuts",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "The app safely appends fallback bindings; new bindings take effect after {0} restarts.",
@@ -144,6 +158,16 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Use light haptic feedback after successful actions",
             [StringKeys.SettingsOverlay] =
                 "Show brief status overlays at the lower center of the screen",
+            [StringKeys.SettingsRadialMenu] =
+                "Shortcut wheel hints",
+            [StringKeys.SettingsRadialMenuDescription] =
+                "Always appears immediately; Learning appears after a short hold; Off hides the wheel.",
+            [StringKeys.SettingsRadialMenuAlways] =
+                "Always show",
+            [StringKeys.SettingsRadialMenuLearning] =
+                "Learning mode",
+            [StringKeys.SettingsRadialMenuOff] =
+                "Off",
             [StringKeys.SettingsStick] = "Sticks",
             [StringKeys.SettingsStickDescription] =
                 "Primary-direction locking prevents diagonal movement from triggering horizontal and vertical actions together.",
@@ -166,6 +190,19 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SettingsLanguageAuto] = "Follow system",
             [StringKeys.SettingsLanguageZhCn] = "简体中文",
             [StringKeys.SettingsLanguageEnUs] = "English (US)",
+
+            [StringKeys.DispatchSend] = "Send",
+            [StringKeys.DispatchSendDescription] =
+                "Start a new turn with the current composer text.",
+            [StringKeys.DispatchSteer] = "Steer current turn",
+            [StringKeys.DispatchSteerDescription] =
+                "Add the current composer text to the turn that is still running.",
+            [StringKeys.DispatchQueue] = "Queue next turn",
+            [StringKeys.DispatchQueueDescription] =
+                "Save the current composer text for the next turn after the current one finishes.",
+            [StringKeys.DispatchDefault] = "Default dispatch",
+            [StringKeys.DispatchDefaultDescription] =
+                "Follow Codex's current dispatch behavior. Agent Controller has not verified enough active-turn and Follow-up state to name the outcome.",
 
             [StringKeys.StatusReady] = "{0} is ready",
             [StringKeys.StatusLoadingAgentData] =
@@ -198,7 +235,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} is not in the foreground · press {1} to wake",
             [StringKeys.StatusControllerHelp] =
-                "{0} wakes and unlocks · left stick ↑↓ focus, → enter / open, ← back, {1} changes root · {2} project context · right stick adjusts, {3} changes mode · hold {4} to talk · {5} sends · {6} cancels / undoes",
+                "{0} wakes and unlocks · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · {2} project context · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} cancels / undoes",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
             [StringKeys.TrayOpenAgent] = "Open {0}",
@@ -274,6 +311,10 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.MessageAgentSidebar] = "{0} sidebar",
             [StringKeys.MessageAlreadyAtRootScope] =
                 "Already at a root scope",
+            [StringKeys.MessageFocusedEntryHasNoChildDirectory] =
+                "The focused entry has no child directory · A opens tasks; Y finds the owning project",
+            [StringKeys.MessageUseRightToEnterProject] =
+                "Projects are directories · press → to enter; A opens tasks only",
             [StringKeys.MessageNoAvailableEntries] =
                 "No available entries in this scope",
             [StringKeys.MessageProjectTasks] = "Project tasks",

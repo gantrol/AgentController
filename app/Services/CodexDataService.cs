@@ -79,10 +79,14 @@ public sealed class CodexDataService
 
             assignments.TryGetValue(item.Id, out var projectPath);
             projectPath ??= ResolveProjectPath(metadata.WorkingDirectory, state);
+            var effectiveRecency =
+                metadata.RecencyAt ??
+                metadata.UpdatedAt ??
+                item.UpdatedAt;
             threads.Add(new CodexThread(
                 item.Id,
                 NormalizeTitle(item.Title),
-                item.UpdatedAt,
+                effectiveRecency,
                 projectPath,
                 pinnedThreadIds.Contains(item.Id),
                 NormalizeNativeTitle(item.Title)));
@@ -117,7 +121,9 @@ public sealed class CodexDataService
             threads.Add(new CodexThread(
                 id,
                 string.Empty,
-                metadata.UpdatedAt ?? DateTimeOffset.MinValue,
+                metadata.RecencyAt ??
+                metadata.UpdatedAt ??
+                DateTimeOffset.MinValue,
                 ProjectPath: null,
                 IsPinned: false,
                 NativeTitle: "New task"));
@@ -136,20 +142,31 @@ public sealed class CodexDataService
             .Where(thread => thread is not null)
             .Cast<CodexThread>()
             .ToList();
+        var projectlessCandidates = threads
+            .Where(thread =>
+                !thread.IsPinned &&
+                string.IsNullOrWhiteSpace(thread.ProjectPath))
+            .OrderByDescending(thread => thread.UpdatedAt)
+            .ToList();
+        var projectlessLookup = projectlessCandidates.ToDictionary(
+            thread => thread.Id,
+            StringComparer.OrdinalIgnoreCase);
+        var explicitlyOrderedProjectless = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        // Codex persists this list in insertion order while rendering it
+        // newest-first. Prefer that native order over activity timestamps;
+        // recency remains the fallback for entries absent from persisted UI
+        // state.
         var projectless = state.ProjectlessThreadIds
             .Reverse()
-            .Select(id => threadLookup.GetValueOrDefault(id))
-            .Where(thread => thread is not null && !thread.IsPinned)
+            .Select(id => projectlessLookup.GetValueOrDefault(id))
+            .Where(thread =>
+                thread is not null &&
+                explicitlyOrderedProjectless.Add(thread.Id))
             .Cast<CodexThread>()
+            .Concat(projectlessCandidates.Where(thread =>
+                !explicitlyOrderedProjectless.Contains(thread.Id)))
             .ToList();
-        if (projectless.Count == 0)
-        {
-            projectless = threads
-                .Where(thread =>
-                    !thread.IsPinned &&
-                    string.IsNullOrWhiteSpace(thread.ProjectPath))
-                .ToList();
-        }
 
         var projectPaths = state.KnownProjectPaths
             .Concat(threads
@@ -259,7 +276,8 @@ public sealed class CodexDataService
                     NativeTitle: thread.NativeTitle,
                     IsPinned: true,
                     PinBadge: strings.SidebarPinnedBadge,
-                    ActionHint: strings.SidebarOpenAction))
+                    ActionHint: strings.SidebarOpenAction,
+                    NavigationScope: SidebarScope.PinnedTasks))
                 .ToList(),
 
             SidebarScope.PinnedProjects => snapshot.Projects
@@ -275,7 +293,8 @@ public sealed class CodexDataService
                     IsPinned: true,
                     ProjectIsPinned: true,
                     PinBadge: strings.SidebarPinnedBadge,
-                    ActionHint: strings.SidebarEnterAction))
+                    ActionHint: strings.SidebarEnterAction,
+                    NavigationScope: SidebarScope.PinnedProjects))
                 .ToList(),
 
             SidebarScope.Projects => snapshot.Projects
@@ -289,7 +308,8 @@ public sealed class CodexDataService
                     ProjectPath: project.Path,
                     NativeTitle: project.Name,
                     ProjectIsPinned: false,
-                    ActionHint: strings.SidebarEnterAction))
+                    ActionHint: strings.SidebarEnterAction,
+                    NavigationScope: SidebarScope.Projects))
                 .ToList(),
 
             SidebarScope.ProjectTasks => BuildProjectTaskEntries(
@@ -306,11 +326,37 @@ public sealed class CodexDataService
                     ProjectPath: thread.ProjectPath,
                     NativeTitle: thread.NativeTitle,
                     NativeListIndex: index,
-                    ActionHint: strings.SidebarOpenAction))
+                    ActionHint: strings.SidebarOpenAction,
+                    NavigationScope: SidebarScope.ProjectlessTasks))
                 .ToList(),
 
             _ => [],
         };
+    }
+
+    public IReadOnlyList<SidebarEntry> BuildUnifiedEntries(
+        CodexSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return
+        [
+            .. BuildEntries(
+                snapshot,
+                SidebarScope.PinnedTasks,
+                selectedProjectPath: null),
+            .. BuildEntries(
+                snapshot,
+                SidebarScope.PinnedProjects,
+                selectedProjectPath: null),
+            .. BuildEntries(
+                snapshot,
+                SidebarScope.Projects,
+                selectedProjectPath: null),
+            .. BuildEntries(
+                snapshot,
+                SidebarScope.ProjectlessTasks,
+                selectedProjectPath: null),
+        ];
     }
 
     private IReadOnlyList<SidebarEntry> BuildProjectTaskEntries(
@@ -329,14 +375,8 @@ public sealed class CodexDataService
             return [];
         }
 
-        var pinned = snapshot.PinnedThreads
-            .Where(thread =>
-                thread.ProjectPath is not null &&
-                PathComparer.Equals(thread.ProjectPath, projectPath));
-        var regular = project.Threads.Where(thread => !thread.IsPinned);
         var strings = _localization.Strings;
-        return pinned
-            .Concat(regular)
+        return project.Threads
             .Select(thread => new SidebarEntry(
                 thread.Id,
                 DisplayTitle(thread),
@@ -344,9 +384,7 @@ public sealed class CodexDataService
                     ? strings.SidebarPinnedRelativeTime(
                         RelativeTime(thread.UpdatedAt))
                     : RelativeTime(thread.UpdatedAt),
-                thread.IsPinned
-                    ? SidebarLayer.Pinned
-                    : SidebarLayer.Tasks,
+                SidebarLayer.Tasks,
                 ThreadId: thread.Id,
                 ProjectPath: projectPath,
                 NativeTitle: thread.NativeTitle,
@@ -355,7 +393,8 @@ public sealed class CodexDataService
                 PinBadge: thread.IsPinned
                     ? strings.SidebarPinnedBadge
                     : string.Empty,
-                ActionHint: strings.SidebarOpenAction))
+                ActionHint: strings.SidebarOpenAction,
+                NavigationScope: SidebarScope.ProjectTasks))
             .ToList();
     }
 
@@ -424,17 +463,32 @@ public sealed class CodexDataService
                 };
                 using var connection = new SqliteConnection(builder.ToString());
                 connection.Open();
+                var columns = ReadThreadColumnNames(connection);
+                var threadSource = columns.Contains("thread_source")
+                    ? "COALESCE(thread_source, '')"
+                    : columns.Contains("source")
+                        ? "COALESCE(source, '')"
+                        : "''";
+                var updatedAt = columns.Contains("updated_at_ms")
+                    ? "COALESCE(NULLIF(updated_at_ms, 0), updated_at * 1000)"
+                    : "updated_at";
+                var recencyAt = columns.Contains("recency_at_ms")
+                    ? "NULLIF(recency_at_ms, 0)"
+                    : columns.Contains("recency_at")
+                        ? "NULLIF(recency_at, 0)"
+                        : "NULL";
                 using var command = connection.CreateCommand();
                 command.CommandText =
-                    """
+                    $"""
                     SELECT
                         id,
                         archived,
                         preview,
-                        COALESCE(thread_source, ''),
+                        {threadSource},
                         cwd,
                         rollout_path,
-                        updated_at
+                        {updatedAt},
+                        {recencyAt}
                     FROM threads;
                     """;
                 using var reader = command.ExecuteReader();
@@ -450,7 +504,8 @@ public sealed class CodexDataService
                         IsUserFacingSource(reader.GetString(3)),
                         NormalizePath(reader.GetString(4)),
                         File.Exists(rolloutPath),
-                        ReadDatabaseTimestamp(reader, 6));
+                        ReadDatabaseTimestamp(reader, 6),
+                        ReadDatabaseTimestamp(reader, 7));
                 }
 
                 return result;
@@ -474,6 +529,22 @@ public sealed class CodexDataService
             StringComparer.OrdinalIgnoreCase);
         AddRolloutDirectory(result, _sessionsPath, isArchived: false);
         AddRolloutDirectory(result, _archivedSessionsPath, isArchived: true);
+        return result;
+    }
+
+    private static HashSet<string> ReadThreadColumnNames(
+        SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info(threads);";
+        using var reader = command.ExecuteReader();
+        var result = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        while (reader.Read())
+        {
+            result.Add(reader.GetString(1));
+        }
+
         return result;
     }
 
@@ -505,7 +576,8 @@ public sealed class CodexDataService
                     IsUserFacing: true,
                     WorkingDirectory: null,
                     RolloutExists: true,
-                    UpdatedAt: null);
+                    UpdatedAt: null,
+                    RecencyAt: null);
             }
         }
         catch (IOException)
@@ -987,7 +1059,8 @@ public sealed class CodexDataService
         bool IsUserFacing,
         string? WorkingDirectory,
         bool RolloutExists,
-        DateTimeOffset? UpdatedAt)
+        DateTimeOffset? UpdatedAt,
+        DateTimeOffset? RecencyAt)
     {
         public bool IsDeepLinkCandidate =>
             !IsArchived &&

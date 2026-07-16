@@ -10,9 +10,11 @@ using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 using CodexController.Services;
 using CodexController.ViewModels;
+using CodexController.Views;
 using Forms = System.Windows.Forms;
 
 namespace CodexController;
@@ -26,6 +28,9 @@ public partial class MainWindow : Window
         SidebarScope.Projects,
         SidebarScope.ProjectlessTasks,
     ];
+    private const ControllerButtons DialExclusiveFrozenButtons =
+        RadialInputMap.FrozenBaseButtons &
+        ~(ControllerButtons.RightThumb | ControllerButtons.B);
 
     private readonly SettingsService _settingsService;
     private readonly IWorkspaceReader _workspaceReader;
@@ -47,19 +52,32 @@ public partial class MainWindow : Window
     private readonly BridgeFeedbackPresenter _feedbackPresenter;
     private readonly SemaphoreSlim _sidebarFocusGate = new(1, 1);
     private readonly SemaphoreSlim _dataRefreshGate = new(1, 1);
+    private readonly SemaphoreSlim _dialAutomationGate = new(1, 1);
     private readonly ObservableCollection<SidebarEntry> _sidebarEntries = [];
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
-    private readonly object _controllerStateSync = new();
+    private readonly DispatcherTimer _radialLearningTimer;
+    private readonly ControllerStateBuffer _controllerStateBuffer = new();
     private readonly ControllerSession _controllerSession = new();
+    private readonly ForegroundContinuityGate _foregroundContinuityGate =
+        new();
+    private readonly SidebarNavigationDirectory _sidebarNavigationDirectory =
+        new();
+    private readonly AnalogTriggerLatch _pushToTalkTrigger = new(
+        BridgeTimings.PushToTalkEngageThreshold,
+        BridgeTimings.PushToTalkReleaseThreshold);
+    private readonly PushToTalkAutomationState _pushToTalkAutomation =
+        new();
 
     private AppSettings _settings = new();
     private CodexSnapshot _snapshot = new();
     private SidebarScope _scope = SidebarScope.Projects;
-    private RightControlMode _rightMode = RightControlMode.Reasoning;
+    private RightControlMode _rightMode = RightControlMode.Dial;
     private ControllerButtons _previousButtons;
+    private ControllerButtons _previousPhysicalButtons;
+    private ControllerButtons _radialSuppressedButtons;
+    private ControllerButtons _pushToTalkSuppressedButtons;
     private string? _selectedProjectPath;
-    private int _selectedIndex;
     private bool _projectTasksPinnedOnly;
     private readonly Dictionary<SidebarScope, string> _rootCursorIds = [];
     private readonly Dictionary<string, string> _projectTaskCursorIds =
@@ -67,6 +85,20 @@ public partial class MainWindow : Window
     private SidebarReturnFrame? _sidebarReturnFrame;
     private ProjectDisclosureLease? _projectDisclosureLease;
     private bool _dictationInjected;
+    private string? _dictationInputGlyph;
+    private bool _radialLayerEngaged;
+    private bool _radialLayerCancelled;
+    private bool _radialActionTriggered;
+    private bool _radialPushToTalkActive;
+    private bool _rightTriggerCandidate;
+    private bool _rightStickPressHeld;
+    private bool _rightStickHoldTriggered;
+    private bool _virtualDialMenuOpen;
+    private bool _virtualDialOpenPending;
+    private bool _virtualDialCancelRequested;
+    private bool _virtualDialCleanupPending;
+    private bool _dialInputReleasePending;
+    private bool _blockedPushToTalkHintShown;
     private bool _controllerWasConnected;
     private bool _hasSeenController;
     private bool _wakeInProgress;
@@ -75,9 +107,9 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private long _leftNavigationBlockedUntil;
     private long _rightAdjustmentBlockedUntil;
+    private long _radialLayerStartedAt;
     private CancellationTokenSource? _sidebarFocusCancellation;
     private ControllerState _latestControllerState;
-    private int _controllerDispatchPending;
     private ComposerCatalog? _composerCatalog;
     private int _modelIndex;
     private int _committedModelIndex;
@@ -88,14 +120,29 @@ public partial class MainWindow : Window
     private ComposerSettingKind? _pendingComposerKind;
     private string? _pendingComposerTarget;
     private CancellationTokenSource? _composerCommitCancellation;
-    private CancellationTokenSource? _dictationStopCancellation;
     private CancellationTokenSource? _navigationConfirmCancellation;
+    private CancellationTokenSource? _rightStickPressCancellation;
     private NavigationUndoState? _navigationUndo;
+    private int _pendingDialDelta;
+    private int _dialPumpRunning;
+    private int _virtualDialGeneration;
+    private int _dictationPumpRunning;
     private Forms.NotifyIcon? _trayIcon;
     private System.Drawing.Icon? _trayIconImage;
     private OverlayWindow? _overlayWindow;
+    private RadialMenuOverlayWindow? _radialMenuOverlayWindow;
+    private SidebarNavigationWheelOverlayWindow?
+        _sidebarNavigationWheelOverlayWindow;
+    private RadialMenuLayerKind? _radialLayer;
+    private string? _radialHighlightedItemId;
     private ControllerProfile _activeControllerProfile =
         BuiltInControllerProfiles.Generic;
+
+    private SidebarNavigationState ActiveSidebarNavigation =>
+        _sidebarNavigationDirectory.Resolve(
+            _scope,
+            _selectedProjectPath,
+            _projectTasksPinnedOnly);
 
     public MainWindow(AppServices services)
     {
@@ -165,6 +212,14 @@ public partial class MainWindow : Window
             Interval = BridgeTimings.DataRefresh,
         };
         _dataTimer.Tick += (_, _) => RefreshCodexData(preserveSelection: true);
+
+        _radialLearningTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(
+                RadialInputMap.LearningDelayMs),
+        };
+        _radialLearningTimer.Tick += (_, _) =>
+            PromoteRadialLearningCue();
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -177,11 +232,16 @@ public partial class MainWindow : Window
         UpdateLocalizedUi();
         SetupTrayIcon();
         _overlayWindow = new OverlayWindow();
+        _radialMenuOverlayWindow = new RadialMenuOverlayWindow();
+        _sidebarNavigationWheelOverlayWindow =
+            new SidebarNavigationWheelOverlayWindow();
 
         _bridgeEvents.Publish(BridgeEventKeys.AppReady);
         ConfigureCodexKeybindings();
         InitializeComposerControls();
-        RefreshCodexData(preserveSelection: false);
+        RefreshCodexData(
+            preserveSelection: false,
+            forceNavigationRebuild: false);
         ShowPage(DevicePage);
         SetSelectedNav(DeviceNavButton);
 
@@ -198,29 +258,19 @@ public partial class MainWindow : Window
         object? sender,
         ControllerState state)
     {
-        lock (_controllerStateSync)
+        if (_controllerStateBuffer.Enqueue(state))
         {
-            _latestControllerState = state;
+            _ = Dispatcher.BeginInvoke(
+                ProcessBufferedControllerStates);
         }
-
-        if (Interlocked.Exchange(ref _controllerDispatchPending, 1) != 0)
-        {
-            return;
-        }
-
-        _ = Dispatcher.BeginInvoke(ProcessLatestControllerState);
     }
 
-    private void ProcessLatestControllerState()
+    private void ProcessBufferedControllerStates()
     {
-        ControllerState state;
-        lock (_controllerStateSync)
+        foreach (var state in _controllerStateBuffer.Drain())
         {
-            state = _latestControllerState;
-            Interlocked.Exchange(ref _controllerDispatchPending, 0);
+            ProcessControllerState(state);
         }
-
-        ProcessControllerState(state);
     }
 
     private void ConfigureCodexKeybindings()
@@ -264,6 +314,7 @@ public partial class MainWindow : Window
 
     private void ProcessControllerState(ControllerState state)
     {
+        _latestControllerState = state;
         UpdateControllerProfile(state);
         UpdateControllerVisual(state);
 
@@ -288,6 +339,7 @@ public partial class MainWindow : Window
 
             PauseControllerInput();
             _previousButtons = ControllerButtons.None;
+            _previousPhysicalButtons = ControllerButtons.None;
             return;
         }
 
@@ -312,39 +364,178 @@ public partial class MainWindow : Window
         }
 
         var pressed = state.Buttons;
+        if (
+            state.LeftTrigger <=
+            BridgeTimings.PushToTalkReleaseThreshold)
+        {
+            _blockedPushToTalkHintShown = false;
+        }
+
+        _radialSuppressedButtons &= pressed;
+        _pushToTalkSuppressedButtons &= pressed;
+        var radialModifierHeld =
+            _radialLayer is not null ||
+            pressed.HasFlag(ControllerButtons.LeftShoulder) ||
+            pressed.HasFlag(ControllerButtons.RightShoulder) ||
+            state.RightTrigger >= RadialInputMap.TurnEngageThreshold;
+        var wakeEligibleButtons =
+            pressed & ~_radialSuppressedButtons;
+        if (radialModifierHeld || IsVirtualDialContextActive)
+        {
+            wakeEligibleButtons &= ~ControllerButtons.Start;
+        }
+
         HandleButtonEdge(
-            pressed,
+            wakeEligibleButtons,
             ControllerButtons.Start,
             onDown: WakeCodex);
 
         var foreground = _activeAgent.Presence.IsForeground;
-        ObserveCodexForeground(foreground);
+        var foregroundAllowsInput =
+            ObserveCodexForeground(foreground);
         if (
             !_settings.BridgeEnabled ||
             !_controllerSession.IsArmed ||
-            (_settings.OnlyWhenCodexForeground && !foreground))
+            (
+                _settings.OnlyWhenCodexForeground &&
+                !foregroundAllowsInput
+            ))
         {
-            PauseControllerInput(state);
+            PresentBlockedPushToTalkAttempt(
+                state,
+                foreground,
+                waitingForNeutral: false);
+            if (
+                !_settings.BridgeEnabled ||
+                !_controllerSession.IsArmed)
+            {
+                PauseControllerInput(state);
+            }
+
             _previousButtons = pressed;
+            _previousPhysicalButtons = pressed;
             return;
         }
 
         if (!TryResumeControllerInput(state))
         {
+            PresentBlockedPushToTalkAttempt(
+                state,
+                foreground,
+                waitingForNeutral: true);
             _previousButtons = pressed;
+            _previousPhysicalButtons = pressed;
             return;
         }
 
+        if (_dialInputReleasePending)
+        {
+            if (PushToTalkInputPolicy.ShouldPreemptDialReleaseDrain(
+                    state.LeftTrigger,
+                    BridgeTimings.PushToTalkEngageThreshold))
+            {
+                _dialInputReleasePending = false;
+                // Preserve held-button history. Clearing it here turns a
+                // still-held B into a fresh edge that immediately cancels LT.
+                _previousButtons = pressed;
+                _previousPhysicalButtons = pressed;
+                _axisRepeater.Reset();
+                _leftStickRouter.Reset();
+                _rightStickRouter.Reset();
+            }
+            else if (!IsControllerNeutral(state))
+            {
+                DrainControllerFrame(pressed);
+                return;
+            }
+            else
+            {
+                _dialInputReleasePending = false;
+                _previousButtons = ControllerButtons.None;
+                _previousPhysicalButtons = ControllerButtons.None;
+                _axisRepeater.Reset();
+                _leftStickRouter.Reset();
+                _rightStickRouter.Reset();
+            }
+        }
+
+        var physicalDownEdges =
+            pressed & ~_previousPhysicalButtons;
+        var physicalUpEdges =
+            _previousPhysicalButtons & ~pressed;
+        // Dial automation owns the native picker state. Controller polling
+        // must never synchronously walk the UIA tree.
+        var dialContextActive = IsVirtualDialContextActive;
+
+        var pushToTalkTransition = UpdatePushToTalkTrigger(
+            state.LeftTrigger,
+            blocked: PushToTalkInputPolicy.ShouldBlockTrigger(
+                radialLayerActive: _radialLayer is not null));
+        var pushToTalkFrameActive =
+            _pushToTalkTrigger.BlocksBaseInput ||
+            pushToTalkTransition != AnalogTriggerTransition.None;
+        if (pushToTalkTransition == AnalogTriggerTransition.Released)
+        {
+            _pushToTalkSuppressedButtons |= pressed;
+        }
+        else if (_pushToTalkTrigger.BlocksBaseInput)
+        {
+            _pushToTalkSuppressedButtons |=
+                PushToTalkInputPolicy.ButtonsToSuppress(pressed);
+        }
+
+        ControllerButtons frozenByContext;
+        if (pushToTalkFrameActive)
+        {
+            _rightTriggerCandidate = false;
+            frozenByContext =
+                PushToTalkInputPolicy.FrozenBaseButtons;
+        }
+        else if (dialContextActive)
+        {
+            if (_radialLayer is not null || _rightTriggerCandidate)
+            {
+                ResetRadialLayer(clearSuppression: false);
+            }
+
+            frozenByContext = DialExclusiveFrozenButtons;
+        }
+        else
+        {
+            frozenByContext = ProcessRadialInput(state);
+        }
+
+        if (
+            frozenByContext.HasFlag(ControllerButtons.RightThumb) &&
+            _rightStickPressHeld)
+        {
+            CancelVirtualDialPressHold();
+        }
+
+        var radialInputActive = _radialLayer is not null;
+        var basePressed =
+            pressed &
+            ~frozenByContext &
+            ~_radialSuppressedButtons &
+            ~_pushToTalkSuppressedButtons;
         HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.LeftThumb,
             onDown: CycleRootSidebarScope);
+        if (
+            physicalDownEdges.HasFlag(ControllerButtons.RightThumb) &&
+            basePressed.HasFlag(ControllerButtons.RightThumb))
+        {
+            BeginVirtualDialPress();
+        }
+
+        if (physicalUpEdges.HasFlag(ControllerButtons.RightThumb))
+        {
+            EndVirtualDialPress();
+        }
+
         HandleButtonEdge(
-            pressed,
-            ControllerButtons.RightThumb,
-            onDown: CycleRightControlMode);
-        HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.DPadLeft,
             onDown: () =>
             {
@@ -352,7 +543,7 @@ public partial class MainWindow : Window
                 NavigateSidebarHorizontal(-1);
             });
         HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.DPadRight,
             onDown: () =>
             {
@@ -360,40 +551,49 @@ public partial class MainWindow : Window
                 NavigateSidebarHorizontal(1);
             });
         HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.Y,
             onDown: JumpToProjectContext);
         HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.A,
-            onDown: StartDictation,
-            onUp: StopDictation);
+            onDown: OpenSelectedSidebarTask);
         HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.X,
             onDown: SendPrompt);
         HandleButtonEdge(
-            pressed,
+            basePressed,
             ControllerButtons.B,
-            onDown: CancelAction);
-        _previousButtons = pressed;
+            onDown: CancelActionOrDialMenu);
+        _previousButtons = basePressed;
+        _previousPhysicalButtons = pressed;
 
         var deadZone = _settings.DeadZone;
+        var virtualDialDeadZone =
+            VirtualDialInputPolicy.ResolveDeadZone(
+                deadZone,
+                _activeControllerProfile.Tuning?.StickDeadZone);
         var leftGesture = _leftStickRouter.Update(
             state.LeftX,
             state.LeftY,
             deadZone,
             invertVertical: true,
             blocked:
-                pressed.HasFlag(ControllerButtons.LeftThumb) ||
+                radialInputActive ||
+                dialContextActive ||
+                pushToTalkFrameActive ||
+                basePressed.HasFlag(ControllerButtons.LeftThumb) ||
                 Environment.TickCount64 < _leftNavigationBlockedUntil);
         var rightGesture = _rightStickRouter.Update(
             state.RightX,
             state.RightY,
-            deadZone,
+            virtualDialDeadZone,
             invertVertical: false,
             blocked:
-                pressed.HasFlag(ControllerButtons.RightThumb) ||
+                radialInputActive ||
+                pushToTalkFrameActive ||
+                basePressed.HasFlag(ControllerButtons.RightThumb) ||
                 Environment.TickCount64 < _rightAdjustmentBlockedUntil);
 
         _axisRepeater.Update(
@@ -406,16 +606,796 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        _axisRepeater.Update(
-            "right-y",
-            rightGesture.VerticalDirection,
-            _settings.RepeatDelayMs,
-            _settings.RepeatIntervalMs,
-            AdjustRightMode);
-        if (rightGesture.HorizontalStarted)
+        if (VirtualDialInputPolicy.ShouldQueueStep(
+                rightGesture.HorizontalStarted,
+                rightGesture.HorizontalDirection))
         {
-            SwitchRightControlMode(rightGesture.HorizontalDirection);
+            QueueVirtualDialStep(rightGesture.HorizontalDirection);
         }
+    }
+
+    private bool IsVirtualDialContextActive =>
+        _virtualDialMenuOpen ||
+        _virtualDialOpenPending ||
+        _virtualDialCancelRequested ||
+        _virtualDialCleanupPending;
+
+    private void SetVirtualDialMenuOpen(bool isOpen)
+    {
+        _virtualDialMenuOpen = isOpen;
+        UpdateVirtualDialContextPresentation();
+    }
+
+    private void UpdateVirtualDialContextPresentation()
+    {
+        _devicePageViewModel.UpdateVirtualDialMenuState(
+            _virtualDialMenuOpen);
+    }
+
+    private void DrainControllerFrame(ControllerButtons pressed)
+    {
+        _previousButtons = pressed;
+        _previousPhysicalButtons = pressed;
+        _axisRepeater.Reset();
+        _leftStickRouter.RequireNeutral();
+        _rightStickRouter.RequireNeutral();
+    }
+
+    private void BeginVirtualDialReleaseDrain()
+    {
+        _dialInputReleasePending =
+            !IsControllerNeutral(_xInputService.LastState);
+        Interlocked.Exchange(ref _pendingDialDelta, 0);
+        CancelVirtualDialPressHold();
+        ResetRadialLayer(clearSuppression: false);
+        _axisRepeater.Reset();
+        _leftStickRouter.RequireNeutral();
+        _rightStickRouter.RequireNeutral();
+    }
+
+    private ControllerButtons ProcessRadialInput(ControllerState state)
+    {
+        var pressed = state.Buttons;
+        var downEdges = pressed & ~_previousPhysicalButtons;
+        var upEdges = _previousPhysicalButtons & ~pressed;
+
+        if (_radialLayer is null)
+        {
+            if (
+                !_rightTriggerCandidate &&
+                RadialInputMap.IsTurnCandidate(state.RightTrigger))
+            {
+                _rightTriggerCandidate = true;
+            }
+
+            if (_rightTriggerCandidate)
+            {
+                if (
+                    state.RightTrigger <=
+                    RadialInputMap.TurnCandidateReleaseThreshold)
+                {
+                    _radialSuppressedButtons |=
+                        pressed &
+                        RadialInputMap.FrozenTurnCandidateButtons;
+                    _rightTriggerCandidate = false;
+                    return RadialInputMap.FrozenTurnCandidateButtons;
+                }
+
+                if (
+                    RadialInputMap.CanAcceptTurnAction(
+                        state.RightTrigger))
+                {
+                    _rightTriggerCandidate = false;
+                    BeginRadialLayer(RadialMenuLayerKind.Turn);
+                }
+                else
+                {
+                    return RadialInputMap.FrozenTurnCandidateButtons;
+                }
+            }
+            else if (
+                downEdges.HasFlag(ControllerButtons.RightShoulder))
+            {
+                BeginRadialLayer(RadialMenuLayerKind.Command);
+            }
+            else if (
+                downEdges.HasFlag(ControllerButtons.LeftShoulder))
+            {
+                BeginRadialLayer(RadialMenuLayerKind.Agent);
+            }
+        }
+
+        if (_radialLayer is not { } layer)
+        {
+            return ControllerButtons.None;
+        }
+
+        if (
+            layer == RadialMenuLayerKind.Agent &&
+            !pressed.HasFlag(ControllerButtons.LeftShoulder))
+        {
+            CompleteShoulderLayer(
+                direction: -1,
+                pressed);
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        if (
+            layer == RadialMenuLayerKind.Command &&
+            !pressed.HasFlag(ControllerButtons.RightShoulder))
+        {
+            CompleteShoulderLayer(
+                direction: 1,
+                pressed);
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        if (
+            layer == RadialMenuLayerKind.Turn &&
+            state.RightTrigger <=
+                RadialInputMap.TurnReleaseThreshold)
+        {
+            EndRadialLayer(pressed);
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        if (
+            layer == RadialMenuLayerKind.Command &&
+            _radialPushToTalkActive &&
+            upEdges.HasFlag(ControllerButtons.Back))
+        {
+            _radialPushToTalkActive = false;
+            StopDictation(physicalRelease: true);
+        }
+
+        if (_radialLayerCancelled)
+        {
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        var action = RadialInputMap.Resolve(layer, downEdges);
+        if (action == RadialInputAction.None)
+        {
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        if (action == RadialInputAction.Cancel)
+        {
+            CancelRadialLayer();
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        _radialActionTriggered = true;
+        _radialLayerEngaged = true;
+        _radialLearningTimer.Stop();
+        _radialHighlightedItemId = RadialActionId(action);
+        RefreshRadialMenu();
+        ExecuteRadialAction(action);
+        return RadialInputMap.FrozenBaseButtons;
+    }
+
+    private void BeginRadialLayer(RadialMenuLayerKind layer)
+    {
+        if (_radialLayer is not null)
+        {
+            return;
+        }
+
+        _radialLayer = layer;
+        _rightTriggerCandidate = false;
+        _radialLayerStartedAt = Environment.TickCount64;
+        _radialLayerEngaged = layer == RadialMenuLayerKind.Turn;
+        _radialLayerCancelled = false;
+        _radialActionTriggered = false;
+        _radialPushToTalkActive = false;
+        _radialHighlightedItemId = null;
+
+        _radialLearningTimer.Stop();
+        if (layer != RadialMenuLayerKind.Turn)
+        {
+            _radialLearningTimer.Start();
+        }
+
+        RefreshRadialMenu();
+    }
+
+    private void PromoteRadialLearningCue()
+    {
+        _radialLearningTimer.Stop();
+        if (
+            _radialLayer is not
+                (RadialMenuLayerKind.Agent or
+                 RadialMenuLayerKind.Command) ||
+            _radialLayerCancelled)
+        {
+            return;
+        }
+
+        var buttons = _latestControllerState.Buttons;
+        var modifierStillHeld =
+            _radialLayer == RadialMenuLayerKind.Agent
+                ? buttons.HasFlag(ControllerButtons.LeftShoulder)
+                : buttons.HasFlag(ControllerButtons.RightShoulder);
+        if (!modifierStillHeld)
+        {
+            return;
+        }
+
+        _radialLayerEngaged = true;
+        RefreshRadialMenu();
+    }
+
+    private void CompleteShoulderLayer(
+        int direction,
+        ControllerButtons pressed)
+    {
+        var elapsed =
+            Environment.TickCount64 - _radialLayerStartedAt;
+        var shouldMoveTask =
+            !_radialLayerEngaged &&
+            !_radialLayerCancelled &&
+            !_radialActionTriggered &&
+            elapsed < RadialInputMap.LearningDelayMs;
+        EndRadialLayer(pressed);
+        if (shouldMoveTask)
+        {
+            OpenAdjacentAgentTask(direction);
+        }
+    }
+
+    private void CancelRadialLayer()
+    {
+        _radialLayerCancelled = true;
+        _radialActionTriggered = true;
+        _radialLearningTimer.Stop();
+        if (_radialPushToTalkActive)
+        {
+            _radialPushToTalkActive = false;
+            StopDictation(physicalRelease: false);
+        }
+
+        _radialMenuOverlayWindow?.HideMenu();
+        ShowFeedback(
+            RadialText("组合层", "Chord layer"),
+            RadialText(
+                "已取消；松开修饰键后返回基础层。",
+                "Canceled. Release the modifier to return to Base."));
+        Pulse(strength: 0.1);
+    }
+
+    private void EndRadialLayer(ControllerButtons pressed)
+    {
+        _radialSuppressedButtons |=
+            pressed & RadialInputMap.FrozenBaseButtons;
+        ResetRadialLayer(clearSuppression: false);
+    }
+
+    private void ResetRadialLayer(bool clearSuppression)
+    {
+        _radialLearningTimer.Stop();
+        if (_radialPushToTalkActive)
+        {
+            _radialPushToTalkActive = false;
+            StopDictation(physicalRelease: false);
+        }
+
+        _radialLayer = null;
+        _rightTriggerCandidate = false;
+        _radialLayerEngaged = false;
+        _radialLayerCancelled = false;
+        _radialActionTriggered = false;
+        _radialLayerStartedAt = 0;
+        _radialHighlightedItemId = null;
+        if (clearSuppression)
+        {
+            _radialSuppressedButtons = ControllerButtons.None;
+        }
+
+        _radialMenuOverlayWindow?.HideMenu();
+    }
+
+    private void ExecuteRadialAction(RadialInputAction action)
+    {
+        var agentSlot = RadialInputMap.AgentSlotIndex(action);
+        if (agentSlot >= 0)
+        {
+            OpenAgentSlot(agentSlot);
+            return;
+        }
+
+        switch (action)
+        {
+            case RadialInputAction.ToggleFast:
+                ExecuteFastToggle();
+                break;
+            case RadialInputAction.Approve:
+                ExecuteNamedRadialAction(
+                    RadialText("接受更改", "Approve changes"),
+                    "Approve",
+                    "Accept",
+                    "Accept changes",
+                    "Allow",
+                    "Allow once",
+                    "Continue");
+                break;
+            case RadialInputAction.Decline:
+                ExecuteNamedRadialAction(
+                    RadialText("拒绝更改", "Decline changes"),
+                    "Decline",
+                    "Reject",
+                    "Reject changes",
+                    "Deny");
+                break;
+            case RadialInputAction.Fork:
+                ExecuteNamedRadialAction(
+                    RadialText("分支任务", "Fork task"),
+                    "Fork",
+                    "Fork task",
+                    "Fork thread",
+                    "Branch",
+                    "Branch task",
+                    "Continue in new task");
+                break;
+            case RadialInputAction.PushToTalk:
+                if (!_radialPushToTalkActive)
+                {
+                    _radialPushToTalkActive = true;
+                    StartDictation(Glyph(LogicalInput.View));
+                }
+                break;
+            case RadialInputAction.Dispatch:
+                SendPrompt(Glyph(LogicalInput.Menu));
+                break;
+            case RadialInputAction.Steer:
+                ExecuteNamedRadialAction(
+                    RadialText("加入当前运行", "Steer current turn"),
+                    "Steer",
+                    "Steer current turn",
+                    "Add to current turn",
+                    "加入当前运行",
+                    "加入当前轮次");
+                break;
+            case RadialInputAction.Queue:
+                ExecuteNamedRadialAction(
+                    RadialText("排到下一轮", "Queue next turn"),
+                    "Queue",
+                    "Queue next turn",
+                    "Send next",
+                    "排到下一轮",
+                    "排入下一轮");
+                break;
+            case RadialInputAction.StopTurn:
+                ExecuteNamedRadialAction(
+                    RadialText("停止当前运行", "Stop current turn"),
+                    "Stop");
+                break;
+        }
+    }
+
+    private void OpenAgentSlot(int slotIndex)
+    {
+        var thread = _snapshot.Threads
+            .Take(6)
+            .ElementAtOrDefault(slotIndex);
+        if (thread is null)
+        {
+            ShowFeedback(
+                RadialText("Agent 槽", "Agent slot"),
+                RadialText("此槽尚未分配任务。", "This slot is unassigned."));
+            Pulse(strength: 0.1);
+            return;
+        }
+
+        SelectVisibleThread(thread.Id);
+        OpenThreadNow(
+            thread.Id,
+            thread.Title,
+            thread.NativeTitle ?? thread.Title);
+    }
+
+    private void OpenAdjacentAgentTask(int direction)
+    {
+        var tasks = _sidebarEntries
+            .Where(entry =>
+                !string.IsNullOrWhiteSpace(entry.ThreadId))
+            .GroupBy(
+                entry => entry.ThreadId!,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+        if (tasks.Count == 0)
+        {
+            tasks = _snapshot.Threads
+                .Select(thread => new SidebarEntry(
+                    thread.Id,
+                    thread.Title,
+                    string.Empty,
+                    SidebarLayer.Tasks,
+                    thread.Id,
+                    thread.ProjectPath,
+                    thread.NativeTitle))
+                .ToList();
+        }
+
+        if (tasks.Count == 0)
+        {
+            ShowFeedback(
+                RadialText("任务切换", "Task switch"),
+                RadialText("没有可切换的任务。", "No task is available."));
+            return;
+        }
+
+        var currentId = DevicePage.SelectedEntry?.ThreadId;
+        var currentIndex = string.IsNullOrWhiteSpace(currentId)
+            ? -1
+            : tasks
+                .Select((entry, index) => (entry, index))
+                .Where(item => string.Equals(
+                    item.entry.ThreadId,
+                    currentId,
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.index)
+                .DefaultIfEmpty(-1)
+                .First();
+        var nextIndex = currentIndex < 0
+            ? direction < 0
+                ? tasks.Count - 1
+                : 0
+            : (currentIndex + Math.Sign(direction) + tasks.Count) %
+              tasks.Count;
+        var next = tasks[nextIndex];
+        SelectVisibleThread(next.ThreadId!);
+        OpenThreadNow(
+            next.ThreadId!,
+            next.Title,
+            next.NativeTitle ?? next.Title);
+    }
+
+    private void SelectVisibleThread(string threadId)
+    {
+        var index = _sidebarEntries
+            .Select((entry, index) => (entry, index))
+            .Where(item => string.Equals(
+                item.entry.ThreadId,
+                threadId,
+                StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.index)
+            .DefaultIfEmpty(-1)
+            .First();
+        if (index < 0)
+        {
+            return;
+        }
+
+        ActiveSidebarNavigation.Select(_sidebarEntries, index);
+        SelectSidebarIndex(index);
+    }
+
+    private void ExecuteFastToggle()
+    {
+        var title = _localization.Strings.ConfigToggleFast;
+        var executed = _agentShortcuts.Execute(
+            _settings.FastToggleShortcut,
+            _settings);
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                executed,
+                executed
+                    ? null
+                    : AgentAutomationErrorCodes.InputInjectionFailed,
+                _settings.FastToggleShortcut));
+        ShowFeedback(
+            title,
+            executed
+                ? RadialText("已执行。", "Executed.")
+                : ExecutionFailureLabel(
+                    AgentAutomationErrorCodes.InputInjectionFailed));
+        Pulse(strength: executed ? 0.22 : 0.1);
+    }
+
+    private void ExecuteNamedRadialAction(
+        string title,
+        params string[] actionNames)
+    {
+        var result = _composerAutomation.InvokeAction(
+            _settings,
+            actionNames);
+        if (result.Succeeded)
+        {
+            ClearNavigationUndo();
+        }
+
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                result.Succeeded,
+                result.Error,
+                result.ErrorDetail));
+        ShowFeedback(
+            title,
+            result.Succeeded
+                ? RadialText("已执行。", "Executed.")
+                : ExecutionFailureLabel(result.Error));
+        Pulse(strength: result.Succeeded ? 0.22 : 0.1);
+    }
+
+    private void RefreshRadialMenu()
+    {
+        if (
+            _radialLayer is not { } layer ||
+            _radialLayerCancelled ||
+            _radialMenuOverlayWindow is null)
+        {
+            _radialMenuOverlayWindow?.HideMenu();
+            return;
+        }
+
+        _radialMenuOverlayWindow.ShowState(
+            BuildRadialMenuState(layer));
+    }
+
+    private RadialMenuState BuildRadialMenuState(
+        RadialMenuLayerKind layer)
+    {
+        var mode = RadialMenuDisplayModeParser.ParseOrDefault(
+            _settings.RadialMenuMode);
+        return layer switch
+        {
+            RadialMenuLayerKind.Agent => new RadialMenuState(
+                layer,
+                RadialText("Agent 任务", "Agent tasks"),
+                Glyph(LogicalInput.LeftShoulder),
+                BuildAgentRadialItems(),
+                mode,
+                isLayerEngaged: true,
+                isLearningCueReady: _radialLayerEngaged,
+                subtitle: RadialText(
+                    $"{Glyph(LogicalInput.FaceEast)} 取消",
+                    $"{Glyph(LogicalInput.FaceEast)} cancel")),
+            RadialMenuLayerKind.Command => new RadialMenuState(
+                layer,
+                RadialText("Codex 命令", "Codex commands"),
+                Glyph(LogicalInput.RightShoulder),
+                BuildCommandRadialItems(),
+                mode,
+                isLayerEngaged: true,
+                isLearningCueReady: _radialLayerEngaged,
+                subtitle: RadialText(
+                    $"{Glyph(LogicalInput.LeftStickPress)} 取消",
+                    $"{Glyph(LogicalInput.LeftStickPress)} cancel")),
+            RadialMenuLayerKind.Turn => new RadialMenuState(
+                layer,
+                RadialText("运行中操作", "Active turn"),
+                Glyph(LogicalInput.RightTrigger),
+                BuildTurnRadialItems(),
+                mode,
+                isLayerEngaged: true,
+                isLearningCueReady: true,
+                subtitle: RadialText(
+                    "松开 RT 关闭",
+                    "Release RT to close")),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(layer),
+                layer,
+                "Unknown radial layer."),
+        };
+    }
+
+    private IReadOnlyList<RadialMenuItemState>
+        BuildAgentRadialItems()
+    {
+        var threads = _snapshot.Threads.Take(6).ToArray();
+        var positions = new[]
+        {
+            RadialMenuSlotPosition.Top,
+            RadialMenuSlotPosition.Right,
+            RadialMenuSlotPosition.Bottom,
+            RadialMenuSlotPosition.Left,
+            RadialMenuSlotPosition.CenterLeft,
+            RadialMenuSlotPosition.CenterRight,
+        };
+        var glyphs = new[]
+        {
+            Glyph(LogicalInput.DPadUp),
+            Glyph(LogicalInput.DPadRight),
+            Glyph(LogicalInput.DPadDown),
+            Glyph(LogicalInput.DPadLeft),
+            Glyph(LogicalInput.View),
+            Glyph(LogicalInput.Menu),
+        };
+        var items = new List<RadialMenuItemState>(6);
+        for (var index = 0; index < 6; index++)
+        {
+            var thread =
+                index < threads.Length ? threads[index] : null;
+            items.Add(RadialItem(
+                $"agent-slot-{index + 1}",
+                positions[index],
+                glyphs[index],
+                thread?.Title ??
+                    RadialText("未分配", "Unassigned"),
+                RadialText(
+                    $"Agent 槽 {index + 1}",
+                    $"Agent slot {index + 1}"),
+                isEnabled: thread is not null));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<RadialMenuItemState>
+        BuildCommandRadialItems()
+    {
+        var dispatch = ResolveDispatchDisplay();
+        return
+        [
+            RadialItem(
+                "command-fast",
+                RadialMenuSlotPosition.Top,
+                Glyph(LogicalInput.FaceNorth),
+                _localization.Strings.ConfigToggleFast),
+            RadialItem(
+                "command-decline",
+                RadialMenuSlotPosition.Right,
+                Glyph(LogicalInput.FaceEast),
+                RadialText("拒绝更改", "Decline changes")),
+            RadialItem(
+                "command-approve",
+                RadialMenuSlotPosition.Bottom,
+                Glyph(LogicalInput.FaceSouth),
+                RadialText("接受更改", "Approve changes")),
+            RadialItem(
+                "command-fork",
+                RadialMenuSlotPosition.Left,
+                Glyph(LogicalInput.FaceWest),
+                RadialText("分支任务", "Fork task")),
+            RadialItem(
+                "command-ptt",
+                RadialMenuSlotPosition.CenterLeft,
+                Glyph(LogicalInput.View),
+                _localization.Strings.ConfigDictation,
+                RadialText("按住说话", "Hold to talk")),
+            RadialItem(
+                "command-dispatch",
+                RadialMenuSlotPosition.CenterRight,
+                Glyph(LogicalInput.Menu),
+                dispatch.Label,
+                dispatch.Description),
+        ];
+    }
+
+    private IReadOnlyList<RadialMenuItemState>
+        BuildTurnRadialItems()
+    {
+        var contextual = RadialText(
+            "仅在 Codex 显示对应操作时可用",
+            "Available only when Codex shows the matching action");
+        return
+        [
+            RadialItem(
+                "turn-queue",
+                RadialMenuSlotPosition.Top,
+                Glyph(LogicalInput.FaceNorth),
+                RadialText("排到下一轮", "Queue next turn"),
+                contextual),
+            RadialItem(
+                "turn-stop",
+                RadialMenuSlotPosition.Right,
+                Glyph(LogicalInput.FaceEast),
+                RadialText("停止", "Stop")),
+            RadialItem(
+                "turn-fork",
+                RadialMenuSlotPosition.Bottom,
+                Glyph(LogicalInput.FaceSouth),
+                RadialText("分支任务", "Fork task")),
+            RadialItem(
+                "turn-steer",
+                RadialMenuSlotPosition.Left,
+                Glyph(LogicalInput.FaceWest),
+                RadialText("加入当前运行", "Steer current turn"),
+                contextual),
+        ];
+    }
+
+    private RadialMenuItemState RadialItem(
+        string id,
+        RadialMenuSlotPosition position,
+        string inputGlyph,
+        string title,
+        string? subtitle = null,
+        bool isEnabled = true)
+    {
+        return new RadialMenuItemState(
+            id,
+            position,
+            inputGlyph,
+            title,
+            subtitle,
+            isEnabled,
+            isHighlighted: string.Equals(
+                id,
+                _radialHighlightedItemId,
+                StringComparison.Ordinal));
+    }
+
+    private DispatchDisplay ResolveDispatchDisplay()
+    {
+        var buttonName =
+            _composerAutomation.TryReadDispatchButtonName();
+        var normalized = buttonName?.Trim().ToLowerInvariant() ??
+                         string.Empty;
+        var resolver =
+            new DispatchDisplayResolver(_localization.Strings);
+        if (
+            normalized.Contains("queue", StringComparison.Ordinal) ||
+            normalized.Contains("next turn", StringComparison.Ordinal) ||
+            normalized.Contains("下一轮", StringComparison.Ordinal) ||
+            normalized.Contains("排到", StringComparison.Ordinal))
+        {
+            return resolver.Resolve(
+                DispatchTurnState.Running,
+                DispatchFollowUpBehavior.Queue);
+        }
+
+        if (
+            normalized.Contains("steer", StringComparison.Ordinal) ||
+            normalized.Contains("current turn", StringComparison.Ordinal) ||
+            normalized.Contains("当前运行", StringComparison.Ordinal) ||
+            normalized.Contains("加入当前", StringComparison.Ordinal))
+        {
+            return resolver.Resolve(
+                DispatchTurnState.Running,
+                DispatchFollowUpBehavior.Steer);
+        }
+
+        if (
+            normalized.Contains("send", StringComparison.Ordinal) ||
+            normalized.Contains("submit", StringComparison.Ordinal) ||
+            normalized.Contains("发送", StringComparison.Ordinal) ||
+            normalized.Contains("提交", StringComparison.Ordinal))
+        {
+            return resolver.Resolve(
+                DispatchTurnState.Idle,
+                DispatchFollowUpBehavior.Unknown);
+        }
+
+        return resolver.Resolve(
+            DispatchTurnState.Unknown,
+            DispatchFollowUpBehavior.Unknown);
+    }
+
+    private string RadialActionId(RadialInputAction action)
+    {
+        var slot = RadialInputMap.AgentSlotIndex(action);
+        if (slot >= 0)
+        {
+            return $"agent-slot-{slot + 1}";
+        }
+
+        return action switch
+        {
+            RadialInputAction.ToggleFast => "command-fast",
+            RadialInputAction.Approve => "command-approve",
+            RadialInputAction.Decline => "command-decline",
+            RadialInputAction.Fork when
+                _radialLayer == RadialMenuLayerKind.Turn =>
+                "turn-fork",
+            RadialInputAction.Fork => "command-fork",
+            RadialInputAction.PushToTalk => "command-ptt",
+            RadialInputAction.Dispatch => "command-dispatch",
+            RadialInputAction.Steer => "turn-steer",
+            RadialInputAction.Queue => "turn-queue",
+            RadialInputAction.StopTurn => "turn-stop",
+            _ => string.Empty,
+        };
+    }
+
+    private string RadialText(string zhCn, string enUs)
+    {
+        return _localization.EffectiveLanguage == AppLanguage.ZhCn
+            ? zhCn
+            : enUs;
     }
 
     private void HandleButtonEdge(
@@ -503,19 +1483,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ObserveCodexForeground(bool foreground)
+    private bool ObserveCodexForeground(bool foreground)
     {
-        if (
-            !_settings.OnlyWhenCodexForeground ||
-            foreground ||
-            !_controllerSession.IsArmed)
+        if (!_settings.OnlyWhenCodexForeground)
         {
-            return;
+            _foregroundContinuityGate.Reset();
+            return true;
+        }
+
+        var allowsInput = _foregroundContinuityGate.AllowsInput(
+            foreground,
+            Environment.TickCount64,
+            BridgeTimings.ForegroundLossGraceMs);
+        if (
+            allowsInput ||
+            !_controllerSession.IsArmed ||
+            !_controllerSession.IsActive)
+        {
+            return allowsInput;
         }
 
         // Losing foreground pauses the armed session, but does not lock it.
         // This avoids requiring Menu again after Codex has been open for a while.
         PauseControllerInput(_xInputService.LastState);
+        return false;
     }
 
     private void PauseControllerInput(
@@ -526,6 +1517,10 @@ public partial class MainWindow : Window
             CancelPendingSidebarFocus();
             CancelPendingComposerSelection();
         }
+
+        ResetRadialLayer(clearSuppression: true);
+        ResetPushToTalk(stopDictation: true);
+        ResetVirtualDialInput(closeMenu: true);
 
         _controllerSession.Pause(
             requireNeutral:
@@ -548,13 +1543,12 @@ public partial class MainWindow : Window
         if (!wasActive)
         {
             _previousButtons = ControllerButtons.None;
+            _previousPhysicalButtons = ControllerButtons.None;
             _axisRepeater.Reset();
             _leftStickRouter.Reset();
             _rightStickRouter.Reset();
-            if (_dictationInjected)
-            {
-                StopDictation();
-            }
+            ResetVirtualDialInput(closeMenu: false);
+            ResetPushToTalk(stopDictation: true);
         }
 
         return true;
@@ -582,26 +1576,37 @@ public partial class MainWindow : Window
         _leftStickRouter.RequireNeutral();
         _leftNavigationBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        if (direction < 0)
+        var entry = DevicePage.SelectedEntry;
+        switch (SidebarNavigationIntentResolver.ResolveHorizontal(
+                    _scope,
+                    entry,
+                    direction))
         {
-            if (_scope == SidebarScope.ProjectTasks)
-            {
+            case SidebarNavigationIntent.EnterProjectDirectory:
+                EnterProjectTasks(
+                    entry!.ProjectPath,
+                    preferredThreadId: null);
+                break;
+            case SidebarNavigationIntent.ExitProjectDirectory:
                 ExitProjectTasks();
-            }
-            else
-            {
+                break;
+            case SidebarNavigationIntent.AlreadyAtRoot:
                 ShowFeedback(
                     _localization.Strings.Format(
                         StringKeys.MessageAgentSidebar,
                         _activeAgent.DisplayName),
                     _localization.Strings.Get(
                         StringKeys.MessageAlreadyAtRootScope));
-            }
-
-            return;
+                break;
+            case SidebarNavigationIntent.NoChildDirectory:
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageAgentSidebar,
+                        _activeAgent.DisplayName),
+                    _localization.Strings.Get(
+                        StringKeys.MessageFocusedEntryHasNoChildDirectory));
+                break;
         }
-
-        EnterSelectedSidebarEntry();
     }
 
     private void CycleRootSidebarScope()
@@ -611,10 +1616,26 @@ public partial class MainWindow : Window
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
         var rootScope = _scope == SidebarScope.ProjectTasks
             ? _sidebarReturnFrame?.Scope ?? SidebarScope.Projects
-            : _scope;
+            : ActiveSidebarNavigation
+                .SelectedEntry(_sidebarEntries)?
+                .NavigationScope ?? _scope;
         var current = Array.IndexOf(RootSidebarScopes, rootScope);
-        var next = (Math.Max(0, current) + 1) % RootSidebarScopes.Length;
-        SetSidebarScope(RootSidebarScopes[next], showFeedback: true);
+        var rootEntries = _scope == SidebarScope.ProjectTasks
+            ? _workspaceReader.BuildUnifiedEntries(_snapshot)
+            : _sidebarEntries;
+        for (var offset = 1; offset <= RootSidebarScopes.Length; offset++)
+        {
+            var next =
+                (Math.Max(0, current) + offset) %
+                RootSidebarScopes.Length;
+            var candidate = RootSidebarScopes[next];
+            if (rootEntries.Any(entry =>
+                    entry.NavigationScope == candidate))
+            {
+                SetSidebarScope(candidate, showFeedback: true);
+                return;
+            }
+        }
     }
 
     private void SetSidebarScope(
@@ -622,6 +1643,11 @@ public partial class MainWindow : Window
         bool showFeedback,
         string? preferredId = null)
     {
+        if (!RootSidebarScopes.Contains(scope))
+        {
+            return;
+        }
+
         if (_scope == SidebarScope.ProjectTasks)
         {
             RememberCurrentSidebarCursor();
@@ -635,13 +1661,25 @@ public partial class MainWindow : Window
 
         _scope = scope;
         _projectTasksPinnedOnly = false;
-        _selectedIndex = 0;
         RebuildSidebarEntries();
 
         preferredId ??= _rootCursorIds.GetValueOrDefault(scope);
-        RestoreSidebarSelection(preferredId);
+        if (
+            ActiveSidebarNavigation.TryJumpToScope(
+                _sidebarEntries,
+                scope,
+                preferredId,
+                out var selected) &&
+            selected is not null)
+        {
+            SelectSidebarIndex(ActiveSidebarNavigation.SelectedIndex);
+            if (selected.Layer == SidebarLayer.Projects)
+            {
+                _selectedProjectPath = selected.ProjectPath;
+            }
+        }
         UpdateLayerTabs();
-        FocusCurrentSidebarEntry();
+        FocusCurrentSidebarEntry(deferFocus: true);
 
         if (showFeedback)
         {
@@ -662,70 +1700,77 @@ public partial class MainWindow : Window
 
     private void RestoreSidebarSelection(string? preferredId)
     {
-        if (_sidebarEntries.Count == 0)
+        var fallbackIndex = Math.Max(
+            0,
+            ActiveSidebarNavigation.SelectedIndex);
+        var selectedIndex = ActiveSidebarNavigation.Restore(
+            _sidebarEntries,
+            preferredId,
+            fallbackIndex);
+        if (selectedIndex < 0)
         {
-            _selectedIndex = -1;
             DevicePage.ClearSelection();
             return;
         }
 
-        var restored = string.IsNullOrWhiteSpace(preferredId)
-            ? -1
-            : _sidebarEntries
-                .Select((entry, index) => new { entry.Id, index })
-                .FirstOrDefault(item =>
-                    string.Equals(
-                        item.Id,
-                        preferredId,
-                        StringComparison.OrdinalIgnoreCase))?.index ?? -1;
-        _selectedIndex = restored >= 0
-            ? restored
-            : Math.Clamp(_selectedIndex, 0, _sidebarEntries.Count - 1);
-        SelectSidebarIndex(_selectedIndex);
-
-        var selected = _sidebarEntries[_selectedIndex];
+        SelectSidebarIndex(selectedIndex);
+        var selected = _sidebarEntries[selectedIndex];
         if (selected.Layer == SidebarLayer.Projects)
         {
             _selectedProjectPath = selected.ProjectPath;
         }
     }
 
-    private void FocusCurrentSidebarEntry()
+    private void FocusCurrentSidebarEntry(bool deferFocus = false)
     {
-        if (_selectedIndex >= 0 && _selectedIndex < _sidebarEntries.Count)
+        var selected = ActiveSidebarNavigation.SelectedEntry(_sidebarEntries);
+        if (selected is not null)
         {
-            FocusCodexSidebarEntry(_sidebarEntries[_selectedIndex]);
+            FocusCodexSidebarEntry(selected, deferFocus);
         }
     }
 
-    private void EnterSelectedSidebarEntry()
+    private void OpenSelectedSidebarTask()
     {
-        if (DevicePage.SelectedEntry is not { } entry)
+        var entry = DevicePage.SelectedEntry;
+        switch (SidebarNavigationIntentResolver.ResolvePrimary(entry))
         {
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageAgentSidebar,
-                    _activeAgent.DisplayName),
-                _localization.Strings.Get(
-                    StringKeys.MessageNoAvailableEntries));
-            return;
-        }
-
-        if (entry.Layer == SidebarLayer.Projects)
-        {
-            EnterProjectTasks(entry.ProjectPath, preferredThreadId: null);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(entry.ThreadId))
-        {
-            return;
+            case SidebarNavigationIntent.ProjectRequiresHorizontalEntry:
+                ShowFeedback(
+                    _localization.Strings.ControlPrimary(
+                        Glyph(LogicalInput.FaceSouth)),
+                    _localization.Strings.Get(
+                        StringKeys.MessageUseRightToEnterProject));
+                return;
+            case SidebarNavigationIntent.EntryUnavailable:
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageAgentSidebar,
+                        _activeAgent.DisplayName),
+                    _localization.Strings.Get(
+                        StringKeys.MessageNoAvailableEntries));
+                return;
+            case SidebarNavigationIntent.OpenTask:
+                break;
+            default:
+                return;
         }
 
         OpenThreadNow(
-            entry.ThreadId,
+            entry!.ThreadId!,
             entry.Title,
             entry.NativeTitle ?? entry.Title);
+    }
+
+    private void ActivateSelectedSidebarEntryFromPointer()
+    {
+        if (DevicePage.SelectedEntry is { IsProject: true })
+        {
+            NavigateSidebarHorizontal(1);
+            return;
+        }
+
+        OpenSelectedSidebarTask();
     }
 
     private void EnterProjectTasks(
@@ -782,16 +1827,17 @@ public partial class MainWindow : Window
         _projectDisclosureLease = new ProjectDisclosureLease(
             project.Name,
             project.IsPinned);
-        RebuildSidebarEntries();
-
         preferredThreadId ??=
             _projectTaskCursorIds.GetValueOrDefault(project.Path);
-        RestoreSidebarSelection(preferredThreadId);
+        RebuildSidebarEntries(
+            forceNavigationRebuild: false,
+            fallbackIndexOverride: 0,
+            preferredId: preferredThreadId);
         UpdateLayerTabs();
         FocusCurrentSidebarEntry();
 
-        var position = _selectedIndex >= 0
-            ? $"{_selectedIndex + 1} / {_sidebarEntries.Count}"
+        var position = ActiveSidebarNavigation.SelectedIndex >= 0
+            ? $"{ActiveSidebarNavigation.SelectedIndex + 1} / {_sidebarEntries.Count}"
             : _localization.Strings.Get(
                 StringKeys.MessageNoAvailableTasks);
         AddEvent(_localization.Strings.Format(
@@ -932,18 +1978,23 @@ public partial class MainWindow : Window
             return;
         }
 
-        var nextIndex = Math.Clamp(
-            _selectedIndex + Math.Sign(direction),
-            0,
-            _sidebarEntries.Count - 1);
-        if (nextIndex == _selectedIndex)
+        if (
+            !ActiveSidebarNavigation.TryMove(
+                _sidebarEntries,
+                direction,
+                out var entry) ||
+            entry is null)
         {
+            ShowSidebarNavigationWheel();
             return;
         }
 
-        _selectedIndex = nextIndex;
-        SelectSidebarIndex(_selectedIndex);
-        ActivateSelectedEntry(_sidebarEntries[_selectedIndex]);
+        SelectSidebarIndex(ActiveSidebarNavigation.SelectedIndex);
+        ActivateSelectedEntry(
+            entry,
+            deferFocus: true,
+            showToast: false);
+        ShowSidebarNavigationWheel();
     }
 
     private void SelectSidebarIndex(int index)
@@ -953,10 +2004,22 @@ public partial class MainWindow : Window
         _suppressSelectionActivation = false;
     }
 
-    private void ActivateSelectedEntry(SidebarEntry entry)
+    private void ActivateSelectedEntry(
+        SidebarEntry entry,
+        bool deferFocus = false,
+        bool showToast = true)
     {
+        if (
+            _scope != SidebarScope.ProjectTasks &&
+            RootSidebarScopes.Contains(entry.NavigationScope) &&
+            _scope != entry.NavigationScope)
+        {
+            _scope = entry.NavigationScope;
+            UpdateLayerTabs();
+        }
+
         RememberCurrentSidebarCursor();
-        FocusCodexSidebarEntry(entry);
+        FocusCodexSidebarEntry(entry, deferFocus);
         if (entry.Layer == SidebarLayer.Projects)
         {
             _selectedProjectPath = entry.ProjectPath;
@@ -965,11 +2028,33 @@ public partial class MainWindow : Window
 
         RememberCurrentSidebarCursor();
         AddEvent($"{ScopeLabel(_scope)} · {entry.Title}");
-        ShowFeedback(ScopeLabel(_scope), entry.Title);
+        if (showToast)
+        {
+            ShowFeedback(ScopeLabel(_scope), entry.Title);
+        }
+
         Pulse();
     }
 
-    private void FocusCodexSidebarEntry(SidebarEntry entry)
+    private void ShowSidebarNavigationWheel()
+    {
+        if (!_settings.ShowOverlay)
+        {
+            return;
+        }
+
+        var wheel = ActiveSidebarNavigation.BuildWheelState(
+            _sidebarEntries,
+            SidebarWheelScopeLabel);
+        if (wheel is not null)
+        {
+            _sidebarNavigationWheelOverlayWindow?.ShowState(wheel);
+        }
+    }
+
+    private void FocusCodexSidebarEntry(
+        SidebarEntry entry,
+        bool deferFocus = false)
     {
         CancelPendingSidebarFocus();
         if (!_settings.BridgeEnabled)
@@ -995,18 +2080,28 @@ public partial class MainWindow : Window
             entry,
             projectName,
             disclosureLease,
-            cancellation);
+            cancellation,
+            deferFocus);
     }
 
     private async Task FocusCodexSidebarEntryAsync(
         SidebarEntry entry,
         string? projectName,
         ProjectDisclosureLease? disclosureLease,
-        CancellationTokenSource cancellation)
+        CancellationTokenSource cancellation,
+        bool deferFocus)
     {
         var gateEntered = false;
         try
         {
+            if (deferFocus)
+            {
+                await Task.Delay(
+                        BridgeTimings.SidebarFocusSettleMs,
+                        cancellation.Token)
+                    .ConfigureAwait(true);
+            }
+
             await _sidebarFocusGate.WaitAsync(cancellation.Token)
                 .ConfigureAwait(true);
             gateEntered = true;
@@ -1279,10 +2374,450 @@ public partial class MainWindow : Window
         cancellation?.Cancel();
     }
 
-    private void CycleRightControlMode()
+    private void BeginVirtualDialPress()
     {
+        if (
+            _rightStickPressHeld ||
+            _virtualDialOpenPending ||
+            _virtualDialCancelRequested ||
+            _virtualDialCleanupPending ||
+            _dialInputReleasePending)
+        {
+            return;
+        }
+
+        CancelPendingComposerSelection();
         _rightStickRouter.RequireNeutral();
-        SwitchRightControlMode(1, source: "R3");
+        _rightStickPressHeld = true;
+        _rightStickHoldTriggered = false;
+        _rightStickPressCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _rightStickPressCancellation = cancellation;
+        _ = PromoteVirtualDialHoldAsync(cancellation);
+    }
+
+    private async Task PromoteVirtualDialHoldAsync(
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(
+                    BridgeTimings.DialHoldMs,
+                    cancellation.Token)
+                .ConfigureAwait(true);
+            if (
+                !_rightStickPressHeld ||
+                !ReferenceEquals(
+                    _rightStickPressCancellation,
+                    cancellation))
+            {
+                return;
+            }
+
+            _rightStickHoldTriggered = true;
+            Interlocked.Exchange(ref _pendingDialDelta, 0);
+            if (IsVirtualDialContextActive)
+            {
+                await CloseVirtualDialMenuAsync(showFeedback: false)
+                    .ConfigureAwait(true);
+            }
+
+            RestoreWindow();
+            ShowPage(SettingsPage);
+            SetSelectedNav(SettingsNavButton);
+            _devicePageViewModel.UpdateRightMode(
+                RightControlMode.Dial,
+                _localization.Strings.ComposerDialSettingsOpened);
+            ShowFeedback(
+                _localization.Strings.VirtualDial,
+                _localization.Strings.ComposerDialSettingsOpened);
+            Pulse(strength: 0.18);
+        }
+        catch (OperationCanceledException)
+        {
+            // R3 was released before the settings hold threshold.
+        }
+        finally
+        {
+            if (ReferenceEquals(
+                    _rightStickPressCancellation,
+                    cancellation))
+            {
+                _rightStickPressCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void EndVirtualDialPress()
+    {
+        if (!_rightStickPressHeld)
+        {
+            return;
+        }
+
+        _rightStickPressHeld = false;
+        var cancellation = _rightStickPressCancellation;
+        _rightStickPressCancellation = null;
+        cancellation?.Cancel();
+        if (_rightStickHoldTriggered)
+        {
+            _rightStickHoldTriggered = false;
+            return;
+        }
+
+        _ = PressVirtualDialAsync();
+    }
+
+    private void QueueVirtualDialStep(int direction)
+    {
+        if (
+            direction == 0 ||
+            _virtualDialCleanupPending ||
+            _dialInputReleasePending)
+        {
+            return;
+        }
+
+        CancelPendingComposerSelection();
+        Interlocked.Exchange(
+            ref _pendingDialDelta,
+            Math.Sign(direction));
+        if (Interlocked.Exchange(ref _dialPumpRunning, 1) == 0)
+        {
+            _ = PumpVirtualDialStepsAsync();
+        }
+    }
+
+    private async Task PumpVirtualDialStepsAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                var delta =
+                    Interlocked.Exchange(ref _pendingDialDelta, 0);
+                if (delta == 0)
+                {
+                    return;
+                }
+
+                var generation =
+                    Volatile.Read(ref _virtualDialGeneration);
+                var result = await RunVirtualDialAutomationAsync(
+                        () => _composerAutomation.DialStep(
+                            delta,
+                            _settings))
+                    .ConfigureAwait(true);
+                if (
+                    generation ==
+                        Volatile.Read(ref _virtualDialGeneration) &&
+                    !_virtualDialCancelRequested)
+                {
+                    PresentVirtualDialResult(result);
+                }
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _dialPumpRunning, 0);
+            if (
+                Volatile.Read(ref _pendingDialDelta) != 0 &&
+                Interlocked.Exchange(ref _dialPumpRunning, 1) == 0)
+            {
+                _ = PumpVirtualDialStepsAsync();
+            }
+        }
+    }
+
+    private async Task PressVirtualDialAsync()
+    {
+        if (
+            _virtualDialOpenPending ||
+            _virtualDialCancelRequested ||
+            _virtualDialCleanupPending)
+        {
+            return;
+        }
+
+        CancelPendingComposerSelection();
+        _virtualDialOpenPending = true;
+        _virtualDialCancelRequested = false;
+        _devicePageViewModel.UpdateRightMode(
+            RightControlMode.Dial,
+            RadialText("正在打开…", "Opening…"));
+        ShowFeedback(
+            _localization.Strings.VirtualDial,
+            RadialText(
+                "正在打开当前控件…",
+                "Opening the current control…"));
+        var generation =
+            Volatile.Read(ref _virtualDialGeneration);
+        var result = await RunVirtualDialAutomationAsync(
+                () => _composerAutomation.DialPress(_settings))
+            .ConfigureAwait(true);
+        if (
+            generation !=
+            Volatile.Read(ref _virtualDialGeneration))
+        {
+            var cleanup = await RunVirtualDialAutomationAsync(
+                    () => _composerAutomation.DialCancel(_settings))
+                .ConfigureAwait(true);
+            _virtualDialCleanupPending = false;
+            _virtualDialOpenPending = false;
+            _virtualDialCancelRequested = false;
+            if (_pushToTalkAutomation.WantsDictation)
+            {
+                return;
+            }
+
+            SetVirtualDialMenuOpen(cleanup.IsMenuOpen);
+            if (!cleanup.IsMenuOpen)
+            {
+                BeginVirtualDialReleaseDrain();
+            }
+
+            return;
+        }
+
+        _virtualDialCleanupPending = false;
+        _virtualDialOpenPending = false;
+        if (_virtualDialCancelRequested)
+        {
+            return;
+        }
+
+        PresentVirtualDialResult(result);
+    }
+
+    private void CancelActionOrDialMenu()
+    {
+        if (IsVirtualDialContextActive)
+        {
+            if (
+                _virtualDialCancelRequested ||
+                _virtualDialCleanupPending)
+            {
+                return;
+            }
+
+            _virtualDialCancelRequested = true;
+            Interlocked.Exchange(ref _pendingDialDelta, 0);
+            _ = CloseVirtualDialMenuAsync(showFeedback: true);
+            return;
+        }
+
+        if (_dictationInjected || _pushToTalkTrigger.BlocksBaseInput)
+        {
+            CancelAction();
+            return;
+        }
+
+        CancelAction();
+    }
+
+    private async Task CloseVirtualDialMenuAsync(bool showFeedback)
+    {
+        var hadContext = IsVirtualDialContextActive;
+        var generation =
+            Volatile.Read(ref _virtualDialGeneration);
+        var result = await RunVirtualDialAutomationAsync(
+                () => _composerAutomation.DialCancel(_settings))
+            .ConfigureAwait(true);
+        if (
+            generation !=
+            Volatile.Read(ref _virtualDialGeneration))
+        {
+            return;
+        }
+
+        SetVirtualDialMenuOpen(
+            result.Succeeded
+                ? result.IsMenuOpen
+                : result.IsMenuOpen || _virtualDialMenuOpen);
+        _virtualDialOpenPending = false;
+        _virtualDialCancelRequested = false;
+        if (result.Succeeded)
+        {
+            if (hadContext && !result.IsMenuOpen)
+            {
+                BeginVirtualDialReleaseDrain();
+            }
+
+            _devicePageViewModel.UpdateRightMode(
+                RightControlMode.Dial,
+                _localization.Strings.ComposerDialReady);
+            if (showFeedback)
+            {
+                if (result.IsMenuOpen)
+                {
+                    PresentVirtualDialResult(result);
+                }
+                else
+                {
+                    ShowFeedback(
+                        _localization.Strings.VirtualDial,
+                        _localization.Strings.ComposerDialCanceled);
+                    Pulse(strength: 0.12);
+                }
+            }
+
+            return;
+        }
+
+        if (showFeedback)
+        {
+            PresentVirtualDialResult(result);
+        }
+    }
+
+    private async Task<ComposerDialResult>
+        RunVirtualDialAutomationAsync(
+            Func<ComposerDialResult> action)
+    {
+        await _dialAutomationGate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            return await Task.Run(action).ConfigureAwait(true);
+        }
+        finally
+        {
+            _dialAutomationGate.Release();
+        }
+    }
+
+    private void PresentVirtualDialResult(ComposerDialResult result)
+    {
+        var wasContextActive = IsVirtualDialContextActive;
+        if (!result.Succeeded)
+        {
+            SetVirtualDialMenuOpen(
+                result.IsMenuOpen || _virtualDialMenuOpen);
+            var failure = VirtualDialFailureLabel(result);
+            _devicePageViewModel.UpdateRightMode(
+                RightControlMode.Dial,
+                failure);
+            AddEvent(
+                $"{_localization.Strings.VirtualDial} · {failure}");
+            ShowFeedback(
+                _localization.Strings.VirtualDial,
+                failure);
+            Pulse(strength: 0.08);
+            return;
+        }
+
+        SetVirtualDialMenuOpen(result.IsMenuOpen);
+
+        _rightMode = RightControlMode.Dial;
+        var value = string.IsNullOrWhiteSpace(result.ControlName)
+            ? _localization.Strings.ComposerDialReady
+            : result.ControlName;
+        _devicePageViewModel.UpdateRightMode(
+            RightControlMode.Dial,
+            value);
+        AddEvent(
+            $"{_localization.Strings.VirtualDial} · {value}");
+        var instruction =
+            wasContextActive && !result.IsMenuOpen
+                ? RadialText(
+                    $"已选择 {value} · 左右拨动继续选择控件",
+                    $"Selected {value} · move the right stick left or right to continue")
+                : _localization.Strings.ControlRightStickHint(
+                    Glyph(LogicalInput.RightStickPress),
+                    Glyph(LogicalInput.FaceEast),
+                    result.IsMenuOpen);
+        ShowFeedback(
+            _localization.Strings.VirtualDial,
+            $"{value}\n{instruction}");
+        Pulse(strength: result.IsMenuOpen ? 0.18 : 0.12);
+    }
+
+    private string VirtualDialFailureLabel(ComposerDialResult result)
+    {
+        return result.ErrorDetail switch
+        {
+            "dial-explicit-turn-action" =>
+                RadialText(
+                    "Steer / Queue 请使用 RT+X / RT+Y",
+                    "Use RT+X / RT+Y for Steer / Queue"),
+            "dial-destructive-action-blocked" =>
+                RadialText(
+                    "删除属于受保护操作，请使用 Codex 原生队列菜单",
+                    "Delete is protected; use the native Codex queue menu"),
+            "dial-selection-unverified" =>
+                RadialText(
+                    "先左右拨动，看到选项高亮后再按下 RS",
+                    "Move left or right until an option is highlighted, then press RS"),
+            "dial-step-no-selection-change" =>
+                RadialText(
+                    "没有可选项 · B 关闭 · RS 重新打开",
+                    "No selectable option · B close · RS reopen"),
+            "dial-popup-not-owned" =>
+                RadialText(
+                    "Codex 中另一个菜单已打开，请先在 Codex 中关闭",
+                    "Another Codex menu is open; close it in Codex first"),
+            "dial-popup-focus-lost" =>
+                RadialText(
+                    "选择器焦点已丢失，请关闭后按 RS 重开",
+                    "Picker focus was lost; close it, then press RS to reopen"),
+            _ => ExecutionFailureLabel(
+                result.Error,
+                result.ErrorDetail),
+        };
+    }
+
+    private void PresentVirtualDialProbeFailure(
+        ComposerDialResult result)
+    {
+        var failure = ExecutionFailureLabel(
+            result.Error,
+            result.ErrorDetail);
+        _devicePageViewModel.UpdateRightMode(
+            RightControlMode.Dial,
+            failure);
+        AddEvent(
+            $"{_localization.Strings.VirtualDial} · {failure}");
+        ShowFeedback(
+            _localization.Strings.VirtualDial,
+            failure);
+        Pulse(strength: 0.08);
+    }
+
+    private void ResetVirtualDialInput(bool closeMenu)
+    {
+        var hadPendingOpen = _virtualDialOpenPending;
+        Interlocked.Increment(ref _virtualDialGeneration);
+        if (hadPendingOpen)
+        {
+            _virtualDialCleanupPending = true;
+        }
+
+        _virtualDialOpenPending = false;
+        _virtualDialCancelRequested = false;
+        _dialInputReleasePending = false;
+        CancelVirtualDialPressHold();
+        Interlocked.Exchange(ref _pendingDialDelta, 0);
+
+        var hadOpenMenu = _virtualDialMenuOpen;
+        SetVirtualDialMenuOpen(false);
+        if (
+            closeMenu &&
+            hadOpenMenu &&
+            _settings.BridgeEnabled &&
+            _activeAgent.Presence.IsForeground)
+        {
+            _ = CloseVirtualDialMenuAsync(showFeedback: false);
+        }
+    }
+
+    private void CancelVirtualDialPressHold()
+    {
+        _rightStickPressHeld = false;
+        _rightStickHoldTriggered = false;
+        var cancellation = _rightStickPressCancellation;
+        _rightStickPressCancellation = null;
+        cancellation?.Cancel();
     }
 
     private void SwitchRightControlMode(
@@ -1667,127 +3202,428 @@ public partial class MainWindow : Window
         }
     }
 
+    private AnalogTriggerTransition UpdatePushToTalkTrigger(
+        double value,
+        bool blocked)
+    {
+        var transition = _pushToTalkTrigger.Update(value, blocked);
+        if (transition == AnalogTriggerTransition.Pressed)
+        {
+            StartDictation(Glyph(LogicalInput.LeftTrigger));
+        }
+        else if (transition == AnalogTriggerTransition.Released)
+        {
+            StopDictation(physicalRelease: true);
+        }
+        else if (transition == AnalogTriggerTransition.Canceled)
+        {
+            StopDictation(physicalRelease: false);
+        }
+
+        return transition;
+    }
+
+    private void PresentBlockedPushToTalkAttempt(
+        ControllerState state,
+        bool foreground,
+        bool waitingForNeutral)
+    {
+        if (
+            state.LeftTrigger <
+                BridgeTimings.PushToTalkEngageThreshold ||
+            _blockedPushToTalkHintShown)
+        {
+            return;
+        }
+
+        _blockedPushToTalkHintShown = true;
+        var menuGlyph = Glyph(LogicalInput.Menu);
+        var detail = !_settings.BridgeEnabled
+            ? ExecutionFailureLabel(
+                AgentAutomationErrorCodes.BridgeSafePreview)
+            : !_controllerSession.IsArmed
+                ? _localization.Strings.Format(
+                    StringKeys.StatusAgentForegroundLocked,
+                    _activeAgent.DisplayName,
+                    menuGlyph)
+                : !foreground
+                    ? _localization.Strings.Format(
+                        StringKeys.StatusAgentNotForeground,
+                        _activeAgent.DisplayName,
+                        menuGlyph)
+                    : waitingForNeutral
+                        ? _localization.Strings.Format(
+                            StringKeys.StatusAgentForegroundNeutral,
+                            _activeAgent.DisplayName)
+                        : _localization.Strings.Get(
+                            StringKeys.MessageNotExecuted);
+        AddEvent(detail);
+        ShowFeedback(
+            _localization.Strings.ControlHoldToTalk(
+                Glyph(LogicalInput.LeftTrigger)),
+            detail);
+        Pulse(strength: 0.12);
+    }
+
+    private void ResetPushToTalk(bool stopDictation)
+    {
+        var wasPressed = _pushToTalkTrigger.CancelUntilReleased();
+        _pushToTalkSuppressedButtons = ControllerButtons.None;
+        if (
+            stopDictation &&
+            (wasPressed ||
+             _dictationInjected ||
+             _pushToTalkAutomation.WantsDictation))
+        {
+            StopDictation(physicalRelease: false);
+        }
+    }
+
     private void StartDictation()
     {
-        _dictationStopCancellation?.Cancel();
-        _dictationStopCancellation = null;
+        StartDictation(Glyph(LogicalInput.LeftTrigger));
+    }
+
+    private void StartDictation(string voiceGlyph)
+    {
+        _dictationInputGlyph = voiceGlyph;
         DevicePage.SetVoiceHalo(active: true);
-        var automation = _composerAutomation.InvokeAction(
+        _pushToTalkAutomation.RequestStart(
+            dialContextActive: IsVirtualDialContextActive);
+        EnsurePushToTalkAutomationPump();
+    }
+
+    private void StopDictation(bool physicalRelease = false)
+    {
+        if (!_pushToTalkAutomation.IsDictating)
+        {
+            DevicePage.SetVoiceHalo(active: false);
+        }
+
+        var voiceGlyph =
+            _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
+        _pushToTalkAutomation.RequestStop();
+        AddEvent(
+            physicalRelease
+                ? _localization.Strings.Format(
+                    StringKeys.MessageReleaseEndingDictation,
+                    voiceGlyph)
+                : RadialText(
+                    $"{voiceGlyph} · 正在结束语音识别",
+                    $"{voiceGlyph} · ending dictation"));
+        ShowFeedback(
+            _localization.Strings.ControlHoldToTalk(voiceGlyph),
+            _localization.Strings.Get(
+                StringKeys.MessageReleaseEndingRecording));
+        EnsurePushToTalkAutomationPump();
+    }
+
+    private void EnsurePushToTalkAutomationPump()
+    {
+        if (Interlocked.Exchange(ref _dictationPumpRunning, 1) == 0)
+        {
+            _ = PumpPushToTalkAutomationAsync();
+        }
+    }
+
+    private async Task PumpPushToTalkAutomationAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                var action =
+                    _pushToTalkAutomation.BeginNextAction();
+                if (action == PushToTalkAutomationAction.None)
+                {
+                    return;
+                }
+
+                switch (action)
+                {
+                    case PushToTalkAutomationAction.CloseDial:
+                    {
+                        var closeResult =
+                            await CloseVirtualDialForPushToTalkAsync()
+                                .ConfigureAwait(true);
+                        var closed =
+                            closeResult.Succeeded &&
+                            !closeResult.IsMenuOpen;
+                        _pushToTalkAutomation.Complete(
+                            action,
+                            closed);
+                        if (!closed)
+                        {
+                            PresentDictationDialCloseFailure(
+                                closeResult);
+                        }
+
+                        break;
+                    }
+                    case PushToTalkAutomationAction.StartDictation:
+                    {
+                        var result =
+                            await ExecuteDictationAutomationAsync(
+                                    BridgeTimings.DictationStartTimeoutMs,
+                                    PushToTalkAutomationPolicy
+                                        .AllowsShortcutFallback(action),
+                                    PushToTalkAutomationPolicy
+                                        .StartActionNames)
+                                .ConfigureAwait(true);
+                        _pushToTalkAutomation.Complete(
+                            action,
+                            result.Executed);
+                        _dictationInjected =
+                            _pushToTalkAutomation.IsDictating;
+                        DevicePage.SetVoiceHalo(
+                            active: _dictationInjected);
+                        PresentDictationStartResult(result);
+                        break;
+                    }
+                    case PushToTalkAutomationAction.StopDictation:
+                    {
+                        var result =
+                            await ExecuteDictationAutomationAsync(
+                                    BridgeTimings.DictationStopTimeoutMs,
+                                    PushToTalkAutomationPolicy
+                                        .AllowsShortcutFallback(action),
+                                    PushToTalkAutomationPolicy
+                                        .StopActionNames)
+                                .ConfigureAwait(true);
+                        var stopped =
+                            result.Executed ||
+                            _composerAutomation.IsActionAvailable(
+                                PushToTalkAutomationPolicy
+                                    .StartActionNames
+                                    .ToArray());
+                        _pushToTalkAutomation.Complete(
+                            action,
+                            stopped);
+                        _dictationInjected =
+                            _pushToTalkAutomation.IsDictating;
+                        DevicePage.SetVoiceHalo(
+                            active: _dictationInjected);
+                        PresentDictationStopResult(
+                            stopped && !result.Executed
+                                ? new(
+                                    true,
+                                    result.Automation)
+                                : result);
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _dictationPumpRunning, 0);
+            if (
+                !_pushToTalkAutomation.WantsDictation &&
+                !_pushToTalkAutomation.IsDictating)
+            {
+                _dictationInputGlyph = null;
+                DevicePage.SetVoiceHalo(active: false);
+            }
+
+            if (
+                _pushToTalkAutomation.HasPendingAction &&
+                Interlocked.Exchange(ref _dictationPumpRunning, 1) == 0)
+            {
+                _ = PumpPushToTalkAutomationAsync();
+            }
+        }
+    }
+
+    private async Task<ComposerDialResult>
+        CloseVirtualDialForPushToTalkAsync()
+    {
+        Interlocked.Increment(ref _virtualDialGeneration);
+        Interlocked.Exchange(ref _pendingDialDelta, 0);
+        CancelVirtualDialPressHold();
+        _virtualDialOpenPending = false;
+        _virtualDialCancelRequested = false;
+        _virtualDialCleanupPending = false;
+        SetVirtualDialMenuOpen(false);
+        _axisRepeater.Reset();
+        _rightStickRouter.RequireNeutral();
+
+        var closeTask = RunVirtualDialAutomationAsync(
+            () => _composerAutomation.DialCancel(_settings));
+        try
+        {
+            var result = await closeTask
+                .WaitAsync(
+                    TimeSpan.FromMilliseconds(
+                        BridgeTimings.DictationDialCloseTimeoutMs))
+                .ConfigureAwait(true);
+            SetVirtualDialMenuOpen(
+                result.Succeeded && result.IsMenuOpen);
+            return result;
+        }
+        catch (TimeoutException)
+        {
+            // Never block the Dispatcher behind a stalled UIA tree walk.
+            SetVirtualDialMenuOpen(true);
+            return new(
+                false,
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.OperationCanceled,
+                ErrorDetail: "dictation-dial-close-timeout");
+        }
+    }
+
+    private async Task<DictationAutomationExecution>
+        ExecuteDictationAutomationAsync(
+            int timeoutMs,
+            bool allowShortcutFallback,
+            IReadOnlyList<string> actionNames)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var automationTask = _composerAutomation.InvokeActionAsync(
             _settings,
-            "Dictate",
-            "Start dictation");
-        _dictationInjected =
-            automation.Succeeded ||
-            _agentShortcuts.Execute(
-                _settings.DictationShortcut,
-                _settings);
-        if (_dictationInjected)
+            timeoutMs,
+            cancellation.Token,
+            actionNames.ToArray());
+        ComposerAutomationResult automation;
+        try
+        {
+            automation = await automationTask
+                .WaitAsync(
+                    TimeSpan.FromMilliseconds(timeoutMs + 120))
+                .ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+            cancellation.Cancel();
+            automation = new(
+                false,
+                AgentAutomationErrorCodes.OperationCanceled,
+                "dictation-uia-timeout");
+        }
+        catch (OperationCanceledException)
+        {
+            automation = new(
+                false,
+                AgentAutomationErrorCodes.OperationCanceled,
+                "dictation-uia-canceled");
+        }
+
+        var fallback = false;
+        if (
+            allowShortcutFallback &&
+            !automation.Succeeded &&
+            automation.Error !=
+                AgentAutomationErrorCodes.OperationCanceled)
+        {
+            fallback = await Task.Run(() =>
+                    _agentShortcuts.Execute(
+                        _settings.DictationShortcut,
+                        _settings))
+                .ConfigureAwait(true);
+        }
+
+        return new(
+            automation.Succeeded || fallback,
+            automation);
+    }
+
+    private void PresentDictationDialCloseFailure(
+        ComposerDialResult result)
+    {
+        var error = result.Error ??
+                    AgentAutomationErrorCodes.ElementNotFound;
+        var detail = result.ErrorDetail ??
+                     (result.IsMenuOpen
+                         ? "dictation-dial-still-open"
+                         : "dictation-dial-close-failed");
+        PresentDictationStartResult(
+            new DictationAutomationExecution(
+                false,
+                new ComposerAutomationResult(
+                    false,
+                    error,
+                    detail)));
+    }
+
+    private void PresentDictationStartResult(
+        DictationAutomationExecution result)
+    {
+        var voiceGlyph =
+            _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
+        if (result.Executed)
         {
             ClearNavigationUndo();
         }
-        var voiceGlyph = Glyph(LogicalInput.FaceSouth);
+        else
+        {
+            DevicePage.SetVoiceHalo(active: false);
+        }
+
         AddEvent(
             _localization.Strings.Format(
                 StringKeys.MessageStartDictation,
                 voiceGlyph) +
             ExecutionSuffix(
-                _dictationInjected,
-                automation.Error,
-                automation.ErrorDetail));
-        ShowFeedback(
-            _localization.Strings.ControlHoldToTalk(voiceGlyph),
-            _dictationInjected
-                ? _localization.Strings.Format(
-                    StringKeys.MessageRecordingReleaseToStop,
-                    voiceGlyph)
-                : ExecutionFailureLabel(
-                    automation.Error));
-        Pulse();
-    }
-
-    private void StopDictation()
-    {
-        DevicePage.SetVoiceHalo(active: false);
-        var shouldStop = _dictationInjected;
-        _dictationInjected = false;
-        var voiceGlyph = Glyph(LogicalInput.FaceSouth);
-        if (!shouldStop)
+                result.Executed,
+                result.Automation.Error,
+                result.Automation.ErrorDetail));
+        if (!result.Executed)
         {
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageReleaseNoRecording,
-                voiceGlyph));
             ShowFeedback(
                 _localization.Strings.ControlHoldToTalk(voiceGlyph),
-                _localization.Strings.Get(
-                    StringKeys.MessageNoActiveRecording));
+                ExecutionFailureLabel(
+                    result.Automation.Error));
+            Pulse(strength: 0.08);
             return;
         }
 
-        _dictationStopCancellation?.Cancel();
-        var cancellation = new CancellationTokenSource();
-        _dictationStopCancellation = cancellation;
-        AddEvent(_localization.Strings.Format(
-            StringKeys.MessageReleaseEndingDictation,
-            voiceGlyph));
+        if (
+            result.Executed &&
+            !_pushToTalkAutomation.WantsDictation)
+        {
+            return;
+        }
+
         ShowFeedback(
             _localization.Strings.ControlHoldToTalk(voiceGlyph),
-            _localization.Strings.Get(
-                StringKeys.MessageReleaseEndingRecording));
-        _ = StopDictationAfterReleaseAsync(cancellation);
+            _localization.Strings.Format(
+                StringKeys.MessageRecordingReleaseToStop,
+                voiceGlyph));
+        Pulse();
     }
 
-    private async Task StopDictationAfterReleaseAsync(
-        CancellationTokenSource cancellation)
+    private void PresentDictationStopResult(
+        DictationAutomationExecution result)
     {
-        try
-        {
-            var automation = await _composerAutomation
-                .InvokeActionAsync(
-                    _settings,
-                    timeoutMs: 1200,
-                    cancellation.Token,
-                    "Stop dictation",
-                    "Stop recording",
-                    "Stop listening")
-                .ConfigureAwait(true);
-            var executed =
-                automation.Succeeded ||
-                _agentShortcuts.Execute(
-                    _settings.DictationShortcut,
-                    _settings);
-            var voiceGlyph = Glyph(LogicalInput.FaceSouth);
-            AddEvent(
-                _localization.Strings.Format(
-                    StringKeys.MessageReleaseEndDictation,
-                    voiceGlyph) +
-                ExecutionSuffix(
-                    executed,
-                    automation.Error,
-                    automation.ErrorDetail));
-            ShowFeedback(
-                _localization.Strings.ControlHoldToTalk(voiceGlyph),
-                executed
-                    ? _localization.Strings.Get(
-                        StringKeys.MessageRecordingEnded)
-                    : ExecutionFailureLabel(
-                        automation.Error));
-        }
-        catch (OperationCanceledException)
-        {
-            // A new dictation session replaced this stop request.
-        }
-        finally
-        {
-            if (ReferenceEquals(_dictationStopCancellation, cancellation))
-            {
-                _dictationStopCancellation = null;
-            }
-
-            cancellation.Dispose();
-        }
+        var voiceGlyph =
+            _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
+        AddEvent(
+            _localization.Strings.Format(
+                StringKeys.MessageReleaseEndDictation,
+                voiceGlyph) +
+            ExecutionSuffix(
+                result.Executed,
+                result.Automation.Error,
+                result.Automation.ErrorDetail));
+        ShowFeedback(
+            _localization.Strings.ControlHoldToTalk(voiceGlyph),
+            result.Executed
+                ? _localization.Strings.Get(
+                    StringKeys.MessageRecordingEnded)
+                : ExecutionFailureLabel(
+                    result.Automation.Error));
     }
+
+    private sealed record DictationAutomationExecution(
+        bool Executed,
+        ComposerAutomationResult Automation);
 
     private void SendPrompt()
+    {
+        SendPrompt(Glyph(LogicalInput.FaceWest));
+    }
+
+    private void SendPrompt(string sendGlyph)
     {
         var automation = _composerAutomation.Submit(_settings);
         if (automation.Succeeded)
@@ -1795,7 +3631,6 @@ public partial class MainWindow : Window
             ClearNavigationUndo();
         }
 
-        var sendGlyph = Glyph(LogicalInput.FaceWest);
         AddEvent(
             _localization.Strings.Format(
                 StringKeys.MessageSendPrompt,
@@ -1816,43 +3651,36 @@ public partial class MainWindow : Window
 
     private void CancelAction()
     {
-        if (_dictationInjected)
+        if (
+            _dictationInjected ||
+            _pushToTalkAutomation.WantsDictation ||
+            _pushToTalkTrigger.BlocksBaseInput)
         {
+            _pushToTalkTrigger.CancelUntilReleased();
+            _pushToTalkSuppressedButtons |=
+                _latestControllerState.Buttons &
+                ~ControllerButtons.B;
             CancelPendingSidebarFocus();
             CancelPendingComposerSelection();
-            _dictationInjected = false;
-            DevicePage.SetVoiceHalo(active: false);
-            _dictationStopCancellation?.Cancel();
-            _dictationStopCancellation = null;
-            var stop = _composerAutomation.InvokeAction(
-                _settings,
-                "Stop dictation",
-                "Stop recording",
-                "Stop listening");
-            var stopped =
-                stop.Succeeded ||
-                _agentShortcuts.Execute(
-                    _settings.DictationShortcut,
-                    _settings);
+            if (!_pushToTalkAutomation.IsDictating)
+            {
+                DevicePage.SetVoiceHalo(active: false);
+            }
+
+            _pushToTalkAutomation.RequestStop();
+            EnsurePushToTalkAutomationPump();
             ClearNavigationUndo();
             var cancelGlyph = Glyph(LogicalInput.FaceEast);
             AddEvent(
                 _localization.Strings.Format(
                     StringKeys.MessageAbortDictation,
-                    cancelGlyph) +
-                ExecutionSuffix(
-                    stopped,
-                    stop.Error,
-                    stop.ErrorDetail));
+                    cancelGlyph));
             ShowFeedback(
                 _localization.Strings.Format(
                     StringKeys.MessageButtonCancel,
                     cancelGlyph),
-                stopped
-                    ? _localization.Strings.Get(
-                        StringKeys.MessageDictationStopped)
-                    : ExecutionFailureLabel(
-                        stop.Error));
+                _localization.Strings.Get(
+                    StringKeys.MessageReleaseEndingRecording));
             Pulse(strength: 0.18);
             return;
         }
@@ -2072,6 +3900,7 @@ public partial class MainWindow : Window
             Glyph(LogicalInput.FaceNorth),
             Glyph(LogicalInput.RightStickPress),
             Glyph(LogicalInput.FaceSouth),
+            Glyph(LogicalInput.LeftTrigger),
             Glyph(LogicalInput.FaceWest),
             Glyph(LogicalInput.FaceEast));
     }
@@ -2112,7 +3941,7 @@ public partial class MainWindow : Window
             _activeControllerProfile.DisplayName,
             agentName);
         FooterVersionText.Text =
-            $"v0.3 · {strings.StatusLocalBridge}";
+            $"v0.4b · {strings.StatusLocalBridge}";
 
         UpdateSelectedScopeText();
         UpdateRightModeUi();
@@ -2124,9 +3953,12 @@ public partial class MainWindow : Window
         }
 
         RebuildTrayMenu();
+        RefreshRadialMenu();
     }
 
-    private async void RefreshCodexData(bool preserveSelection)
+    private async void RefreshCodexData(
+        bool preserveSelection,
+        bool forceNavigationRebuild = false)
     {
         if (!await _dataRefreshGate.WaitAsync(0).ConfigureAwait(true))
         {
@@ -2135,37 +3967,49 @@ public partial class MainWindow : Window
 
         try
         {
-            var snapshot = await Task.Run(_workspaceReader.LoadSnapshot)
-                .ConfigureAwait(true);
             var selectedId =
                 preserveSelection &&
                 DevicePage.SelectedEntry is { } selected
                     ? selected.Id
                     : null;
+            var snapshotTask = Task.Run(_workspaceReader.LoadSnapshot);
+            var currentTitleTask = selectedId is null
+                ? Task.Run(_sidebarAutomation.TryGetCurrentThreadTitle)
+                : Task.FromResult<string?>(null);
+            await Task.WhenAll(snapshotTask, currentTitleTask)
+                .ConfigureAwait(true);
+            var snapshot = snapshotTask.Result;
+            var currentThread = SidebarNavigationState.FindCurrentThread(
+                snapshot,
+                currentTitleTask.Result);
 
             _snapshot = snapshot;
-            if (string.IsNullOrWhiteSpace(_selectedProjectPath))
+            if (selectedId is null && currentThread is not null)
+            {
+                selectedId = currentThread.Id;
+                PrepareSidebarAnchor(currentThread);
+            }
+            else if (string.IsNullOrWhiteSpace(_selectedProjectPath))
             {
                 _selectedProjectPath =
                     _snapshot.Projects.FirstOrDefault()?.Path;
             }
 
-            RebuildSidebarEntries();
-            if (selectedId is not null)
+            RebuildSidebarEntries(
+                forceNavigationRebuild,
+                preferredId: selectedId);
+
+            var activeEntry =
+                ActiveSidebarNavigation.SelectedEntry(_sidebarEntries);
+            if (
+                _scope != SidebarScope.ProjectTasks &&
+                activeEntry is not null &&
+                RootSidebarScopes.Contains(activeEntry.NavigationScope))
             {
-                var index = _sidebarEntries
-                    .Select((entry, index) => new { entry.Id, index })
-                    .FirstOrDefault(item =>
-                        item.Id.Equals(
-                            selectedId,
-                            StringComparison.OrdinalIgnoreCase))?.index;
-                if (index is not null)
-                {
-                    _selectedIndex = index.Value;
-                    SelectSidebarIndex(_selectedIndex);
-                }
+                _scope = activeEntry.NavigationScope;
             }
 
+            UpdateLayerTabs();
             FooterStatusText.Text = _localization.Strings.Format(
                 StringKeys.MessageDataLoaded,
                 _snapshot.Threads.Count,
@@ -2188,12 +4032,59 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RebuildSidebarEntries()
+    private void PrepareSidebarAnchor(CodexThread currentThread)
     {
-        var entries = _workspaceReader.BuildEntries(
-                _snapshot,
-                _scope,
-                _selectedProjectPath)
+        if (currentThread.IsPinned)
+        {
+            _scope = SidebarScope.PinnedTasks;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentThread.ProjectPath))
+        {
+            var project = _snapshot.Projects.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.Path,
+                    currentThread.ProjectPath,
+                    StringComparison.OrdinalIgnoreCase));
+            if (project is not null)
+            {
+                _selectedProjectPath = project.Path;
+                _scope = SidebarScope.ProjectTasks;
+                _projectTasksPinnedOnly = false;
+                var rootScope = project.IsPinned
+                    ? SidebarScope.PinnedProjects
+                    : SidebarScope.Projects;
+                _sidebarReturnFrame = new SidebarReturnFrame(
+                    rootScope,
+                    project.Path,
+                    project.Path);
+                _projectDisclosureLease = new ProjectDisclosureLease(
+                    project.Name,
+                    project.IsPinned);
+                return;
+            }
+        }
+
+        _scope = SidebarScope.ProjectlessTasks;
+    }
+
+    private void RebuildSidebarEntries(
+        bool forceNavigationRebuild = false,
+        int? fallbackIndexOverride = null,
+        string? preferredId = null)
+    {
+        preferredId ??= DevicePage.SelectedEntry?.Id;
+        var fallbackIndex = fallbackIndexOverride ??
+                            Math.Max(
+                                0,
+                                ActiveSidebarNavigation.SelectedIndex);
+        var entries = (_scope == SidebarScope.ProjectTasks
+                ? _workspaceReader.BuildEntries(
+                    _snapshot,
+                    _scope,
+                    _selectedProjectPath)
+                : _workspaceReader.BuildUnifiedEntries(_snapshot))
             .ToList();
         if (
             _scope == SidebarScope.ProjectTasks &&
@@ -2204,33 +4095,27 @@ public partial class MainWindow : Window
                 .ToList();
         }
 
-        if (_scope == SidebarScope.ProjectlessTasks)
-        {
-            var visibleCount = _sidebarAutomation.TryGetBottomTaskCount();
-            if (visibleCount is > 0 && entries.Count > visibleCount.Value)
-            {
-                entries = entries.Take(visibleCount.Value).ToList();
-            }
-        }
+        var navigation = ActiveSidebarNavigation;
+        navigation.Synchronize(
+            entries,
+            preferredId,
+            fallbackIndex,
+            forceNavigationRebuild);
 
         _sidebarEntries.Clear();
-        foreach (var entry in entries)
+        foreach (var entry in navigation.FrozenEntries)
         {
             _sidebarEntries.Add(entry);
         }
 
         if (_sidebarEntries.Count == 0)
         {
-            _selectedIndex = -1;
+            navigation.Clear();
             DevicePage.ClearSelection();
         }
         else
         {
-            _selectedIndex = Math.Clamp(
-                _selectedIndex,
-                0,
-                _sidebarEntries.Count - 1);
-            SelectSidebarIndex(_selectedIndex);
+            SelectSidebarIndex(navigation.SelectedIndex);
         }
 
         UpdateSelectedScopeText();
@@ -2258,12 +4143,52 @@ public partial class MainWindow : Window
             return;
         }
 
+        var waitingForForeground =
+            IsForegroundWaitFeedback(value);
+        if (
+            waitingForForeground &&
+            !_foregroundContinuityGate.TryPresentWaitNotice())
+        {
+            return;
+        }
+
         _overlayWindow?.ShowMessage(title, value);
+    }
+
+    private bool IsForegroundWaitFeedback(string value)
+    {
+        var strings = _localization.Strings;
+        return
+            string.Equals(
+                value,
+                strings.Format(
+                    StringKeys.MessageWaitingForAgentForeground,
+                    _activeAgent.DisplayName),
+                StringComparison.Ordinal) ||
+            string.Equals(
+                value,
+                strings.AgentNotForeground(
+                    _activeAgent.DisplayName,
+                    Glyph(LogicalInput.Menu)),
+                StringComparison.Ordinal) ||
+            string.Equals(
+                value,
+                strings.Format(
+                    StringKeys.ComposerAgentNotForeground,
+                    _activeAgent.DisplayName),
+                StringComparison.Ordinal);
     }
 
     private void PresentBridgeOverlay(BridgeOverlayRequest request)
     {
         if (!_settings.ShowOverlay)
+        {
+            return;
+        }
+
+        if (
+            IsForegroundWaitFeedback(request.Value) &&
+            !_foregroundContinuityGate.TryPresentWaitNotice())
         {
             return;
         }
@@ -2347,6 +4272,8 @@ public partial class MainWindow : Window
     {
         var value = _rightMode switch
         {
+            RightControlMode.Dial =>
+                _localization.Strings.ComposerDialReady,
             RightControlMode.Reasoning =>
                 ComposerTargetLabel(
                     ComposerSettingKind.Effort,
@@ -2452,6 +4379,7 @@ public partial class MainWindow : Window
         ReadControlsIntoSettings();
         _settingsService.Save(_settings);
         ConfigureCodexKeybindings();
+        RefreshRadialMenu();
         AddEvent(eventText);
         FooterStatusText.Text = eventText;
     }
@@ -2459,14 +4387,7 @@ public partial class MainWindow : Window
     private void UpdateCodexStatus()
     {
         var foreground = _activeAgent.Presence.IsForeground;
-        ObserveCodexForeground(foreground);
-        if (
-            _controllerSession.IsArmed &&
-            _settings.OnlyWhenCodexForeground &&
-            !foreground)
-        {
-            PauseControllerInput(_xInputService.LastState);
-        }
+        _ = ObserveCodexForeground(foreground);
 
         if (
             _controllerSession.IsArmed &&
@@ -2532,10 +4453,36 @@ public partial class MainWindow : Window
         return _localization.Strings.ScopeValue(scope.ToString());
     }
 
+    private string SidebarWheelScopeLabel(SidebarScope scope)
+    {
+        if (
+            scope != SidebarScope.ProjectTasks ||
+            string.IsNullOrWhiteSpace(_selectedProjectPath))
+        {
+            return ScopeLabel(scope);
+        }
+
+        var projectName = _snapshot.Projects.FirstOrDefault(project =>
+            string.Equals(
+                project.Path,
+                _selectedProjectPath,
+                StringComparison.OrdinalIgnoreCase))?.Name;
+        projectName = string.IsNullOrWhiteSpace(projectName)
+            ? ScopeLabel(scope)
+            : projectName.Trim();
+        var filter = _localization.Strings.Get(
+            _projectTasksPinnedOnly
+                ? StringKeys.MessageProjectPinnedOnly
+                : StringKeys.MessageAllTasks);
+        return $"{projectName} › {filter}";
+    }
+
     private string ModeLabel(RightControlMode mode)
     {
         return mode switch
         {
+            RightControlMode.Dial =>
+                _localization.Strings.VirtualDial,
             RightControlMode.Reasoning =>
                 _localization.Strings.ReasoningEffort,
             RightControlMode.Model => _localization.Strings.Model,
@@ -2708,7 +4655,9 @@ public partial class MainWindow : Window
 
     private void RefreshDeviceData()
     {
-        RefreshCodexData(preserveSelection: true);
+        RefreshCodexData(
+            preserveSelection: true,
+            forceNavigationRebuild: false);
         AddEvent(_localization.Strings.Format(
             StringKeys.MessageAgentDataRefreshed,
             _activeAgent.DisplayName));
@@ -2725,8 +4674,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        _selectedIndex = DevicePage.SelectedIndex;
-        ActivateSelectedEntry(entry);
+        ActiveSidebarNavigation.Select(
+            _sidebarEntries,
+            DevicePage.SelectedIndex);
+        ActivateSelectedEntry(entry, deferFocus: true);
     }
 
     private void SidebarList_MouseDoubleClick(
@@ -2738,7 +4689,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        EnterSelectedSidebarEntry();
+        ActivateSelectedSidebarEntryFromPointer();
         e.Handled = true;
     }
 
@@ -2746,16 +4697,17 @@ public partial class MainWindow : Window
         object sender,
         System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key is Key.Enter or Key.Right)
+        if (e.Key == Key.Enter)
         {
-            EnterSelectedSidebarEntry();
+            OpenSelectedSidebarTask();
             e.Handled = true;
             return;
         }
 
-        if (e.Key == Key.Left)
+        if (e.Key is Key.Left or Key.Right)
         {
-            NavigateSidebarHorizontal(-1);
+            NavigateSidebarHorizontal(
+                e.Key == Key.Right ? 1 : -1);
             e.Handled = true;
         }
     }
@@ -2840,6 +4792,7 @@ public partial class MainWindow : Window
             WindowState == WindowState.Minimized &&
             _settings.MinimizeToTray)
         {
+            ResetRadialLayer(clearSuppression: true);
             ShowInTaskbar = false;
             Hide();
         }
@@ -2849,6 +4802,7 @@ public partial class MainWindow : Window
     {
         if (!_exitRequested && _settings.MinimizeToTray)
         {
+            ResetRadialLayer(clearSuppression: true);
             e.Cancel = true;
             ShowInTaskbar = false;
             Hide();
@@ -2859,10 +4813,14 @@ public partial class MainWindow : Window
 
         _statusTimer.Stop();
         _dataTimer.Stop();
+        _radialLearningTimer.Stop();
+        ResetRadialLayer(clearSuppression: true);
+        ResetVirtualDialInput(closeMenu: true);
         CancelPendingSidebarFocus();
         CancelPendingComposerSelection();
-        _dictationStopCancellation?.Cancel();
-        _dictationStopCancellation = null;
+        _pushToTalkAutomation.Reset();
+        _dictationInjected = false;
+        _dictationInputGlyph = null;
         ClearNavigationUndo();
         _xInputService.StateChanged -= XInputService_StateChanged;
         _localization.PropertyChanged -=
@@ -2873,6 +4831,8 @@ public partial class MainWindow : Window
             FeedbackPresenter_PropertyChanged;
         _feedbackPresenter.Dispose();
         _overlayWindow?.Close();
+        _radialMenuOverlayWindow?.Close();
+        _sidebarNavigationWheelOverlayWindow?.Close();
 
         if (!_exitRequested)
         {

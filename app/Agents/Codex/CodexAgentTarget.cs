@@ -175,6 +175,12 @@ public sealed class CodexAgentTarget : IAgentTarget
                 scope,
                 selectedProjectPath);
         }
+
+        public IReadOnlyList<SidebarEntry> BuildUnifiedEntries(
+            CodexSnapshot snapshot)
+        {
+            return _workspace.BuildUnifiedEntries(snapshot);
+        }
     }
 
     private sealed class SidebarAdapter : ISidebarAutomation
@@ -252,6 +258,16 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _composer.TryReadComposerButtonName();
         }
 
+        public string? TryReadDispatchButtonName()
+        {
+            return _composer.TryReadDispatchButtonName();
+        }
+
+        public bool IsActionAvailable(params string[] actionNames)
+        {
+            return _composer.IsComposerActionAvailable(actionNames);
+        }
+
         public ComposerAutomationResult InvokeAction(
             AppSettings settings,
             params string[] actionNames)
@@ -272,6 +288,28 @@ public sealed class CodexAgentTarget : IAgentTarget
                 timeoutMs,
                 cancellationToken,
                 actionNames);
+        }
+
+        public ComposerDialResult ProbeDialState()
+        {
+            return _composer.ProbeDialState();
+        }
+
+        public ComposerDialResult DialStep(
+            int delta,
+            AppSettings settings)
+        {
+            return _composer.DialStep(delta, settings);
+        }
+
+        public ComposerDialResult DialPress(AppSettings settings)
+        {
+            return _composer.DialPress(settings);
+        }
+
+        public ComposerDialResult DialCancel(AppSettings settings)
+        {
+            return _composer.DialCancel(settings);
         }
 
         public ComposerAutomationResult Submit(AppSettings settings)

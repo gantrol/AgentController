@@ -13,15 +13,21 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _singleInstanceMutex = new Mutex(
-            initiallyOwned: true,
-            name: @"Local\CodexController.SingleInstance",
-            createdNew: out var createdNew);
-        _ownsSingleInstanceMutex = createdNew;
-        if (!createdNew)
+        var isDevelopmentInstance = e.Args.Contains(
+            "--dev-instance",
+            StringComparer.OrdinalIgnoreCase);
+        if (!isDevelopmentInstance)
         {
-            Shutdown();
-            return;
+            _singleInstanceMutex = new Mutex(
+                initiallyOwned: true,
+                name: @"Local\CodexController.SingleInstance",
+                createdNew: out var createdNew);
+            _ownsSingleInstanceMutex = createdNew;
+            if (!createdNew)
+            {
+                Shutdown();
+                return;
+            }
         }
 
         base.OnStartup(e);
@@ -39,6 +45,11 @@ public partial class App : System.Windows.Application
         else
         {
             window.Show();
+        }
+
+        if (isDevelopmentInstance)
+        {
+            window.Title = "Agent Controller Preview";
         }
     }
 

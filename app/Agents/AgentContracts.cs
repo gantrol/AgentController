@@ -54,6 +54,9 @@ public interface IWorkspaceReader
         CodexSnapshot snapshot,
         SidebarScope scope,
         string? selectedProjectPath);
+
+    IReadOnlyList<SidebarEntry> BuildUnifiedEntries(
+        CodexSnapshot snapshot);
 }
 
 public interface ISidebarAutomation
@@ -87,6 +90,10 @@ public interface IComposerAutomation
 
     string? TryReadComposerButtonName();
 
+    string? TryReadDispatchButtonName();
+
+    bool IsActionAvailable(params string[] actionNames);
+
     ComposerAutomationResult InvokeAction(
         AppSettings settings,
         params string[] actionNames);
@@ -96,6 +103,16 @@ public interface IComposerAutomation
         int timeoutMs,
         CancellationToken cancellationToken,
         params string[] actionNames);
+
+    ComposerDialResult ProbeDialState();
+
+    ComposerDialResult DialStep(
+        int delta,
+        AppSettings settings);
+
+    ComposerDialResult DialPress(AppSettings settings);
+
+    ComposerDialResult DialCancel(AppSettings settings);
 
     ComposerAutomationResult Submit(AppSettings settings);
 

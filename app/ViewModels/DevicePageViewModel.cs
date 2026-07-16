@@ -24,6 +24,10 @@ public sealed class DevicePageViewModel : ObservableObject
     private string _controllerLiveBadge = string.Empty;
     private string _leftStickHint = string.Empty;
     private string _rightStickHint = string.Empty;
+    private string _rightPressGlyph = string.Empty;
+    private bool _isVirtualDialMenuOpen;
+    private string _primaryGlyph = string.Empty;
+    private string _primaryActionTitle = string.Empty;
     private string _voiceGlyph = string.Empty;
     private string _voiceActionTitle = string.Empty;
     private string _sendGlyph = string.Empty;
@@ -44,13 +48,18 @@ public sealed class DevicePageViewModel : ObservableObject
     private string _agentStatusText = string.Empty;
     private bool _isAgentStatusActive;
     private RightControlMode _rightMode =
-        RightControlMode.Reasoning;
+        RightControlMode.Dial;
     private string _rightModeLabel = string.Empty;
     private string _rightModeValue = string.Empty;
+    private string _rightModeSourceValue = string.Empty;
+    private bool _usesConnectionAwareRightModePrompt = true;
     private SidebarScope _sidebarScope = SidebarScope.Projects;
     private SidebarScope _activeRootScope = SidebarScope.Projects;
     private string? _selectedProjectName;
     private bool _projectTasksPinnedOnly;
+    private bool _isProjectDirectory;
+    private string _sidebarProjectName = string.Empty;
+    private string _sidebarProjectFilterText = string.Empty;
 
     public DevicePageViewModel(
         ObservableCollection<SidebarEntry> sidebarEntries,
@@ -131,6 +140,18 @@ public sealed class DevicePageViewModel : ObservableObject
     {
         get => _rightStickHint;
         private set => SetProperty(ref _rightStickHint, value);
+    }
+
+    public string PrimaryGlyph
+    {
+        get => _primaryGlyph;
+        private set => SetProperty(ref _primaryGlyph, value);
+    }
+
+    public string PrimaryActionTitle
+    {
+        get => _primaryActionTitle;
+        private set => SetProperty(ref _primaryActionTitle, value);
     }
 
     public string VoiceGlyph
@@ -237,6 +258,29 @@ public sealed class DevicePageViewModel : ObservableObject
         private set => SetProperty(ref _sidebarContextText, value);
     }
 
+    public bool IsProjectDirectory
+    {
+        get => _isProjectDirectory;
+        private set => SetProperty(ref _isProjectDirectory, value);
+    }
+
+    public bool IsProjectTasksPinnedOnly =>
+        IsProjectDirectory && _projectTasksPinnedOnly;
+
+    public string SidebarProjectName
+    {
+        get => _sidebarProjectName;
+        private set => SetProperty(ref _sidebarProjectName, value);
+    }
+
+    public string SidebarProjectFilterText
+    {
+        get => _sidebarProjectFilterText;
+        private set => SetProperty(
+            ref _sidebarProjectFilterText,
+            value);
+    }
+
     public string AgentStatusText
     {
         get => _agentStatusText;
@@ -340,7 +384,9 @@ public sealed class DevicePageViewModel : ObservableObject
 
         var leftPressGlyph = Glyph(LogicalInput.LeftStickPress);
         var rightPressGlyph = Glyph(LogicalInput.RightStickPress);
-        VoiceGlyph = Glyph(LogicalInput.FaceSouth);
+        _rightPressGlyph = rightPressGlyph;
+        PrimaryGlyph = Glyph(LogicalInput.FaceSouth);
+        VoiceGlyph = Glyph(LogicalInput.LeftTrigger);
         SendGlyph = Glyph(LogicalInput.FaceWest);
         CancelGlyph = Glyph(LogicalInput.FaceEast);
         ProjectGlyph = Glyph(LogicalInput.FaceNorth);
@@ -350,9 +396,12 @@ public sealed class DevicePageViewModel : ObservableObject
         RightShoulderGlyph = Glyph(LogicalInput.RightShoulder);
         RightTriggerGlyph = Glyph(LogicalInput.RightTrigger);
 
-        LeftStickHint = strings.ControlLeftStickHint(leftPressGlyph);
-        RightStickHint =
-            strings.ControlRightStickHint(rightPressGlyph);
+        LeftStickHint = strings.ControlLeftStickHint(
+            leftPressGlyph,
+            PrimaryGlyph);
+        RefreshRightStickHint();
+        PrimaryActionTitle =
+            strings.ControlPrimary(PrimaryGlyph);
         VoiceActionTitle = strings.ControlHoldToTalk(VoiceGlyph);
         SendActionTitle = strings.ControlSend(SendGlyph);
         CancelActionTitle =
@@ -367,6 +416,7 @@ public sealed class DevicePageViewModel : ObservableObject
 
         RefreshControllerPresentation();
         RefreshRightModeLabel();
+        RefreshRightModeValue();
         RefreshSidebarContextText();
     }
 
@@ -378,6 +428,7 @@ public sealed class DevicePageViewModel : ObservableObject
         if (connectionChanged)
         {
             OnPropertyChanged(nameof(IsControllerConnected));
+            RefreshRightModeValue();
         }
 
         RefreshControllerPresentation();
@@ -397,13 +448,27 @@ public sealed class DevicePageViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(displayValue);
         RightMode = mode;
         RefreshRightModeLabel();
-        RightModeValue = displayValue;
+        _rightModeSourceValue = displayValue;
+        _usesConnectionAwareRightModePrompt =
+            IsConnectionAwareRightModePrompt(mode, displayValue);
+        RefreshRightModeValue();
     }
 
     public void UpdateRightModeValue(string displayValue)
     {
         ArgumentNullException.ThrowIfNull(displayValue);
-        RightModeValue = displayValue;
+        _rightModeSourceValue = displayValue;
+        _usesConnectionAwareRightModePrompt =
+            IsConnectionAwareRightModePrompt(
+                RightMode,
+                displayValue);
+        RefreshRightModeValue();
+    }
+
+    public void UpdateVirtualDialMenuState(bool isOpen)
+    {
+        _isVirtualDialMenuOpen = isOpen;
+        RefreshRightStickHint();
     }
 
     public void UpdateSidebarScope(
@@ -440,6 +505,8 @@ public sealed class DevicePageViewModel : ObservableObject
         ActiveRootScope = resolvedRootScope;
         _selectedProjectName = selectedProjectName;
         _projectTasksPinnedOnly = projectTasksPinnedOnly;
+        IsProjectDirectory = scope == SidebarScope.ProjectTasks;
+        OnPropertyChanged(nameof(IsProjectTasksPinnedOnly));
         RefreshSidebarContextText();
     }
 
@@ -481,12 +548,57 @@ public sealed class DevicePageViewModel : ObservableObject
 
         RightModeLabel = RightMode switch
         {
+            RightControlMode.Dial => _strings.VirtualDial,
             RightControlMode.Reasoning =>
                 _strings.ReasoningEffort,
             RightControlMode.Model => _strings.Model,
             RightControlMode.Speed => _strings.Speed,
             _ => string.Empty,
         };
+    }
+
+    private void RefreshRightStickHint()
+    {
+        if (_strings is null)
+        {
+            return;
+        }
+
+        RightStickHint = _strings.ControlRightStickHint(
+            _rightPressGlyph,
+            CancelGlyph,
+            _isVirtualDialMenuOpen);
+    }
+
+    private void RefreshRightModeValue()
+    {
+        if (_strings is null)
+        {
+            return;
+        }
+
+        RightModeValue =
+            RightMode == RightControlMode.Dial &&
+            _usesConnectionAwareRightModePrompt
+                ? _controllerState.IsConnected
+                    ? _strings.ComposerDialReady
+                    : _strings.ComposerConnectController
+                : _rightModeSourceValue;
+    }
+
+    private bool IsConnectionAwareRightModePrompt(
+        RightControlMode mode,
+        string displayValue)
+    {
+        return mode == RightControlMode.Dial &&
+               (
+                   string.IsNullOrWhiteSpace(displayValue) ||
+                   _strings is not null &&
+                   string.Equals(
+                       displayValue,
+                       _strings.ComposerDialReady,
+                       StringComparison.Ordinal)
+               );
     }
 
     private void RefreshSidebarContextText()
@@ -496,6 +608,10 @@ public sealed class DevicePageViewModel : ObservableObject
             return;
         }
 
+        SidebarProjectName = ProjectNameOrFallback();
+        SidebarProjectFilterText = _projectTasksPinnedOnly
+            ? _strings.Get(StringKeys.MessageProjectPinnedOnly)
+            : _strings.Get(StringKeys.MessageAllTasks);
         SidebarContextText = CurrentSidebarScope switch
         {
             SidebarScope.PinnedTasks =>
@@ -507,11 +623,7 @@ public sealed class DevicePageViewModel : ObservableObject
             SidebarScope.ProjectlessTasks =>
                 _strings.SidebarProjectlessTasks,
             SidebarScope.ProjectTasks =>
-                $"{ProjectNameOrFallback()} › " +
-                (_projectTasksPinnedOnly
-                    ? _strings.SidebarPinnedTasks
-                    : _strings.ScopeValue(
-                        nameof(SidebarScope.ProjectTasks))),
+                $"{SidebarProjectName} › {SidebarProjectFilterText}",
             _ => _strings.SidebarAgent(AgentName),
         };
     }

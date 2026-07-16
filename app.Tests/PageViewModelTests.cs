@@ -40,6 +40,7 @@ public sealed class PageViewModelTests
             OnlyWhenCodexForeground = false,
             HapticFeedback = false,
             ShowOverlay = false,
+            RadialMenuMode = RadialMenuModes.Off,
             StartWithWindows = true,
             MinimizeToTray = false,
             DeadZone = 0.63,
@@ -59,6 +60,7 @@ public sealed class PageViewModelTests
         Assert.False(target.OnlyWhenCodexForeground);
         Assert.False(target.HapticFeedback);
         Assert.False(target.ShowOverlay);
+        Assert.Equal(RadialMenuModes.Off, target.RadialMenuMode);
         Assert.True(target.StartWithWindows);
         Assert.False(target.MinimizeToTray);
         Assert.Equal(0.63, target.DeadZone);
@@ -131,7 +133,7 @@ public sealed class PageViewModelTests
 
         Assert.Contains("Studio Agent", config.Description);
         Assert.Equal("L3 / △", config.RootProjectGlyphs);
-        Assert.Equal("←→ / R3", config.ModeSwitchGlyphs);
+        Assert.Equal("R3 / 500 ms R3", config.ModeSwitchGlyphs);
         Assert.Contains(
             "Studio Agent",
             settings.OnlyForegroundText);
@@ -141,6 +143,23 @@ public sealed class PageViewModelTests
         Assert.Equal(
             "Open Studio Agent settings",
             settings.OpenAgentSettingsText);
+        Assert.Collection(
+            settings.RadialMenuOptions,
+            option =>
+            {
+                Assert.Equal(RadialMenuModes.Always, option.Value);
+                Assert.Equal("Always show", option.DisplayName);
+            },
+            option =>
+            {
+                Assert.Equal(RadialMenuModes.Learning, option.Value);
+                Assert.Equal("Learning mode", option.DisplayName);
+            },
+            option =>
+            {
+                Assert.Equal(RadialMenuModes.Off, option.Value);
+                Assert.Equal("Off", option.DisplayName);
+            });
     }
 
     [Fact]

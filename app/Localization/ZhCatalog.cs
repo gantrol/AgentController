@@ -31,10 +31,15 @@ public sealed class ZhCatalog : DictionaryStringCatalog
 
             [StringKeys.ControlLeftStick] = "左摇杆",
             [StringKeys.ControlLeftStickHint] =
-                "↑↓ 移动焦点 · → 进入 / 打开 · ← 返回 · {0} 切根区域",
+                "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "↑↓ 调节 · ←→ / {0} 切换思考 / 模型 / 速度",
+                "← / → 控件 · {0} 打开 · 长按 {0} 设置",
+            [StringKeys.ControlRightStickHintOpen] =
+                "← / → 选项 · {0} 确认 · {1} 关闭",
+            [StringKeys.ControlPrimary] = "{0} · 打开任务",
+            [StringKeys.ControlPrimaryDescription] =
+                "打开当前焦点任务；进入项目请按 →",
             [StringKeys.ControlHoldToTalk] = "{0} · 按住说话",
             [StringKeys.ControlHoldToTalkDescription] =
                 "松开结束语音识别",
@@ -50,8 +55,18 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ControlWakeAgentDescription] =
                 "将 {0} 置于前台并解锁手柄控制",
 
-            [StringKeys.ComposerRightStickAdjustment] = "右摇杆调节",
+            [StringKeys.ComposerRightStickAdjustment] =
+                "右摇杆虚拟旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
+            [StringKeys.ComposerDialReady] =
+                "左右拨动以选择控件",
+            [StringKeys.ComposerConnectController] =
+                "连接手柄后开始",
+            [StringKeys.ComposerDialSettingsOpened] =
+                "已打开手柄设置",
+            [StringKeys.ComposerDialCanceled] =
+                "已关闭当前选择器",
+            [StringKeys.TermVirtualDial] = "虚拟旋钮",
             [StringKeys.TermReasoningEffort] = "思考强度",
             [StringKeys.TermModel] = "模型",
             [StringKeys.TermSpeed] = "速度",
@@ -65,8 +80,8 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SidebarProjectlessTasks] = "未归项目",
             [StringKeys.SidebarRecentEvents] = "最近事件",
             [StringKeys.SidebarPinnedBadge] = "置顶",
-            [StringKeys.SidebarEnterAction] = "进入",
-            [StringKeys.SidebarOpenAction] = "打开",
+            [StringKeys.SidebarEnterAction] = "→ 进入",
+            [StringKeys.SidebarOpenAction] = "A 打开",
             [StringKeys.SidebarProjectTaskCountOne] =
                 "{0} 个任务",
             [StringKeys.SidebarProjectTaskCountMany] =
@@ -90,24 +105,24 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ConfigMoveFocus] = "↑↓",
             [StringKeys.ConfigMoveFocusDescription] =
                 "选择当前层级条目，并同步 {0} 原生侧边栏焦点",
-            [StringKeys.ConfigEnterBack] = "→ / ←",
+            [StringKeys.ConfigEnterBack] = "→ / ← / A",
             [StringKeys.ConfigEnterBackDescription] =
-                "→ 进入项目任务或打开任务；← 返回根区域",
+                "→ 进入当前焦点项目；← 退出到父级；A 打开当前焦点任务",
             [StringKeys.ConfigRootProjectGlyphs] = "{0} / {1}",
             [StringKeys.ConfigRootProjectDescription] =
                 "{0} 循环四个根区域；{1} 进入所属项目，项目内切换全部 / 仅置顶",
             [StringKeys.ConfigSidebarBehavior] =
-                "上下移动只同步 {0} 侧边栏焦点，不会自动打开对话。置顶项目和折叠状态互相独立；进入普通子任务时才按需展开项目，退出时只恢复由本程序展开的层级。",
+                "↑↓ 遵循本程序的稳定滚轮目录，并同步 {0} 原生侧边栏焦点，但不会自动打开对话。任务活动时间不会重排滚轮；→ 进入项目，← 退出项目，A 只打开任务。置顶与项目折叠互相独立。",
             [StringKeys.ConfigRightStickComposer] =
-                "右摇杆 · 撰写参数",
-            [StringKeys.ConfigIncreaseDecrease] = "↑↓",
+                "右摇杆 · 虚拟旋钮",
+            [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "提高 / 降低当前值",
+                "上一个 / 下一个撰写栏控件；菜单打开后遍历选项",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "思考强度 ↔ 模型 ↔ 速度；回中后再切一次",
+                "单击打开或确认；长按 500 ms 打开手柄设置",
             [StringKeys.ConfigSelectionBehavior] =
-                "↑↓ 只更新预选，停稳后通过 {0} 原生菜单精确选择；快捷键仅作降级。",
+                "模型、思考强度、速度和新任务 Project 选择器共用同一旋钮路径。B 优先关闭打开的选择器；选择器外会取消当前操作或录音，也可撤回最近一次任务跳转。",
             [StringKeys.ConfigAgentShortcuts] = "{0} 快捷键",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "程序会安全追加降级绑定；新绑定在 {0} 重启后生效。",
@@ -134,6 +149,16 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "操作成功时提供轻微震动",
             [StringKeys.SettingsOverlay] =
                 "在屏幕中下方显示短暂状态浮层",
+            [StringKeys.SettingsRadialMenu] =
+                "组合键轮盘提示",
+            [StringKeys.SettingsRadialMenuDescription] =
+                "始终显示会立即出现；学习期显示会在短暂按住后出现；关闭则隐藏轮盘。",
+            [StringKeys.SettingsRadialMenuAlways] =
+                "始终显示",
+            [StringKeys.SettingsRadialMenuLearning] =
+                "学习期显示",
+            [StringKeys.SettingsRadialMenuOff] =
+                "关闭",
             [StringKeys.SettingsStick] = "摇杆",
             [StringKeys.SettingsStickDescription] =
                 "当前采用主方向锁定，斜推不会同时触发横纵动作。",
@@ -155,6 +180,19 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SettingsLanguageAuto] = "跟随系统",
             [StringKeys.SettingsLanguageZhCn] = "简体中文",
             [StringKeys.SettingsLanguageEnUs] = "English (US)",
+
+            [StringKeys.DispatchSend] = "发送",
+            [StringKeys.DispatchSendDescription] =
+                "使用当前撰写内容开始新一轮。",
+            [StringKeys.DispatchSteer] = "加入当前运行",
+            [StringKeys.DispatchSteerDescription] =
+                "将当前撰写内容加入仍在执行的这一轮。",
+            [StringKeys.DispatchQueue] = "排到下一轮",
+            [StringKeys.DispatchQueueDescription] =
+                "保存当前撰写内容，在这一轮完成后用于下一轮。",
+            [StringKeys.DispatchDefault] = "默认提交",
+            [StringKeys.DispatchDefaultDescription] =
+                "遵循 Codex 当前的提交行为；Agent Controller 尚未获得足够的活动轮次与 Follow-up 状态，无法确定具体结果。",
 
             [StringKeys.StatusReady] = "{0} 已就绪",
             [StringKeys.StatusLoadingAgentData] =
@@ -183,7 +221,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} 未在前台 · 按 {1} 唤醒",
             [StringKeys.StatusControllerHelp] =
-                "{0} 首次唤醒并解锁 · 左摇杆 ↑↓ 焦点、→ 进入 / 打开、← 返回、{1} 切根区域 · {2} 项目上下文 · 右摇杆调节、{3} 切模式 · {4} 按住说话 · {5} 发送 · {6} 取消 / 撤回",
+                "{0} 首次唤醒并解锁 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · {2} 项目上下文 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 取消 / 撤回",
             [StringKeys.TrayOpenApplication] =
                 "打开 Agent Controller",
             [StringKeys.TrayOpenAgent] = "打开 {0}",
@@ -258,6 +296,10 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.MessageAgentSidebar] = "{0} 侧边栏",
             [StringKeys.MessageAlreadyAtRootScope] =
                 "当前已在根区域",
+            [StringKeys.MessageFocusedEntryHasNoChildDirectory] =
+                "当前条目没有下级目录 · A 打开任务；Y 定位所属项目",
+            [StringKeys.MessageUseRightToEnterProject] =
+                "项目是目录 · 按 → 进入；A 只打开任务",
             [StringKeys.MessageNoAvailableEntries] =
                 "当前区域没有可用条目",
             [StringKeys.MessageProjectTasks] = "项目任务",

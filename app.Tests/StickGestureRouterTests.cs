@@ -36,7 +36,8 @@ public sealed class StickGestureRouterTests
 
         Assert.Equal(1, first.HorizontalDirection);
         Assert.True(first.HorizontalStarted);
-        Assert.Equal(default, held);
+        Assert.Equal(1, held.HorizontalDirection);
+        Assert.False(held.HorizontalStarted);
         Assert.Equal(-1, second.HorizontalDirection);
         Assert.True(second.HorizontalStarted);
     }
@@ -75,6 +76,29 @@ public sealed class StickGestureRouterTests
         Assert.Equal(default, stillHeld);
         Assert.Equal(default, neutral);
         Assert.Equal(1, resumed.VerticalDirection);
+    }
+
+    [Fact]
+    public void HorizontalDirectionCannotReverseWithoutNeutral()
+    {
+        var router = new StickGestureRouter();
+
+        var started = router.Update(
+            x: 0.9,
+            y: 0,
+            deadZone: 0.5,
+            invertVertical: false,
+            blocked: false);
+        var sweptAcross = router.Update(
+            x: -0.9,
+            y: 0,
+            deadZone: 0.5,
+            invertVertical: false,
+            blocked: false);
+
+        Assert.Equal(1, started.HorizontalDirection);
+        Assert.Equal(1, sweptAcross.HorizontalDirection);
+        Assert.False(sweptAcross.HorizontalStarted);
     }
 
     [Theory]

@@ -184,8 +184,8 @@ public sealed class ConfigPageViewModel : ObservableObject
         SidebarBehavior =
             strings.ConfigSidebarBehavior(agentName);
         ModeSwitchGlyphs = strings.ConfigModeSwitchGlyphs(
-            "←→",
-            rightPressGlyph);
+            rightPressGlyph,
+            $"500 ms {rightPressGlyph}");
         SelectionBehavior =
             strings.ConfigSelectionBehavior(agentName);
         AgentShortcutsTitle =

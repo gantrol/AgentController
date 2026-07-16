@@ -18,6 +18,7 @@ public enum SidebarScope
 
 public enum RightControlMode
 {
+    Dial,
     Reasoning,
     Model,
     Speed,
@@ -49,7 +50,8 @@ public sealed record SidebarEntry(
     bool IsPinned = false,
     bool ProjectIsPinned = false,
     string PinBadge = "",
-    string ActionHint = "")
+    string ActionHint = "",
+    SidebarScope NavigationScope = SidebarScope.Projects)
 {
     public bool IsProject => Layer == SidebarLayer.Projects;
 

@@ -61,18 +61,22 @@ public sealed class DevicePageViewModelTests
         Assert.Equal(
             BuiltInControllerProfiles.Ultimate2.Id,
             viewModel.ControllerProfileId);
-        Assert.Equal("A", viewModel.VoiceGlyph);
+        Assert.Equal("A", viewModel.PrimaryGlyph);
+        Assert.Equal("LT", viewModel.VoiceGlyph);
         Assert.Equal("X", viewModel.SendGlyph);
         Assert.Equal("B", viewModel.CancelGlyph);
         Assert.Equal("Y", viewModel.ProjectGlyph);
         Assert.Equal("+", viewModel.WakeGlyph);
         Assert.Equal(
-            "↑↓ Move focus · → Enter / open · ← Back · LS changes root",
+            "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "↑↓ Adjust · ←→ / RS switches reasoning / model / speed",
+            "← / → Control · RS Open · hold RS Settings",
             viewModel.RightStickHint);
-        Assert.Equal("A · Hold to talk", viewModel.VoiceActionTitle);
+        Assert.Equal(
+            "A · Open task",
+            viewModel.PrimaryActionTitle);
+        Assert.Equal("LT · Hold to talk", viewModel.VoiceActionTitle);
         Assert.Equal("X · Send", viewModel.SendActionTitle);
         Assert.Contains("Studio Agent", viewModel.WakeActionTitle);
         Assert.Equal(
@@ -106,6 +110,7 @@ public sealed class DevicePageViewModelTests
         Assert.Equal("☰", viewModel.WakeGlyph);
         Assert.Contains("Codex", viewModel.SidebarTitle);
         Assert.Contains("侧边栏", viewModel.SidebarTitle);
+        Assert.Contains("打开任务", viewModel.PrimaryActionTitle);
         Assert.Contains("按住说话", viewModel.VoiceActionTitle);
     }
 
@@ -158,6 +163,9 @@ public sealed class DevicePageViewModelTests
             "Codex",
             BuiltInControllerProfiles.Generic);
 
+        Assert.Equal(RightControlMode.Dial, viewModel.RightMode);
+        Assert.Equal("虚拟旋钮", viewModel.RightModeLabel);
+
         viewModel.UpdateRightMode(
             RightControlMode.Model,
             "gpt-5.2-codex");
@@ -179,6 +187,88 @@ public sealed class DevicePageViewModelTests
         Assert.True(viewModel.IsSpeedMode);
         Assert.Equal("速度", viewModel.RightModeLabel);
         Assert.Equal("Fast", viewModel.RightModeValue);
+    }
+
+    [Fact]
+    public void DialPromptTracksConnectionWithoutMaskingActualValues()
+    {
+        var viewModel = CreateViewModel();
+        var strings =
+            new LocalizationService(AppLanguage.EnUs).Strings;
+        viewModel.UpdateContext(
+            strings,
+            "Codex",
+            BuiltInControllerProfiles.Generic);
+
+        Assert.Equal(
+            "Connect a controller to begin",
+            viewModel.RightModeValue);
+
+        viewModel.UpdateControllerState(
+            ConnectedState("Windows.Gaming.Input"));
+
+        Assert.Equal(
+            "Move left or right to choose a control",
+            viewModel.RightModeValue);
+
+        viewModel.UpdateControllerState(ControllerState.Disconnected);
+
+        foreach (var (mode, value) in new[]
+                 {
+                     (RightControlMode.Reasoning, "High"),
+                     (RightControlMode.Model, "gpt-5.2-codex"),
+                     (RightControlMode.Speed, "Fast"),
+                 })
+        {
+            viewModel.UpdateRightMode(mode, value);
+            Assert.Equal(value, viewModel.RightModeValue);
+        }
+
+        viewModel.UpdateRightMode(
+            RightControlMode.Dial,
+            strings.ComposerDialReady);
+
+        Assert.Equal(
+            "Connect a controller to begin",
+            viewModel.RightModeValue);
+
+        var chinese =
+            new LocalizationService(AppLanguage.ZhCn).Strings;
+        viewModel.UpdateContext(
+            chinese,
+            "Codex",
+            BuiltInControllerProfiles.Generic);
+
+        Assert.Equal("连接手柄后开始", viewModel.RightModeValue);
+
+        viewModel.UpdateControllerState(
+            ConnectedState("Windows.Gaming.Input"));
+
+        Assert.Equal("左右拨动以选择控件", viewModel.RightModeValue);
+    }
+
+    [Fact]
+    public void VirtualDialHintTracksNativePickerState()
+    {
+        var viewModel = CreateViewModel();
+        var strings =
+            new LocalizationService(AppLanguage.EnUs).Strings;
+        viewModel.UpdateContext(
+            strings,
+            "Codex",
+            BuiltInControllerProfiles.Ultimate2);
+
+        viewModel.UpdateVirtualDialMenuState(isOpen: true);
+
+        Assert.Equal(
+            "← / → Option · RS Select · B Close",
+            viewModel.RightStickHint);
+
+        viewModel.UpdateVirtualDialMenuState(isOpen: false);
+
+        Assert.Equal(
+            "← / → Control · RS Open · hold RS Settings",
+            viewModel.RightStickHint);
     }
 
     [Fact]
@@ -208,8 +298,16 @@ public sealed class DevicePageViewModelTests
         Assert.True(viewModel.IsPinnedProjectsRootActive);
         Assert.False(viewModel.IsProjectsRootActive);
         Assert.Equal(
-            "Pinned workspace › Pinned tasks",
+            "Pinned workspace › Pinned in this project",
             viewModel.SidebarContextText);
+        Assert.True(viewModel.IsProjectDirectory);
+        Assert.True(viewModel.IsProjectTasksPinnedOnly);
+        Assert.Equal(
+            "Pinned workspace",
+            viewModel.SidebarProjectName);
+        Assert.Equal(
+            "Pinned in this project",
+            viewModel.SidebarProjectFilterText);
     }
 
     [Fact]
@@ -233,6 +331,8 @@ public sealed class DevicePageViewModelTests
         Assert.Equal(
             strings.SidebarProjectlessTasks,
             viewModel.SidebarContextText);
+        Assert.False(viewModel.IsProjectDirectory);
+        Assert.False(viewModel.IsProjectTasksPinnedOnly);
     }
 
     [Fact]

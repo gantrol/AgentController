@@ -15,6 +15,8 @@ public sealed class CodexKeybindingService
         "composer.increaseReasoningEffort";
     private const string FastToggleCommand =
         "composer.toggleFastMode";
+    private const string DictationCommand =
+        "composer.startDictation";
     private const string SubmitCommand =
         "composer.submit";
 
@@ -51,6 +53,9 @@ public sealed class CodexKeybindingService
                 new DesiredBinding(
                     FastToggleCommand,
                     settings.FastToggleShortcut.Trim()),
+                new DesiredBinding(
+                    DictationCommand,
+                    settings.DictationShortcut.Trim()),
                 new DesiredBinding(
                     SubmitCommand,
                     settings.SubmitShortcut.Trim()),

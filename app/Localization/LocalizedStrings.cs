@@ -44,6 +44,8 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.ControlLeftStick);
     public string ControlRightStick =>
         Get(StringKeys.ControlRightStick);
+    public string ControlPrimaryDescription =>
+        Get(StringKeys.ControlPrimaryDescription);
     public string ControlHoldToTalkDescription =>
         Get(StringKeys.ControlHoldToTalkDescription);
     public string ControlSendDescription =>
@@ -55,6 +57,16 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
 
     public string ComposerRightStickAdjustment =>
         Get(StringKeys.ComposerRightStickAdjustment);
+    public string ComposerDialReady =>
+        Get(StringKeys.ComposerDialReady);
+    public string ComposerConnectController =>
+        Get(StringKeys.ComposerConnectController);
+    public string ComposerDialSettingsOpened =>
+        Get(StringKeys.ComposerDialSettingsOpened);
+    public string ComposerDialCanceled =>
+        Get(StringKeys.ComposerDialCanceled);
+    public string VirtualDial =>
+        Get(StringKeys.TermVirtualDial);
     public string ReasoningEffort =>
         Get(StringKeys.TermReasoningEffort);
     public string Model => Get(StringKeys.TermModel);
@@ -124,6 +136,16 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.SettingsHaptic);
     public string SettingsOverlay =>
         Get(StringKeys.SettingsOverlay);
+    public string SettingsRadialMenu =>
+        Get(StringKeys.SettingsRadialMenu);
+    public string SettingsRadialMenuDescription =>
+        Get(StringKeys.SettingsRadialMenuDescription);
+    public string SettingsRadialMenuAlways =>
+        Get(StringKeys.SettingsRadialMenuAlways);
+    public string SettingsRadialMenuLearning =>
+        Get(StringKeys.SettingsRadialMenuLearning);
+    public string SettingsRadialMenuOff =>
+        Get(StringKeys.SettingsRadialMenuOff);
     public string SettingsStick =>
         Get(StringKeys.SettingsStick);
     public string SettingsStickDescription =>
@@ -149,6 +171,23 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.SettingsLanguageZhCn);
     public string SettingsLanguageEnUs =>
         Get(StringKeys.SettingsLanguageEnUs);
+
+    public string DispatchSend =>
+        Get(StringKeys.DispatchSend);
+    public string DispatchSendDescription =>
+        Get(StringKeys.DispatchSendDescription);
+    public string DispatchSteer =>
+        Get(StringKeys.DispatchSteer);
+    public string DispatchSteerDescription =>
+        Get(StringKeys.DispatchSteerDescription);
+    public string DispatchQueue =>
+        Get(StringKeys.DispatchQueue);
+    public string DispatchQueueDescription =>
+        Get(StringKeys.DispatchQueueDescription);
+    public string DispatchDefault =>
+        Get(StringKeys.DispatchDefault);
+    public string DispatchDefaultDescription =>
+        Get(StringKeys.DispatchDefaultDescription);
 
     public string StatusLocalBridge =>
         Get(StringKeys.StatusLocalBridge);
@@ -258,11 +297,27 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
     public string DeviceConnected(string controllerName) =>
         Format(StringKeys.DeviceConnected, controllerName);
 
-    public string ControlLeftStickHint(string pressGlyph) =>
-        Format(StringKeys.ControlLeftStickHint, pressGlyph);
+    public string ControlLeftStickHint(
+        string pressGlyph,
+        string primaryGlyph) =>
+        Format(
+            StringKeys.ControlLeftStickHint,
+            pressGlyph,
+            primaryGlyph);
 
-    public string ControlRightStickHint(string pressGlyph) =>
-        Format(StringKeys.ControlRightStickHint, pressGlyph);
+    public string ControlRightStickHint(
+        string pressGlyph,
+        string cancelGlyph,
+        bool menuOpen = false) =>
+        Format(
+            menuOpen
+                ? StringKeys.ControlRightStickHintOpen
+                : StringKeys.ControlRightStickHint,
+            pressGlyph,
+            cancelGlyph);
+
+    public string ControlPrimary(string glyph) =>
+        Format(StringKeys.ControlPrimary, glyph);
 
     public string ControlHoldToTalk(string glyph) =>
         Format(StringKeys.ControlHoldToTalk, glyph);
@@ -451,6 +506,7 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         string leftPressGlyph,
         string projectGlyph,
         string rightPressGlyph,
+        string primaryGlyph,
         string voiceGlyph,
         string sendGlyph,
         string cancelGlyph) =>
@@ -460,6 +516,7 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
             leftPressGlyph,
             projectGlyph,
             rightPressGlyph,
+            primaryGlyph,
             voiceGlyph,
             sendGlyph,
             cancelGlyph);

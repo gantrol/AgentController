@@ -26,6 +26,11 @@ public static class StringKeys
     public const string ControlLeftStickHint = "control.left-stick-hint";
     public const string ControlRightStick = "control.right-stick";
     public const string ControlRightStickHint = "control.right-stick-hint";
+    public const string ControlRightStickHintOpen =
+        "control.right-stick-hint-open";
+    public const string ControlPrimary = "control.primary";
+    public const string ControlPrimaryDescription =
+        "control.primary-description";
     public const string ControlHoldToTalk = "control.hold-to-talk";
     public const string ControlHoldToTalkDescription =
         "control.hold-to-talk-description";
@@ -47,6 +52,15 @@ public static class StringKeys
         "composer.right-stick-adjustment";
     public const string ComposerAgentNotForeground =
         "composer.agent-not-foreground";
+    public const string ComposerDialReady =
+        "composer.dial-ready";
+    public const string ComposerConnectController =
+        "composer.connect-controller";
+    public const string ComposerDialSettingsOpened =
+        "composer.dial-settings-opened";
+    public const string ComposerDialCanceled =
+        "composer.dial-canceled";
+    public const string TermVirtualDial = "term.virtual-dial";
     public const string TermReasoningEffort = "term.reasoning-effort";
     public const string TermModel = "term.model";
     public const string TermSpeed = "term.speed";
@@ -150,6 +164,16 @@ public static class StringKeys
         "settings.only-foreground-description";
     public const string SettingsHaptic = "settings.haptic";
     public const string SettingsOverlay = "settings.overlay";
+    public const string SettingsRadialMenu =
+        "settings.radial-menu";
+    public const string SettingsRadialMenuDescription =
+        "settings.radial-menu-description";
+    public const string SettingsRadialMenuAlways =
+        "settings.radial-menu.always";
+    public const string SettingsRadialMenuLearning =
+        "settings.radial-menu.learning";
+    public const string SettingsRadialMenuOff =
+        "settings.radial-menu.off";
     public const string SettingsStick = "settings.stick";
     public const string SettingsStickDescription =
         "settings.stick-description";
@@ -177,6 +201,23 @@ public static class StringKeys
         "settings.language.zh-cn";
     public const string SettingsLanguageEnUs =
         "settings.language.en-us";
+
+    public const string DispatchSend =
+        "dispatch.send";
+    public const string DispatchSendDescription =
+        "dispatch.send-description";
+    public const string DispatchSteer =
+        "dispatch.steer";
+    public const string DispatchSteerDescription =
+        "dispatch.steer-description";
+    public const string DispatchQueue =
+        "dispatch.queue";
+    public const string DispatchQueueDescription =
+        "dispatch.queue-description";
+    public const string DispatchDefault =
+        "dispatch.default";
+    public const string DispatchDefaultDescription =
+        "dispatch.default-description";
 
     public const string StatusReady = "status.ready";
     public const string StatusLoadingAgentData =
@@ -294,6 +335,10 @@ public static class StringKeys
         "message.agent-sidebar";
     public const string MessageAlreadyAtRootScope =
         "message.already-at-root-scope";
+    public const string MessageFocusedEntryHasNoChildDirectory =
+        "message.focused-entry-has-no-child-directory";
+    public const string MessageUseRightToEnterProject =
+        "message.use-right-to-enter-project";
     public const string MessageNoAvailableEntries =
         "message.no-available-entries";
     public const string MessageProjectTasks =
@@ -493,6 +538,9 @@ public static class StringKeys
         ControlLeftStickHint,
         ControlRightStick,
         ControlRightStickHint,
+        ControlRightStickHintOpen,
+        ControlPrimary,
+        ControlPrimaryDescription,
         ControlHoldToTalk,
         ControlHoldToTalkDescription,
         ControlSend,
@@ -505,6 +553,11 @@ public static class StringKeys
         ControlWakeAgentDescription,
         ComposerRightStickAdjustment,
         ComposerAgentNotForeground,
+        ComposerDialReady,
+        ComposerConnectController,
+        ComposerDialSettingsOpened,
+        ComposerDialCanceled,
+        TermVirtualDial,
         TermReasoningEffort,
         TermModel,
         TermSpeed,
@@ -564,6 +617,11 @@ public static class StringKeys
         SettingsOnlyForegroundDescription,
         SettingsHaptic,
         SettingsOverlay,
+        SettingsRadialMenu,
+        SettingsRadialMenuDescription,
+        SettingsRadialMenuAlways,
+        SettingsRadialMenuLearning,
+        SettingsRadialMenuOff,
         SettingsStick,
         SettingsStickDescription,
         SettingsDeadZone,
@@ -580,6 +638,14 @@ public static class StringKeys
         SettingsLanguageAuto,
         SettingsLanguageZhCn,
         SettingsLanguageEnUs,
+        DispatchSend,
+        DispatchSendDescription,
+        DispatchSteer,
+        DispatchSteerDescription,
+        DispatchQueue,
+        DispatchQueueDescription,
+        DispatchDefault,
+        DispatchDefaultDescription,
         StatusReady,
         StatusLoadingAgentData,
         StatusAgentDataLoadFailed,
@@ -638,6 +704,8 @@ public static class StringKeys
         MessageFallbackKeybindingsWritten,
         MessageAgentSidebar,
         MessageAlreadyAtRootScope,
+        MessageFocusedEntryHasNoChildDirectory,
+        MessageUseRightToEnterProject,
         MessageNoAvailableEntries,
         MessageProjectTasks,
         MessageTaskHasNoProject,
