@@ -9,7 +9,8 @@
   - [x] Runtime zh-CN / en-US catalogs and language setting
   - [x] Localized structured feedback, tray, footer, and primary actions
   - [x] Config / Settings View + ViewModel split
-  - [ ] Extract Device page state and controller orchestration from `MainWindow`
+  - [x] Extract Device page presentation state and view from `MainWindow`
+  - [ ] Extract controller gesture orchestration into a dedicated coordinator
   - [x] Controller profile registry, identity matching, glyphs, and Raw HID mapping
   - [ ] Profile-specific controller visuals and first-run tuning defaults
   - [x] Agent capability interfaces, registry, Codex adapter, and safe fallbacks

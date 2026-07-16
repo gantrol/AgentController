@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private readonly LocalizationService _localization;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
+    private readonly DevicePageViewModel _devicePageViewModel;
     private readonly ConfigPageViewModel _configPageViewModel;
     private readonly SettingsPageViewModel _settingsPageViewModel;
     private readonly BridgeFeedbackPresenter _feedbackPresenter;
@@ -133,7 +134,6 @@ public partial class MainWindow : Window
         SettingsPage.DataContext = _settingsPageViewModel;
         SettingsPage.Strings = _localization.Strings;
         SettingsPage.Localization = _localization;
-        SidebarList.ItemsSource = _sidebarEntries;
         _feedbackPresenter = new BridgeFeedbackPresenter(
             _bridgeEvents,
             new LocalizedBridgeFeedbackFormatter(
@@ -141,11 +141,18 @@ public partial class MainWindow : Window
                 _localization.Strings.AppTitle,
                 _activeAgent.DisplayName),
             new DelegateOverlayPresenter(PresentBridgeOverlay),
-            SynchronizationContext.Current ??
-            new DispatcherSynchronizationContext(Dispatcher));
+             SynchronizationContext.Current ??
+             new DispatcherSynchronizationContext(Dispatcher));
+        _devicePageViewModel = new DevicePageViewModel(
+            _sidebarEntries,
+            _feedbackPresenter.LogRows,
+            RefreshDeviceData,
+            scope => SetSidebarScope(
+                scope,
+                showFeedback: false));
+        DevicePage.DataContext = _devicePageViewModel;
         _feedbackPresenter.PropertyChanged +=
             FeedbackPresenter_PropertyChanged;
-        EventList.ItemsSource = _feedbackPresenter.LogRows;
 
         _statusTimer = new DispatcherTimer
         {
@@ -658,7 +665,7 @@ public partial class MainWindow : Window
         if (_sidebarEntries.Count == 0)
         {
             _selectedIndex = -1;
-            SidebarList.SelectedIndex = -1;
+            DevicePage.ClearSelection();
             return;
         }
 
@@ -693,7 +700,7 @@ public partial class MainWindow : Window
 
     private void EnterSelectedSidebarEntry()
     {
-        if (SidebarList.SelectedItem is not SidebarEntry entry)
+        if (DevicePage.SelectedEntry is not { } entry)
         {
             ShowFeedback(
                 _localization.Strings.Format(
@@ -763,7 +770,7 @@ public partial class MainWindow : Window
                 _scope == SidebarScope.ProjectTasks
                     ? SidebarScope.Projects
                     : _scope,
-                SidebarList.SelectedItem is SidebarEntry selected
+                DevicePage.SelectedEntry is { } selected
                     ? selected.Id
                     : null,
                 _selectedProjectPath);
@@ -825,7 +832,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (SidebarList.SelectedItem is not SidebarEntry entry)
+        if (DevicePage.SelectedEntry is not { } entry)
         {
             ShowFeedback(
                 _localization.Strings.Format(
@@ -857,7 +864,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var previousId = SidebarList.SelectedItem is SidebarEntry entry
+        var previousId = DevicePage.SelectedEntry is { } entry
             ? entry.Id
             : null;
         _projectTasksPinnedOnly = !_projectTasksPinnedOnly;
@@ -896,7 +903,7 @@ public partial class MainWindow : Window
 
     private void RememberCurrentSidebarCursor()
     {
-        if (SidebarList.SelectedItem is not SidebarEntry selected)
+        if (DevicePage.SelectedEntry is not { } selected)
         {
             return;
         }
@@ -942,8 +949,7 @@ public partial class MainWindow : Window
     private void SelectSidebarIndex(int index)
     {
         _suppressSelectionActivation = true;
-        SidebarList.SelectedIndex = index;
-        SidebarList.ScrollIntoView(SidebarList.SelectedItem);
+        DevicePage.SelectSidebarIndex(index);
         _suppressSelectionActivation = false;
     }
 
@@ -954,7 +960,7 @@ public partial class MainWindow : Window
         if (entry.Layer == SidebarLayer.Projects)
         {
             _selectedProjectPath = entry.ProjectPath;
-            SelectedProjectText.Text = entry.Title;
+            _devicePageViewModel.UpdateSidebarContextText(entry.Title);
         }
 
         RememberCurrentSidebarCursor();
@@ -1340,9 +1346,10 @@ public partial class MainWindow : Window
         var displayTarget = ComposerTargetLabel(
             ComposerSettingKind.Effort,
             target);
-        RightModeValue.Text = _localization.Strings.Format(
-            StringKeys.MessagePreviewValue,
-            displayTarget);
+        _devicePageViewModel.UpdateRightModeValue(
+            _localization.Strings.Format(
+                StringKeys.MessagePreviewValue,
+                displayTarget));
         ScheduleComposerCommit(ComposerSettingKind.Effort, target);
         AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
             ComposerKindLabel(ComposerSettingKind.Effort),
@@ -1376,9 +1383,10 @@ public partial class MainWindow : Window
 
         _modelIndex = next;
         var target = _composerCatalog.Models[_modelIndex].DisplayName;
-        RightModeValue.Text = _localization.Strings.Format(
-            StringKeys.MessagePreviewValue,
-            target);
+        _devicePageViewModel.UpdateRightModeValue(
+            _localization.Strings.Format(
+                StringKeys.MessagePreviewValue,
+                target));
         ScheduleComposerCommit(ComposerSettingKind.Model, target);
         AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
             ComposerKindLabel(ComposerSettingKind.Model),
@@ -1407,9 +1415,10 @@ public partial class MainWindow : Window
         var displayTarget = ComposerTargetLabel(
             ComposerSettingKind.Speed,
             target);
-        RightModeValue.Text = _localization.Strings.Format(
-            StringKeys.MessagePreviewValue,
-            displayTarget);
+        _devicePageViewModel.UpdateRightModeValue(
+            _localization.Strings.Format(
+                StringKeys.MessagePreviewValue,
+                displayTarget));
         ScheduleComposerCommit(ComposerSettingKind.Speed, target);
         AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
             ComposerKindLabel(ComposerSettingKind.Speed),
@@ -1458,9 +1467,10 @@ public partial class MainWindow : Window
                     cancellation.Token)
                 .ConfigureAwait(true);
             var displayTarget = ComposerTargetLabel(kind, target);
-            RightModeValue.Text = _localization.Strings.Format(
-                StringKeys.MessageApplyingValue,
-                displayTarget);
+            _devicePageViewModel.UpdateRightModeValue(
+                _localization.Strings.Format(
+                    StringKeys.MessageApplyingValue,
+                    displayTarget));
             var automation = await _composerAutomation
                 .SelectAsync(kind, target, _settings, cancellation.Token)
                 .ConfigureAwait(true);
@@ -1494,12 +1504,12 @@ public partial class MainWindow : Window
                     MarkComposerCommitted(kind);
                 }
 
-                RightModeValue.Text =
+                _devicePageViewModel.UpdateRightModeValue(
                     automation.Succeeded
                         ? displayTarget
                         : _localization.Strings.Format(
                             StringKeys.MessageShortcutSentValue,
-                            displayTarget);
+                            displayTarget));
                 var channel =
                     automation.Succeeded
                         ? _localization.Strings.Get(
@@ -1521,9 +1531,10 @@ public partial class MainWindow : Window
             }
             else
             {
-                RightModeValue.Text = _localization.Strings.Format(
-                    StringKeys.MessageNotExecutedValue,
-                    displayTarget);
+                _devicePageViewModel.UpdateRightModeValue(
+                    _localization.Strings.Format(
+                        StringKeys.MessageNotExecutedValue,
+                        displayTarget));
                 AddEvent(_localization.Strings.Format(
                     StringKeys.MessageComposerSelectionFailed,
                     ComposerKindLabel(kind),
@@ -1660,7 +1671,7 @@ public partial class MainWindow : Window
     {
         _dictationStopCancellation?.Cancel();
         _dictationStopCancellation = null;
-        ButtonAHalo.Opacity = 1;
+        DevicePage.SetVoiceHalo(active: true);
         var automation = _composerAutomation.InvokeAction(
             _settings,
             "Dictate",
@@ -1696,7 +1707,7 @@ public partial class MainWindow : Window
 
     private void StopDictation()
     {
-        ButtonAHalo.Opacity = 0;
+        DevicePage.SetVoiceHalo(active: false);
         var shouldStop = _dictationInjected;
         _dictationInjected = false;
         var voiceGlyph = Glyph(LogicalInput.FaceSouth);
@@ -1810,7 +1821,7 @@ public partial class MainWindow : Window
             CancelPendingSidebarFocus();
             CancelPendingComposerSelection();
             _dictationInjected = false;
-            ButtonAHalo.Opacity = 0;
+            DevicePage.SetVoiceHalo(active: false);
             _dictationStopCancellation?.Cancel();
             _dictationStopCancellation = null;
             var stop = _composerAutomation.InvokeAction(
@@ -2014,63 +2025,17 @@ public partial class MainWindow : Window
 
     private void UpdateControllerVisual(ControllerState state)
     {
-        var strings = _localization.Strings;
+        _devicePageViewModel.UpdateControllerState(state);
         ControllerStatusDot.SetResourceReference(
             System.Windows.Shapes.Shape.FillProperty,
             state.IsConnected
                 ? "Brush.Status.Success"
                 : "Brush.Status.Idle");
         ControllerStatusText.Text =
-            state.IsConnected
-                ? $"{_activeControllerProfile.DisplayName} · {state.Backend}"
-                : strings.DeviceWaiting;
-        ControllerLiveBadge.Text = state.IsConnected
-            ? strings.DeviceLiveInput
-            : strings.DeviceIdle;
-        ControllerLiveBadge.SetResourceReference(
-            TextBlock.ForegroundProperty,
-            state.IsConnected
-                ? "Brush.Status.Success"
-                : "Brush.Status.Idle");
-
-        LeftStickTransform.X = state.LeftX * 8;
-        LeftStickTransform.Y = -state.LeftY * 8;
-        RightStickTransform.X = state.RightX * 8;
-        RightStickTransform.Y = -state.RightY * 8;
-        LeftStickHalo.Opacity =
-            state.IsConnected &&
-            Math.Max(Math.Abs(state.LeftX), Math.Abs(state.LeftY)) >
-            _settings.DeadZone
-                ? 1
-                : 0;
-        RightStickHalo.Opacity =
-            state.IsConnected &&
-            Math.Max(Math.Abs(state.RightX), Math.Abs(state.RightY)) >
-            _settings.DeadZone
-                ? 1
-                : 0;
-        ButtonAHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.A) ? 1 : 0;
-        ButtonXHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.X) ? 1 : 0;
-        ButtonBHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.B) ? 1 : 0;
-        ButtonYHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.Y) ? 1 : 0;
-        MenuButtonHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.Start) ? 1 : 0;
-        LeftShoulderHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.LeftShoulder) ? 1 : 0;
-        RightShoulderHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.RightShoulder) ? 1 : 0;
-        LeftTriggerHalo.Opacity =
-            state.LeftTrigger > 0.03
-                ? Math.Clamp(0.25 + state.LeftTrigger * 0.75, 0, 1)
-                : 0;
-        RightTriggerHalo.Opacity =
-            state.RightTrigger > 0.03
-                ? Math.Clamp(0.25 + state.RightTrigger * 0.75, 0, 1)
-                : 0;
+            _devicePageViewModel.ControllerStatusText;
+        DevicePage.RenderControllerState(
+            state,
+            _settings.DeadZone);
     }
 
     private void UpdateControllerProfile(ControllerState state)
@@ -2115,18 +2080,15 @@ public partial class MainWindow : Window
     {
         var strings = _localization.Strings;
         var agentName = _activeAgent.DisplayName;
-        var voiceGlyph = Glyph(LogicalInput.FaceSouth);
-        var sendGlyph = Glyph(LogicalInput.FaceWest);
-        var cancelGlyph = Glyph(LogicalInput.FaceEast);
         var projectGlyph = Glyph(LogicalInput.FaceNorth);
         var wakeGlyph = Glyph(LogicalInput.Menu);
         var leftPressGlyph = Glyph(LogicalInput.LeftStickPress);
         var rightPressGlyph = Glyph(LogicalInput.RightStickPress);
-        var leftTriggerGlyph = Glyph(LogicalInput.LeftTrigger);
-        var leftShoulderGlyph = Glyph(LogicalInput.LeftShoulder);
-        var rightShoulderGlyph = Glyph(LogicalInput.RightShoulder);
-        var rightTriggerGlyph = Glyph(LogicalInput.RightTrigger);
 
+        _devicePageViewModel.UpdateContext(
+            strings,
+            agentName,
+            _activeControllerProfile);
         _configPageViewModel.UpdateContext(
             strings,
             agentName,
@@ -2149,31 +2111,6 @@ public partial class MainWindow : Window
         AppSubtitleText.Text = strings.AppSubtitle(
             _activeControllerProfile.DisplayName,
             agentName);
-        LeftStickHintText.Text =
-            strings.ControlLeftStickHint(leftPressGlyph);
-        RightStickHintText.Text =
-            strings.ControlRightStickHint(rightPressGlyph);
-        LeftTriggerGlyphText.Text = leftTriggerGlyph;
-        LeftShoulderGlyphText.Text = leftShoulderGlyph;
-        RightShoulderGlyphText.Text = rightShoulderGlyph;
-        RightTriggerGlyphText.Text = rightTriggerGlyph;
-
-        VoiceGlyphText.Text = voiceGlyph;
-        VoiceActionTitle.Text = strings.ControlHoldToTalk(voiceGlyph);
-        SendGlyphText.Text = sendGlyph;
-        SendActionTitle.Text = strings.ControlSend(sendGlyph);
-        CancelGlyphText.Text = cancelGlyph;
-        CancelActionTitle.Text =
-            strings.ControlCancelUndo(cancelGlyph);
-        ProjectGlyphText.Text = projectGlyph;
-        ProjectActionTitle.Text =
-            strings.ControlProjectContext(projectGlyph);
-        WakeGlyphText.Text = wakeGlyph;
-        WakeActionTitle.Text =
-            strings.ControlWakeAgent(wakeGlyph, agentName);
-        WakeActionDescription.Text =
-            strings.ControlWakeAgentDescription(agentName);
-        SidebarTitleText.Text = strings.SidebarAgent(agentName);
         FooterVersionText.Text =
             $"v0.3 · {strings.StatusLocalBridge}";
 
@@ -2202,7 +2139,7 @@ public partial class MainWindow : Window
                 .ConfigureAwait(true);
             var selectedId =
                 preserveSelection &&
-                SidebarList.SelectedItem is SidebarEntry selected
+                DevicePage.SelectedEntry is { } selected
                     ? selected.Id
                     : null;
 
@@ -2285,7 +2222,7 @@ public partial class MainWindow : Window
         if (_sidebarEntries.Count == 0)
         {
             _selectedIndex = -1;
-            SidebarList.SelectedIndex = -1;
+            DevicePage.ClearSelection();
         }
         else
         {
@@ -2301,27 +2238,7 @@ public partial class MainWindow : Window
 
     private void UpdateSelectedScopeText()
     {
-        var strings = _localization.Strings;
-        SelectedProjectText.Text = _scope switch
-        {
-            SidebarScope.PinnedTasks => strings.SidebarPinnedTasks,
-            SidebarScope.PinnedProjects =>
-                strings.SidebarPinnedProjects,
-            SidebarScope.Projects => strings.SidebarProjects,
-            SidebarScope.ProjectlessTasks =>
-                strings.SidebarProjectlessTasks,
-            SidebarScope.ProjectTasks =>
-                $"{_snapshot.Projects.FirstOrDefault(project =>
-                    string.Equals(
-                        project.Path,
-                        _selectedProjectPath,
-                        StringComparison.OrdinalIgnoreCase))?.Name ??
-                  strings.ScopeValue("ProjectTasks")} › " +
-                (_projectTasksPinnedOnly
-                    ? strings.SidebarPinnedTasks
-                    : strings.ScopeValue("ProjectTasks")),
-            _ => strings.SidebarAgent(_activeAgent.DisplayName),
-        };
+        UpdateDeviceSidebarPresentation();
     }
 
     private void AddEvent(string text)
@@ -2428,11 +2345,7 @@ public partial class MainWindow : Window
 
     private void UpdateRightModeUi()
     {
-        SetModeTab(ReasoningModeTab, _rightMode == RightControlMode.Reasoning);
-        SetModeTab(ModelModeTab, _rightMode == RightControlMode.Model);
-        SetModeTab(SpeedModeTab, _rightMode == RightControlMode.Speed);
-        RightModeLabel.Text = ModeLabel(_rightMode);
-        RightModeValue.Text = _rightMode switch
+        var value = _rightMode switch
         {
             RightControlMode.Reasoning =>
                 ComposerTargetLabel(
@@ -2453,6 +2366,9 @@ public partial class MainWindow : Window
             RightControlMode.Speed => SpeedLabel(_speedIndex),
             _ => string.Empty,
         };
+        _devicePageViewModel.UpdateRightMode(
+            _rightMode,
+            value);
     }
 
     private string SpeedLabel(int index)
@@ -2489,44 +2405,31 @@ public partial class MainWindow : Window
 
     private void UpdateLayerTabs()
     {
+        UpdateDeviceSidebarPresentation();
+    }
+
+    private void UpdateDeviceSidebarPresentation()
+    {
         var activeScope = _scope;
+        string? projectName = null;
         if (_scope == SidebarScope.ProjectTasks)
         {
-            activeScope = _snapshot.Projects.FirstOrDefault(project =>
-                    string.Equals(
-                        project.Path,
-                        _selectedProjectPath,
-                        StringComparison.OrdinalIgnoreCase))?.IsPinned == true
+            var project = _snapshot.Projects.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.Path,
+                    _selectedProjectPath,
+                    StringComparison.OrdinalIgnoreCase));
+            projectName = project?.Name;
+            activeScope = project?.IsPinned == true
                 ? SidebarScope.PinnedProjects
                 : SidebarScope.Projects;
         }
 
-        SetLayerTab(
-            PinnedLayerButton,
-            activeScope == SidebarScope.PinnedTasks);
-        SetLayerTab(
-            PinnedProjectsLayerButton,
-            activeScope == SidebarScope.PinnedProjects);
-        SetLayerTab(
-            ProjectsLayerButton,
-            activeScope == SidebarScope.Projects);
-        SetLayerTab(
-            TasksLayerButton,
-            activeScope == SidebarScope.ProjectlessTasks);
-    }
-
-    private static void SetModeTab(
-        System.Windows.Controls.RadioButton button,
-        bool active)
-    {
-        button.IsChecked = active;
-    }
-
-    private static void SetLayerTab(
-        System.Windows.Controls.RadioButton button,
-        bool active)
-    {
-        button.IsChecked = active;
+        _devicePageViewModel.UpdateSidebarScope(
+            _scope,
+            activeRootScope: activeScope,
+            selectedProjectName: projectName,
+            projectTasksPinnedOnly: _projectTasksPinnedOnly);
     }
 
     private void ApplySettingsToControls()
@@ -2575,7 +2478,7 @@ public partial class MainWindow : Window
 
         var strings = _localization.Strings;
         var wakeGlyph = Glyph(LogicalInput.Menu);
-        CodexForegroundText.Text =
+        var statusText =
             !_controllerWasConnected
                 ? strings.WaitingForReconnect
                 : foreground
@@ -2598,14 +2501,14 @@ public partial class MainWindow : Window
                             : strings.AgentNotForeground(
                                 _activeAgent.DisplayName,
                                 wakeGlyph);
-        CodexForegroundText.SetResourceReference(
-            TextBlock.ForegroundProperty,
+        var isActive =
             _controllerSession.IsArmed &&
             _controllerWasConnected &&
             _controllerSession.IsActive &&
-            (!_settings.OnlyWhenCodexForeground || foreground)
-                ? "Brush.Status.Success"
-                : "Brush.Text.Secondary");
+            (!_settings.OnlyWhenCodexForeground || foreground);
+        _devicePageViewModel.UpdateAgentStatus(
+            statusText,
+            isActive);
     }
 
     private void ShowPage(FrameworkElement page)
@@ -2803,34 +2706,12 @@ public partial class MainWindow : Window
                     StringKeys.MessageBridgeSafePreview));
     }
 
-    private void RefreshDataButton_Click(object sender, RoutedEventArgs e)
+    private void RefreshDeviceData()
     {
         RefreshCodexData(preserveSelection: true);
         AddEvent(_localization.Strings.Format(
             StringKeys.MessageAgentDataRefreshed,
             _activeAgent.DisplayName));
-    }
-
-    private void PinnedLayerButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetSidebarScope(SidebarScope.PinnedTasks, showFeedback: false);
-    }
-
-    private void PinnedProjectsLayerButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        SetSidebarScope(SidebarScope.PinnedProjects, showFeedback: false);
-    }
-
-    private void ProjectsLayerButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetSidebarScope(SidebarScope.Projects, showFeedback: false);
-    }
-
-    private void TasksLayerButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetSidebarScope(SidebarScope.ProjectlessTasks, showFeedback: false);
     }
 
     private void SidebarList_SelectionChanged(
@@ -2839,12 +2720,12 @@ public partial class MainWindow : Window
     {
         if (
             _suppressSelectionActivation ||
-            SidebarList.SelectedItem is not SidebarEntry entry)
+            DevicePage.SelectedEntry is not { } entry)
         {
             return;
         }
 
-        _selectedIndex = SidebarList.SelectedIndex;
+        _selectedIndex = DevicePage.SelectedIndex;
         ActivateSelectedEntry(entry);
     }
 
