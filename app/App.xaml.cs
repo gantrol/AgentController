@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using CodexController.Localization;
 using CodexController.Services;
 
 namespace CodexController;
@@ -25,6 +26,7 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
         _services = AppServices.CreateDefault();
+        LocalizationHost.Use(_services.Localization);
         var window = new MainWindow(_services);
         MainWindow = window;
         if (e.Args.Contains("--background", StringComparer.OrdinalIgnoreCase))

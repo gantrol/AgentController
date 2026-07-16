@@ -190,7 +190,10 @@ public sealed class BridgeFeedbackPresenter :
         }
         catch
         {
-            var text = $"状态已更新（{bridgeEvent.Key.Value}）";
+            // Locale-neutral last-resort text. The active formatter normally
+            // supplies localized fallback content; this path is only for a
+            // formatter bug and must not leak one language into another.
+            var text = $"Agent Controller · {bridgeEvent.Key.Value}";
             return new BridgeFeedbackContent(text, text);
         }
     }

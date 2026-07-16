@@ -3,6 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:loc="clr-namespace:CodexController.Localization"
+        xmlns:views="clr-namespace:CodexController.Views"
         mc:Ignorable="d"
         Title="Agent Controller"
         Width="1220"
@@ -44,10 +46,11 @@
                            RenderOptions.BitmapScalingMode="HighQuality" />
                     <StackPanel Margin="8,0,0,0"
                                 VerticalAlignment="Center">
-                        <TextBlock Text="Agent Controller"
+                        <TextBlock Text="{loc:Loc app.title}"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <TextBlock Text="8BitDo → Codex"
+                        <TextBlock x:Name="AppSubtitleText"
+                                   Text="Game Controller → Codex"
                                    Foreground="{StaticResource FaintBrush}"
                                    FontSize="{StaticResource Font.Size.Caption}" />
                     </StackPanel>
@@ -61,17 +64,17 @@
                                  GroupName="PrimaryNavigation"
                                  IsChecked="True"
                                  Style="{StaticResource Nav.Segment}"
-                                 Content="设备"
+                                 Content="{loc:Loc nav.device}"
                                  Click="DeviceNavButton_Click" />
                     <RadioButton x:Name="ConfigNavButton"
                                  GroupName="PrimaryNavigation"
                                  Style="{StaticResource Nav.Segment}"
-                                 Content="配置"
+                                 Content="{loc:Loc nav.configuration}"
                                  Click="ConfigNavButton_Click" />
                     <RadioButton x:Name="SettingsNavButton"
                                  GroupName="PrimaryNavigation"
                                  Style="{StaticResource Nav.Segment}"
-                                 Content="设置"
+                                 Content="{loc:Loc nav.settings}"
                                  Click="SettingsNavButton_Click" />
                 </StackPanel>
 
@@ -85,13 +88,13 @@
                              Fill="{StaticResource FaintBrush}"
                              Margin="0,0,7,0" />
                     <TextBlock x:Name="ControllerStatusText"
-                               Text="等待手柄"
+                               Text="{loc:Loc device.waiting}"
                                Foreground="{StaticResource MutedBrush}"
                                FontSize="{StaticResource Font.Size.Label}"
                                VerticalAlignment="Center"
                                Margin="0,0,15,0" />
                     <CheckBox x:Name="BridgeEnabledCheckBox"
-                              Content="启用桥接"
+                              Content="{loc:Loc device.enable-bridge}"
                               IsChecked="True"
                               Checked="BridgeEnabledCheckBox_Changed"
                               Unchecked="BridgeEnabledCheckBox_Changed" />
@@ -125,11 +128,11 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="GAMEPAD BRIDGE"
+                                    <TextBlock Text="{loc:Loc device.gamepad-bridge}"
                                                Foreground="{StaticResource Brush.Text.Secondary}"
                                                FontSize="{StaticResource Font.Size.Caption}"
                                                FontWeight="SemiBold" />
-                                    <TextBlock Text="实时输入"
+                                    <TextBlock Text="{loc:Loc device.live-input}"
                                                Margin="0,3,0,0"
                                                FontSize="{StaticResource Font.Size.Display}"
                                                FontWeight="SemiBold" />
@@ -161,9 +164,49 @@
                                     <Canvas Width="600"
                                             Height="380"
                                             IsHitTestVisible="False">
+                                        <Border x:Name="LeftTriggerHalo"
+                                                Canvas.Left="171"
+                                                Canvas.Top="58"
+                                                Width="54"
+                                                Height="34"
+                                                Background="{StaticResource Brush.Accent.Halo}"
+                                                BorderBrush="{StaticResource Brush.Accent}"
+                                                BorderThickness="2"
+                                                CornerRadius="17"
+                                                Opacity="0" />
+                                        <Border x:Name="LeftShoulderHalo"
+                                                Canvas.Left="176"
+                                                Canvas.Top="82"
+                                                Width="100"
+                                                Height="25"
+                                                Background="{StaticResource Brush.Accent.Halo}"
+                                                BorderBrush="{StaticResource Brush.Accent}"
+                                                BorderThickness="2"
+                                                CornerRadius="12"
+                                                Opacity="0" />
+                                        <Border x:Name="RightShoulderHalo"
+                                                Canvas.Left="324"
+                                                Canvas.Top="82"
+                                                Width="100"
+                                                Height="25"
+                                                Background="{StaticResource Brush.Accent.Halo}"
+                                                BorderBrush="{StaticResource Brush.Accent}"
+                                                BorderThickness="2"
+                                                CornerRadius="12"
+                                                Opacity="0" />
+                                        <Border x:Name="RightTriggerHalo"
+                                                Canvas.Left="375"
+                                                Canvas.Top="58"
+                                                Width="54"
+                                                Height="34"
+                                                Background="{StaticResource Brush.Accent.Halo}"
+                                                BorderBrush="{StaticResource Brush.Accent}"
+                                                BorderThickness="2"
+                                                CornerRadius="17"
+                                                Opacity="0" />
                                         <Ellipse x:Name="LeftStickHalo"
-                                                 Canvas.Left="211"
-                                                 Canvas.Top="60"
+                                                 Canvas.Left="178"
+                                                 Canvas.Top="138"
                                                  Width="46"
                                                  Height="46"
                                                  Stroke="{StaticResource SageBrush}"
@@ -174,8 +217,8 @@
                                             </Ellipse.RenderTransform>
                                         </Ellipse>
                                         <Ellipse x:Name="RightStickHalo"
-                                                 Canvas.Left="341"
-                                                 Canvas.Top="106"
+                                                 Canvas.Left="326"
+                                                 Canvas.Top="196"
                                                  Width="46"
                                                  Height="46"
                                                  Stroke="{StaticResource SageBrush}"
@@ -186,8 +229,8 @@
                                             </Ellipse.RenderTransform>
                                         </Ellipse>
                                         <Ellipse x:Name="ButtonAHalo"
-                                                 Canvas.Left="405"
-                                                 Canvas.Top="117"
+                                                 Canvas.Left="384"
+                                                 Canvas.Top="172"
                                                  Width="28"
                                                  Height="28"
                                                  Fill="{StaticResource Brush.Accent.Halo}"
@@ -195,8 +238,8 @@
                                                  StrokeThickness="2"
                                                  Opacity="0" />
                                         <Ellipse x:Name="ButtonXHalo"
-                                                 Canvas.Left="385"
-                                                 Canvas.Top="99"
+                                                 Canvas.Left="359"
+                                                 Canvas.Top="146"
                                                  Width="28"
                                                  Height="28"
                                                  Fill="{StaticResource Brush.Accent.Halo}"
@@ -204,8 +247,8 @@
                                                  StrokeThickness="2"
                                                  Opacity="0" />
                                         <Ellipse x:Name="ButtonBHalo"
-                                                 Canvas.Left="437"
-                                                 Canvas.Top="111"
+                                                 Canvas.Left="411"
+                                                 Canvas.Top="146"
                                                  Width="28"
                                                  Height="28"
                                                  Fill="{StaticResource Brush.Status.Danger.Halo}"
@@ -213,8 +256,8 @@
                                                  StrokeThickness="2"
                                                  Opacity="0" />
                                         <Ellipse x:Name="ButtonYHalo"
-                                                 Canvas.Left="414"
-                                                 Canvas.Top="82"
+                                                 Canvas.Left="385"
+                                                 Canvas.Top="120"
                                                  Width="28"
                                                  Height="28"
                                                  Fill="{StaticResource Brush.Accent.Halo}"
@@ -222,14 +265,62 @@
                                                  StrokeThickness="2"
                                                  Opacity="0" />
                                         <Ellipse x:Name="MenuButtonHalo"
-                                                 Canvas.Left="356"
-                                                 Canvas.Top="91"
+                                                 Canvas.Left="316"
+                                                 Canvas.Top="150"
                                                  Width="24"
                                                  Height="24"
                                                  Fill="{StaticResource Brush.Accent.Halo}"
                                                  Stroke="{StaticResource Brush.Accent}"
                                                  StrokeThickness="2"
                                                  Opacity="0" />
+                                        <Border Canvas.Left="158"
+                                                Canvas.Top="46"
+                                                Padding="6,2"
+                                                Background="{StaticResource Brush.Bg.Inverse}"
+                                                CornerRadius="8">
+                                            <TextBlock x:Name="LeftTriggerGlyphText"
+                                                       Text="LT"
+                                                       Foreground="{StaticResource Brush.Text.Inverse}"
+                                                       FontFamily="{StaticResource Font.Mono}"
+                                                       FontSize="{StaticResource Font.Size.Caption}"
+                                                       FontWeight="Bold" />
+                                        </Border>
+                                        <Border Canvas.Left="238"
+                                                Canvas.Top="72"
+                                                Padding="6,2"
+                                                Background="{StaticResource Brush.Bg.Inverse}"
+                                                CornerRadius="8">
+                                            <TextBlock x:Name="LeftShoulderGlyphText"
+                                                       Text="LB"
+                                                       Foreground="{StaticResource Brush.Text.Inverse}"
+                                                       FontFamily="{StaticResource Font.Mono}"
+                                                       FontSize="{StaticResource Font.Size.Caption}"
+                                                       FontWeight="Bold" />
+                                        </Border>
+                                        <Border Canvas.Left="338"
+                                                Canvas.Top="72"
+                                                Padding="6,2"
+                                                Background="{StaticResource Brush.Bg.Inverse}"
+                                                CornerRadius="8">
+                                            <TextBlock x:Name="RightShoulderGlyphText"
+                                                       Text="RB"
+                                                       Foreground="{StaticResource Brush.Text.Inverse}"
+                                                       FontFamily="{StaticResource Font.Mono}"
+                                                       FontSize="{StaticResource Font.Size.Caption}"
+                                                       FontWeight="Bold" />
+                                        </Border>
+                                        <Border Canvas.Left="414"
+                                                Canvas.Top="46"
+                                                Padding="6,2"
+                                                Background="{StaticResource Brush.Bg.Inverse}"
+                                                CornerRadius="8">
+                                            <TextBlock x:Name="RightTriggerGlyphText"
+                                                       Text="RT"
+                                                       Foreground="{StaticResource Brush.Text.Inverse}"
+                                                       FontFamily="{StaticResource Font.Mono}"
+                                                       FontSize="{StaticResource Font.Size.Caption}"
+                                                       FontWeight="Bold" />
+                                        </Border>
                                     </Canvas>
                                 </Grid>
                             </Viewbox>
@@ -240,19 +331,21 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="左摇杆"
+                                    <TextBlock Text="{loc:Loc control.left-stick}"
                                                FontSize="{StaticResource Font.Size.Label}"
                                                FontWeight="SemiBold" />
-                                    <TextBlock Text="↑↓ 移动焦点 · → 进入 / 打开 · ← 返回 · L3 切根区域"
+                                    <TextBlock x:Name="LeftStickHintText"
+                                               Text="{loc:Loc control.left-stick-hint, Arg0=LS}"
                                                Margin="0,4,0,0"
                                                Foreground="{StaticResource MutedBrush}"
                                                FontSize="{StaticResource Font.Size.Caption}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="右摇杆"
+                                    <TextBlock Text="{loc:Loc control.right-stick}"
                                                FontSize="{StaticResource Font.Size.Label}"
                                                FontWeight="SemiBold" />
-                                    <TextBlock Text="↑↓ 调节 · ←→ / R3 切换思考 / 模型 / 速度"
+                                    <TextBlock x:Name="RightStickHintText"
+                                               Text="{loc:Loc control.right-stick-hint, Arg0=RS}"
                                                Margin="0,4,0,0"
                                                Foreground="{StaticResource MutedBrush}"
                                                FontSize="{StaticResource Font.Size.Caption}" />
@@ -273,15 +366,17 @@
                                 Style="{StaticResource Card.Dense}"
                                 Margin="0,0,5,0">
                             <StackPanel>
-                                <TextBlock Text="A"
+                                <TextBlock x:Name="VoiceGlyphText"
+                                           Text="A"
                                            Foreground="{StaticResource Brush.Text.Accent}"
                                            FontSize="{StaticResource Font.Size.TitleLg}"
                                            FontWeight="Bold" />
-                                <TextBlock Text="按住说话"
+                                <TextBlock x:Name="VoiceActionTitle"
+                                           Text="{loc:Loc control.hold-to-talk, Arg0=A}"
                                            Margin="0,4,0,0"
                                            FontSize="{StaticResource Font.Size.Body}"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="松开结束语音识别"
+                                <TextBlock Text="{loc:Loc control.hold-to-talk-description}"
                                            Margin="0,3,0,0"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}"
@@ -292,14 +387,16 @@
                                 Style="{StaticResource Card.Dense}"
                                 Margin="3,0">
                             <StackPanel>
-                                <TextBlock Text="X"
+                                <TextBlock x:Name="SendGlyphText"
+                                           Text="X"
                                            FontSize="{StaticResource Font.Size.TitleLg}"
                                            FontWeight="Bold" />
-                                <TextBlock Text="发送"
+                                <TextBlock x:Name="SendActionTitle"
+                                           Text="{loc:Loc control.send, Arg0=X}"
                                            Margin="0,4,0,0"
                                            FontSize="{StaticResource Font.Size.Body}"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="提交当前提示词"
+                                <TextBlock Text="{loc:Loc control.send-description}"
                                            Margin="0,3,0,0"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}"
@@ -310,15 +407,17 @@
                                 Style="{StaticResource Card.Dense}"
                                 Margin="3,0">
                             <StackPanel>
-                                <TextBlock Text="B"
+                                <TextBlock x:Name="CancelGlyphText"
+                                           Text="B"
                                            Foreground="{StaticResource Brush.Status.Danger}"
                                            FontSize="{StaticResource Font.Size.TitleLg}"
                                            FontWeight="Bold" />
-                                <TextBlock Text="取消 / 撤回"
+                                <TextBlock x:Name="CancelActionTitle"
+                                           Text="{loc:Loc control.cancel-undo, Arg0=B}"
                                            Margin="0,4,0,0"
                                            FontSize="{StaticResource Font.Size.Body}"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="取消操作；打开后短时返回"
+                                <TextBlock Text="{loc:Loc control.cancel-undo-description}"
                                            Margin="0,3,0,0"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}"
@@ -329,15 +428,17 @@
                                 Style="{StaticResource Card.Dense}"
                                 Margin="3,0">
                             <StackPanel>
-                                <TextBlock Text="Y"
+                                <TextBlock x:Name="ProjectGlyphText"
+                                           Text="Y"
                                            Foreground="{StaticResource Brush.Text.Accent}"
                                            FontSize="{StaticResource Font.Size.TitleLg}"
                                            FontWeight="Bold" />
-                                <TextBlock Text="项目上下文"
+                                <TextBlock x:Name="ProjectActionTitle"
+                                           Text="{loc:Loc control.project-context, Arg0=Y}"
                                            Margin="0,4,0,0"
                                            FontSize="{StaticResource Font.Size.Body}"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="进入所属项目；项目内筛置顶"
+                                <TextBlock Text="{loc:Loc control.project-context-description}"
                                            Margin="0,3,0,0"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}"
@@ -348,15 +449,18 @@
                                 Style="{StaticResource Card.Dense}"
                                 Margin="5,0,0,0">
                             <StackPanel>
-                                <TextBlock Text="MENU"
+                                <TextBlock x:Name="WakeGlyphText"
+                                           Text="MENU"
                                            Foreground="{StaticResource Brush.Text.Accent}"
                                            FontSize="{StaticResource Font.Size.Title}"
                                            FontWeight="Bold" />
-                                <TextBlock Text="唤醒 Codex"
+                                <TextBlock x:Name="WakeActionTitle"
+                                           Text="{loc:Loc control.wake-agent, Arg0=MENU, Arg1=Codex}"
                                            Margin="0,4,0,0"
                                            FontSize="{StaticResource Font.Size.Body}"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="置于前台并解锁手柄控制"
+                                <TextBlock x:Name="WakeActionDescription"
+                                           Text="{loc:Loc control.wake-agent-description, Arg0=Codex}"
                                            Margin="0,3,0,0"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}"
@@ -381,11 +485,11 @@
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <Grid>
-                                <TextBlock Text="右摇杆调节"
+                                <TextBlock Text="{loc:Loc composer.right-stick-adjustment}"
                                            FontSize="{StaticResource Font.Size.BodyLg}"
                                            FontWeight="SemiBold" />
                                 <TextBlock x:Name="CodexForegroundText"
-                                           Text="Codex 未在前台"
+                                           Text="{loc:Loc composer.agent-not-foreground, Arg0=Codex}"
                                            HorizontalAlignment="Right"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}" />
@@ -402,21 +506,21 @@
                                              IsChecked="True"
                                              IsHitTestVisible="False"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="思考强度"
+                                             Content="{loc:Loc term.reasoning-effort}"
                                              Margin="0,0,3,0" />
                                 <RadioButton x:Name="ModelModeTab"
                                              Grid.Column="1"
                                              GroupName="ComposerMode"
                                              IsHitTestVisible="False"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="模型"
+                                             Content="{loc:Loc term.model}"
                                              Margin="2,0" />
                                 <RadioButton x:Name="SpeedModeTab"
                                              Grid.Column="2"
                                              GroupName="ComposerMode"
                                              IsHitTestVisible="False"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="速度"
+                                             Content="{loc:Loc term.speed}"
                                              Margin="3,0,0,0" />
                             </Grid>
                             <Border Grid.Row="2"
@@ -438,7 +542,7 @@
                                     <StackPanel Grid.Column="1"
                                                 HorizontalAlignment="Center">
                                         <TextBlock x:Name="RightModeLabel"
-                                                   Text="思考强度"
+                                                   Text="{loc:Loc term.reasoning-effort}"
                                                    HorizontalAlignment="Center"
                                                    Foreground="{StaticResource Brush.Text.Secondary}"
                                                    FontSize="{StaticResource Font.Size.Caption}" />
@@ -471,11 +575,12 @@
                             </Grid.RowDefinitions>
                             <Grid>
                                 <StackPanel>
-                                    <TextBlock Text="Codex 侧边栏"
+                                    <TextBlock x:Name="SidebarTitleText"
+                                               Text="{loc:Loc sidebar.agent, Arg0=Codex}"
                                                FontSize="{StaticResource Font.Size.BodyLg}"
                                                FontWeight="SemiBold" />
                                     <TextBlock x:Name="SelectedProjectText"
-                                               Text="当前项目"
+                                               Text="{loc:Loc sidebar.current-project}"
                                                Margin="0,3,0,0"
                                                Foreground="{StaticResource Brush.Text.Secondary}"
                                                FontSize="{StaticResource Font.Size.Caption}" />
@@ -484,7 +589,7 @@
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Height="28"
                                         Padding="9,0"
-                                        Content="刷新"
+                                        Content="{loc:Loc sidebar.refresh}"
                                         Click="RefreshDataButton_Click" />
                             </Grid>
                             <Grid Grid.Row="1" Margin="0,12,0,8">
@@ -498,26 +603,26 @@
                                              Grid.Column="0"
                                              GroupName="SidebarRoot"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="置顶任务"
+                                             Content="{loc:Loc sidebar.pinned-tasks}"
                                              Click="PinnedLayerButton_Click" />
                                 <RadioButton x:Name="PinnedProjectsLayerButton"
                                              Grid.Column="1"
                                              GroupName="SidebarRoot"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="置顶项目"
+                                             Content="{loc:Loc sidebar.pinned-projects}"
                                              Click="PinnedProjectsLayerButton_Click" />
                                 <RadioButton x:Name="ProjectsLayerButton"
                                              Grid.Column="2"
                                              GroupName="SidebarRoot"
                                              IsChecked="True"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="项目"
+                                             Content="{loc:Loc sidebar.projects}"
                                              Click="ProjectsLayerButton_Click" />
                                 <RadioButton x:Name="TasksLayerButton"
                                              Grid.Column="3"
                                              GroupName="SidebarRoot"
                                              Style="{StaticResource Tab.Segment}"
-                                             Content="未归项目"
+                                             Content="{loc:Loc sidebar.projectless-tasks}"
                                              Click="TasksLayerButton_Click" />
                             </Grid>
                             <ListBox x:Name="SidebarList"
@@ -577,7 +682,7 @@
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <Grid>
-                                <TextBlock Text="最近事件"
+                                <TextBlock Text="{loc:Loc sidebar.recent-events}"
                                            FontSize="{StaticResource Font.Size.Body}"
                                            FontWeight="SemiBold" />
                                 <Ellipse x:Name="EventPulse"
@@ -614,349 +719,11 @@
                 </Grid>
             </Grid>
 
-            <ScrollViewer x:Name="ConfigPage"
-                          Visibility="Collapsed"
-                          VerticalScrollBarVisibility="Auto">
-                <StackPanel MaxWidth="1060">
-                    <StackPanel Margin="0,4,0,18">
-                        <TextBlock Text="配置"
-                                   FontSize="{StaticResource Font.Size.Hero}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock Text="手柄方向固定，Codex 命令可按版本和个人习惯调整。"
-                                   Margin="0,5,0,0"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Label}" />
-                    </StackPanel>
+            <views:ConfigPageView x:Name="ConfigPage"
+                                  Visibility="Collapsed" />
 
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0"
-                                Style="{StaticResource CardStyle}"
-                                Margin="0,0,8,0">
-                            <StackPanel>
-                                <TextBlock Text="左摇杆 · Codex 侧边栏"
-                                           FontSize="{StaticResource Font.Size.Title}"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="↑↓"
-                                           Margin="0,20,0,0"
-                                           Foreground="{StaticResource SageBrush}"
-                                           FontSize="{StaticResource Font.Size.TitleLg}"
-                                           FontWeight="Bold" />
-                                <TextBlock Text="选择当前层级条目，并同步 Codex 原生侧边栏焦点"
-                                           Margin="0,4,0,0"
-                                           FontSize="{StaticResource Font.Size.Label}" />
-                                <Separator Margin="0,16" Background="{StaticResource LineBrush}" />
-                                <TextBlock Text="→ / ←"
-                                           Foreground="{StaticResource SageBrush}"
-                                           FontSize="{StaticResource Font.Size.TitleLg}"
-                                           FontWeight="Bold" />
-                                <TextBlock Text="→ 进入项目任务或打开任务；← 返回根区域"
-                                           Margin="0,4,0,0"
-                                           FontSize="{StaticResource Font.Size.Label}" />
-                                <Separator Margin="0,16" Background="{StaticResource LineBrush}" />
-                                <TextBlock Text="L3 / Y"
-                                           Foreground="{StaticResource SageBrush}"
-                                           FontSize="{StaticResource Font.Size.TitleLg}"
-                                           FontWeight="Bold" />
-                                <TextBlock Text="L3 循环四个根区域；Y 进入所属项目，项目内切换全部 / 仅置顶"
-                                           Margin="0,4,0,0"
-                                           FontSize="{StaticResource Font.Size.Label}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="上下移动只同步 Codex 侧边栏焦点，不会自动打开对话。置顶项目和折叠状态互相独立；进入普通子任务时才按需展开项目，退出时只恢复由本程序展开的层级。"
-                                           Margin="0,18,0,0"
-                                           Foreground="{StaticResource Brush.Text.Secondary}"
-                                           FontSize="{StaticResource Font.Size.Label}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="1"
-                                Style="{StaticResource CardStyle}"
-                                Margin="8,0,0,0">
-                            <StackPanel>
-                                <TextBlock Text="右摇杆 · 撰写参数"
-                                           FontSize="{StaticResource Font.Size.Title}"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="↑↓"
-                                           Margin="0,20,0,0"
-                                           Foreground="{StaticResource SageBrush}"
-                                           FontSize="{StaticResource Font.Size.TitleLg}"
-                                           FontWeight="Bold" />
-                                <TextBlock Text="提高 / 降低当前值"
-                                           Margin="0,4,0,0"
-                                           FontSize="{StaticResource Font.Size.Label}" />
-                                <Separator Margin="0,16" Background="{StaticResource LineBrush}" />
-                                <TextBlock Text="←→ / R3"
-                                           Foreground="{StaticResource SageBrush}"
-                                           FontSize="{StaticResource Font.Size.TitleLg}"
-                                           FontWeight="Bold" />
-                                <TextBlock Text="思考强度 ↔ 模型 ↔ 速度；回中后再切一次"
-                                           Margin="0,4,0,0"
-                                           FontSize="{StaticResource Font.Size.Label}" />
-                                <TextBlock Text="↑↓ 只更新预选，停稳后通过 Codex 原生菜单精确选择；快捷键仅作降级。"
-                                           Margin="0,18,0,0"
-                                           Foreground="{StaticResource Brush.Text.Secondary}"
-                                           FontSize="{StaticResource Font.Size.Label}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="250" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,24,0">
-                                <TextBlock Text="Codex 快捷键"
-                                           FontSize="{StaticResource Font.Size.Title}"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="程序会安全追加 F17、F18、F20、F22 作为降级绑定；新绑定在 Codex 重启后生效。"
-                                           Margin="0,7,0,0"
-                                           Foreground="{StaticResource MutedBrush}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           TextWrapping="Wrap" />
-                                <Button Style="{StaticResource SecondaryButtonStyle}"
-                                        Margin="0,16,0,0"
-                                        HorizontalAlignment="Left"
-                                        Content="打开 Codex 快捷键"
-                                        Click="OpenCodexShortcutsButton_Click" />
-                            </StackPanel>
-
-                            <Grid Grid.Column="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="14" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="12" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="12" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <StackPanel Grid.Row="0" Grid.Column="0">
-                                    <TextBlock Text="降低思考强度" FontSize="{StaticResource Font.Size.Label}" Foreground="{StaticResource MutedBrush}" />
-                                    <TextBox x:Name="ReasoningDownTextBox" Margin="0,5,0,0" Text="F17" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="0" Grid.Column="2">
-                                    <TextBlock Text="提高思考强度" FontSize="{StaticResource Font.Size.Label}" Foreground="{StaticResource MutedBrush}" />
-                                    <TextBox x:Name="ReasoningUpTextBox" Margin="0,5,0,0" Text="F18" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="2" Grid.Column="0">
-                                    <TextBlock Text="切换 Fast" FontSize="{StaticResource Font.Size.Label}" Foreground="{StaticResource MutedBrush}" />
-                                    <TextBox x:Name="FastToggleTextBox" Margin="0,5,0,0" Text="F20" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="2" Grid.Column="2">
-                                    <TextBlock Text="发送提示词" FontSize="{StaticResource Font.Size.Label}" Foreground="{StaticResource MutedBrush}" />
-                                    <TextBox x:Name="SubmitTextBox" Margin="0,5,0,0" Text="F22" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="4" Grid.Column="0">
-                                    <TextBlock Text="语音识别" FontSize="{StaticResource Font.Size.Label}" Foreground="{StaticResource MutedBrush}" />
-                                    <TextBox x:Name="DictationTextBox" Margin="0,5,0,0" Text="Ctrl+Shift+D" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="4" Grid.Column="2">
-                                    <TextBlock Text="模型选择器" FontSize="{StaticResource Font.Size.Label}" Foreground="{StaticResource MutedBrush}" />
-                                    <TextBox x:Name="ModelPickerTextBox" Margin="0,5,0,0" Text="Ctrl+Shift+M" />
-                                </StackPanel>
-                            </Grid>
-                        </Grid>
-                    </Border>
-
-                    <StackPanel Orientation="Horizontal"
-                                HorizontalAlignment="Right"
-                                Margin="0,16,0,8">
-                        <Button Style="{StaticResource SecondaryButtonStyle}"
-                                Content="恢复推荐值"
-                                Margin="0,0,8,0"
-                                Click="ResetBindingsButton_Click" />
-                        <Button Style="{StaticResource PrimaryButtonStyle}"
-                                Content="保存配置"
-                                Click="SaveBindingsButton_Click" />
-                    </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
-
-            <ScrollViewer x:Name="SettingsPage"
-                          Visibility="Collapsed"
-                          VerticalScrollBarVisibility="Auto">
-                <StackPanel MaxWidth="900">
-                    <StackPanel Margin="0,4,0,18">
-                        <TextBlock Text="设置"
-                                   FontSize="{StaticResource Font.Size.Hero}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock Text="控制桥接生效范围、摇杆手感和后台运行方式。"
-                                   Margin="0,5,0,0"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Label}" />
-                    </StackPanel>
-
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="行为"
-                                       FontSize="{StaticResource Font.Size.Title}"
-                                       FontWeight="SemiBold" />
-                            <CheckBox x:Name="OnlyForegroundCheckBox"
-                                      Margin="0,18,0,0"
-                                      Content="仅前台时控制 Codex"
-                                      IsChecked="True" />
-                            <TextBlock Text="推荐保持开启。首次按 Menu 将 Codex 置于前台并解锁；之后离开前台只暂停，回到 Codex 且手柄回中后自动恢复。手柄休眠重连同样会恢复。"
-                                       Margin="22,4,0,0"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       TextWrapping="Wrap" />
-                            <CheckBox x:Name="HapticFeedbackCheckBox"
-                                      Margin="0,14,0,0"
-                                      Content="操作成功时提供轻微震动"
-                                      IsChecked="True" />
-                            <CheckBox x:Name="ShowOverlayCheckBox"
-                                      Margin="0,14,0,0"
-                                      Content="在屏幕中下方显示短暂状态浮层"
-                                      IsChecked="True" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="260" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,24,0">
-                                <TextBlock Text="摇杆"
-                                           FontSize="{StaticResource Font.Size.Title}"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="当前采用主方向锁定，斜推不会同时触发横纵动作。"
-                                           Margin="0,6,0,0"
-                                           Foreground="{StaticResource Brush.Text.Secondary}"
-                                           FontSize="{StaticResource Font.Size.Label}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="45" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="死区"
-                                               VerticalAlignment="Center"
-                                               FontSize="{StaticResource Font.Size.Label}" />
-                                    <Slider x:Name="DeadZoneSlider"
-                                            Grid.Column="1"
-                                            Minimum="0.35"
-                                            Maximum="0.80"
-                                            TickFrequency="0.01"
-                                            Value="0.58"
-                                            ValueChanged="DeadZoneSlider_ValueChanged" />
-                                    <TextBlock x:Name="DeadZoneValueText"
-                                               Grid.Column="2"
-                                               Text="0.58"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="{StaticResource Font.Size.Caption}" />
-                                </Grid>
-                                <Grid Margin="0,16,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="55" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="首次连发"
-                                               VerticalAlignment="Center"
-                                               FontSize="{StaticResource Font.Size.Label}" />
-                                    <Slider x:Name="RepeatDelaySlider"
-                                            Grid.Column="1"
-                                            Minimum="220"
-                                            Maximum="600"
-                                            TickFrequency="10"
-                                            Value="360"
-                                            ValueChanged="RepeatDelaySlider_ValueChanged" />
-                                    <TextBlock x:Name="RepeatDelayValueText"
-                                               Grid.Column="2"
-                                               Text="360 ms"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="{StaticResource Font.Size.Caption}" />
-                                </Grid>
-                                <Grid Margin="0,16,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="55" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="连发间隔"
-                                               VerticalAlignment="Center"
-                                               FontSize="{StaticResource Font.Size.Label}" />
-                                    <Slider x:Name="RepeatIntervalSlider"
-                                            Grid.Column="1"
-                                            Minimum="140"
-                                            Maximum="300"
-                                            TickFrequency="5"
-                                            Value="220"
-                                            ValueChanged="RepeatIntervalSlider_ValueChanged" />
-                                    <TextBlock x:Name="RepeatIntervalValueText"
-                                               Grid.Column="2"
-                                               Text="220 ms"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               FontFamily="Consolas"
-                                               FontSize="{StaticResource Font.Size.Caption}" />
-                                </Grid>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="系统"
-                                           FontSize="{StaticResource Font.Size.Title}"
-                                           FontWeight="SemiBold" />
-                                <CheckBox x:Name="StartWithWindowsCheckBox"
-                                          Margin="0,16,0,0"
-                                          Content="登录 Windows 后自动启动" />
-                                <CheckBox x:Name="MinimizeToTrayCheckBox"
-                                          Margin="0,14,0,0"
-                                          Content="关闭窗口时继续在托盘运行"
-                                          IsChecked="True" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Bottom">
-                                <Button Style="{StaticResource SecondaryButtonStyle}"
-                                        Content="打开 Ultimate Software V2"
-                                        Click="OpenUltimateSoftwareButton_Click" />
-                                <Button Style="{StaticResource SecondaryButtonStyle}"
-                                        Margin="0,8,0,0"
-                                        Content="打开 Codex 设置"
-                                        Click="OpenCodexSettingsButton_Click" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <StackPanel Orientation="Horizontal"
-                                HorizontalAlignment="Right"
-                                Margin="0,16,0,8">
-                        <Button Style="{StaticResource PrimaryButtonStyle}"
-                                Content="保存设置"
-                                Click="SaveSettingsButton_Click" />
-                    </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
+            <views:SettingsPageView x:Name="SettingsPage"
+                                    Visibility="Collapsed" />
         </Grid>
 
         <Border Grid.Row="2"
@@ -972,12 +739,12 @@
                              Fill="{StaticResource SageBrush}"
                              Margin="0,0,8,0" />
                     <TextBlock x:Name="FooterStatusText"
-                               Text="正在加载 Codex 数据…"
+                               Text="{loc:Loc status.loading-agent-data, Arg0=Codex}"
                                Foreground="{StaticResource MutedBrush}"
                                FontSize="{StaticResource Font.Size.Caption}" />
                 </StackPanel>
                 <TextBlock x:Name="FooterVersionText"
-                           Text="v0.3 · 本机桥接"
+                           Text="v0.3"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource Brush.Text.Secondary}"

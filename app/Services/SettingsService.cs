@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using CodexController.Localization;
 using CodexController.Models;
 
 namespace CodexController.Services;
@@ -15,7 +16,8 @@ public sealed class SettingsService
     private const int MinimumRepeatIntervalMs = 140;
     private const int MaximumRepeatIntervalMs = 300;
 
-    private readonly StartupRegistrationService _startupRegistration;
+    private readonly string _legacySettingsPath;
+    private readonly Action<bool> _updateStartupRegistration;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -28,21 +30,42 @@ public sealed class SettingsService
 
     public SettingsService(
         StartupRegistrationService startupRegistration)
+        : this(
+            DefaultSettingsDirectory,
+            DefaultLegacySettingsPath,
+            (startupRegistration ??
+                throw new ArgumentNullException(
+                    nameof(startupRegistration))).Update)
     {
-        _startupRegistration = startupRegistration
-            ?? throw new ArgumentNullException(nameof(startupRegistration));
     }
 
-    public string SettingsDirectory { get; } = Path.Combine(
+    public SettingsService(
+        string settingsDirectory,
+        string legacySettingsPath,
+        Action<bool> updateStartupRegistration)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(settingsDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(legacySettingsPath);
+
+        SettingsDirectory = Path.GetFullPath(settingsDirectory);
+        _legacySettingsPath = Path.GetFullPath(legacySettingsPath);
+        _updateStartupRegistration = updateStartupRegistration
+            ?? throw new ArgumentNullException(
+                nameof(updateStartupRegistration));
+    }
+
+    private static string DefaultSettingsDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AgentController");
 
-    public string SettingsPath => Path.Combine(SettingsDirectory, "settings.json");
-
-    private string LegacySettingsPath => Path.Combine(
+    private static string DefaultLegacySettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "CodexController",
         "settings.json");
+
+    public string SettingsDirectory { get; }
+
+    public string SettingsPath => Path.Combine(SettingsDirectory, "settings.json");
 
     public AppSettings Load()
     {
@@ -50,8 +73,8 @@ public sealed class SettingsService
         {
             var sourcePath = File.Exists(SettingsPath)
                 ? SettingsPath
-                : File.Exists(LegacySettingsPath)
-                    ? LegacySettingsPath
+                : File.Exists(_legacySettingsPath)
+                    ? _legacySettingsPath
                     : null;
             if (sourcePath is null)
             {
@@ -71,11 +94,14 @@ public sealed class SettingsService
     public void Save(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        NormalizeForSave(settings);
+        var normalizedSettings = CreateNormalizedCopy(settings);
         Directory.CreateDirectory(SettingsDirectory);
-        var json = JsonSerializer.Serialize(settings, _jsonOptions);
+        var json = JsonSerializer.Serialize(
+            normalizedSettings,
+            _jsonOptions);
         WriteAtomically(json);
-        _startupRegistration.Update(settings.StartWithWindows);
+        _updateStartupRegistration(
+            normalizedSettings.StartWithWindows);
     }
 
     private static AppSettings NormalizeLoadedSettings(AppSettings? settings)
@@ -91,15 +117,46 @@ public sealed class SettingsService
         return settings;
     }
 
-    private static void NormalizeForSave(AppSettings settings)
+    private static AppSettings CreateNormalizedCopy(
+        AppSettings settings)
     {
-        settings.Version = CurrentVersion;
-        NormalizeValues(settings);
+        var copy = new AppSettings
+        {
+            Version = CurrentVersion,
+            Language = settings.Language,
+            ActiveAgentId = settings.ActiveAgentId,
+            BridgeEnabled = settings.BridgeEnabled,
+            OnlyWhenCodexForeground =
+                settings.OnlyWhenCodexForeground,
+            HapticFeedback = settings.HapticFeedback,
+            ShowOverlay = settings.ShowOverlay,
+            StartWithWindows = settings.StartWithWindows,
+            MinimizeToTray = settings.MinimizeToTray,
+            DeadZone = settings.DeadZone,
+            RepeatDelayMs = settings.RepeatDelayMs,
+            RepeatIntervalMs = settings.RepeatIntervalMs,
+            ReasoningDownShortcut =
+                settings.ReasoningDownShortcut,
+            ReasoningUpShortcut =
+                settings.ReasoningUpShortcut,
+            ModelPickerShortcut =
+                settings.ModelPickerShortcut,
+            FastToggleShortcut =
+                settings.FastToggleShortcut,
+            DictationShortcut = settings.DictationShortcut,
+            SubmitShortcut = settings.SubmitShortcut,
+            CancelShortcut = settings.CancelShortcut,
+        };
+
+        NormalizeValues(copy);
+        return copy;
     }
 
     private static void NormalizeValues(AppSettings settings)
     {
         var defaults = new AppSettings();
+        settings.Language =
+            AppLanguageParser.Parse(settings.Language).ToSettingValue();
         settings.DeadZone =
             double.IsFinite(settings.DeadZone)
                 ? Math.Clamp(
@@ -116,13 +173,40 @@ public sealed class SettingsService
             MinimumRepeatIntervalMs,
             MaximumRepeatIntervalMs);
 
-        settings.ReasoningDownShortcut ??= defaults.ReasoningDownShortcut;
-        settings.ReasoningUpShortcut ??= defaults.ReasoningUpShortcut;
-        settings.ModelPickerShortcut ??= defaults.ModelPickerShortcut;
-        settings.FastToggleShortcut ??= defaults.FastToggleShortcut;
-        settings.DictationShortcut ??= defaults.DictationShortcut;
-        settings.SubmitShortcut ??= defaults.SubmitShortcut;
-        settings.CancelShortcut ??= defaults.CancelShortcut;
+        settings.ReasoningDownShortcut = NormalizeShortcut(
+            settings.ReasoningDownShortcut,
+            defaults.ReasoningDownShortcut);
+        settings.ReasoningUpShortcut = NormalizeShortcut(
+            settings.ReasoningUpShortcut,
+            defaults.ReasoningUpShortcut);
+        settings.ModelPickerShortcut = NormalizeShortcut(
+            settings.ModelPickerShortcut,
+            defaults.ModelPickerShortcut);
+        settings.FastToggleShortcut = NormalizeShortcut(
+            settings.FastToggleShortcut,
+            defaults.FastToggleShortcut);
+        settings.DictationShortcut = NormalizeShortcut(
+            settings.DictationShortcut,
+            defaults.DictationShortcut);
+        settings.SubmitShortcut = NormalizeShortcut(
+            settings.SubmitShortcut,
+            defaults.SubmitShortcut);
+        settings.CancelShortcut = NormalizeShortcut(
+            settings.CancelShortcut,
+            defaults.CancelShortcut);
+        settings.ActiveAgentId =
+            string.IsNullOrWhiteSpace(settings.ActiveAgentId)
+                ? defaults.ActiveAgentId
+                : settings.ActiveAgentId.Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeShortcut(
+        string? shortcut,
+        string fallback)
+    {
+        return string.IsNullOrWhiteSpace(shortcut)
+            ? fallback
+            : shortcut.Trim();
     }
 
     private void WriteAtomically(string json)

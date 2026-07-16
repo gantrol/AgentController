@@ -1,4 +1,8 @@
+using CodexController.Agents;
+using CodexController.Agents.Codex;
+using CodexController.Controllers;
 using CodexController.Core.Bridge;
+using CodexController.Localization;
 
 namespace CodexController.Services;
 
@@ -13,6 +17,10 @@ public sealed class AppServices : IDisposable
 
     private AppServices(
         BridgeEventHub bridgeEvents,
+        LocalizationService localization,
+        ControllerProfileRegistry controllerProfiles,
+        AgentTargetRegistry agentTargets,
+        IAgentTarget activeAgent,
         StartupRegistrationService startupRegistration,
         SettingsService settings,
         CodexDataService codexData,
@@ -26,6 +34,10 @@ public sealed class AppServices : IDisposable
         StickGestureRouter rightStickRouter)
     {
         BridgeEvents = bridgeEvents;
+        Localization = localization;
+        ControllerProfiles = controllerProfiles;
+        AgentTargets = agentTargets;
+        ActiveAgent = activeAgent;
         StartupRegistration = startupRegistration;
         Settings = settings;
         CodexData = codexData;
@@ -40,6 +52,10 @@ public sealed class AppServices : IDisposable
     }
 
     public BridgeEventHub BridgeEvents { get; }
+    public LocalizationService Localization { get; }
+    public ControllerProfileRegistry ControllerProfiles { get; }
+    public AgentTargetRegistry AgentTargets { get; }
+    public IAgentTarget ActiveAgent { get; }
     public StartupRegistrationService StartupRegistration { get; }
     public SettingsService Settings { get; }
     public CodexDataService CodexData { get; }
@@ -55,16 +71,39 @@ public sealed class AppServices : IDisposable
     public static AppServices CreateDefault()
     {
         var startupRegistration = new StartupRegistrationService();
+        var settings = new SettingsService(startupRegistration);
+        var localization = new LocalizationService();
+        var codexData = new CodexDataService(localization);
+        var codexCommand = new CodexCommandService();
+        var codexKeybindings = new CodexKeybindingService();
+        var codexComposer = new CodexComposerService();
+        var codexSidebar = new CodexSidebarService();
+        var controllerProfiles = ControllerProfileRegistry.BuiltIn;
+        var codexAgent = new CodexAgentTarget(
+            codexCommand,
+            codexData,
+            codexSidebar,
+            codexComposer,
+            codexKeybindings);
+        var agentTargets = new AgentTargetRegistry(
+            [codexAgent],
+            CodexAgentTarget.CodexId);
+        var activeAgent = agentTargets.Resolve(
+            settings.Load().ActiveAgentId);
         return new AppServices(
             new BridgeEventHub(),
+            localization,
+            controllerProfiles,
+            agentTargets,
+            activeAgent,
             startupRegistration,
-            new SettingsService(startupRegistration),
-            new CodexDataService(),
-            new CodexCommandService(),
-            new CodexKeybindingService(),
-            new CodexComposerService(),
-            new CodexSidebarService(),
-            new XInputService(),
+            settings,
+            codexData,
+            codexCommand,
+            codexKeybindings,
+            codexComposer,
+            codexSidebar,
+            new XInputService(controllerProfiles),
             new AxisRepeater(),
             new StickGestureRouter(),
             new StickGestureRouter());

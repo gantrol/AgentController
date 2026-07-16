@@ -3,6 +3,8 @@ namespace CodexController.Models;
 public sealed class AppSettings
 {
     public int Version { get; set; } = 1;
+    public string Language { get; set; } = "auto";
+    public string ActiveAgentId { get; set; } = "codex";
     public bool BridgeEnabled { get; set; } = true;
     public bool OnlyWhenCodexForeground { get; set; } = true;
     public bool HapticFeedback { get; set; } = true;

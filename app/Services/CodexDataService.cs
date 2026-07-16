@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using CodexController.Localization;
 using CodexController.Models;
 using Microsoft.Data.Sqlite;
 
@@ -15,9 +16,22 @@ public sealed class CodexDataService
     private readonly string _globalStatePath;
     private readonly string _sessionsPath;
     private readonly string _archivedSessionsPath;
+    private readonly LocalizationService _localization;
+    private readonly Func<DateTimeOffset> _utcNowProvider;
 
     public CodexDataService()
+        : this(new LocalizationService())
     {
+    }
+
+    public CodexDataService(
+        LocalizationService localization,
+        Func<DateTimeOffset>? utcNowProvider = null)
+    {
+        _localization = localization
+            ?? throw new ArgumentNullException(nameof(localization));
+        _utcNowProvider =
+            utcNowProvider ?? (() => DateTimeOffset.UtcNow);
         _codexHome = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".codex");
@@ -102,7 +116,7 @@ public sealed class CodexDataService
 
             threads.Add(new CodexThread(
                 id,
-                "New task",
+                string.Empty,
                 metadata.UpdatedAt ?? DateTimeOffset.MinValue,
                 ProjectPath: null,
                 IsPinned: false,
@@ -231,18 +245,21 @@ public sealed class CodexDataService
         SidebarScope scope,
         string? selectedProjectPath)
     {
+        var strings = _localization.Strings;
         return scope switch
         {
             SidebarScope.PinnedTasks => snapshot.PinnedThreads
                 .Select(thread => new SidebarEntry(
                     thread.Id,
-                    thread.Title,
+                    DisplayTitle(thread),
                     RelativeTime(thread.UpdatedAt),
                     SidebarLayer.Pinned,
                     ThreadId: thread.Id,
                     ProjectPath: thread.ProjectPath,
                     NativeTitle: thread.NativeTitle,
-                    IsPinned: true))
+                    IsPinned: true,
+                    PinBadge: strings.SidebarPinnedBadge,
+                    ActionHint: strings.SidebarOpenAction))
                 .ToList(),
 
             SidebarScope.PinnedProjects => snapshot.Projects
@@ -250,12 +267,15 @@ public sealed class CodexDataService
                 .Select(project => new SidebarEntry(
                     project.Path,
                     project.Name,
-                    $"{project.Threads.Count} 个任务",
+                    strings.SidebarProjectTaskCount(
+                        project.Threads.Count),
                     SidebarLayer.Projects,
                     ProjectPath: project.Path,
                     NativeTitle: project.Name,
                     IsPinned: true,
-                    ProjectIsPinned: true))
+                    ProjectIsPinned: true,
+                    PinBadge: strings.SidebarPinnedBadge,
+                    ActionHint: strings.SidebarEnterAction))
                 .ToList(),
 
             SidebarScope.Projects => snapshot.Projects
@@ -263,11 +283,13 @@ public sealed class CodexDataService
                 .Select(project => new SidebarEntry(
                     project.Path,
                     project.Name,
-                    $"{project.Threads.Count} 个任务",
+                    strings.SidebarProjectTaskCount(
+                        project.Threads.Count),
                     SidebarLayer.Projects,
                     ProjectPath: project.Path,
                     NativeTitle: project.Name,
-                    ProjectIsPinned: false))
+                    ProjectIsPinned: false,
+                    ActionHint: strings.SidebarEnterAction))
                 .ToList(),
 
             SidebarScope.ProjectTasks => BuildProjectTaskEntries(
@@ -277,20 +299,21 @@ public sealed class CodexDataService
             SidebarScope.ProjectlessTasks => snapshot.ProjectlessThreads
                 .Select((thread, index) => new SidebarEntry(
                     thread.Id,
-                    thread.Title,
+                    DisplayTitle(thread),
                     RelativeTime(thread.UpdatedAt),
                     SidebarLayer.Tasks,
                     ThreadId: thread.Id,
                     ProjectPath: thread.ProjectPath,
                     NativeTitle: thread.NativeTitle,
-                    NativeListIndex: index))
+                    NativeListIndex: index,
+                    ActionHint: strings.SidebarOpenAction))
                 .ToList(),
 
             _ => [],
         };
     }
 
-    private static IReadOnlyList<SidebarEntry> BuildProjectTaskEntries(
+    private IReadOnlyList<SidebarEntry> BuildProjectTaskEntries(
         CodexSnapshot snapshot,
         string? projectPath)
     {
@@ -311,13 +334,15 @@ public sealed class CodexDataService
                 thread.ProjectPath is not null &&
                 PathComparer.Equals(thread.ProjectPath, projectPath));
         var regular = project.Threads.Where(thread => !thread.IsPinned);
+        var strings = _localization.Strings;
         return pinned
             .Concat(regular)
             .Select(thread => new SidebarEntry(
                 thread.Id,
-                thread.Title,
+                DisplayTitle(thread),
                 thread.IsPinned
-                    ? $"置顶 · {RelativeTime(thread.UpdatedAt)}"
+                    ? strings.SidebarPinnedRelativeTime(
+                        RelativeTime(thread.UpdatedAt))
                     : RelativeTime(thread.UpdatedAt),
                 thread.IsPinned
                     ? SidebarLayer.Pinned
@@ -326,7 +351,11 @@ public sealed class CodexDataService
                 ProjectPath: projectPath,
                 NativeTitle: thread.NativeTitle,
                 IsPinned: thread.IsPinned,
-                ProjectIsPinned: project.IsPinned))
+                ProjectIsPinned: project.IsPinned,
+                PinBadge: thread.IsPinned
+                    ? strings.SidebarPinnedBadge
+                    : string.Empty,
+                ActionHint: strings.SidebarOpenAction))
             .ToList();
     }
 
@@ -880,6 +909,15 @@ public sealed class CodexDataService
     private static string NormalizeTitle(string title)
     {
         var firstLine = NormalizeNativeTitle(title);
+        if (
+            string.IsNullOrWhiteSpace(firstLine) ||
+            firstLine.Equals(
+                "New task",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
         return firstLine.Length > 70 ? $"{firstLine[..67]}…" : firstLine;
     }
 
@@ -892,36 +930,50 @@ public sealed class CodexDataService
             ?.Trim();
         if (string.IsNullOrWhiteSpace(firstLine))
         {
-            return "未命名任务";
+            return string.Empty;
         }
 
         return firstLine;
     }
 
-    private static string RelativeTime(DateTimeOffset updatedAt)
+    private string DisplayTitle(CodexThread thread)
     {
-        var elapsed = DateTimeOffset.UtcNow - updatedAt.ToUniversalTime();
+        return string.IsNullOrWhiteSpace(thread.Title)
+            ? _localization.Strings.SidebarUntitledTask
+            : thread.Title;
+    }
+
+    private string RelativeTime(DateTimeOffset updatedAt)
+    {
+        var elapsed =
+            _utcNowProvider().ToUniversalTime() -
+            updatedAt.ToUniversalTime();
         if (elapsed.TotalMinutes < 1)
         {
-            return "刚刚";
+            return _localization.Strings.SidebarJustNow;
         }
 
         if (elapsed.TotalHours < 1)
         {
-            return $"{Math.Max(1, (int)elapsed.TotalMinutes)} 分钟前";
+            return _localization.Strings.SidebarMinutesAgo(
+                Math.Max(1, (int)elapsed.TotalMinutes));
         }
 
         if (elapsed.TotalDays < 1)
         {
-            return $"{Math.Max(1, (int)elapsed.TotalHours)} 小时前";
+            return _localization.Strings.SidebarHoursAgo(
+                Math.Max(1, (int)elapsed.TotalHours));
         }
 
         if (elapsed.TotalDays < 7)
         {
-            return $"{Math.Max(1, (int)elapsed.TotalDays)} 天前";
+            return _localization.Strings.SidebarDaysAgo(
+                Math.Max(1, (int)elapsed.TotalDays));
         }
 
-        return updatedAt.ToLocalTime().ToString("yyyy-MM-dd");
+        return updatedAt.ToLocalTime().ToString(
+            "d",
+            _localization.Culture);
     }
 
     private sealed record SessionIndexItem(

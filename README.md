@@ -2,7 +2,7 @@
 
 [English](#english) | [简体中文](#简体中文)
 
-![version](https://img.shields.io/badge/version-0.1-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![version](https://img.shields.io/badge/version-0.3-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
 ---
 
@@ -52,7 +52,7 @@ Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controlle
 | X | Send the prompt |
 | B | Cancel / stop; shortly after opening a task, undo the navigation |
 
-Note: the app UI is currently Chinese-only; an English UI is planned.
+The interface can switch between Simplified Chinese, English, or follow the Windows display language.
 
 ### Build from source
 
@@ -68,6 +68,7 @@ Output lands in `app/bin/Release/net9.0-windows10.0.19041.0/` as `AgentControlle
 Going forward this repository only tracks:
 
 - `app/` — the Windows (WPF) application, the single source of truth for behavior;
+- `app.Tests/` — regression tests for controller, localization, navigation, and adapter behavior;
 - `todo.md` — roadmap notes.
 
 ### Credits
@@ -136,6 +137,7 @@ dotnet test app.Tests/AgentController.Tests.csproj -c Release
 本仓库后续仅提交：
 
 - `app/` —— Windows（WPF）应用，行为以它为准；
+- `app.Tests/` —— 手柄、本地化、导航与适配器行为的回归测试；
 - `todo.md` —— 路线图与备忘。
 
 ### 致谢

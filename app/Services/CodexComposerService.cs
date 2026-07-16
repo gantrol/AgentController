@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows.Automation;
+using CodexController.Agents;
 using CodexController.Models;
 using CodexController.Native;
 
@@ -45,7 +46,14 @@ public sealed class ComposerCatalog
 
 public sealed record ComposerAutomationResult(
     bool Succeeded,
-    string? Error = null);
+    string? Error = null,
+    string? ErrorDetail = null)
+{
+    public AgentAutomationError? Failure =>
+        Error is null
+            ? null
+            : new AgentAutomationError(Error, ErrorDetail);
+}
 
 public sealed partial class CodexComposerService
 {
@@ -136,14 +144,18 @@ public sealed partial class CodexComposerService
     {
         if (!settings.BridgeEnabled)
         {
-            return new(false, "桥接处于安全预览");
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
         }
 
         if (
             settings.OnlyWhenCodexForeground &&
             !Win32Input.IsCodexForeground())
         {
-            return new(false, "Codex 未在前台");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
         }
 
         try
@@ -151,7 +163,9 @@ public sealed partial class CodexComposerService
             var context = FindCodexWindow();
             if (context is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             var targets = actionNames
@@ -199,11 +213,15 @@ public sealed partial class CodexComposerService
 
             return new(
                 false,
-                $"找不到 Codex 操作：{string.Join(" / ", actionNames)}");
+                AgentAutomationErrorCodes.ElementNotFound,
+                $"action:{string.Join("|", actionNames)}");
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
     }
 
@@ -226,10 +244,8 @@ public sealed partial class CodexComposerService
                     return result;
                 }
 
-                if (
-                    result.Error is "桥接处于安全预览" or
-                    "Codex 未在前台" or
-                    "找不到 Codex 窗口")
+                if (AgentAutomationErrorCodes.IsImmediateFailure(
+                        result.Error))
                 {
                     return result;
                 }
@@ -246,14 +262,18 @@ public sealed partial class CodexComposerService
     {
         if (!settings.BridgeEnabled)
         {
-            return new(false, "桥接处于安全预览");
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
         }
 
         if (
             settings.OnlyWhenCodexForeground &&
             !Win32Input.IsCodexForeground())
         {
-            return new(false, "Codex 未在前台");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
         }
 
         try
@@ -261,7 +281,9 @@ public sealed partial class CodexComposerService
             var context = FindCodexWindow();
             if (context is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             var namedSubmit = InvokeNamedButton(
@@ -276,7 +298,10 @@ public sealed partial class CodexComposerService
             var editor = FindComposerEditor(context.Value.Window);
             if (editor is null)
             {
-                return new(false, "找不到 Codex 撰写区");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    "composer-editor");
             }
 
             if (
@@ -287,7 +312,9 @@ public sealed partial class CodexComposerService
                 string.IsNullOrWhiteSpace(
                     textPattern.DocumentRange.GetText(-1)))
             {
-                return new(false, "撰写区为空");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ComposerEmpty);
             }
 
             editor.SetFocus();
@@ -296,18 +323,27 @@ public sealed partial class CodexComposerService
                 !Win32Input.IsCodexForeground() &&
                 !Win32Input.FocusCodexAndWait())
             {
-                return new(false, "无法聚焦 Codex");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.FocusRejected,
+                    "composer-editor");
             }
 
             editor.SetFocus();
             Thread.Sleep(25);
             return Win32Input.SendKey(0x0D)
                 ? new(true)
-                : new(false, "发送 Enter 失败");
+                : new(
+                    false,
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    "Enter");
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
     }
 
@@ -315,14 +351,18 @@ public sealed partial class CodexComposerService
     {
         if (!settings.BridgeEnabled)
         {
-            return new(false, "桥接处于安全预览");
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
         }
 
         if (
             settings.OnlyWhenCodexForeground &&
             !Win32Input.IsCodexForeground())
         {
-            return new(false, "Codex 未在前台");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
         }
 
         try
@@ -330,7 +370,9 @@ public sealed partial class CodexComposerService
             var context = FindCodexWindow();
             if (context is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             var namedCancel = InvokeNamedButton(
@@ -349,16 +391,25 @@ public sealed partial class CodexComposerService
             }
             else if (!Win32Input.FocusCodexAndWait())
             {
-                return new(false, "无法聚焦 Codex");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.FocusRejected,
+                    "composer-editor");
             }
 
             return Win32Input.SendKey(0x1B)
                 ? new(true)
-                : new(false, "发送 Escape 失败");
+                : new(
+                    false,
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    "Escape");
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
     }
 
@@ -403,7 +454,8 @@ public sealed partial class CodexComposerService
 
         return new(
             false,
-            $"找不到 Codex 操作：{string.Join(" / ", actionNames)}");
+            AgentAutomationErrorCodes.ElementNotFound,
+            $"action:{string.Join("|", actionNames)}");
     }
 
     private static AutomationElement? FindComposerEditor(
@@ -447,14 +499,18 @@ public sealed partial class CodexComposerService
     {
         if (!settings.BridgeEnabled)
         {
-            return new(false, "桥接处于安全预览");
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
         }
 
         if (
             settings.OnlyWhenCodexForeground &&
             !Win32Input.IsCodexForeground())
         {
-            return new(false, "Codex 未在前台");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
         }
 
         if (
@@ -473,18 +529,26 @@ public sealed partial class CodexComposerService
             var context = FindCodexWindow();
             if (context is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             composerButton = FindComposerButton(context.Value.Window);
             if (composerButton is null)
             {
-                return new(false, "找不到 Codex 撰写栏模型按钮");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    "composer-model-button");
             }
 
             if (!TryExpand(composerButton))
             {
-                return new(false, "Codex 模型按钮不支持展开");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                    "composer-model-button:expand");
             }
 
             var category = CategoryLabel(kind);
@@ -499,7 +563,10 @@ public sealed partial class CodexComposerService
                 cancellationToken);
             if (categoryItem is null || !TryExpand(categoryItem))
             {
-                return new(false, $"找不到 Codex {category} 子菜单");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    $"composer-submenu:{category}");
             }
 
             var option = WaitForBestOption(
@@ -510,7 +577,10 @@ public sealed partial class CodexComposerService
                 cancellationToken);
             if (option is null)
             {
-                return new(false, $"找不到选项 {target}");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    $"composer-option:{target}");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -520,7 +590,10 @@ public sealed partial class CodexComposerService
                     out var invokeObject) ||
                 invokeObject is not InvokePattern invoke)
             {
-                return new(false, $"选项 {target} 不支持选择");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                    $"composer-option:{target}:select");
             }
 
             // Only the final settled choice is invoked; previews never touch Codex.
@@ -529,15 +602,23 @@ public sealed partial class CodexComposerService
         }
         catch (OperationCanceledException)
         {
-            return new(false, "已取消");
+            return new(
+                false,
+                AgentAutomationErrorCodes.OperationCanceled);
         }
         catch (ElementNotAvailableException)
         {
-            return new(false, "Codex 菜单已关闭");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AutomationStale,
+                "composer-menu");
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
         finally
         {

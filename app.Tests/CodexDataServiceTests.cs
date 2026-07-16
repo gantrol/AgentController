@@ -1,3 +1,4 @@
+using CodexController.Localization;
 using CodexController.Models;
 using CodexController.Services;
 using System.Reflection;
@@ -204,6 +205,214 @@ public sealed class CodexDataServiceTests
             fixture.Snapshot,
             SidebarScope.ProjectTasks,
             @"D:\projects\missing"));
+    }
+
+    [Fact]
+    public void BuildEntries_LocalizesPresentationAndRebuildsAfterSwitch()
+    {
+        var now = new DateTimeOffset(
+            2026,
+            1,
+            10,
+            12,
+            0,
+            0,
+            TimeSpan.Zero);
+        var localization = new LocalizationService(AppLanguage.EnUs);
+        var service = new CodexDataService(
+            localization,
+            () => now);
+        const string pinnedPath = @"D:\projects\pinned";
+        const string regularPath = @"D:\projects\regular";
+        var pinnedTask = new CodexThread(
+            "pinned-task",
+            string.Empty,
+            now.AddHours(-2),
+            pinnedPath,
+            IsPinned: true,
+            NativeTitle: "New task");
+        var regularTask = new CodexThread(
+            "regular-task",
+            "Named task",
+            now.AddMinutes(-4),
+            pinnedPath,
+            IsPinned: false,
+            NativeTitle: "Named task");
+        var loneTask = new CodexThread(
+            "lone-task",
+            "Only task",
+            now,
+            regularPath,
+            IsPinned: false,
+            NativeTitle: "Only task");
+        var snapshot = new CodexSnapshot
+        {
+            Threads = [pinnedTask, regularTask, loneTask],
+            PinnedThreads = [pinnedTask],
+            Projects =
+            [
+                new CodexProject(
+                    pinnedPath,
+                    "Pinned project",
+                    IsPinned: true,
+                    Threads: [pinnedTask, regularTask]),
+                new CodexProject(
+                    regularPath,
+                    "Regular project",
+                    IsPinned: false,
+                    Threads: [loneTask]),
+            ],
+        };
+
+        var englishPinnedProject = Assert.Single(
+            service.BuildEntries(
+                snapshot,
+                SidebarScope.PinnedProjects,
+                selectedProjectPath: null));
+        Assert.Equal("2 tasks", englishPinnedProject.Subtitle);
+        Assert.Equal("Pinned", englishPinnedProject.PinBadge);
+        Assert.Equal("Enter", englishPinnedProject.ActionHint);
+
+        var englishRegularProject = Assert.Single(
+            service.BuildEntries(
+                snapshot,
+                SidebarScope.Projects,
+                selectedProjectPath: null));
+        Assert.Equal("1 task", englishRegularProject.Subtitle);
+        Assert.Equal(string.Empty, englishRegularProject.PinBadge);
+        Assert.Equal("Enter", englishRegularProject.ActionHint);
+
+        var englishTasks = service.BuildEntries(
+            snapshot,
+            SidebarScope.ProjectTasks,
+            pinnedPath);
+        Assert.Equal("Untitled task", englishTasks[0].Title);
+        Assert.Equal(
+            "Pinned · 2 hours ago",
+            englishTasks[0].Subtitle);
+        Assert.Equal("Pinned", englishTasks[0].PinBadge);
+        Assert.Equal("Open", englishTasks[0].ActionHint);
+        Assert.Equal(string.Empty, englishTasks[1].PinBadge);
+        Assert.Equal("4 minutes ago", englishTasks[1].Subtitle);
+
+        localization.SetLanguage(AppLanguage.ZhCn);
+
+        var chinesePinnedProject = Assert.Single(
+            service.BuildEntries(
+                snapshot,
+                SidebarScope.PinnedProjects,
+                selectedProjectPath: null));
+        Assert.Equal("2 个任务", chinesePinnedProject.Subtitle);
+        Assert.Equal("置顶", chinesePinnedProject.PinBadge);
+        Assert.Equal("进入", chinesePinnedProject.ActionHint);
+
+        var chineseTasks = service.BuildEntries(
+            snapshot,
+            SidebarScope.ProjectTasks,
+            pinnedPath);
+        Assert.Equal("未命名任务", chineseTasks[0].Title);
+        Assert.Equal(
+            "置顶 · 2 小时前",
+            chineseTasks[0].Subtitle);
+        Assert.Equal("置顶", chineseTasks[0].PinBadge);
+        Assert.Equal("打开", chineseTasks[0].ActionHint);
+        Assert.Equal("4 分钟前", chineseTasks[1].Subtitle);
+    }
+
+    [Fact]
+    public void BuildEntries_LocalizesAllRelativeTimeBuckets()
+    {
+        var now = new DateTimeOffset(
+            2026,
+            1,
+            10,
+            12,
+            0,
+            0,
+            TimeSpan.Zero);
+        var localization = new LocalizationService(AppLanguage.EnUs);
+        var service = new CodexDataService(
+            localization,
+            () => now);
+        var threads = new[]
+        {
+            Thread(
+                "now",
+                projectPath: null,
+                isPinned: false,
+                now.AddSeconds(-30)),
+            Thread(
+                "one-minute",
+                projectPath: null,
+                isPinned: false,
+                now.AddMinutes(-1)),
+            Thread(
+                "minutes",
+                projectPath: null,
+                isPinned: false,
+                now.AddMinutes(-5)),
+            Thread(
+                "one-hour",
+                projectPath: null,
+                isPinned: false,
+                now.AddHours(-1)),
+            Thread(
+                "hours",
+                projectPath: null,
+                isPinned: false,
+                now.AddHours(-3)),
+            Thread(
+                "one-day",
+                projectPath: null,
+                isPinned: false,
+                now.AddDays(-1)),
+            Thread(
+                "days",
+                projectPath: null,
+                isPinned: false,
+                now.AddDays(-2)),
+        };
+        var snapshot = new CodexSnapshot
+        {
+            Threads = threads,
+            ProjectlessThreads = threads,
+        };
+
+        var english = service.BuildEntries(
+            snapshot,
+            SidebarScope.ProjectlessTasks,
+            selectedProjectPath: null);
+        Assert.Equal(
+            new[]
+            {
+                "Just now",
+                "1 minute ago",
+                "5 minutes ago",
+                "1 hour ago",
+                "3 hours ago",
+                "1 day ago",
+                "2 days ago",
+            },
+            english.Select(entry => entry.Subtitle));
+
+        localization.SetLanguage(AppLanguage.ZhCn);
+
+        var chinese = service.BuildEntries(
+            snapshot,
+            SidebarScope.ProjectlessTasks,
+            selectedProjectPath: null);
+        Assert.Equal(
+            new[]
+            {
+                "刚刚",
+                "1 分钟前",
+                "5 分钟前",
+                "1 小时前",
+                "3 小时前",
+                "1 天前",
+                "2 天前",
+            },
+            chinese.Select(entry => entry.Subtitle));
     }
 
     private static SnapshotFixture CreateSnapshot()

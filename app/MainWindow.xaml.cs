@@ -5,10 +5,14 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using CodexController.Agents;
+using CodexController.Controllers;
 using CodexController.Core.Bridge;
+using CodexController.Localization;
 using CodexController.Models;
 using CodexController.Presentation.Feedback;
 using CodexController.Services;
+using CodexController.ViewModels;
 using Forms = System.Windows.Forms;
 
 namespace CodexController;
@@ -24,16 +28,21 @@ public partial class MainWindow : Window
     ];
 
     private readonly SettingsService _settingsService;
-    private readonly CodexDataService _codexDataService;
-    private readonly CodexCommandService _codexCommandService;
-    private readonly CodexKeybindingService _codexKeybindingService;
-    private readonly CodexComposerService _codexComposerService;
-    private readonly CodexSidebarService _codexSidebarService;
+    private readonly IWorkspaceReader _workspaceReader;
+    private readonly ISidebarAutomation _sidebarAutomation;
+    private readonly IComposerAutomation _composerAutomation;
+    private readonly IAgentShortcuts _agentShortcuts;
+    private readonly IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
     private readonly AxisRepeater _axisRepeater;
     private readonly StickGestureRouter _leftStickRouter;
     private readonly StickGestureRouter _rightStickRouter;
     private readonly BridgeEventHub _bridgeEvents;
+    private readonly LocalizationService _localization;
+    private readonly ControllerProfileRegistry _controllerProfiles;
+    private readonly IAgentTarget _activeAgent;
+    private readonly ConfigPageViewModel _configPageViewModel;
+    private readonly SettingsPageViewModel _settingsPageViewModel;
     private readonly BridgeFeedbackPresenter _feedbackPresenter;
     private readonly SemaphoreSlim _sidebarFocusGate = new(1, 1);
     private readonly SemaphoreSlim _dataRefreshGate = new(1, 1);
@@ -84,27 +93,53 @@ public partial class MainWindow : Window
     private Forms.NotifyIcon? _trayIcon;
     private System.Drawing.Icon? _trayIconImage;
     private OverlayWindow? _overlayWindow;
+    private ControllerProfile _activeControllerProfile =
+        BuiltInControllerProfiles.Generic;
 
     public MainWindow(AppServices services)
     {
         ArgumentNullException.ThrowIfNull(services);
         _settingsService = services.Settings;
-        _codexDataService = services.CodexData;
-        _codexCommandService = services.CodexCommand;
-        _codexKeybindingService = services.CodexKeybindings;
-        _codexComposerService = services.CodexComposer;
-        _codexSidebarService = services.CodexSidebar;
+        _activeAgent = services.ActiveAgent;
+        _workspaceReader = _activeAgent.WorkspaceOrEmpty();
+        _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
+        _composerAutomation = _activeAgent.ComposerOrUnavailable();
+        _agentShortcuts = _activeAgent.Shortcuts;
+        _keybindingProvisioner = _activeAgent.Keybindings;
         _xInputService = services.Controller;
         _axisRepeater = services.AxisRepeater;
         _leftStickRouter = services.LeftStickRouter;
         _rightStickRouter = services.RightStickRouter;
         _bridgeEvents = services.BridgeEvents;
+        _localization = services.Localization;
+        _controllerProfiles = services.ControllerProfiles;
+        _configPageViewModel = new ConfigPageViewModel(
+            OpenAgentShortcuts,
+            () => SaveSettings(
+                _localization.Strings.Get(
+                    StringKeys.MessageShortcutSettingsSaved)));
+        _settingsPageViewModel = new SettingsPageViewModel(
+            OpenControllerVendorTool,
+            OpenAgentSettings,
+            () => SaveSettings(
+                _localization.Strings.Get(
+                    StringKeys.MessageSettingsSaved)),
+            ChangeLanguage);
 
         InitializeComponent();
+        DataContext = _localization.Strings;
+        ConfigPage.DataContext = _configPageViewModel;
+        ConfigPage.Strings = _localization.Strings;
+        SettingsPage.DataContext = _settingsPageViewModel;
+        SettingsPage.Strings = _localization.Strings;
+        SettingsPage.Localization = _localization;
         SidebarList.ItemsSource = _sidebarEntries;
         _feedbackPresenter = new BridgeFeedbackPresenter(
             _bridgeEvents,
-            new ChineseBridgeFeedbackFormatter(),
+            new LocalizedBridgeFeedbackFormatter(
+                _localization.Strings,
+                _localization.Strings.AppTitle,
+                _activeAgent.DisplayName),
             new DelegateOverlayPresenter(PresentBridgeOverlay),
             SynchronizationContext.Current ??
             new DispatcherSynchronizationContext(Dispatcher));
@@ -128,7 +163,11 @@ public partial class MainWindow : Window
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         _settings = _settingsService.Load();
+        _localization.SetLanguage(_settings.Language);
+        _localization.PropertyChanged +=
+            Localization_PropertyChanged;
         ApplySettingsToControls();
+        UpdateLocalizedUi();
         SetupTrayIcon();
         _overlayWindow = new OverlayWindow();
 
@@ -145,8 +184,7 @@ public partial class MainWindow : Window
         _dataTimer.Start();
         _initializing = false;
 
-        FooterStatusText.Text =
-            "Menu 首次唤醒并解锁 · 左摇杆 ↑↓ 焦点、→ 进入 / 打开、← 返回、L3 切根区域 · Y 项目上下文 · 右摇杆调节 · A 按住说话 · X 发送 · B 取消 / 撤回";
+        FooterStatusText.Text = ControllerHelpText();
     }
 
     private void XInputService_StateChanged(
@@ -185,26 +223,41 @@ public partial class MainWindow : Window
             return;
         }
 
-        var result =
-            _codexKeybindingService.EnsureBridgeBindings(_settings);
+        if (_keybindingProvisioner is null)
+        {
+            return;
+        }
+
+        var result = _keybindingProvisioner.EnsureBindings(_settings);
         if (!result.Succeeded)
         {
-            AddEvent($"Codex 快捷键未写入 · {result.Error}");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageAgentKeybindingsWriteFailed,
+                _activeAgent.DisplayName,
+                _localization.Strings.ErrorLabel(
+                    result.Error,
+                    result.ErrorDetail)));
             return;
         }
 
         if (result.Conflicts.Count > 0)
         {
-            AddEvent($"Codex 快捷键冲突 · {result.Conflicts[0]}");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageAgentKeybindingsConflict,
+                _activeAgent.DisplayName,
+                result.Conflicts[0]));
         }
         else if (result.Changed)
         {
-            AddEvent("降级快捷键已写入 · 重启 Codex 后生效");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageFallbackKeybindingsWritten,
+                _activeAgent.DisplayName));
         }
     }
 
     private void ProcessControllerState(ControllerState state)
     {
+        UpdateControllerProfile(state);
         UpdateControllerVisual(state);
 
         if (!state.IsConnected)
@@ -218,6 +271,8 @@ public partial class MainWindow : Window
                     new Dictionary<string, string>
                     {
                         ["autoResume"] = "true",
+                        ["device"] =
+                            _activeControllerProfile.DisplayName,
                     },
                     new BridgeOverlayMetadata(
                         BridgeOverlayTarget.Footer,
@@ -239,6 +294,8 @@ public partial class MainWindow : Window
                 {
                     ["restored"] = _hasSeenController.ToString(),
                     ["requiresNeutral"] = "true",
+                    ["device"] =
+                        _activeControllerProfile.DisplayName,
                 },
                 overlay: new BridgeOverlayMetadata(
                     BridgeOverlayTarget.Footer,
@@ -253,7 +310,7 @@ public partial class MainWindow : Window
             ControllerButtons.Start,
             onDown: WakeCodex);
 
-        var foreground = _codexCommandService.IsCodexForeground;
+        var foreground = _activeAgent.Presence.IsForeground;
         ObserveCodexForeground(foreground);
         if (
             !_settings.BridgeEnabled ||
@@ -392,7 +449,7 @@ public partial class MainWindow : Window
                 "codex.wake"));
         try
         {
-            var woke = await Task.Run(_codexCommandService.WakeCodex);
+            var woke = await Task.Run(_activeAgent.Presence.Wake);
             if (!woke)
             {
                 _controllerSession.Lock();
@@ -401,7 +458,8 @@ public partial class MainWindow : Window
                     BridgeEventSeverity.Error,
                     new Dictionary<string, string>
                     {
-                        ["reasonCode"] = "window-unavailable",
+                        ["reasonCode"] =
+                            AgentAutomationErrorCodes.AgentWindowNotFound,
                     },
                     new BridgeOverlayMetadata(
                         BridgeOverlayTarget.FooterAndToast,
@@ -525,7 +583,12 @@ public partial class MainWindow : Window
             }
             else
             {
-                ShowFeedback("Codex 侧边栏", "当前已在根区域");
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageAgentSidebar,
+                        _activeAgent.DisplayName),
+                    _localization.Strings.Get(
+                        StringKeys.MessageAlreadyAtRootScope));
             }
 
             return;
@@ -632,7 +695,12 @@ public partial class MainWindow : Window
     {
         if (SidebarList.SelectedItem is not SidebarEntry entry)
         {
-            ShowFeedback("Codex 侧边栏", "当前区域没有可用条目");
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageAgentSidebar,
+                    _activeAgent.DisplayName),
+                _localization.Strings.Get(
+                    StringKeys.MessageNoAvailableEntries));
             return;
         }
 
@@ -659,7 +727,11 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(projectPath))
         {
-            ShowFeedback("项目任务", "该任务未归属项目");
+            ShowFeedback(
+                _localization.Strings.Get(
+                    StringKeys.MessageProjectTasks),
+                _localization.Strings.Get(
+                    StringKeys.MessageTaskHasNoProject));
             return;
         }
 
@@ -670,7 +742,11 @@ public partial class MainWindow : Window
                 StringComparison.OrdinalIgnoreCase));
         if (project is null)
         {
-            ShowFeedback("项目任务", "项目当前不可用");
+            ShowFeedback(
+                _localization.Strings.Get(
+                    StringKeys.MessageProjectTasks),
+                _localization.Strings.Get(
+                    StringKeys.MessageProjectUnavailable));
             return;
         }
 
@@ -709,9 +785,17 @@ public partial class MainWindow : Window
 
         var position = _selectedIndex >= 0
             ? $"{_selectedIndex + 1} / {_sidebarEntries.Count}"
-            : "暂无可用任务";
-        AddEvent($"项目任务 · {project.Name} · {position}");
-        ShowFeedback($"项目 › {project.Name}", position);
+            : _localization.Strings.Get(
+                StringKeys.MessageNoAvailableTasks);
+        AddEvent(_localization.Strings.Format(
+            StringKeys.MessageProjectTasksPosition,
+            project.Name,
+            position));
+        ShowFeedback(
+            _localization.Strings.Format(
+                StringKeys.MessageProjectTitle,
+                project.Name),
+            position);
         Pulse();
     }
 
@@ -743,13 +827,23 @@ public partial class MainWindow : Window
 
         if (SidebarList.SelectedItem is not SidebarEntry entry)
         {
-            ShowFeedback("Y · 项目任务", "当前没有可定位条目");
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonProjectTasks,
+                    Glyph(LogicalInput.FaceNorth)),
+                _localization.Strings.Get(
+                    StringKeys.MessageNoLocatableEntry));
             return;
         }
 
         if (string.IsNullOrWhiteSpace(entry.ProjectPath))
         {
-            ShowFeedback("Y · 项目任务", "该任务未归属项目");
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonProjectTasks,
+                    Glyph(LogicalInput.FaceNorth)),
+                _localization.Strings.Get(
+                    StringKeys.MessageTaskHasNoProject));
             return;
         }
 
@@ -773,15 +867,30 @@ public partial class MainWindow : Window
             _projectTasksPinnedOnly = false;
             RebuildSidebarEntries();
             RestoreSidebarSelection(previousId);
-            ShowFeedback("Y · 项目任务", "该项目没有置顶任务");
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonProjectTasks,
+                    Glyph(LogicalInput.FaceNorth)),
+                _localization.Strings.Get(
+                    StringKeys.MessageProjectHasNoPinnedTasks));
             return;
         }
 
         RestoreSidebarSelection(previousId);
         FocusCurrentSidebarEntry();
-        var label = _projectTasksPinnedOnly ? "仅该项目置顶" : "全部任务";
-        AddEvent($"项目任务筛选 · {label}");
-        ShowFeedback("Y · 项目任务", label);
+        var label = _projectTasksPinnedOnly
+            ? _localization.Strings.Get(
+                StringKeys.MessageProjectPinnedOnly)
+            : _localization.Strings.Get(
+                StringKeys.MessageAllTasks);
+        AddEvent(_localization.Strings.Format(
+            StringKeys.MessageProjectTaskFilter,
+            label));
+        ShowFeedback(
+            _localization.Strings.Format(
+                StringKeys.MessageButtonProjectTasks,
+                Glyph(LogicalInput.FaceNorth)),
+            label);
         Pulse();
     }
 
@@ -810,7 +919,9 @@ public partial class MainWindow : Window
     {
         if (_sidebarEntries.Count == 0)
         {
-            AddEvent($"{ScopeLabel(_scope)}中暂无可用条目");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageScopeHasNoEntries,
+                ScopeLabel(_scope)));
             return;
         }
 
@@ -894,7 +1005,7 @@ public partial class MainWindow : Window
                 .ConfigureAwait(true);
             gateEntered = true;
             var result = await Task.Run(
-                    () => _codexSidebarService.FocusEntry(
+                    () => _sidebarAutomation.FocusEntry(
                         entry,
                         projectName,
                         _settings,
@@ -907,10 +1018,14 @@ public partial class MainWindow : Window
                 !cancellation.IsCancellationRequested &&
                 !string.Equals(
                     result.Error,
-                    "已取消",
+                    AgentAutomationErrorCodes.OperationCanceled,
                     StringComparison.Ordinal))
             {
-                AddEvent($"侧边栏焦点未同步 · {result.Error}");
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageSidebarFocusFailed,
+                    _localization.Strings.ErrorLabel(
+                        result.Error,
+                        result.ErrorDetail)));
             }
         }
         catch (OperationCanceledException)
@@ -950,10 +1065,14 @@ public partial class MainWindow : Window
         }
 
         CancelPendingSidebarFocus();
-        var result = _codexSidebarService.RestoreDisclosure(lease);
+        var result = _sidebarAutomation.RestoreDisclosure(lease);
         if (!result.Succeeded)
         {
-            AddEvent($"项目折叠状态未恢复 · {result.Error}");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageDisclosureRestoreFailed,
+                _localization.Strings.ErrorLabel(
+                    result.Error,
+                    result.ErrorDetail)));
         }
     }
 
@@ -964,33 +1083,41 @@ public partial class MainWindow : Window
     {
         if (
             _settings.OnlyWhenCodexForeground &&
-            !_codexCommandService.IsCodexForeground &&
+            !_activeAgent.Presence.IsForeground &&
             !IsActive)
         {
             return;
         }
 
-        if (!_codexDataService.IsThreadAvailable(threadId))
+        if (!_workspaceReader.IsThreadAvailable(threadId))
         {
-            AddEvent("任务已归档或不可用 · 已跳过");
+            AddEvent(_localization.Strings.Get(
+                StringKeys.MessageTaskUnavailableSkipped));
             RefreshCodexData(preserveSelection: true);
             return;
         }
 
         ClearNavigationUndo();
-        var previousTitle = _codexSidebarService.TryGetCurrentThreadTitle();
-        if (CodexCommandService.OpenThread(threadId))
+        var previousTitle = _sidebarAutomation.TryGetCurrentThreadTitle();
+        if (_activeAgent.DeepLinks?.OpenThread(threadId) == true)
         {
             RegisterNavigationUndo(
                 threadTitle,
                 nativeThreadTitle,
                 previousTitle);
-            AddEvent($"正在打开 · {threadTitle}");
-            ShowFeedback("正在打开任务", threadTitle);
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageOpeningThread,
+                threadTitle));
+            ShowFeedback(
+                _localization.Strings.Get(
+                    StringKeys.MessageOpeningTask),
+                threadTitle);
         }
         else
         {
-            AddEvent($"打开任务失败 · {threadTitle}");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageOpenThreadFailed,
+                threadTitle));
         }
     }
 
@@ -1016,7 +1143,9 @@ public partial class MainWindow : Window
                 StringComparison.Ordinal));
         if (matchingTitles != 1)
         {
-            AddEvent($"撤回未启用 · 无法唯一确认 {threadTitle}");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageUndoUnavailableUnique,
+                threadTitle));
             return;
         }
 
@@ -1044,7 +1173,7 @@ public partial class MainWindow : Window
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 var currentTitle = await Task.Run(
-                        _codexSidebarService.TryGetCurrentThreadTitle,
+                        _sidebarAutomation.TryGetCurrentThreadTitle,
                         cancellation.Token)
                     .ConfigureAwait(true);
                 if (
@@ -1076,11 +1205,20 @@ public partial class MainWindow : Window
                             return;
                         }
 
-                        AddEvent(
-                            $"已打开 · {state.TargetDisplayTitle} · B 可撤回");
+                        var undoGlyph = Glyph(LogicalInput.FaceEast);
+                        AddEvent(_localization.Strings.Format(
+                            StringKeys.MessageOpenedUndoAvailable,
+                            state.TargetDisplayTitle,
+                            undoGlyph));
                         ShowFeedback(
-                            "已打开任务",
-                            $"{state.TargetDisplayTitle} · 10 秒内按 B 撤回");
+                            _localization.Strings.Get(
+                                StringKeys.MessageOpenedTask),
+                            _localization.Strings.Format(
+                                StringKeys.MessageUndoWithinSeconds,
+                                state.TargetDisplayTitle,
+                                (int)BridgeTimings
+                                    .NavigationUndoWindow.TotalSeconds,
+                                undoGlyph));
                         return;
                     }
                 }
@@ -1098,13 +1236,17 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_navigationUndo, state))
             {
                 _navigationUndo = null;
-                AddEvent(
-                    $"撤回未启用 · 未确认已到达 {state.TargetDisplayTitle}");
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoUnavailableUnconfirmed,
+                    state.TargetDisplayTitle));
                 if (state.UndoRequested)
                 {
                     ShowFeedback(
-                        "B · 撤回",
-                        "未确认任务已打开，未执行返回");
+                        _localization.Strings.Format(
+                            StringKeys.MessageButtonUndo,
+                            Glyph(LogicalInput.FaceEast)),
+                        _localization.Strings.Get(
+                            StringKeys.MessageUndoUnconfirmed));
                 }
             }
         }
@@ -1153,9 +1295,14 @@ public partial class MainWindow : Window
         UpdateRightModeUi();
         var gesture =
             source ??
-            $"右摇杆 {Arrow(direction, horizontal: true)}";
+            _localization.Strings.Format(
+                StringKeys.MessageRightStickGesture,
+                Arrow(direction, horizontal: true));
         AddEvent($"{gesture} · {ModeLabel(_rightMode)}");
-        ShowFeedback("右摇杆模式", ModeLabel(_rightMode));
+        ShowFeedback(
+            _localization.Strings.Get(
+                StringKeys.MessageRightStickMode),
+            ModeLabel(_rightMode));
         Pulse();
     }
 
@@ -1190,10 +1337,23 @@ public partial class MainWindow : Window
 
         _reasoningIndex = next;
         var target = efforts[_reasoningIndex];
-        RightModeValue.Text = $"{target} · 预选";
+        var displayTarget = ComposerTargetLabel(
+            ComposerSettingKind.Effort,
+            target);
+        RightModeValue.Text = _localization.Strings.Format(
+            StringKeys.MessagePreviewValue,
+            displayTarget);
         ScheduleComposerCommit(ComposerSettingKind.Effort, target);
-        AddEvent($"思考强度预选 · {target}");
-        ShowFeedback("思考强度预选", $"{target} · 停稳后确认");
+        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
+            ComposerKindLabel(ComposerSettingKind.Effort),
+            displayTarget));
+        ShowFeedback(
+            _localization.Strings.Format(
+                StringKeys.MessagePreviewValue,
+                ComposerKindLabel(ComposerSettingKind.Effort)),
+            _localization.Strings.Format(
+                StringKeys.MessageSettleToConfirm,
+                displayTarget));
         Pulse();
     }
 
@@ -1216,10 +1376,20 @@ public partial class MainWindow : Window
 
         _modelIndex = next;
         var target = _composerCatalog.Models[_modelIndex].DisplayName;
-        RightModeValue.Text = $"{target} · 预选";
+        RightModeValue.Text = _localization.Strings.Format(
+            StringKeys.MessagePreviewValue,
+            target);
         ScheduleComposerCommit(ComposerSettingKind.Model, target);
-        AddEvent($"模型预选 · {target}");
-        ShowFeedback("模型预选", $"{target} · 停稳后确认");
+        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
+            ComposerKindLabel(ComposerSettingKind.Model),
+            target));
+        ShowFeedback(
+            _localization.Strings.Format(
+                StringKeys.MessagePreviewValue,
+                ComposerKindLabel(ComposerSettingKind.Model)),
+            _localization.Strings.Format(
+                StringKeys.MessageSettleToConfirm,
+                target));
         Pulse();
     }
 
@@ -1233,11 +1403,24 @@ public partial class MainWindow : Window
         }
 
         _speedIndex = next;
-        var target = SpeedLabel(_speedIndex);
-        RightModeValue.Text = $"{target} · 预选";
+        var target = _speedIndex > 0 ? "Fast" : "Standard";
+        var displayTarget = ComposerTargetLabel(
+            ComposerSettingKind.Speed,
+            target);
+        RightModeValue.Text = _localization.Strings.Format(
+            StringKeys.MessagePreviewValue,
+            displayTarget);
         ScheduleComposerCommit(ComposerSettingKind.Speed, target);
-        AddEvent($"速度预选 · {target}");
-        ShowFeedback("速度预选", $"{target} · 停稳后确认");
+        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
+            ComposerKindLabel(ComposerSettingKind.Speed),
+            displayTarget));
+        ShowFeedback(
+            _localization.Strings.Format(
+                StringKeys.MessagePreviewValue,
+                ComposerKindLabel(ComposerSettingKind.Speed)),
+            _localization.Strings.Format(
+                StringKeys.MessageSettleToConfirm,
+                displayTarget));
         Pulse();
     }
 
@@ -1274,8 +1457,11 @@ public partial class MainWindow : Window
                     BridgeTimings.ComposerSettleMs,
                     cancellation.Token)
                 .ConfigureAwait(true);
-            RightModeValue.Text = $"{target} · 正在应用…";
-            var automation = await _codexComposerService
+            var displayTarget = ComposerTargetLabel(kind, target);
+            RightModeValue.Text = _localization.Strings.Format(
+                StringKeys.MessageApplyingValue,
+                displayTarget);
+            var automation = await _composerAutomation
                 .SelectAsync(kind, target, _settings, cancellation.Token)
                 .ConfigureAwait(true);
             var fallback = false;
@@ -1310,22 +1496,40 @@ public partial class MainWindow : Window
 
                 RightModeValue.Text =
                     automation.Succeeded
-                        ? target
-                        : $"{target} · 快捷键已发送";
+                        ? displayTarget
+                        : _localization.Strings.Format(
+                            StringKeys.MessageShortcutSentValue,
+                            displayTarget);
                 var channel =
                     automation.Succeeded
-                        ? "精确选择"
-                        : "快捷键已发送（新绑定需重启 Codex）";
-                AddEvent($"{ComposerKindLabel(kind)} → {target} · {channel}");
+                        ? _localization.Strings.Get(
+                            StringKeys.MessageExactSelection)
+                        : _localization.Strings.Format(
+                            StringKeys.MessageShortcutSentRestart,
+                            _activeAgent.DisplayName);
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageComposerSelectionApplied,
+                    ComposerKindLabel(kind),
+                    displayTarget,
+                    channel));
                 ShowFeedback(
                     ComposerKindLabel(kind),
-                    automation.Succeeded ? target : "快捷键已发送");
+                    automation.Succeeded
+                        ? displayTarget
+                        : _localization.Strings.Get(
+                            StringKeys.MessageShortcutSent));
             }
             else
             {
-                RightModeValue.Text = $"{target} · 未执行";
-                AddEvent(
-                    $"{ComposerKindLabel(kind)} · 未执行 · {automation.Error}");
+                RightModeValue.Text = _localization.Strings.Format(
+                    StringKeys.MessageNotExecutedValue,
+                    displayTarget);
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageComposerSelectionFailed,
+                    ComposerKindLabel(kind),
+                    ExecutionFailureLabel(
+                        automation.Error,
+                        automation.ErrorDetail)));
             }
         }
         catch (OperationCanceledException)
@@ -1355,7 +1559,7 @@ public partial class MainWindow : Window
             {
                 var steps = _modelIndex - _committedModelIndex;
                 return steps != 0 &&
-                       await _codexCommandService
+                       await _agentShortcuts
                            .StepModelAsync(
                                steps,
                                _settings,
@@ -1377,7 +1581,7 @@ public partial class MainWindow : Window
                 for (var index = 0; index < Math.Abs(steps); index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!_codexCommandService.ExecuteShortcut(
+                    if (!_agentShortcuts.Execute(
                             shortcut,
                             _settings))
                     {
@@ -1395,7 +1599,7 @@ public partial class MainWindow : Window
             case ComposerSettingKind.Speed:
                 return
                     _speedIndex == _committedSpeedIndex ||
-                    _codexCommandService.ExecuteShortcut(
+                    _agentShortcuts.Execute(
                         _settings.FastToggleShortcut,
                         _settings);
             default:
@@ -1457,27 +1661,36 @@ public partial class MainWindow : Window
         _dictationStopCancellation?.Cancel();
         _dictationStopCancellation = null;
         ButtonAHalo.Opacity = 1;
-        var automation = _codexComposerService.InvokeComposerAction(
+        var automation = _composerAutomation.InvokeAction(
             _settings,
             "Dictate",
             "Start dictation");
         _dictationInjected =
             automation.Succeeded ||
-            _codexCommandService.ExecuteShortcut(
+            _agentShortcuts.Execute(
                 _settings.DictationShortcut,
                 _settings);
         if (_dictationInjected)
         {
             ClearNavigationUndo();
         }
+        var voiceGlyph = Glyph(LogicalInput.FaceSouth);
         AddEvent(
-            $"A · 开始语音识别" +
-            ExecutionSuffix(_dictationInjected, automation.Error));
+            _localization.Strings.Format(
+                StringKeys.MessageStartDictation,
+                voiceGlyph) +
+            ExecutionSuffix(
+                _dictationInjected,
+                automation.Error,
+                automation.ErrorDetail));
         ShowFeedback(
-            "A · 按住说话",
+            _localization.Strings.ControlHoldToTalk(voiceGlyph),
             _dictationInjected
-                ? "正在录音 · 松开 A 停止"
-                : ExecutionFailureLabel(automation.Error));
+                ? _localization.Strings.Format(
+                    StringKeys.MessageRecordingReleaseToStop,
+                    voiceGlyph)
+                : ExecutionFailureLabel(
+                    automation.Error));
         Pulse();
     }
 
@@ -1486,18 +1699,29 @@ public partial class MainWindow : Window
         ButtonAHalo.Opacity = 0;
         var shouldStop = _dictationInjected;
         _dictationInjected = false;
+        var voiceGlyph = Glyph(LogicalInput.FaceSouth);
         if (!shouldStop)
         {
-            AddEvent("A 松开 · 未发现活动录音");
-            ShowFeedback("A · 按住说话", "未发现活动录音");
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageReleaseNoRecording,
+                voiceGlyph));
+            ShowFeedback(
+                _localization.Strings.ControlHoldToTalk(voiceGlyph),
+                _localization.Strings.Get(
+                    StringKeys.MessageNoActiveRecording));
             return;
         }
 
         _dictationStopCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
         _dictationStopCancellation = cancellation;
-        AddEvent("A 松开 · 正在结束语音识别");
-        ShowFeedback("A · 按住说话", "松开 · 正在结束录音");
+        AddEvent(_localization.Strings.Format(
+            StringKeys.MessageReleaseEndingDictation,
+            voiceGlyph));
+        ShowFeedback(
+            _localization.Strings.ControlHoldToTalk(voiceGlyph),
+            _localization.Strings.Get(
+                StringKeys.MessageReleaseEndingRecording));
         _ = StopDictationAfterReleaseAsync(cancellation);
     }
 
@@ -1506,8 +1730,8 @@ public partial class MainWindow : Window
     {
         try
         {
-            var automation = await _codexComposerService
-                .InvokeComposerActionAsync(
+            var automation = await _composerAutomation
+                .InvokeActionAsync(
                     _settings,
                     timeoutMs: 1200,
                     cancellation.Token,
@@ -1517,17 +1741,25 @@ public partial class MainWindow : Window
                 .ConfigureAwait(true);
             var executed =
                 automation.Succeeded ||
-                _codexCommandService.ExecuteShortcut(
+                _agentShortcuts.Execute(
                     _settings.DictationShortcut,
                     _settings);
+            var voiceGlyph = Glyph(LogicalInput.FaceSouth);
             AddEvent(
-                $"A 松开 · 结束语音识别" +
-                ExecutionSuffix(executed, automation.Error));
+                _localization.Strings.Format(
+                    StringKeys.MessageReleaseEndDictation,
+                    voiceGlyph) +
+                ExecutionSuffix(
+                    executed,
+                    automation.Error,
+                    automation.ErrorDetail));
             ShowFeedback(
-                "A · 按住说话",
+                _localization.Strings.ControlHoldToTalk(voiceGlyph),
                 executed
-                    ? "录音已结束"
-                    : ExecutionFailureLabel(automation.Error));
+                    ? _localization.Strings.Get(
+                        StringKeys.MessageRecordingEnded)
+                    : ExecutionFailureLabel(
+                        automation.Error));
         }
         catch (OperationCanceledException)
         {
@@ -1546,20 +1778,28 @@ public partial class MainWindow : Window
 
     private void SendPrompt()
     {
-        var automation = _codexComposerService.SubmitComposer(_settings);
+        var automation = _composerAutomation.Submit(_settings);
         if (automation.Succeeded)
         {
             ClearNavigationUndo();
         }
 
+        var sendGlyph = Glyph(LogicalInput.FaceWest);
         AddEvent(
-            $"X · 发送提示词" +
-            ExecutionSuffix(automation.Succeeded, automation.Error));
+            _localization.Strings.Format(
+                StringKeys.MessageSendPrompt,
+                sendGlyph) +
+            ExecutionSuffix(
+                automation.Succeeded,
+                automation.Error,
+                automation.ErrorDetail));
         ShowFeedback(
-            "X · 发送",
+            _localization.Strings.ControlSend(sendGlyph),
             automation.Succeeded
-                ? "已发送"
-                : ExecutionFailureLabel(automation.Error));
+                ? _localization.Strings.Get(
+                    StringKeys.MessageSent)
+                : ExecutionFailureLabel(
+                    automation.Error));
         Pulse(strength: 0.28);
     }
 
@@ -1573,25 +1813,35 @@ public partial class MainWindow : Window
             ButtonAHalo.Opacity = 0;
             _dictationStopCancellation?.Cancel();
             _dictationStopCancellation = null;
-            var stop = _codexComposerService.InvokeComposerAction(
+            var stop = _composerAutomation.InvokeAction(
                 _settings,
                 "Stop dictation",
                 "Stop recording",
                 "Stop listening");
             var stopped =
                 stop.Succeeded ||
-                _codexCommandService.ExecuteShortcut(
+                _agentShortcuts.Execute(
                     _settings.DictationShortcut,
                     _settings);
             ClearNavigationUndo();
+            var cancelGlyph = Glyph(LogicalInput.FaceEast);
             AddEvent(
-                $"B · 中止语音" +
-                ExecutionSuffix(stopped, stop.Error));
+                _localization.Strings.Format(
+                    StringKeys.MessageAbortDictation,
+                    cancelGlyph) +
+                ExecutionSuffix(
+                    stopped,
+                    stop.Error,
+                    stop.ErrorDetail));
             ShowFeedback(
-                "B · 取消",
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonCancel,
+                    cancelGlyph),
                 stopped
-                    ? "已中止语音识别"
-                    : ExecutionFailureLabel(stop.Error));
+                    ? _localization.Strings.Get(
+                        StringKeys.MessageDictationStopped)
+                    : ExecutionFailureLabel(
+                        stop.Error));
             Pulse(strength: 0.18);
             return;
         }
@@ -1603,13 +1853,21 @@ public partial class MainWindow : Window
         CancelPendingComposerSelection();
         if (hadPendingSelection)
         {
-            AddEvent("B · 已撤销待执行选择");
-            ShowFeedback("B · 撤回", "已撤销待执行选择");
+            var cancelGlyph = Glyph(LogicalInput.FaceEast);
+            var message = _localization.Strings.Format(
+                StringKeys.MessagePendingSelectionUndone,
+                cancelGlyph);
+            AddEvent(message);
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonUndo,
+                    cancelGlyph),
+                _localization.Strings.FeedbackSelectionCanceled);
             Pulse(strength: 0.18);
             return;
         }
 
-        var active = _codexComposerService.InvokeComposerAction(
+        var active = _composerAutomation.InvokeAction(
             _settings,
             "Stop",
             "Cancel",
@@ -1617,8 +1875,16 @@ public partial class MainWindow : Window
         if (active.Succeeded)
         {
             ClearNavigationUndo();
-            AddEvent("B · 已中止当前操作");
-            ShowFeedback("B · 取消", "已中止当前操作");
+            var cancelGlyph = Glyph(LogicalInput.FaceEast);
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageCurrentOperationStopped,
+                cancelGlyph));
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonCancel,
+                    cancelGlyph),
+                _localization.Strings.Get(
+                    StringKeys.MessageCurrentOperationStoppedDetail));
             Pulse(strength: 0.18);
             return;
         }
@@ -1630,8 +1896,16 @@ public partial class MainWindow : Window
                 undo.ExpiresAt is null)
             {
                 undo.UndoRequested = true;
-                AddEvent("B · 已排队撤回");
-                ShowFeedback("B · 撤回", "任务打开后将自动返回");
+                var cancelGlyph = Glyph(LogicalInput.FaceEast);
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoQueued,
+                    cancelGlyph));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        cancelGlyph),
+                    _localization.Strings.Get(
+                        StringKeys.MessageUndoAfterOpen));
                 Pulse(strength: 0.12);
                 return;
             }
@@ -1647,16 +1921,26 @@ public partial class MainWindow : Window
             }
         }
 
-        var automation = _codexComposerService.CancelComposer(_settings);
+        var automation = _composerAutomation.Cancel(_settings);
         var executed = automation.Succeeded;
+        var cancelButtonGlyph = Glyph(LogicalInput.FaceEast);
         AddEvent(
-            $"B · 取消" +
-            ExecutionSuffix(executed, automation.Error));
+            _localization.Strings.Format(
+                StringKeys.MessageCancel,
+                cancelButtonGlyph) +
+            ExecutionSuffix(
+                executed,
+                automation.Error,
+                automation.ErrorDetail));
         ShowFeedback(
-            "B · 取消",
+            _localization.Strings.Format(
+                StringKeys.MessageButtonCancel,
+                cancelButtonGlyph),
             executed
-                ? "已取消"
-                : ExecutionFailureLabel(automation.Error));
+                ? _localization.Strings.Get(
+                    StringKeys.MessageCanceled)
+                : ExecutionFailureLabel(
+                    automation.Error));
         Pulse(strength: 0.18);
     }
 
@@ -1668,7 +1952,7 @@ public partial class MainWindow : Window
         }
 
         var currentTitle =
-            _codexSidebarService.TryGetCurrentThreadTitle();
+            _sidebarAutomation.TryGetCurrentThreadTitle();
         if (
             !string.Equals(
                 currentTitle,
@@ -1676,33 +1960,61 @@ public partial class MainWindow : Window
                 StringComparison.Ordinal))
         {
             ClearNavigationUndo();
-            AddEvent("B · 页面已变化，未执行导航撤回");
-            ShowFeedback("B · 撤回", "页面已变化，未执行返回");
+            var cancelGlyph = Glyph(LogicalInput.FaceEast);
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageUndoPageChanged,
+                cancelGlyph));
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonUndo,
+                    cancelGlyph),
+                _localization.Strings.Get(
+                    StringKeys.MessageUndoPageChangedDetail));
             Pulse(strength: 0.12);
             return;
         }
 
         var navigation =
-            _codexSidebarService.GoBack(_settings);
+            _sidebarAutomation.GoBack(_settings);
         if (navigation.Succeeded)
         {
             var target = undo.TargetDisplayTitle;
             ClearNavigationUndo();
-            AddEvent($"B · 已撤回 · {target}");
-            ShowFeedback("B · 撤回", $"已返回上一任务 · {target}");
+            var cancelGlyph = Glyph(LogicalInput.FaceEast);
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageUndoSucceeded,
+                cancelGlyph,
+                target));
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonUndo,
+                    cancelGlyph),
+                _localization.Strings.Format(
+                    StringKeys.MessageReturnedToPreviousTask,
+                    target));
             Pulse(strength: 0.18);
             return;
         }
 
-        AddEvent($"B · 撤回失败 · {navigation.Error}");
+        var undoGlyph = Glyph(LogicalInput.FaceEast);
+        AddEvent(_localization.Strings.Format(
+            StringKeys.MessageUndoFailed,
+            undoGlyph,
+            _localization.Strings.ErrorLabel(
+                navigation.Error,
+                navigation.ErrorDetail)));
         ShowFeedback(
-            "B · 撤回",
-            ExecutionFailureLabel(navigation.Error));
+            _localization.Strings.Format(
+                StringKeys.MessageButtonUndo,
+                undoGlyph),
+            ExecutionFailureLabel(
+                navigation.Error));
         Pulse(strength: 0.12);
     }
 
     private void UpdateControllerVisual(ControllerState state)
     {
+        var strings = _localization.Strings;
         ControllerStatusDot.SetResourceReference(
             System.Windows.Shapes.Shape.FillProperty,
             state.IsConnected
@@ -1710,9 +2022,11 @@ public partial class MainWindow : Window
                 : "Brush.Status.Idle");
         ControllerStatusText.Text =
             state.IsConnected
-                ? $"手柄已连接 · {state.Backend}"
-                : "等待手柄";
-        ControllerLiveBadge.Text = state.IsConnected ? "LIVE" : "IDLE";
+                ? $"{_activeControllerProfile.DisplayName} · {state.Backend}"
+                : strings.DeviceWaiting;
+        ControllerLiveBadge.Text = state.IsConnected
+            ? strings.DeviceLiveInput
+            : strings.DeviceIdle;
         ControllerLiveBadge.SetResourceReference(
             TextBlock.ForegroundProperty,
             state.IsConnected
@@ -1745,6 +2059,134 @@ public partial class MainWindow : Window
             state.Buttons.HasFlag(ControllerButtons.Y) ? 1 : 0;
         MenuButtonHalo.Opacity =
             state.Buttons.HasFlag(ControllerButtons.Start) ? 1 : 0;
+        LeftShoulderHalo.Opacity =
+            state.Buttons.HasFlag(ControllerButtons.LeftShoulder) ? 1 : 0;
+        RightShoulderHalo.Opacity =
+            state.Buttons.HasFlag(ControllerButtons.RightShoulder) ? 1 : 0;
+        LeftTriggerHalo.Opacity =
+            state.LeftTrigger > 0.03
+                ? Math.Clamp(0.25 + state.LeftTrigger * 0.75, 0, 1)
+                : 0;
+        RightTriggerHalo.Opacity =
+            state.RightTrigger > 0.03
+                ? Math.Clamp(0.25 + state.RightTrigger * 0.75, 0, 1)
+                : 0;
+    }
+
+    private void UpdateControllerProfile(ControllerState state)
+    {
+        if (!state.IsConnected)
+        {
+            return;
+        }
+
+        var profile = _controllerProfiles.Resolve(
+            _xInputService.LastIdentity);
+        if (string.Equals(
+                profile.Id,
+                _activeControllerProfile.Id,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _activeControllerProfile = profile;
+        UpdateLocalizedUi();
+    }
+
+    private string Glyph(LogicalInput input)
+    {
+        return _activeControllerProfile.GetGlyph(input);
+    }
+
+    private string ControllerHelpText()
+    {
+        return _localization.Strings.ControllerHelp(
+            Glyph(LogicalInput.Menu),
+            Glyph(LogicalInput.LeftStickPress),
+            Glyph(LogicalInput.FaceNorth),
+            Glyph(LogicalInput.RightStickPress),
+            Glyph(LogicalInput.FaceSouth),
+            Glyph(LogicalInput.FaceWest),
+            Glyph(LogicalInput.FaceEast));
+    }
+
+    private void UpdateLocalizedUi()
+    {
+        var strings = _localization.Strings;
+        var agentName = _activeAgent.DisplayName;
+        var voiceGlyph = Glyph(LogicalInput.FaceSouth);
+        var sendGlyph = Glyph(LogicalInput.FaceWest);
+        var cancelGlyph = Glyph(LogicalInput.FaceEast);
+        var projectGlyph = Glyph(LogicalInput.FaceNorth);
+        var wakeGlyph = Glyph(LogicalInput.Menu);
+        var leftPressGlyph = Glyph(LogicalInput.LeftStickPress);
+        var rightPressGlyph = Glyph(LogicalInput.RightStickPress);
+        var leftTriggerGlyph = Glyph(LogicalInput.LeftTrigger);
+        var leftShoulderGlyph = Glyph(LogicalInput.LeftShoulder);
+        var rightShoulderGlyph = Glyph(LogicalInput.RightShoulder);
+        var rightTriggerGlyph = Glyph(LogicalInput.RightTrigger);
+
+        _configPageViewModel.UpdateContext(
+            strings,
+            agentName,
+            leftPressGlyph,
+            projectGlyph,
+            rightPressGlyph,
+            canOpenAgentShortcuts: _activeAgent.DeepLinks is not null);
+        _settingsPageViewModel.UpdateContext(
+            strings,
+            agentName,
+            wakeGlyph,
+            _activeControllerProfile.VendorTool is null
+                ? null
+                : _activeControllerProfile.DisplayName,
+            canOpenVendorTool:
+                _activeControllerProfile.VendorTool is not null,
+            canOpenAgentSettings: _activeAgent.DeepLinks is not null);
+
+        Title = strings.AppTitle;
+        AppSubtitleText.Text = strings.AppSubtitle(
+            _activeControllerProfile.DisplayName,
+            agentName);
+        LeftStickHintText.Text =
+            strings.ControlLeftStickHint(leftPressGlyph);
+        RightStickHintText.Text =
+            strings.ControlRightStickHint(rightPressGlyph);
+        LeftTriggerGlyphText.Text = leftTriggerGlyph;
+        LeftShoulderGlyphText.Text = leftShoulderGlyph;
+        RightShoulderGlyphText.Text = rightShoulderGlyph;
+        RightTriggerGlyphText.Text = rightTriggerGlyph;
+
+        VoiceGlyphText.Text = voiceGlyph;
+        VoiceActionTitle.Text = strings.ControlHoldToTalk(voiceGlyph);
+        SendGlyphText.Text = sendGlyph;
+        SendActionTitle.Text = strings.ControlSend(sendGlyph);
+        CancelGlyphText.Text = cancelGlyph;
+        CancelActionTitle.Text =
+            strings.ControlCancelUndo(cancelGlyph);
+        ProjectGlyphText.Text = projectGlyph;
+        ProjectActionTitle.Text =
+            strings.ControlProjectContext(projectGlyph);
+        WakeGlyphText.Text = wakeGlyph;
+        WakeActionTitle.Text =
+            strings.ControlWakeAgent(wakeGlyph, agentName);
+        WakeActionDescription.Text =
+            strings.ControlWakeAgentDescription(agentName);
+        SidebarTitleText.Text = strings.SidebarAgent(agentName);
+        FooterVersionText.Text =
+            $"v0.3 · {strings.StatusLocalBridge}";
+
+        UpdateSelectedScopeText();
+        UpdateRightModeUi();
+        UpdateCodexStatus();
+        UpdateControllerVisual(_xInputService.LastState);
+        if (_feedbackPresenter.Footer is null)
+        {
+            FooterStatusText.Text = ControllerHelpText();
+        }
+
+        RebuildTrayMenu();
     }
 
     private async void RefreshCodexData(bool preserveSelection)
@@ -1756,7 +2198,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var snapshot = await Task.Run(_codexDataService.LoadSnapshot)
+            var snapshot = await Task.Run(_workspaceReader.LoadSnapshot)
                 .ConfigureAwait(true);
             var selectedId =
                 preserveSelection &&
@@ -1787,14 +2229,21 @@ public partial class MainWindow : Window
                 }
             }
 
-            FooterStatusText.Text =
-                $"已读取 {_snapshot.Threads.Count} 个任务、{_snapshot.Projects.Count} 个项目" +
-                $" · 已过滤 {_snapshot.ArchivedThreadCount} 个归档、{_snapshot.UnavailableThreadCount} 个不可用";
+            FooterStatusText.Text = _localization.Strings.Format(
+                StringKeys.MessageDataLoaded,
+                _snapshot.Threads.Count,
+                _snapshot.Projects.Count,
+                _snapshot.ArchivedThreadCount,
+                _snapshot.UnavailableThreadCount);
         }
         catch (Exception exception)
         {
-            FooterStatusText.Text = "读取 Codex 本机任务失败";
-            AddEvent($"数据读取失败 · {exception.Message}");
+            FooterStatusText.Text =
+                _localization.Strings.StatusAgentDataLoadFailedFor(
+                    _activeAgent.DisplayName);
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageDataLoadFailed,
+                exception.Message));
         }
         finally
         {
@@ -1804,7 +2253,7 @@ public partial class MainWindow : Window
 
     private void RebuildSidebarEntries()
     {
-        var entries = _codexDataService.BuildEntries(
+        var entries = _workspaceReader.BuildEntries(
                 _snapshot,
                 _scope,
                 _selectedProjectPath)
@@ -1820,7 +2269,7 @@ public partial class MainWindow : Window
 
         if (_scope == SidebarScope.ProjectlessTasks)
         {
-            var visibleCount = _codexSidebarService.TryGetBottomTaskCount();
+            var visibleCount = _sidebarAutomation.TryGetBottomTaskCount();
             if (visibleCount is > 0 && entries.Count > visibleCount.Value)
             {
                 entries = entries.Take(visibleCount.Value).ToList();
@@ -1847,21 +2296,31 @@ public partial class MainWindow : Window
             SelectSidebarIndex(_selectedIndex);
         }
 
+        UpdateSelectedScopeText();
+    }
+
+    private void UpdateSelectedScopeText()
+    {
+        var strings = _localization.Strings;
         SelectedProjectText.Text = _scope switch
         {
-            SidebarScope.PinnedTasks => "置顶任务",
-            SidebarScope.PinnedProjects => "置顶项目",
-            SidebarScope.Projects => "普通项目",
-            SidebarScope.ProjectlessTasks => "未归项目任务",
+            SidebarScope.PinnedTasks => strings.SidebarPinnedTasks,
+            SidebarScope.PinnedProjects =>
+                strings.SidebarPinnedProjects,
+            SidebarScope.Projects => strings.SidebarProjects,
+            SidebarScope.ProjectlessTasks =>
+                strings.SidebarProjectlessTasks,
             SidebarScope.ProjectTasks =>
                 $"{_snapshot.Projects.FirstOrDefault(project =>
                     string.Equals(
                         project.Path,
                         _selectedProjectPath,
                         StringComparison.OrdinalIgnoreCase))?.Name ??
-                  "项目"} › " +
-                (_projectTasksPinnedOnly ? "仅置顶任务" : "全部任务"),
-            _ => "Codex 侧边栏",
+                  strings.ScopeValue("ProjectTasks")} › " +
+                (_projectTasksPinnedOnly
+                    ? strings.SidebarPinnedTasks
+                    : strings.ScopeValue("ProjectTasks")),
+            _ => strings.SidebarAgent(_activeAgent.DisplayName),
         };
     }
 
@@ -1920,7 +2379,7 @@ public partial class MainWindow : Window
 
     private void InitializeComposerControls()
     {
-        _composerCatalog = _codexComposerService.LoadCatalog();
+        _composerCatalog = _composerAutomation.LoadCatalog();
         _modelIndex = Math.Clamp(
             _composerCatalog.InitialModelIndex,
             0,
@@ -1976,10 +2435,12 @@ public partial class MainWindow : Window
         RightModeValue.Text = _rightMode switch
         {
             RightControlMode.Reasoning =>
-                CurrentEfforts()[Math.Clamp(
-                    _reasoningIndex,
-                    0,
-                    CurrentEfforts().Count - 1)],
+                ComposerTargetLabel(
+                    ComposerSettingKind.Effort,
+                    CurrentEfforts()[Math.Clamp(
+                        _reasoningIndex,
+                        0,
+                        CurrentEfforts().Count - 1)]),
             RightControlMode.Model =>
                 _composerCatalog is not null &&
                 _composerCatalog.Models.Count > 0
@@ -1987,25 +2448,42 @@ public partial class MainWindow : Window
                         _modelIndex,
                         0,
                         _composerCatalog.Models.Count - 1)].DisplayName
-                    : "等待 Codex",
+                    : _localization.Strings.ComposerAgentNotForeground(
+                        _activeAgent.DisplayName),
             RightControlMode.Speed => SpeedLabel(_speedIndex),
             _ => string.Empty,
         };
     }
 
-    private static string SpeedLabel(int index)
+    private string SpeedLabel(int index)
     {
-        return index > 0 ? "Fast" : "Standard";
+        return _localization.Strings.SpeedValue(
+            index > 0 ? "fast" : "standard");
     }
 
-    private static string ComposerKindLabel(ComposerSettingKind kind)
+    private string ComposerKindLabel(ComposerSettingKind kind)
     {
         return kind switch
         {
-            ComposerSettingKind.Model => "模型",
-            ComposerSettingKind.Effort => "思考强度",
-            ComposerSettingKind.Speed => "速度",
+            ComposerSettingKind.Model => _localization.Strings.Model,
+            ComposerSettingKind.Effort =>
+                _localization.Strings.ReasoningEffort,
+            ComposerSettingKind.Speed => _localization.Strings.Speed,
             _ => string.Empty,
+        };
+    }
+
+    private string ComposerTargetLabel(
+        ComposerSettingKind kind,
+        string target)
+    {
+        return kind switch
+        {
+            ComposerSettingKind.Effort =>
+                _localization.Strings.ReasoningValue(target),
+            ComposerSettingKind.Speed =>
+                _localization.Strings.SpeedValue(target),
+            _ => target,
         };
     }
 
@@ -2054,43 +2532,16 @@ public partial class MainWindow : Window
     private void ApplySettingsToControls()
     {
         BridgeEnabledCheckBox.IsChecked = _settings.BridgeEnabled;
-        OnlyForegroundCheckBox.IsChecked = _settings.OnlyWhenCodexForeground;
-        HapticFeedbackCheckBox.IsChecked = _settings.HapticFeedback;
-        ShowOverlayCheckBox.IsChecked = _settings.ShowOverlay;
-        StartWithWindowsCheckBox.IsChecked = _settings.StartWithWindows;
-        MinimizeToTrayCheckBox.IsChecked = _settings.MinimizeToTray;
-        DeadZoneSlider.Value = _settings.DeadZone;
-        RepeatDelaySlider.Value = _settings.RepeatDelayMs;
-        RepeatIntervalSlider.Value = _settings.RepeatIntervalMs;
-
-        ReasoningDownTextBox.Text = _settings.ReasoningDownShortcut;
-        ReasoningUpTextBox.Text = _settings.ReasoningUpShortcut;
-        ModelPickerTextBox.Text = _settings.ModelPickerShortcut;
-        FastToggleTextBox.Text = _settings.FastToggleShortcut;
-        DictationTextBox.Text = _settings.DictationShortcut;
-        SubmitTextBox.Text = _settings.SubmitShortcut;
+        _settingsPageViewModel.Load(_settings);
+        _configPageViewModel.Load(_settings);
     }
 
     private void ReadControlsIntoSettings()
     {
         _settings.BridgeEnabled = BridgeEnabledCheckBox.IsChecked == true;
-        _settings.OnlyWhenCodexForeground =
-            OnlyForegroundCheckBox.IsChecked == true;
-        _settings.HapticFeedback = HapticFeedbackCheckBox.IsChecked == true;
-        _settings.ShowOverlay = ShowOverlayCheckBox.IsChecked == true;
-        _settings.StartWithWindows = StartWithWindowsCheckBox.IsChecked == true;
-        _settings.MinimizeToTray = MinimizeToTrayCheckBox.IsChecked == true;
-        _settings.DeadZone = Math.Round(DeadZoneSlider.Value, 2);
-        _settings.RepeatDelayMs = (int)Math.Round(RepeatDelaySlider.Value);
-        _settings.RepeatIntervalMs =
-            (int)Math.Round(RepeatIntervalSlider.Value);
-
-        _settings.ReasoningDownShortcut = ReasoningDownTextBox.Text.Trim();
-        _settings.ReasoningUpShortcut = ReasoningUpTextBox.Text.Trim();
-        _settings.ModelPickerShortcut = ModelPickerTextBox.Text.Trim();
-        _settings.FastToggleShortcut = FastToggleTextBox.Text.Trim();
-        _settings.DictationShortcut = DictationTextBox.Text.Trim();
-        _settings.SubmitShortcut = SubmitTextBox.Text.Trim();
+        _settingsPageViewModel.ApplyTo(_settings);
+        _configPageViewModel.ApplyTo(_settings);
+        _settings.Language = _localization.SettingValue;
     }
 
     private void SaveSettings(string eventText)
@@ -2104,7 +2555,7 @@ public partial class MainWindow : Window
 
     private void UpdateCodexStatus()
     {
-        var foreground = _codexCommandService.IsCodexForeground;
+        var foreground = _activeAgent.Presence.IsForeground;
         ObserveCodexForeground(foreground);
         if (
             _controllerSession.IsArmed &&
@@ -2122,22 +2573,31 @@ public partial class MainWindow : Window
             _ = TryResumeControllerInput(_xInputService.LastState);
         }
 
+        var strings = _localization.Strings;
+        var wakeGlyph = Glyph(LogicalInput.Menu);
         CodexForegroundText.Text =
             !_controllerWasConnected
-                ? "等待手柄重新连接"
+                ? strings.WaitingForReconnect
                 : foreground
                     ? !_controllerSession.IsArmed
-                        ? "Codex 位于前台 · 按 Menu 解锁"
+                        ? strings.AgentForegroundLocked(
+                            _activeAgent.DisplayName,
+                            wakeGlyph)
                         : !_controllerSession.IsActive
-                            ? "Codex 位于前台 · 松开按键后恢复"
-                            : "Codex 位于前台 · 已解锁"
+                            ? strings.AgentForegroundNeutral(
+                                _activeAgent.DisplayName)
+                            : strings.AgentForegroundArmed(
+                                _activeAgent.DisplayName)
                     : !_settings.OnlyWhenCodexForeground
                         ? _controllerSession.IsArmed
-                            ? "后台控制 · 已解锁"
-                            : "后台控制 · 按 Menu 解锁"
+                            ? strings.BackgroundArmed
+                            : strings.BackgroundLocked(wakeGlyph)
                         : _controllerSession.IsArmed
-                            ? "Codex 暂离前台 · 控制已暂停"
-                            : "Codex 未在前台 · 按 Menu 唤醒";
+                            ? strings.AgentAwayPaused(
+                                _activeAgent.DisplayName)
+                            : strings.AgentNotForeground(
+                                _activeAgent.DisplayName,
+                                wakeGlyph);
         CodexForegroundText.SetResourceReference(
             TextBlock.ForegroundProperty,
             _controllerSession.IsArmed &&
@@ -2164,26 +2624,19 @@ public partial class MainWindow : Window
         selected.IsChecked = true;
     }
 
-    private static string ScopeLabel(SidebarScope scope)
+    private string ScopeLabel(SidebarScope scope)
     {
-        return scope switch
-        {
-            SidebarScope.PinnedTasks => "置顶任务",
-            SidebarScope.PinnedProjects => "置顶项目",
-            SidebarScope.Projects => "普通项目",
-            SidebarScope.ProjectTasks => "项目任务",
-            SidebarScope.ProjectlessTasks => "未归项目任务",
-            _ => string.Empty,
-        };
+        return _localization.Strings.ScopeValue(scope.ToString());
     }
 
-    private static string ModeLabel(RightControlMode mode)
+    private string ModeLabel(RightControlMode mode)
     {
         return mode switch
         {
-            RightControlMode.Reasoning => "思考强度",
-            RightControlMode.Model => "模型",
-            RightControlMode.Speed => "速度",
+            RightControlMode.Reasoning =>
+                _localization.Strings.ReasoningEffort,
+            RightControlMode.Model => _localization.Strings.Model,
+            RightControlMode.Speed => _localization.Strings.Speed,
             _ => string.Empty,
         };
     }
@@ -2197,33 +2650,43 @@ public partial class MainWindow : Window
 
     private string ExecutionSuffix(
         bool executed,
-        string? error = null)
+        string? error = null,
+        string? errorDetail = null)
     {
         if (executed)
         {
-            return " · 已执行";
+            return $" · {_localization.Strings.Get(
+                StringKeys.MessageExecuted)}";
         }
 
-        return $" · {ExecutionFailureLabel(error)}";
+        return $" · {ExecutionFailureLabel(error, errorDetail)}";
     }
 
-    private string ExecutionFailureLabel(string? error)
+    private string ExecutionFailureLabel(
+        string? error,
+        string? errorDetail = null)
     {
         if (!_settings.BridgeEnabled)
         {
-            return "安全预览";
+            return _localization.Strings.Get(
+                StringKeys.MessageSafePreview);
         }
 
         if (
             _settings.OnlyWhenCodexForeground &&
-            !_codexCommandService.IsCodexForeground)
+            !_activeAgent.Presence.IsForeground)
         {
-            return "等待 Codex 前台";
+            return _localization.Strings.Format(
+                StringKeys.MessageWaitingForAgentForeground,
+                _activeAgent.DisplayName);
         }
 
         return string.IsNullOrWhiteSpace(error)
-            ? "未执行"
-            : error;
+            ? _localization.Strings.Get(
+                StringKeys.MessageNotExecuted)
+            : _localization.Strings.ErrorLabel(
+                error,
+                errorDetail);
     }
 
     private void SetupTrayIcon()
@@ -2236,20 +2699,35 @@ public partial class MainWindow : Window
             Visible = true,
         };
         _trayIcon.DoubleClick += (_, _) => RestoreWindow();
+        RebuildTrayMenu();
+    }
 
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("打开 Agent Controller", null, (_, _) => RestoreWindow());
-        menu.Items.Add("打开 Codex", null, (_, _) =>
+    private void RebuildTrayMenu()
+    {
+        if (_trayIcon is null)
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "codex://settings",
-                UseShellExecute = true,
-            });
-        });
+            return;
+        }
+
+        var strings = _localization.Strings;
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add(
+            strings.TrayOpenApplication,
+            null,
+            (_, _) => RestoreWindow());
+        menu.Items.Add(
+            strings.TrayOpenAgent(_activeAgent.DisplayName),
+            null,
+            (_, _) => WakeCodex());
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("退出", null, (_, _) => ExitApplication());
+        menu.Items.Add(
+            strings.TrayExit,
+            null,
+            (_, _) => ExitApplication());
+
+        var previousMenu = _trayIcon.ContextMenuStrip;
         _trayIcon.ContextMenuStrip = menu;
+        previousMenu?.Dispose();
     }
 
     private static System.Drawing.Icon? LoadTrayIcon()
@@ -2319,14 +2797,18 @@ public partial class MainWindow : Window
         ConfigureCodexKeybindings();
         AddEvent(
             _settings.BridgeEnabled
-                ? "桥接已启用"
-                : "桥接已切换为安全预览");
+                ? _localization.Strings.Get(
+                    StringKeys.MessageBridgeEnabled)
+                : _localization.Strings.Get(
+                    StringKeys.MessageBridgeSafePreview));
     }
 
     private void RefreshDataButton_Click(object sender, RoutedEventArgs e)
     {
         RefreshCodexData(preserveSelection: true);
-        AddEvent("已刷新 Codex 本机任务");
+        AddEvent(_localization.Strings.Format(
+            StringKeys.MessageAgentDataRefreshed,
+            _activeAgent.DisplayName));
     }
 
     private void PinnedLayerButton_Click(object sender, RoutedEventArgs e)
@@ -2397,77 +2879,78 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenCodexShortcutsButton_Click(
-        object sender,
-        RoutedEventArgs e)
+    private void OpenAgentShortcuts()
     {
-        CodexCommandService.OpenCodexKeyboardShortcuts();
-        AddEvent("已打开 Codex 快捷键设置");
-    }
-
-    private void SaveBindingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        SaveSettings("快捷键配置已保存");
-    }
-
-    private void ResetBindingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        var defaults = new AppSettings();
-        ReasoningDownTextBox.Text = defaults.ReasoningDownShortcut;
-        ReasoningUpTextBox.Text = defaults.ReasoningUpShortcut;
-        ModelPickerTextBox.Text = defaults.ModelPickerShortcut;
-        FastToggleTextBox.Text = defaults.FastToggleShortcut;
-        DictationTextBox.Text = defaults.DictationShortcut;
-        SubmitTextBox.Text = defaults.SubmitShortcut;
-    }
-
-    private void DeadZoneSlider_ValueChanged(
-        object sender,
-        RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (DeadZoneValueText is not null)
+        if (_activeAgent.DeepLinks is not { } deepLinks)
         {
-            DeadZoneValueText.Text = e.NewValue.ToString("0.00");
+            AddEvent(_localization.Strings.ErrorLabel(
+                AgentAutomationErrorCodes.CapabilityUnavailable));
+            return;
+        }
+
+        deepLinks.OpenKeyboardShortcuts();
+        AddEvent(_localization.Strings.Format(
+            StringKeys.MessageAgentShortcutsOpened,
+            _activeAgent.DisplayName));
+    }
+
+    private void OpenAgentSettings()
+    {
+        if (_activeAgent.DeepLinks is not { } deepLinks)
+        {
+            AddEvent(_localization.Strings.ErrorLabel(
+                AgentAutomationErrorCodes.CapabilityUnavailable));
+            return;
+        }
+
+        deepLinks.OpenSettings();
+    }
+
+    private void OpenControllerVendorTool()
+    {
+        if (_activeControllerProfile.VendorTool is not { } vendorTool)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = vendorTool.AbsoluteUri,
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            AddEvent(_localization.Strings.Get(
+                StringKeys.MessageControllerSoftwareOpenFailed));
         }
     }
 
-    private void RepeatDelaySlider_ValueChanged(
-        object sender,
-        RoutedPropertyChangedEventArgs<double> e)
+    private void Localization_PropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs e)
     {
-        if (RepeatDelayValueText is not null)
+        if (
+            e.PropertyName is not nameof(LocalizationService.Catalog) and
+            not nameof(LocalizationService.SelectedLanguage))
         {
-            RepeatDelayValueText.Text = $"{e.NewValue:0} ms";
+            return;
+        }
+
+        _settings.Language = _localization.SettingValue;
+        _feedbackPresenter.Refresh();
+        UpdateLocalizedUi();
+        if (e.PropertyName == nameof(LocalizationService.Catalog))
+        {
+            RebuildSidebarEntries();
         }
     }
 
-    private void RepeatIntervalSlider_ValueChanged(
-        object sender,
-        RoutedPropertyChangedEventArgs<double> e)
+    private void ChangeLanguage(string settingValue)
     {
-        if (RepeatIntervalValueText is not null)
-        {
-            RepeatIntervalValueText.Text = $"{e.NewValue:0} ms";
-        }
-    }
-
-    private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        SaveSettings("设置已保存");
-    }
-
-    private void OpenUltimateSoftwareButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        CodexCommandService.OpenUltimateSoftware();
-    }
-
-    private void OpenCodexSettingsButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        CodexCommandService.OpenCodexSettings();
+        _localization.SetLanguage(settingValue);
     }
 
     private void Window_StateChanged(object? sender, EventArgs e)
@@ -2488,7 +2971,8 @@ public partial class MainWindow : Window
             e.Cancel = true;
             ShowInTaskbar = false;
             Hide();
-            AddEvent("窗口已隐藏，桥接继续在后台运行");
+            AddEvent(_localization.Strings.Get(
+                StringKeys.MessageWindowHiddenBackground));
             return;
         }
 
@@ -2500,6 +2984,8 @@ public partial class MainWindow : Window
         _dictationStopCancellation = null;
         ClearNavigationUndo();
         _xInputService.StateChanged -= XInputService_StateChanged;
+        _localization.PropertyChanged -=
+            Localization_PropertyChanged;
         _trayIcon?.Dispose();
         _trayIconImage?.Dispose();
         _feedbackPresenter.PropertyChanged -=

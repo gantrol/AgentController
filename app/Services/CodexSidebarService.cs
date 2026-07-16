@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows.Automation;
+using CodexController.Agents;
 using CodexController.Models;
 using CodexController.Native;
 
@@ -7,7 +8,14 @@ namespace CodexController.Services;
 
 public sealed record SidebarAutomationResult(
     bool Succeeded,
-    string? Error = null);
+    string? Error = null,
+    string? ErrorDetail = null)
+{
+    public AgentAutomationError? Failure =>
+        Error is null
+            ? null
+            : new AgentAutomationError(Error, ErrorDetail);
+}
 
 public sealed class ProjectDisclosureLease
 {
@@ -42,14 +50,18 @@ public sealed class CodexSidebarService
     {
         if (!settings.BridgeEnabled)
         {
-            return new(false, "桥接处于安全预览");
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
         }
 
         if (
             settings.OnlyWhenCodexForeground &&
             !Win32Input.IsCodexForeground())
         {
-            return new(false, "Codex 未在前台");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
         }
 
         try
@@ -65,7 +77,9 @@ public sealed class CodexSidebarService
             var window = FindCodexWindow();
             if (window is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             var target = entry.Layer switch
@@ -95,7 +109,10 @@ public sealed class CodexSidebarService
             };
             if (target is null)
             {
-                return new(false, $"Codex 侧边栏未显示：{entry.Title}");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    $"sidebar-entry:{entry.Title}");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -106,19 +123,30 @@ public sealed class CodexSidebarService
             Thread.Sleep(15);
             return HasKeyboardFocus(target)
                 ? new(true)
-                : new(false, "Codex 未接受侧边栏焦点");
+                : new(
+                    false,
+                    AgentAutomationErrorCodes.FocusRejected,
+                    "sidebar-entry");
         }
         catch (OperationCanceledException)
         {
-            return new(false, "已取消");
+            return new(
+                false,
+                AgentAutomationErrorCodes.OperationCanceled);
         }
         catch (ElementNotAvailableException)
         {
-            return new(false, "Codex 侧边栏已刷新");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AutomationStale,
+                "sidebar");
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
     }
 
@@ -156,14 +184,18 @@ public sealed class CodexSidebarService
     {
         if (!settings.BridgeEnabled)
         {
-            return new(false, "桥接处于安全预览");
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
         }
 
         if (
             settings.OnlyWhenCodexForeground &&
             !Win32Input.IsCodexForeground())
         {
-            return new(false, "Codex 未在前台");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
         }
 
         try
@@ -171,7 +203,9 @@ public sealed class CodexSidebarService
             var window = FindCodexWindow();
             if (window is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             var buttons = window.FindAll(
@@ -208,11 +242,16 @@ public sealed class CodexSidebarService
                 }
             }
 
-            return new(false, "Codex 当前没有可撤回的导航");
+            return new(
+                false,
+                AgentAutomationErrorCodes.NavigationUnavailable);
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
     }
 
@@ -224,7 +263,9 @@ public sealed class CodexSidebarService
             var window = FindCodexWindow();
             if (window is null)
             {
-                return new(false, "找不到 Codex 窗口");
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
             }
 
             if (lease.ProjectExpandedByController)
@@ -258,11 +299,17 @@ public sealed class CodexSidebarService
         }
         catch (ElementNotAvailableException)
         {
-            return new(false, "Codex 侧边栏已刷新");
+            return new(
+                false,
+                AgentAutomationErrorCodes.AutomationStale,
+                "sidebar");
         }
         catch (Exception exception)
         {
-            return new(false, exception.Message);
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
         }
     }
 

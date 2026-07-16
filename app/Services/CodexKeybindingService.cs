@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using CodexController.Agents;
 using CodexController.Models;
 
 namespace CodexController.Services;
@@ -73,7 +74,7 @@ public sealed class CodexKeybindingService
                 if (conflictingCommand is not null)
                 {
                     conflicts.Add(
-                        $"{binding.Key} 已由 {conflictingCommand} 使用");
+                        $"key={binding.Key};command={conflictingCommand}");
                     continue;
                 }
 
@@ -130,6 +131,16 @@ public sealed class CodexKeybindingService
                 conflicts,
                 null);
         }
+        catch (AgentAutomationException exception)
+        {
+            return new CodexKeybindingMergeResult(
+                keybindingsPath,
+                false,
+                [],
+                [],
+                exception.Error.Code,
+                exception.Error.Detail);
+        }
         catch (Exception exception)
         {
             return new CodexKeybindingMergeResult(
@@ -137,6 +148,7 @@ public sealed class CodexKeybindingService
                 false,
                 [],
                 [],
+                AgentAutomationErrorCodes.Unexpected,
                 exception.Message);
         }
     }
@@ -154,10 +166,24 @@ public sealed class CodexKeybindingService
             return [];
         }
 
-        if (JsonNode.Parse(text) is not JsonArray root)
+        JsonNode? parsed;
+        try
         {
-            throw new InvalidDataException(
-                "Codex keybindings.json 必须是 JSON 数组，已停止写入以保护原配置。");
+            parsed = JsonNode.Parse(text);
+        }
+        catch (JsonException exception)
+        {
+            throw new AgentAutomationException(
+                AgentAutomationErrorCodes.KeybindingsInvalid,
+                "json-syntax",
+                exception);
+        }
+
+        if (parsed is not JsonArray root)
+        {
+            throw new AgentAutomationException(
+                AgentAutomationErrorCodes.KeybindingsInvalid,
+                "root-not-array");
         }
 
         foreach (var node in root)
@@ -167,8 +193,9 @@ public sealed class CodexKeybindingService
                 string.IsNullOrWhiteSpace(GetString(item, "command")) ||
                 !HasStringOrNullKey(item))
             {
-                throw new InvalidDataException(
-                    "Codex keybindings.json 含有无法识别的条目，已停止写入以保护原配置。");
+                throw new AgentAutomationException(
+                    AgentAutomationErrorCodes.KeybindingsInvalid,
+                    "entry-invalid");
             }
         }
 
@@ -254,8 +281,8 @@ public sealed class CodexKeybindingService
         var directory = Path.GetDirectoryName(path);
         if (string.IsNullOrWhiteSpace(directory))
         {
-            throw new InvalidOperationException(
-                "无法确定 Codex keybindings.json 所在目录。");
+            throw new AgentAutomationException(
+                AgentAutomationErrorCodes.KeybindingsPathUnavailable);
         }
 
         Directory.CreateDirectory(directory);
@@ -309,7 +336,13 @@ public sealed record CodexKeybindingMergeResult(
     bool Changed,
     IReadOnlyList<string> Added,
     IReadOnlyList<string> Conflicts,
-    string? Error)
+    string? Error,
+    string? ErrorDetail = null)
 {
     public bool Succeeded => Error is null;
+
+    public AgentAutomationError? Failure =>
+        Error is null
+            ? null
+            : new AgentAutomationError(Error, ErrorDetail);
 }

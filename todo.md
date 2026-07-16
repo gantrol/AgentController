@@ -1,12 +1,18 @@
-- Repo: 后续仅提交 app（Windows 应用）跟 todo；README 中英双语，以 app 为准
 - Opensource to github: `gantrol/codex-controller`
 - Test in Xbox、Flydigi、8BitDo
 - For more operations, I have an idea.
   - thinking about editing(send & cancel?)
-- Not only codex, but only claude code
+- Support more than Codex, starting with a researched Claude Code adapter
 - Not only windows? Change `app` directory to `windows`
-- v0.4 feedback pipeline
-  - Replace the temporary `diagnostic.legacy.message` adapter with typed events
-  - Coalesce high-frequency sidebar focus and composer preview events
-  - Migrate data refresh, settings, A/X/B, project navigation and undo feedback
-  - Split controller orchestration out of `MainWindow`
+- Copy? e.g. controller assets in https://github.com/univrsal/input-overlay ?
+- v0.4 architecture follow-up
+  - [x] Runtime zh-CN / en-US catalogs and language setting
+  - [x] Localized structured feedback, tray, footer, and primary actions
+  - [x] Config / Settings View + ViewModel split
+  - [ ] Extract Device page state and controller orchestration from `MainWindow`
+  - [x] Controller profile registry, identity matching, glyphs, and Raw HID mapping
+  - [ ] Profile-specific controller visuals and first-run tuning defaults
+  - [x] Agent capability interfaces, registry, Codex adapter, and safe fallbacks
+  - [ ] Target Agent selector plus a second production adapter
+  - [ ] Replace the remaining temporary `diagnostic.legacy.message` adapter with typed events
+  - [ ] Coalesce high-frequency sidebar focus and composer preview events

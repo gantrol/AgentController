@@ -47,18 +47,13 @@ public sealed record SidebarEntry(
     string? NativeTitle = null,
     int? NativeListIndex = null,
     bool IsPinned = false,
-    bool ProjectIsPinned = false)
+    bool ProjectIsPinned = false,
+    string PinBadge = "",
+    string ActionHint = "")
 {
     public bool IsProject => Layer == SidebarLayer.Projects;
 
     public string KindGlyph => IsProject ? "▱" : "·";
-
-    public string PinBadge =>
-        (IsProject ? ProjectIsPinned : IsPinned)
-            ? "置顶"
-            : string.Empty;
-
-    public string ActionHint => IsProject ? "进入" : "打开";
 }
 
 public sealed class CodexSnapshot
