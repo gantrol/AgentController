@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using CodexController.Core.Bridge;
 using CodexController.Models;
+using CodexController.Presentation.Feedback;
 using CodexController.Services;
 using Forms = System.Windows.Forms;
 
@@ -32,10 +33,11 @@ public partial class MainWindow : Window
     private readonly AxisRepeater _axisRepeater;
     private readonly StickGestureRouter _leftStickRouter;
     private readonly StickGestureRouter _rightStickRouter;
+    private readonly BridgeEventHub _bridgeEvents;
+    private readonly BridgeFeedbackPresenter _feedbackPresenter;
     private readonly SemaphoreSlim _sidebarFocusGate = new(1, 1);
     private readonly SemaphoreSlim _dataRefreshGate = new(1, 1);
     private readonly ObservableCollection<SidebarEntry> _sidebarEntries = [];
-    private readonly ObservableCollection<EventRow> _events = [];
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
     private readonly object _controllerStateSync = new();
@@ -96,10 +98,19 @@ public partial class MainWindow : Window
         _axisRepeater = services.AxisRepeater;
         _leftStickRouter = services.LeftStickRouter;
         _rightStickRouter = services.RightStickRouter;
+        _bridgeEvents = services.BridgeEvents;
 
         InitializeComponent();
         SidebarList.ItemsSource = _sidebarEntries;
-        EventList.ItemsSource = _events;
+        _feedbackPresenter = new BridgeFeedbackPresenter(
+            _bridgeEvents,
+            new ChineseBridgeFeedbackFormatter(),
+            new DelegateOverlayPresenter(PresentBridgeOverlay),
+            SynchronizationContext.Current ??
+            new DispatcherSynchronizationContext(Dispatcher));
+        _feedbackPresenter.PropertyChanged +=
+            FeedbackPresenter_PropertyChanged;
+        EventList.ItemsSource = _feedbackPresenter.LogRows;
 
         _statusTimer = new DispatcherTimer
         {
@@ -121,7 +132,7 @@ public partial class MainWindow : Window
         SetupTrayIcon();
         _overlayWindow = new OverlayWindow();
 
-        AddEvent("正式桥接已启动");
+        _bridgeEvents.Publish(BridgeEventKeys.AppReady);
         ConfigureCodexKeybindings();
         InitializeComposerControls();
         RefreshCodexData(preserveSelection: false);
@@ -201,7 +212,16 @@ public partial class MainWindow : Window
             if (_controllerWasConnected)
             {
                 _controllerWasConnected = false;
-                AddEvent("手柄连接已暂停 · 重连后自动恢复");
+                _bridgeEvents.Publish(
+                    BridgeEventKeys.ControllerDisconnected,
+                    BridgeEventSeverity.Warning,
+                    new Dictionary<string, string>
+                    {
+                        ["autoResume"] = "true",
+                    },
+                    new BridgeOverlayMetadata(
+                        BridgeOverlayTarget.Footer,
+                        CoalesceKey: "controller.connection"));
             }
 
             PauseControllerInput();
@@ -213,10 +233,16 @@ public partial class MainWindow : Window
         {
             _controllerWasConnected = true;
             _controllerSession.Pause(requireNeutral: true);
-            if (_hasSeenController)
-            {
-                AddEvent("手柄已重新连接 · 松开按键后自动恢复");
-            }
+            _bridgeEvents.Publish(
+                BridgeEventKeys.ControllerConnected,
+                parameters: new Dictionary<string, string>
+                {
+                    ["restored"] = _hasSeenController.ToString(),
+                    ["requiresNeutral"] = "true",
+                },
+                overlay: new BridgeOverlayMetadata(
+                    BridgeOverlayTarget.Footer,
+                    CoalesceKey: "controller.connection"));
 
             _hasSeenController = true;
         }
@@ -354,16 +380,33 @@ public partial class MainWindow : Window
         }
 
         _wakeInProgress = true;
-        AddEvent("Menu · 正在启动或唤醒 Codex");
-        ShowFeedback("Menu · Codex", "正在启动或置于前台");
+        _bridgeEvents.Publish(
+            BridgeEventKeys.CodexWakeRequested,
+            parameters: new Dictionary<string, string>
+            {
+                ["trigger"] = "menu",
+            },
+            overlay: new BridgeOverlayMetadata(
+                BridgeOverlayTarget.FooterAndToast,
+                TimeSpan.FromMilliseconds(1050),
+                "codex.wake"));
         try
         {
             var woke = await Task.Run(_codexCommandService.WakeCodex);
             if (!woke)
             {
                 _controllerSession.Lock();
-                AddEvent("Menu · 未找到或无法启动 Codex");
-                ShowFeedback("Menu · Codex", "启动 / 唤醒失败");
+                _bridgeEvents.Publish(
+                    BridgeEventKeys.CodexWakeFailed,
+                    BridgeEventSeverity.Error,
+                    new Dictionary<string, string>
+                    {
+                        ["reasonCode"] = "window-unavailable",
+                    },
+                    new BridgeOverlayMetadata(
+                        BridgeOverlayTarget.FooterAndToast,
+                        TimeSpan.FromMilliseconds(1400),
+                        "codex.wake"));
                 return;
             }
 
@@ -375,8 +418,17 @@ public partial class MainWindow : Window
                 Environment.TickCount64 + BridgeTimings.WakeInputGuardMs;
             _rightAdjustmentBlockedUntil =
                 Environment.TickCount64 + BridgeTimings.WakeInputGuardMs;
-            AddEvent("Menu · Codex 已唤醒 · 手柄控制已解锁");
-            ShowFeedback("Menu · Codex", "已置于前台 · 可控制");
+            _bridgeEvents.Publish(
+                BridgeEventKeys.CodexWakeSucceeded,
+                BridgeEventSeverity.Success,
+                new Dictionary<string, string>
+                {
+                    ["controllerArmed"] = "true",
+                },
+                new BridgeOverlayMetadata(
+                    BridgeOverlayTarget.FooterAndToast,
+                    TimeSpan.FromMilliseconds(1050),
+                    "codex.wake"));
             Pulse(strength: 0.3);
             UpdateCodexStatus();
         }
@@ -523,9 +575,17 @@ public partial class MainWindow : Window
 
         if (showFeedback)
         {
-            var label = ScopeLabel(scope);
-            AddEvent($"侧边栏区域 · {label}");
-            ShowFeedback("Codex 侧边栏", label);
+            _bridgeEvents.Publish(
+                BridgeEventKeys.SidebarScopeChanged,
+                parameters: new Dictionary<string, string>
+                {
+                    ["scope"] = scope.ToString(),
+                    ["label"] = ScopeLabel(scope),
+                },
+                overlay: new BridgeOverlayMetadata(
+                    BridgeOverlayTarget.Toast,
+                    TimeSpan.FromMilliseconds(900),
+                    "sidebar.scope"));
             Pulse();
         }
     }
@@ -1807,11 +1867,12 @@ public partial class MainWindow : Window
 
     private void AddEvent(string text)
     {
-        _events.Insert(0, new EventRow(DateTime.Now.ToString("HH:mm:ss"), text));
-        while (_events.Count > 4)
-        {
-            _events.RemoveAt(_events.Count - 1);
-        }
+        _bridgeEvents.Publish(
+            BridgeEventKeys.LegacyMessage,
+            parameters: new Dictionary<string, string>
+            {
+                ["text"] = text,
+            });
     }
 
     private void ShowFeedback(string title, string value)
@@ -1822,6 +1883,31 @@ public partial class MainWindow : Window
         }
 
         _overlayWindow?.ShowMessage(title, value);
+    }
+
+    private void PresentBridgeOverlay(BridgeOverlayRequest request)
+    {
+        if (!_settings.ShowOverlay)
+        {
+            return;
+        }
+
+        _overlayWindow?.ShowMessage(
+            request.Title,
+            request.Value,
+            request.Duration);
+    }
+
+    private void FeedbackPresenter_PropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs e)
+    {
+        if (
+            e.PropertyName == nameof(BridgeFeedbackPresenter.Footer) &&
+            _feedbackPresenter.Footer is { } footer)
+        {
+            FooterStatusText.Text = footer.Text;
+        }
     }
 
     private void Pulse(double strength = 0.22)
@@ -2197,7 +2283,6 @@ public partial class MainWindow : Window
         _trayIcon = null;
         _trayIconImage?.Dispose();
         _trayIconImage = null;
-        _overlayWindow?.Close();
         Close();
         System.Windows.Application.Current.Shutdown();
     }
@@ -2417,6 +2502,9 @@ public partial class MainWindow : Window
         _xInputService.StateChanged -= XInputService_StateChanged;
         _trayIcon?.Dispose();
         _trayIconImage?.Dispose();
+        _feedbackPresenter.PropertyChanged -=
+            FeedbackPresenter_PropertyChanged;
+        _feedbackPresenter.Dispose();
         _overlayWindow?.Close();
 
         if (!_exitRequested)
@@ -2452,5 +2540,4 @@ public partial class MainWindow : Window
         string? EntryId,
         string? ProjectPath);
 
-    private sealed record EventRow(string Time, string Text);
 }

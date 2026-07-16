@@ -13,6 +13,7 @@ public partial class OverlayWindow : Window
 
     private readonly DispatcherTimer _hideTimer;
     private int _animationVersion;
+    private int _isClosed;
 
     public OverlayWindow()
     {
@@ -29,8 +30,35 @@ public partial class OverlayWindow : Window
         };
     }
 
-    public void ShowMessage(string title, string value)
+    public void ShowMessage(
+        string title,
+        string value,
+        TimeSpan? visibleDuration = null)
     {
+        if (Volatile.Read(ref _isClosed) != 0)
+        {
+            return;
+        }
+
+        if (!Dispatcher.CheckAccess())
+        {
+            if (
+                Dispatcher.HasShutdownStarted ||
+                Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            _ = Dispatcher.BeginInvoke(
+                () => ShowMessage(title, value, visibleDuration));
+            return;
+        }
+
+        if (Volatile.Read(ref _isClosed) != 0)
+        {
+            return;
+        }
+
         _animationVersion++;
         var wasVisible = IsVisible;
 
@@ -61,7 +89,20 @@ public partial class OverlayWindow : Window
         }
 
         RaiseLiveRegionChanged();
+        _hideTimer.Interval =
+            visibleDuration is { } duration && duration > TimeSpan.Zero
+                ? duration
+                : VisibleDuration;
         _hideTimer.Start();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        Interlocked.Exchange(ref _isClosed, 1);
+        _animationVersion++;
+        _hideTimer.Stop();
+        BeginAnimation(OpacityProperty, null);
+        base.OnClosed(e);
     }
 
     private void PositionAtBottomCenter()
@@ -78,6 +119,11 @@ public partial class OverlayWindow : Window
 
     private void HideOverlay()
     {
+        if (Volatile.Read(ref _isClosed) != 0)
+        {
+            return;
+        }
+
         var animationVersion = ++_animationVersion;
 
         if (!SystemParameters.ClientAreaAnimation)
@@ -93,7 +139,9 @@ public partial class OverlayWindow : Window
 
     private void CompleteHide(int animationVersion)
     {
-        if (animationVersion != _animationVersion)
+        if (
+            Volatile.Read(ref _isClosed) != 0 ||
+            animationVersion != _animationVersion)
         {
             return;
         }

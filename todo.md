@@ -5,3 +5,8 @@
   - thinking about editing(send & cancel?)
 - Not only codex, but only claude code
 - Not only windows? Change `app` directory to `windows`
+- v0.4 feedback pipeline
+  - Replace the temporary `diagnostic.legacy.message` adapter with typed events
+  - Coalesce high-frequency sidebar focus and composer preview events
+  - Migrate data refresh, settings, A/X/B, project navigation and undo feedback
+  - Split controller orchestration out of `MainWindow`

@@ -13,7 +13,7 @@
         ResizeMode="NoResize"
         Focusable="False"
         AutomationProperties.LiveSetting="Polite"
-        AutomationProperties.Name="Codex Micro 通知"
+        AutomationProperties.Name="Agent Controller 通知"
         WindowStartupLocation="Manual">
     <Border x:Name="RootBorder"
             Margin="8"

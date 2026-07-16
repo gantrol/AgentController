@@ -1,3 +1,5 @@
+using CodexController.Core.Bridge;
+
 namespace CodexController.Services;
 
 /// <summary>
@@ -10,6 +12,7 @@ public sealed class AppServices : IDisposable
     private bool _disposed;
 
     private AppServices(
+        BridgeEventHub bridgeEvents,
         StartupRegistrationService startupRegistration,
         SettingsService settings,
         CodexDataService codexData,
@@ -22,6 +25,7 @@ public sealed class AppServices : IDisposable
         StickGestureRouter leftStickRouter,
         StickGestureRouter rightStickRouter)
     {
+        BridgeEvents = bridgeEvents;
         StartupRegistration = startupRegistration;
         Settings = settings;
         CodexData = codexData;
@@ -35,6 +39,7 @@ public sealed class AppServices : IDisposable
         RightStickRouter = rightStickRouter;
     }
 
+    public BridgeEventHub BridgeEvents { get; }
     public StartupRegistrationService StartupRegistration { get; }
     public SettingsService Settings { get; }
     public CodexDataService CodexData { get; }
@@ -51,6 +56,7 @@ public sealed class AppServices : IDisposable
     {
         var startupRegistration = new StartupRegistrationService();
         return new AppServices(
+            new BridgeEventHub(),
             startupRegistration,
             new SettingsService(startupRegistration),
             new CodexDataService(),
@@ -72,6 +78,7 @@ public sealed class AppServices : IDisposable
         }
 
         Controller.Dispose();
+        BridgeEvents.Dispose();
         _disposed = true;
     }
 }
