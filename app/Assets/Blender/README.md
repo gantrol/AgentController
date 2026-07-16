@@ -9,7 +9,13 @@ The display view intentionally tilts the controller forward so the normal face
 controls remain readable while the left and right bumper/trigger silhouettes
 are visible above the shell.
 
-Render from the repository root:
+The center Guide control is unbranded at the mesh level. The render script
+removes the source model's isolated raised Xbox-emblem geometry and preserves
+the intact circular button face beneath it. This is not a cover, decal, or
+camera-angle trick, so there is no protruding patch or branded geometry to
+reappear from another view.
+
+Render reproducibly with Blender 5.2 from the repository root:
 
 ```powershell
 & 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' `
