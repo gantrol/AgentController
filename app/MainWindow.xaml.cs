@@ -114,6 +114,7 @@ public partial class MainWindow : Window
     private bool _virtualDialCleanupPending;
     private bool _dialInputReleasePending;
     private bool _simpleModeUpgradePromptPending;
+    private bool _composerPickerMenuLikelyOpen;
     private bool _blockedPushToTalkHintShown;
     private bool _bridgeDisabledHintShown;
     private bool _controllerWasConnected;
@@ -136,6 +137,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _navigationConfirmCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
     private CancellationTokenSource? _actionPanelConfirmationCancellation;
+    private CancellationTokenSource? _cancelHoldCancellation;
     private NavigationUndoState? _navigationUndo;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
@@ -604,7 +606,8 @@ public partial class MainWindow : Window
         HandleButtonEdge(
             basePressed,
             ControllerButtons.B,
-            onDown: CancelActionOrDialMenu);
+            onDown: BeginBaseCancelPress,
+            onUp: EndBaseCancelPress);
         _previousButtons = basePressed;
         _previousPhysicalButtons = pressed;
 
@@ -758,6 +761,7 @@ public partial class MainWindow : Window
 
     private void BeginVirtualDialReleaseDrain()
     {
+        _composerPickerMenuLikelyOpen = false;
         _dialInputReleasePending =
             !IsControllerNeutral(_xInputService.LastState);
         Interlocked.Exchange(
@@ -2048,6 +2052,7 @@ public partial class MainWindow : Window
     private void PauseControllerInput(
         ControllerState? state = null)
     {
+        CancelBaseCancelHold(showFeedback: false);
         if (_controllerSession.IsActive)
         {
             CancelPendingSidebarFocus();
@@ -3225,6 +3230,186 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BeginBaseCancelPress()
+    {
+        if (
+            _dictationInjected ||
+            _pushToTalkAutomation.WantsDictation ||
+            _pushToTalkTrigger.BlocksBaseInput)
+        {
+            CancelAction();
+            return;
+        }
+
+        if (IsVirtualDialContextActive)
+        {
+            CancelActionOrDialMenu();
+            return;
+        }
+
+        if (_composerPickerMenuLikelyOpen)
+        {
+            CloseComposerPickerOnly();
+            return;
+        }
+
+        var hasPendingLocalAction =
+            _composerPickerCancellation is not null ||
+            Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
+            Volatile.Read(ref _pendingAdvancedSteps) != 0 ||
+            _navigationUndo is not null;
+        if (hasPendingLocalAction)
+        {
+            CancelAction();
+            return;
+        }
+
+        BeginCancelHold();
+    }
+
+    private void EndBaseCancelPress()
+    {
+        CancelBaseCancelHold(showFeedback: true);
+    }
+
+    private void BeginCancelHold()
+    {
+        if (_cancelHoldCancellation is not null)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _cancelHoldCancellation = cancellation;
+        _ = RunCancelHoldAsync(cancellation);
+    }
+
+    private async Task RunCancelHoldAsync(
+        CancellationTokenSource cancellation)
+    {
+        var startedAt = Environment.TickCount64;
+        var lastRemaining = -1;
+        try
+        {
+            while (true)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (!CanContinueCancelHold(cancellation))
+                {
+                    return;
+                }
+
+                var elapsed = Environment.TickCount64 - startedAt;
+                if (CancelHoldCountdownPolicy.IsComplete(
+                        elapsed,
+                        BridgeTimings.CancelHoldMs))
+                {
+                    break;
+                }
+
+                var remaining =
+                    CancelHoldCountdownPolicy.RemainingSeconds(
+                        elapsed,
+                        BridgeTimings.CancelHoldMs);
+                if (remaining != lastRemaining)
+                {
+                    lastRemaining = remaining;
+                    ShowCancelHoldCountdown(remaining);
+                    Pulse(strength: 0.06);
+                }
+
+                await Task.Delay(80, cancellation.Token)
+                    .ConfigureAwait(true);
+            }
+
+            if (!CanContinueCancelHold(cancellation))
+            {
+                return;
+            }
+
+            _cancelHoldCancellation = null;
+            CancelAction();
+        }
+        catch (OperationCanceledException)
+        {
+            // Releasing B, losing the session, or closing the app disarms it.
+        }
+        finally
+        {
+            if (ReferenceEquals(_cancelHoldCancellation, cancellation))
+            {
+                _cancelHoldCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private bool CanContinueCancelHold(
+        CancellationTokenSource cancellation)
+    {
+        var state = _xInputService.LastState;
+        return
+            ReferenceEquals(_cancelHoldCancellation, cancellation) &&
+            !cancellation.IsCancellationRequested &&
+            state.IsConnected &&
+            state.Buttons.HasFlag(ControllerButtons.B) &&
+            _settings.BridgeEnabled &&
+            _controllerSession.IsActive &&
+            (
+                !_settings.OnlyWhenCodexForeground ||
+                _activeAgent.Presence.IsForeground
+            );
+    }
+
+    private void ShowCancelHoldCountdown(int remainingSeconds)
+    {
+        var glyph = Glyph(LogicalInput.FaceEast);
+        _overlayWindow?.ShowMessage(
+            RadialText(
+                $"长按 {glyph} 取消会话",
+                $"Hold {glyph} to cancel the turn"),
+            RadialText(
+                $"{remainingSeconds} 秒 · 松开可中止",
+                $"{remainingSeconds}s · release to abort"),
+            TimeSpan.FromMilliseconds(1150));
+    }
+
+    private void CancelBaseCancelHold(bool showFeedback)
+    {
+        var cancellation = _cancelHoldCancellation;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        _cancelHoldCancellation = null;
+        cancellation.Cancel();
+        if (showFeedback)
+        {
+            _overlayWindow?.ShowMessage(
+                RadialText("取消会话", "Cancel turn"),
+                RadialText("已中止倒计时。", "Countdown aborted."),
+                TimeSpan.FromMilliseconds(850));
+        }
+    }
+
+    private void CloseComposerPickerOnly()
+    {
+        if (
+            _virtualDialCancelRequested ||
+            _virtualDialCleanupPending)
+        {
+            return;
+        }
+
+        _virtualDialCancelRequested = true;
+        Interlocked.Exchange(ref _pendingDialNavigation, 0);
+        _ = CloseVirtualDialMenuAsync(
+            showFeedback: false,
+            fallbackToBaseCancel: false);
+    }
+
     private void CancelActionOrDialMenu()
     {
         if (_dictationInjected || _pushToTalkTrigger.BlocksBaseInput)
@@ -3270,6 +3455,7 @@ public partial class MainWindow : Window
         SetVirtualDialMenuOpen(
             result.IsMenuOpen,
             result.RequiresConfirmation);
+        _composerPickerMenuLikelyOpen = result.IsMenuOpen;
         _virtualDialOpenPending = false;
         _virtualDialCancelRequested = false;
         if (
@@ -4003,6 +4189,7 @@ public partial class MainWindow : Window
         string title,
         ComposerPickerResult result)
     {
+        ObserveComposerPickerMenu(result);
         if (!result.Succeeded)
         {
             if (
@@ -4192,6 +4379,7 @@ public partial class MainWindow : Window
         ComposerSettingKind kind,
         ComposerPickerResult result)
     {
+        ObserveComposerPickerMenu(result);
         var title = ComposerKindLabel(kind);
         if (!result.Succeeded)
         {
@@ -4230,6 +4418,19 @@ public partial class MainWindow : Window
         AddEvent($"{title} · {value}");
         ShowComposerPickerOverlayIfNeeded(title, value, result);
         Pulse(strength: 0.18);
+    }
+
+    private void ObserveComposerPickerMenu(
+        ComposerPickerResult result)
+    {
+        if (result.IsMenuOpen)
+        {
+            _composerPickerMenuLikelyOpen = true;
+        }
+        else if (result.Succeeded)
+        {
+            _composerPickerMenuLikelyOpen = false;
+        }
     }
 
     private static void QueueBoundedStep(
@@ -5983,6 +6184,7 @@ public partial class MainWindow : Window
         _statusTimer.Stop();
         _dataTimer.Stop();
         _radialLearningTimer.Stop();
+        CancelBaseCancelHold(showFeedback: false);
         ResetRadialLayer(clearSuppression: true);
         ResetVirtualDialInput(closeMenu: true);
         CancelPendingSidebarFocus();

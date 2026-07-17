@@ -49,9 +49,10 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ControlSend] = "{0} · Send",
             [StringKeys.ControlSendDescription] =
                 "Submit the current prompt",
-            [StringKeys.ControlCancelUndo] = "{0} · Cancel / undo",
+            [StringKeys.ControlCancelUndo] =
+                "{0} · Close / undo · hold 3s to cancel turn",
             [StringKeys.ControlCancelUndoDescription] =
-                "Cancel the action; briefly undo after opening",
+                "Short press closes menus or undoes local navigation; hold for 3 seconds to cancel the active turn",
             [StringKeys.ControlProjectContext] =
                 "{0} · Action panel",
             [StringKeys.ControlProjectContextDescription] =
@@ -245,7 +246,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} is not in the foreground · press {1} to wake",
             [StringKeys.StatusControllerHelp] =
-                "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · {2} project context · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} cancels / undoes",
+                "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · {2} project context · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} closes / undoes; hold 3s to cancel turn",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
             [StringKeys.TrayOpenAgent] = "Open {0}",

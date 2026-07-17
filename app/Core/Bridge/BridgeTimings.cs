@@ -20,6 +20,7 @@ public static class BridgeTimings
     public const int ComposerFallbackSettleMs = 180;
     public const int ComposerMenuPollMs = 55;
     public const int DialHoldMs = 500;
+    public const int CancelHoldMs = 3000;
     public const int DictationDialCloseTimeoutMs = 700;
     public const int DictationStartTimeoutMs = 900;
     public const int DictationStopTimeoutMs = 1200;

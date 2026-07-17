@@ -51,7 +51,7 @@ Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controlle
 | A | Enter the focused project or open the focused task |
 | LT (hold) | Push-to-talk dictation; release to finish |
 | X | Send the prompt |
-| B | Cancel / stop; shortly after opening a task, undo the navigation |
+| B | Short press closes menus or undoes recent navigation; hold 3 seconds to cancel the active turn with an on-screen countdown |
 
 Holding a right-stick direction builds momentum over about two seconds: the first detent is immediate, then repeat speed ramps smoothly; deeper tilt permits a higher final speed.
 

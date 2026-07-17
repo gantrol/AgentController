@@ -47,9 +47,10 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "松开结束语音识别",
             [StringKeys.ControlSend] = "{0} · 发送",
             [StringKeys.ControlSendDescription] = "提交当前提示词",
-            [StringKeys.ControlCancelUndo] = "{0} · 取消 / 撤回",
+            [StringKeys.ControlCancelUndo] =
+                "{0} · 关闭 / 撤回 · 长按 3 秒取消会话",
             [StringKeys.ControlCancelUndoDescription] =
-                "取消操作；打开后短时返回",
+                "短按关闭菜单或撤回本地导航；长按 3 秒取消当前会话",
             [StringKeys.ControlProjectContext] = "{0} · 动作面板",
             [StringKeys.ControlProjectContextDescription] =
                 "Plan、侧边栏、前后导航、清空输入与项目上下文",
@@ -231,7 +232,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} 未在前台 · 按 {1} 唤醒",
             [StringKeys.StatusControllerHelp] =
-                "需要时按 {0} 唤醒；进入前台后自动启用 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · {2} 项目上下文 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 取消 / 撤回",
+                "需要时按 {0} 唤醒；进入前台后自动启用 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · {2} 项目上下文 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 短按关闭 / 撤回、长按 3 秒取消会话",
             [StringKeys.TrayOpenApplication] =
                 "打开 Agent Controller",
             [StringKeys.TrayOpenAgent] = "打开 {0}",
