@@ -4,12 +4,12 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
-             d:DesignHeight="300"
-             d:DesignWidth="680"
+             d:DesignHeight="430"
+             d:DesignWidth="860"
              IsHitTestVisible="False"
              SnapsToDevicePixels="True">
     <UserControl.Resources>
-        <Style x:Key="RadialMenu.Progress"
+        <Style x:Key="ControllerHint.Progress"
                TargetType="ProgressBar">
             <Setter Property="Height" Value="3" />
             <Setter Property="Foreground"
@@ -22,8 +22,7 @@
                     <ControlTemplate TargetType="ProgressBar">
                         <Grid Height="{TemplateBinding Height}"
                               ClipToBounds="True">
-                            <Rectangle x:Name="PART_Track"
-                                       Fill="{TemplateBinding Background}" />
+                            <Rectangle Fill="{TemplateBinding Background}" />
                             <Rectangle x:Name="PART_Indicator"
                                        HorizontalAlignment="Left"
                                        Fill="{TemplateBinding Foreground}" />
@@ -33,16 +32,16 @@
             </Setter>
         </Style>
 
-        <Style x:Key="RadialMenu.Slot"
+        <Style x:Key="ControllerHint.Slot"
                TargetType="ContentControl">
-            <Setter Property="Width" Value="162" />
-            <Setter Property="Height" Value="58" />
+            <Setter Property="Width" Value="182" />
+            <Setter Property="Height" Value="62" />
             <Setter Property="Focusable" Value="False" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ContentControl">
                         <Border x:Name="SlotCard"
-                                Padding="8,7"
+                                Padding="9,7"
                                 Background="{StaticResource Brush.Bg.Surface}"
                                 BorderBrush="{StaticResource Brush.Border.Subtle}"
                                 BorderThickness="1"
@@ -51,22 +50,20 @@
                                 AutomationProperties.Name="{Binding AccessibleName}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="38" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Border x:Name="GlyphBadge"
-                                        Width="28"
-                                        Height="28"
+                                        Width="30"
+                                        Height="30"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
-                                        Background="{StaticResource Brush.Bg.Sunken}"
-                                        BorderBrush="{StaticResource Brush.Border.Subtle}"
-                                        BorderThickness="1"
-                                        CornerRadius="14">
+                                        Background="{StaticResource Brush.Bg.Inverse}"
+                                        CornerRadius="15">
                                     <TextBlock Text="{Binding InputGlyph}"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Foreground="{StaticResource Brush.Text.Primary}"
+                                               Foreground="{StaticResource Brush.Text.Inverse}"
                                                FontFamily="{StaticResource Font.Mono}"
                                                FontSize="{StaticResource Font.Size.Caption}"
                                                FontWeight="{StaticResource Font.Weight.Bold}" />
@@ -79,8 +76,7 @@
                                                FontSize="{StaticResource Font.Size.Body}"
                                                FontWeight="{StaticResource Font.Weight.Semibold}"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock x:Name="SlotSubtitle"
-                                               Text="{Binding Subtitle}"
+                                    <TextBlock Text="{Binding Subtitle}"
                                                Margin="0,2,0,0"
                                                Foreground="{StaticResource Brush.Text.Secondary}"
                                                FontSize="{StaticResource Font.Size.Caption}"
@@ -100,8 +96,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-                                <ProgressBar x:Name="ConfirmationProgress"
-                                             Grid.ColumnSpan="2"
+                                <ProgressBar Grid.ColumnSpan="2"
                                              Margin="0,0,0,-7"
                                              VerticalAlignment="Bottom"
                                              Minimum="0"
@@ -109,7 +104,7 @@
                                              Value="{Binding ConfirmationProgress, Mode=OneWay}">
                                     <ProgressBar.Style>
                                         <Style TargetType="ProgressBar"
-                                               BasedOn="{StaticResource RadialMenu.Progress}">
+                                               BasedOn="{StaticResource ControllerHint.Progress}">
                                             <Setter Property="Visibility"
                                                     Value="Visible" />
                                             <Style.Triggers>
@@ -129,7 +124,7 @@
                                          Value="False">
                                 <Setter TargetName="SlotCard"
                                         Property="Opacity"
-                                        Value="0.46" />
+                                        Value="0.45" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsHighlighted}"
                                          Value="True">
@@ -144,9 +139,6 @@
                                         Value="2" />
                                 <Setter TargetName="GlyphBadge"
                                         Property="Background"
-                                        Value="{StaticResource Brush.Bg.Surface}" />
-                                <Setter TargetName="GlyphBadge"
-                                        Property="BorderBrush"
                                         Value="{StaticResource Brush.Accent}" />
                                 <Setter TargetName="SlotTitle"
                                         Property="Foreground"
@@ -165,8 +157,8 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Width="680"
-          Height="300"
+    <Grid Width="860"
+          Height="430"
           Background="Transparent">
         <Grid.Style>
             <Style TargetType="Grid">
@@ -181,122 +173,104 @@
             </Style>
         </Grid.Style>
 
+        <Border Margin="194,48,194,45"
+                Background="#F7F7F3"
+                BorderBrush="{StaticResource Brush.Border.Subtle}"
+                BorderThickness="1"
+                CornerRadius="28"
+                Effect="{StaticResource Shadow.Overlay}" />
+
+        <Image Margin="190,58,190,48"
+               Source="/Assets/controller.png"
+               Stretch="Uniform"
+               RenderOptions.BitmapScalingMode="HighQuality"
+               Opacity="0.96" />
+
+        <Border Width="310"
+                Height="70"
+                Margin="0,86,0,0"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Padding="12,9"
+                Background="{StaticResource Brush.Bg.Panel}"
+                BorderBrush="{StaticResource Brush.Border.Strong}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource Radius.LG}"
+                Effect="{StaticResource Shadow.Overlay}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="42" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="34"
+                        Height="34"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource Brush.Bg.Inverse}"
+                        CornerRadius="17">
+                    <TextBlock Text="{Binding ModifierGlyph}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Inverse}"
+                               FontFamily="{StaticResource Font.Mono}"
+                               FontSize="{StaticResource Font.Size.Label}"
+                               FontWeight="{StaticResource Font.Weight.Bold}" />
+                </Border>
+                <StackPanel Grid.Column="1"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontSize="{StaticResource Font.Size.Title}"
+                               FontWeight="{StaticResource Font.Weight.Semibold}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Subtitle}"
+                               Margin="0,3,0,0"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="{StaticResource Font.Size.Caption}"
+                               TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility"
+                                        Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasSubtitle}"
+                                                 Value="False">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <Canvas>
-            <Ellipse Canvas.Left="220"
-                     Canvas.Top="38"
-                     Width="240"
-                     Height="190"
-                     Fill="#26FFFFFF"
-                     Stroke="{StaticResource Brush.Border.Subtle}"
-                     StrokeThickness="1" />
-            <Line X1="340"
-                  Y1="132"
-                  X2="340"
-                  Y2="38"
-                  Stroke="{StaticResource Brush.Border.Subtle}"
-                  StrokeThickness="1" />
-            <Line X1="340"
-                  Y1="132"
-                  X2="154"
-                  Y2="121"
-                  Stroke="{StaticResource Brush.Border.Subtle}"
-                  StrokeThickness="1" />
-            <Line X1="340"
-                  Y1="132"
-                  X2="526"
-                  Y2="121"
-                  Stroke="{StaticResource Brush.Border.Subtle}"
-                  StrokeThickness="1" />
-            <Line X1="340"
-                  Y1="132"
-                  X2="340"
-                  Y2="263"
-                  Stroke="{StaticResource Brush.Border.Subtle}"
-                  StrokeThickness="1" />
-
-            <Border Canvas.Left="225"
-                    Canvas.Top="91"
-                    Width="230"
-                    Height="78"
-                    Padding="12,10"
-                    Background="{StaticResource Brush.Bg.Panel}"
-                    BorderBrush="{StaticResource Brush.Border.Strong}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource Radius.LG}"
-                    Effect="{StaticResource Shadow.Overlay}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="42" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border Width="34"
-                            Height="34"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Center"
-                            Background="{StaticResource Brush.Bg.Inverse}"
-                            CornerRadius="17">
-                        <TextBlock Text="{Binding ModifierGlyph}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Inverse}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontSize="{StaticResource Font.Size.Label}"
-                                   FontWeight="{StaticResource Font.Weight.Bold}" />
-                    </Border>
-                    <StackPanel Grid.Column="1"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Title}"
-                                   Foreground="{StaticResource Brush.Text.Primary}"
-                                   FontSize="{StaticResource Font.Size.Title}"
-                                   FontWeight="{StaticResource Font.Weight.Semibold}"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding Subtitle}"
-                                   Margin="0,3,0,0"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="{StaticResource Font.Size.Caption}"
-                                   TextTrimming="CharacterEllipsis">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility"
-                                            Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding HasSubtitle}"
-                                                     Value="False">
-                                            <Setter Property="Visibility"
-                                                    Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <ContentControl Canvas.Left="259"
-                            Canvas.Top="4"
+            <ContentControl Canvas.Left="339"
+                            Canvas.Top="8"
                             DataContext="{Binding Top}"
-                            Style="{StaticResource RadialMenu.Slot}" />
-            <ContentControl Canvas.Left="506"
-                            Canvas.Top="92"
+                            Style="{StaticResource ControllerHint.Slot}" />
+            <ContentControl Canvas.Left="670"
+                            Canvas.Top="126"
                             DataContext="{Binding Right}"
-                            Style="{StaticResource RadialMenu.Slot}" />
-            <ContentControl Canvas.Left="259"
-                            Canvas.Top="238"
+                            Style="{StaticResource ControllerHint.Slot}" />
+            <ContentControl Canvas.Left="339"
+                            Canvas.Top="360"
                             DataContext="{Binding Bottom}"
-                            Style="{StaticResource RadialMenu.Slot}" />
-            <ContentControl Canvas.Left="12"
-                            Canvas.Top="92"
+                            Style="{StaticResource ControllerHint.Slot}" />
+            <ContentControl Canvas.Left="8"
+                            Canvas.Top="126"
                             DataContext="{Binding Left}"
-                            Style="{StaticResource RadialMenu.Slot}" />
-            <ContentControl Canvas.Left="151"
-                            Canvas.Top="176"
+                            Style="{StaticResource ControllerHint.Slot}" />
+            <ContentControl Canvas.Left="80"
+                            Canvas.Top="290"
                             DataContext="{Binding CenterLeft}"
-                            Style="{StaticResource RadialMenu.Slot}" />
-            <ContentControl Canvas.Left="367"
-                            Canvas.Top="176"
+                            Style="{StaticResource ControllerHint.Slot}" />
+            <ContentControl Canvas.Left="598"
+                            Canvas.Top="290"
                             DataContext="{Binding CenterRight}"
-                            Style="{StaticResource RadialMenu.Slot}" />
+                            Style="{StaticResource ControllerHint.Slot}" />
         </Canvas>
     </Grid>
 </UserControl>

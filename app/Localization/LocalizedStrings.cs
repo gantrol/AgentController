@@ -308,13 +308,18 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
     public string ControlRightStickHint(
         string pressGlyph,
         string cancelGlyph,
-        bool menuOpen = false) =>
+        string primaryGlyph,
+        bool menuOpen = false,
+        bool requiresConfirmation = false) =>
         Format(
-            menuOpen
-                ? StringKeys.ControlRightStickHintOpen
-                : StringKeys.ControlRightStickHint,
+            requiresConfirmation
+                ? StringKeys.ControlRightStickHintConfirmation
+                : menuOpen
+                    ? StringKeys.ControlRightStickHintOpen
+                    : StringKeys.ControlRightStickHint,
             pressGlyph,
-            cancelGlyph);
+            cancelGlyph,
+            primaryGlyph);
 
     public string ControlPrimary(string glyph) =>
         Format(StringKeys.ControlPrimary, glyph);

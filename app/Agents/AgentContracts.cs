@@ -110,11 +110,19 @@ public interface IComposerAutomation
         int delta,
         AppSettings settings);
 
+    ComposerDialResult DialNavigate(
+        ComposerDialNavigation navigation,
+        AppSettings settings);
+
     ComposerDialResult DialPress(AppSettings settings);
+
+    ComposerDialResult DialSelect(AppSettings settings);
 
     ComposerDialResult DialCancel(AppSettings settings);
 
     ComposerAutomationResult Submit(AppSettings settings);
+
+    ComposerAutomationResult Clear(AppSettings settings);
 
     ComposerAutomationResult Cancel(AppSettings settings);
 }

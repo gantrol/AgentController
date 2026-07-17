@@ -216,27 +216,31 @@ Base 层严格保留官方默认：
 
 | 手势 | 虚拟输入 | 行为 |
 | --- | --- | --- |
-| 右推 | `DialStep(+1)` | 下一个 composer 控件或提高选项 |
-| 左推 | `DialStep(-1)` | 上一个 composer 控件或降低选项 |
-| R3 单击 | `DialPress()` | 打开或选择当前控件 |
+| 右推 | `DialNavigate(right)` | 菜单关闭时切换下一个 composer 控件；打开时进入子级 |
+| 左推 | `DialNavigate(left)` | 菜单关闭时切换上一个 composer 控件；打开时返回上级 |
+| 上推 | `DialNavigate(up)` | 菜单打开时选择上一行 |
+| 下推 | `DialNavigate(down)` | 菜单打开时选择下一行 |
+| R3 单击 | `DialPress()` | 打开当前控件；默认候选为模型按钮 |
+| A | `DialSelect()` | 选择当前具体项 |
+| B | `DialCancel()` | 一次关闭整个选择器或取消二次确认 |
 | R3 长按 500 ms | `DialHold()` | 打开虚拟 Codex Micro 设置 |
-| 上 / 下 | `ContextAdjust(+/-)` | 仅在明确支持 Adjust 的控件中生效 |
 
 约束：
 
-- 左右是旋钮的主要一维输入。
+- 右摇杆在选择器中作为二维菜单导航器，不直接连续调整参数。
 - 每次越过阈值先产生一个 step，持续保持后才开始重复。
-- Reasoning only 模式下，step 直接调整 reasoning effort。
-- Composer navigation 模式下，step 移动焦点或调整当前选项。
 - 菜单打开后 B 始终用于取消，不能映射为 Stop 或 Decline。
+- 可展开的 Model / Effort / Speed 根行用右推进入，A 只选择具体项。
+- Full access 选择后若出现二次确认，A 只调用 Confirm，B 只调用
+  Cancel，右摇杆冻结。
 
 新任务页的 Project 选择器属于 `ComposerControl`，不占用独立物理键：
 
-- 右摇杆 step 可把焦点移动到 Project 控件；
+- 菜单关闭时右摇杆左/右可把焦点移动到 Project 控件；
 - R3 打开项目选择器；
-- 选择器打开后，右摇杆 step 遍历已有项目、New project 和
+- 选择器打开后，右摇杆上/下遍历已有项目、New project 和
   Don't work in a project；
-- R3 确认当前项；
+- A 确认当前项；
 - B 只关闭选择器，必须走 `DialCancel()` / Escape，不得复用会优先
   查找 Stop 的 Base Cancel；
 - 项目搜索框的自由文本输入仍由键盘或语音完成，旋钮只负责遍历已有项。
@@ -480,15 +484,17 @@ RT Candidate 出现后必须立即冻结 A/B/X/Y 的 Base 行为。只有越过 
 | 十字键 | 离散 Navigate，一按一步 |
 | A | Select |
 | B | Cancel |
-| 右摇杆左右 | DialStep |
-| 右摇杆上下 | 默认冻结，留作后续连续参数或滚动扩展 |
-| R3 | Open / Select |
+| 右摇杆左右 | 菜单关闭时切换控件；菜单打开时 Back / Enter |
+| 右摇杆上下 | 菜单打开时 Navigate |
+| R3 | Open |
+| A | Select |
 
 此上下文中：
 
 - B 绝不解释为 Stop 或 Decline。
 - X、Y 默认冻结。
 - 菜单关闭后必须等待所有输入回中。
+- Full access 二次确认中 A=Confirm、B=Cancel，其他菜单导航冻结。
 
 ## 15. Dictation
 

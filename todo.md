@@ -1,10 +1,11 @@
 - Opensource to github: `gantrol/codex-controller`
 - Test in Xbox、Flydigi、8BitDo
-- For more operations, I have an idea.
-  - thinking about editing(send & cancel?)
 - Support more than Codex, starting with a researched Claude Code adapter
 - Not only windows? Change `app` directory to `windows`
 - Copy? e.g. controller assets in https://github.com/univrsal/input-overlay ?
+- Plan Mode error
+- Fast switch error
+- up/down cannot jump within chat turns
 - v0.4b current trial
   - [x] Stable controller-owned sidebar directory; running-task recency
         updates no longer reorder the active navigation session
@@ -45,14 +46,14 @@
 - v0.4a -> v0.4b controller mapping preparation
   - Scope guard
     - [ ] Keep v0.4a planning-only: do not change runtime button behavior until the v0.4b physical mapping is accepted
-    - [ ] Treat the current A / X / B / Y and stick bindings as a prototype, not a compatibility contract
-    - [ ] Keep physical mapping out of firmware, Codex command IDs, F13-F24 meanings, menu order, task IDs, and window handles
+    - [x] Treat the current A / X / B / Y and stick bindings as a prototype, not a compatibility contract
+    - [x] Keep physical mapping out of firmware, Codex command IDs, F13-F24 meanings, menu order, task IDs, and window handles
     - [ ] Require the runtime chain: physical input -> physical gesture -> virtual Micro input -> context role -> `CodexAction` -> executor -> verified feedback
 
   - Current implementation to replace or isolate
     - [ ] Move `MainWindow.ProcessControllerState` button edges and stick routing into a testable controller coordinator
     - [ ] Stop calling `StartDictation`, `SendPrompt`, `CancelAction`, sidebar navigation, and composer adjustment directly from XInput button edges
-    - [ ] Queue digital button edges in order so a short Down/Up cannot be lost while the UI thread is busy; coalesce only analog snapshots
+    - [x] Queue digital button edges in order so a short Down/Up cannot be lost while the UI thread is busy; coalesce only analog snapshots
     - [ ] Keep ABXY names only at the XInput transport boundary; use physical-position IDs such as `FaceSouth` inside the gesture and profile layers
     - [ ] Replace the flat physical-input-to-business-action path with separate `ControllerProfile` and `VirtualMicroLayout` mappings
     - [ ] Expand optional rear inputs from `LeftAuxiliary` / `RightAuxiliary` to four positions: `RearLeftUpper`, `RearLeftLower`, `RearRightUpper`, and `RearRightLower`
@@ -65,8 +66,8 @@
     - [ ] Add versioned contracts for `hardwareProfileVersion`, `gestureSchemaVersion`, `virtualLayoutVersion`, `actionCatalogVersion`, `adapterVersion`, and `userLayoutVersion`
     - [ ] Add a host-configurable `PhysicalGestureEngine` for down/up, tap, 350 ms double-tap, hold start/end, axis enter/repeat/exit, chord suppression, and device disconnect
     - [ ] Use an injectable `TimeProvider` for double-tap, 300 ms context arming, 500 ms dial hold, repeat, cooldown, and undo timing
-    - [ ] Preserve separate sources for left-stick directions and D-pad directions
-    - [ ] Add dead-zone hysteresis, dominant-direction locking, neutral-before-reverse, and per-action repeat policy
+    - [x] Preserve separate sources for left-stick directions and D-pad directions
+    - [x] Add dead-zone hysteresis, dominant-direction locking, neutral-before-reverse, and per-action repeat policy
     - [ ] Add the stable virtual surface: six Agent slots, six Command slots, four analog directions, `DialStep`, `DialPress`, and `DialHold`
     - [ ] Add `controller.*` extension inputs for Primary, Secondary, Cancel, Navigate, action palette, and virtual-layer switching
     - [ ] Add a versioned `VirtualMicroLayout` with migration, unknown-field preservation, and user-layout protection
@@ -78,8 +79,8 @@
     - [ ] Wait for input release when Question, Menu, or ComposerControl exits so the same press cannot leak into Base
     - [ ] Keep Cancel separate from Decline, and allow Approve / Decline only in a verified approval context
     - [ ] Allow Stop and Steer only for a verified active turn belonging to the selected task
-    - [ ] Model navigation undo separately from Context Cancel, with verified target identity, expiry, invalidation, and result feedback
-    - [ ] Block Submit, Steer, and Queue when the composer is empty
+    - [x] Model navigation undo separately from Context Cancel, with verified target identity, expiry, invalidation, and result feedback
+    - [x] Block Submit, Steer, and Queue when the composer is empty
     - [ ] Add an `ExecutorRegistry` with action-specific semantic, UIA, deeplink, official-shortcut, managed-shortcut, and guided-menu fallbacks
     - [ ] Add a Codex capability manifest with Supported / Degraded / Unavailable, selected executor, verification method, minimum version, and last probe result
     - [ ] Make managed shortcuts dynamic, conflict-aware, backed up, idempotent, reload-aware, and removable without overwriting user entries
@@ -109,7 +110,7 @@
     - [ ] Add settings pages for Agent source and custom slots, Command slots, analog directions, dial mode, gesture thresholds, layers, diagnostics, and capability status
     - [ ] Separate built-in Codex actions, Skills, managed shortcuts, controlled composer text, and external URLs in the mapping UI
     - [ ] Display unsupported or degraded actions with a reason instead of allowing an apparently successful binding
-    - [ ] Keep LT/LB and RT/RB visually and logically separate; triggers retain continuous values while bumpers remain digital
+    - [x] Keep LT/LB and RT/RB visually and logically separate; triggers retain continuous values while bumpers remain digital
     - [ ] Provide a separate enhanced-controller rear-input view instead of crowding rear labels onto the front controller render
 
   - v0.4b implementation order

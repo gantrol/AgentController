@@ -6,6 +6,32 @@ namespace CodexController.Tests;
 public sealed class RadialInputMapTests
 {
     [Theory]
+    [InlineData(ControllerButtons.DPadUp, RadialInputAction.TogglePlan)]
+    [InlineData(
+        ControllerButtons.DPadRight,
+        RadialInputAction.NavigateForward)]
+    [InlineData(
+        ControllerButtons.DPadDown,
+        RadialInputAction.ToggleSidebar)]
+    [InlineData(
+        ControllerButtons.DPadLeft,
+        RadialInputAction.NavigateBack)]
+    [InlineData(ControllerButtons.A, RadialInputAction.ClearComposer)]
+    [InlineData(ControllerButtons.X, RadialInputAction.ProjectContext)]
+    [InlineData(ControllerButtons.B, RadialInputAction.Cancel)]
+    [InlineData(ControllerButtons.Y, RadialInputAction.Cancel)]
+    public void ActionLayerMapsDirectPhysicalActions(
+        ControllerButtons button,
+        RadialInputAction expected)
+    {
+        Assert.Equal(
+            expected,
+            RadialInputMap.Resolve(
+                RadialMenuLayerKind.Action,
+                button));
+    }
+
+    [Theory]
     [InlineData(ControllerButtons.DPadUp, RadialInputAction.AgentSlot1)]
     [InlineData(ControllerButtons.DPadRight, RadialInputAction.AgentSlot2)]
     [InlineData(ControllerButtons.DPadDown, RadialInputAction.AgentSlot3)]

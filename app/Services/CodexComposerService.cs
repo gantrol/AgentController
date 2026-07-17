@@ -63,12 +63,24 @@ public sealed record ComposerDialResult(
     string? ControlName = null,
     bool IsMenuOpen = false,
     string? Error = null,
-    string? ErrorDetail = null);
+    string? ErrorDetail = null,
+    bool MenuWasPresent = false,
+    bool RequiresConfirmation = false);
+
+public enum ComposerDialNavigation
+{
+    Left = 1,
+    Right = 2,
+    Up = 3,
+    Down = 4,
+}
 
 public sealed partial class CodexComposerService
 {
     private const int DialPopupMountTimeoutMs = 240;
+    private const int DialConfirmationTimeoutMs = 650;
     private const int DialPopupPollIntervalMs = 24;
+    private const int DialPopupCloseAttempts = 3;
 
     private static readonly IReadOnlyList<ComposerModelOption> FallbackModels =
     [
@@ -89,9 +101,17 @@ public sealed partial class CodexComposerService
     ];
     private readonly object _dialSync = new();
     private readonly ComposerDialCursor _dialCursor = new();
+    private readonly Dictionary<string, OwnedDialSurface>
+        _dialOwnedSurfaces = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string>
+        _dialSurfaceOptionKeys = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string>
+        _dialSurfaceOptionNames = new(StringComparer.Ordinal);
     private bool _dialMenuOpen;
     private string? _dialControlKey;
     private string? _dialControlName;
+    private string? _dialActiveSurfaceKey;
+    private long _dialSurfaceMountSequence;
 
     /// <summary>
     /// Reads the currently mounted Codex composer popup without focusing the
@@ -112,6 +132,20 @@ public sealed partial class CodexComposerService
                             AgentAutomationErrorCodes.AgentWindowNotFound);
                 }
 
+                var confirmation =
+                    FindDialConfirmation(
+                        context.Value.Window);
+                if (confirmation is not null)
+                {
+                    ClearOwnedDialPopup();
+                    return new(
+                        true,
+                        confirmation.Title,
+                        IsMenuOpen: true,
+                        MenuWasPresent: true,
+                        RequiresConfirmation: true);
+                }
+
                 var probe = ProbeDialPopup(
                     context.Value.Window,
                     context.Value.ProcessId);
@@ -126,7 +160,9 @@ public sealed partial class CodexComposerService
                 UpdateOwnedDialPopup(probe);
                 return ComposerDialPolicy.CreateProbeResult(
                     probe.IsOpen,
-                    probe.FocusedName ?? _dialControlName);
+                    CurrentDialOptionName(probe) ??
+                    probe.FocusedName ??
+                    _dialControlName);
             }
             catch (ElementNotAvailableException)
             {
@@ -176,9 +212,52 @@ public sealed partial class CodexComposerService
                             AgentAutomationErrorCodes.AgentWindowNotFound);
                 }
 
+                var confirmation =
+                    FindDialConfirmation(
+                        context.Value.Window);
+                if (confirmation is not null)
+                {
+                    ClearOwnedDialPopup();
+                    return new(
+                        true,
+                        confirmation.Title,
+                        IsMenuOpen: true,
+                        MenuWasPresent: true,
+                        RequiresConfirmation: true);
+                }
+
                 var before = ProbeDialPopup(
                     context.Value.Window,
                     context.Value.ProcessId);
+                var expectedOwnedPopup = _dialMenuOpen;
+                if (
+                    before.IsOpen &&
+                    !OwnsDialPopup(
+                        context.Value.Window,
+                        before) &&
+                    !TryAdoptOpenDialPopup(
+                        context.Value.Window,
+                        context.Value.ProcessId,
+                        before))
+                {
+                    if (expectedOwnedPopup)
+                    {
+                        ClearOwnedDialPopup();
+                    }
+
+                    return new(
+                        false,
+                        ControlName: _dialControlName,
+                        IsMenuOpen: false,
+                        Error:
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                        ErrorDetail:
+                            expectedOwnedPopup
+                                ? "dial-popup-focus-lost"
+                                : "dial-popup-not-owned");
+                }
+
                 if (_dialMenuOpen)
                 {
                     if (!OwnsDialPopup(context.Value.Window, before))
@@ -194,17 +273,38 @@ public sealed partial class CodexComposerService
                             ErrorDetail: "dial-popup-focus-lost");
                     }
 
+                    UpdateOwnedDialPopup(before);
+                    var surfaces =
+                        BuildOwnedSurfaceSnapshots(before);
+                    _dialActiveSurfaceKey =
+                        ComposerDialMenuSelectionPolicy
+                            .ResolveActiveSurface(
+                                surfaces,
+                                _dialActiveSurfaceKey);
+                    var options = BuildOptionSnapshots(before);
+                    var previousOptionKey =
+                        CurrentDialOptionKey();
+                    var target =
+                        ComposerDialMenuSelectionPolicy.ResolveTarget(
+                            options,
+                            _dialActiveSurfaceKey,
+                            previousOptionKey,
+                            delta);
+                    var targetOption =
+                        target is { } resolvedTarget
+                            ? FindDialPopupOption(
+                                before,
+                                resolvedTarget)
+                            : null;
                     if (
-                        !TryMoveDialPopupSelection(
-                            before,
-                            delta,
-                            out var selectedName))
+                        target is null ||
+                        targetOption is null ||
+                        !TryFocusDialPopupOption(targetOption))
                     {
-                        UpdateOwnedDialPopup(before);
                         return new(
                             false,
                             ControlName:
-                                before.FocusedName ??
+                                CurrentDialOptionName(before) ??
                                 _dialControlName,
                             IsMenuOpen: true,
                             Error:
@@ -213,10 +313,14 @@ public sealed partial class CodexComposerService
                             ErrorDetail: "dial-step-no-selection-change");
                     }
 
-                    var after = WaitForDialSelectionChange(
+                    RememberDialOption(
+                        target.Value.SurfaceKey,
+                        target.Value.OptionKey,
+                        target.Value.Name);
+                    var after = WaitForDialTargetFocus(
                         context.Value.Window,
                         context.Value.ProcessId,
-                        before,
+                        target.Value.OptionKey,
                         DialPopupMountTimeoutMs);
                     if (!OwnsDialPopup(context.Value.Window, after))
                     {
@@ -224,8 +328,7 @@ public sealed partial class CodexComposerService
                         return new(
                             false,
                             ControlName:
-                                selectedName ??
-                                after.FocusedName ??
+                                target.Value.Name ??
                                 _dialControlName,
                             IsMenuOpen: false,
                             Error:
@@ -235,18 +338,29 @@ public sealed partial class CodexComposerService
                     }
 
                     UpdateOwnedDialPopup(after);
+                    var updatedSurfaces =
+                        BuildOwnedSurfaceSnapshots(after);
+                    var updatedOptions =
+                        BuildOptionSnapshots(after);
                     if (
-                        after.IsOpen &&
-                        !ComposerDialPolicy.HasFocusedSelectionChanged(
-                            before.FocusedName,
-                            after.FocusedName))
+                        !string.Equals(
+                            after.FocusedOptionKey,
+                            target.Value.OptionKey,
+                            StringComparison.Ordinal) ||
+                        !ComposerDialMenuSelectionPolicy
+                            .IsTargetStillConfirmable(
+                                target.Value,
+                                updatedSurfaces,
+                                updatedOptions))
                     {
+                        RememberDialOption(
+                            target.Value.SurfaceKey,
+                            target.Value.OptionKey,
+                            target.Value.Name);
                         return new(
                             false,
                             ControlName:
-                                selectedName ??
-                                after.FocusedName ??
-                                before.FocusedName ??
+                                target.Value.Name ??
                                 _dialControlName,
                             IsMenuOpen: true,
                             Error:
@@ -257,8 +371,8 @@ public sealed partial class CodexComposerService
                     return new(
                         true,
                         ControlName:
-                            selectedName ??
-                            after.FocusedName ??
+                            CurrentDialOptionName(after) ??
+                            target.Value.Name ??
                             _dialControlName,
                         IsMenuOpen: after.IsOpen);
                 }
@@ -313,7 +427,102 @@ public sealed partial class CodexComposerService
         }
     }
 
+    public ComposerDialResult DialNavigate(
+        ComposerDialNavigation navigation,
+        AppSettings settings)
+    {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        bool menuOpen;
+        lock (_dialSync)
+        {
+            var context = FindCodexWindow();
+            if (context is null)
+            {
+                return new(
+                    false,
+                    Error:
+                        AgentAutomationErrorCodes.AgentWindowNotFound);
+            }
+
+            var confirmation =
+                FindDialConfirmation(
+                    context.Value.Window);
+            if (confirmation is not null)
+            {
+                ClearOwnedDialPopup();
+                return new(
+                    true,
+                    confirmation.Title,
+                    IsMenuOpen: true,
+                    MenuWasPresent: true,
+                    RequiresConfirmation: true);
+            }
+
+            menuOpen = _dialMenuOpen;
+        }
+
+        if (!menuOpen)
+        {
+            return navigation switch
+            {
+                ComposerDialNavigation.Left =>
+                    DialStep(-1, settings),
+                ComposerDialNavigation.Right =>
+                    DialStep(1, settings),
+                _ => new(
+                    false,
+                    ControlName: _dialControlName,
+                    IsMenuOpen: false,
+                    Error:
+                        AgentAutomationErrorCodes.ElementUnsupported,
+                    ErrorDetail: "dial-closed-horizontal-only"),
+            };
+        }
+
+        return navigation switch
+        {
+            ComposerDialNavigation.Up =>
+                DialStep(-1, settings),
+            ComposerDialNavigation.Down =>
+                DialStep(1, settings),
+            ComposerDialNavigation.Right =>
+                DialPressCore(
+                    settings,
+                    DialActivationIntent.EnterSubmenu),
+            ComposerDialNavigation.Left =>
+                DialBack(settings),
+            _ => new(
+                false,
+                ControlName: _dialControlName,
+                IsMenuOpen: true,
+                Error:
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                ErrorDetail: "dial-navigation"),
+        };
+    }
+
     public ComposerDialResult DialPress(AppSettings settings)
+    {
+        return DialPressCore(
+            settings,
+            DialActivationIntent.OpenOnly);
+    }
+
+    public ComposerDialResult DialSelect(AppSettings settings)
+    {
+        return DialPressCore(
+            settings,
+            DialActivationIntent.SelectLeaf);
+    }
+
+    private ComposerDialResult DialPressCore(
+        AppSettings settings,
+        DialActivationIntent intent)
     {
         var gate = ValidateInteractiveBridge(settings);
         if (gate is not null)
@@ -334,9 +543,83 @@ public sealed partial class CodexComposerService
                             AgentAutomationErrorCodes.AgentWindowNotFound);
                 }
 
+                var confirmation =
+                    FindDialConfirmation(
+                        context.Value.Window);
+                if (confirmation is not null)
+                {
+                    ClearOwnedDialPopup();
+                    if (
+                        intent !=
+                            DialActivationIntent.SelectLeaf)
+                    {
+                        return new(
+                            true,
+                            confirmation.Title,
+                            IsMenuOpen: true,
+                            MenuWasPresent: true,
+                            RequiresConfirmation: true);
+                    }
+
+                    if (
+                        !TryInvokeDialConfirmationButton(
+                            confirmation.ConfirmButton) ||
+                        !WaitForDialConfirmationClosed(
+                            context.Value.Window,
+                            DialConfirmationTimeoutMs))
+                    {
+                        return new(
+                            false,
+                            confirmation.Title,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .ElementUnsupported,
+                            ErrorDetail:
+                                "dial-confirmation-confirm",
+                            MenuWasPresent: true,
+                            RequiresConfirmation: true);
+                    }
+
+                    return new(
+                        true,
+                        confirmation.Title,
+                        IsMenuOpen: false,
+                        MenuWasPresent: true);
+                }
+
                 var before = ProbeDialPopup(
                     context.Value.Window,
                     context.Value.ProcessId);
+                var expectedOwnedPopup = _dialMenuOpen;
+                if (
+                    before.IsOpen &&
+                    !OwnsDialPopup(
+                        context.Value.Window,
+                        before) &&
+                    !TryAdoptOpenDialPopup(
+                        context.Value.Window,
+                        context.Value.ProcessId,
+                        before))
+                {
+                    if (expectedOwnedPopup)
+                    {
+                        ClearOwnedDialPopup();
+                    }
+
+                    return new(
+                        false,
+                        ControlName: _dialControlName,
+                        IsMenuOpen: false,
+                        Error:
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                        ErrorDetail:
+                            expectedOwnedPopup
+                                ? "dial-popup-focus-lost"
+                                : "dial-popup-not-owned");
+                }
+
                 if (_dialMenuOpen)
                 {
                     if (!OwnsDialPopup(context.Value.Window, before))
@@ -352,9 +635,62 @@ public sealed partial class CodexComposerService
                             ErrorDetail: "dial-popup-focus-lost");
                     }
 
+                    UpdateOwnedDialPopup(before);
+                    var surfaces =
+                        BuildOwnedSurfaceSnapshots(before);
+                    _dialActiveSurfaceKey =
+                        ComposerDialMenuSelectionPolicy
+                            .ResolveActiveSurface(
+                                surfaces,
+                                _dialActiveSurfaceKey);
+                    var optionKey = CurrentDialOptionKey();
                     var selectedOption =
-                        FindFocusedDialPopupOption(before);
+                        FindDialPopupOption(
+                            before,
+                            _dialActiveSurfaceKey,
+                            optionKey);
                     var menuSelection = selectedOption?.Name;
+                    if (intent == DialActivationIntent.OpenOnly)
+                    {
+                        return new(
+                            true,
+                            menuSelection ?? _dialControlName,
+                            IsMenuOpen: true,
+                            MenuWasPresent: true);
+                    }
+
+                    if (
+                        intent ==
+                            DialActivationIntent.EnterSubmenu &&
+                        selectedOption?.CanExpand != true)
+                    {
+                        return new(
+                            false,
+                            menuSelection ?? _dialControlName,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .ElementUnsupported,
+                            ErrorDetail: "dial-no-submenu",
+                            MenuWasPresent: true);
+                    }
+
+                    if (
+                        intent ==
+                            DialActivationIntent.SelectLeaf &&
+                        selectedOption?.CanExpand == true)
+                    {
+                        return new(
+                            false,
+                            menuSelection ?? _dialControlName,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .ElementUnsupported,
+                            ErrorDetail: "dial-enter-with-right",
+                            MenuWasPresent: true);
+                    }
+
                     var blockedReason =
                         ComposerDialActionPolicy.BlockReason(
                             menuSelection);
@@ -369,8 +705,20 @@ public sealed partial class CodexComposerService
                             ErrorDetail: blockedReason);
                     }
 
+                    var selectedTarget =
+                        selectedOption is null
+                            ? null
+                            : CreateDialMenuTarget(
+                                before,
+                                selectedOption);
                     if (
                         selectedOption is null ||
+                        selectedTarget is null ||
+                        !ComposerDialMenuSelectionPolicy
+                            .IsTargetStillConfirmable(
+                                selectedTarget.Value,
+                                surfaces,
+                                BuildOptionSnapshots(before)) ||
                         !TryActivateDialPopupOption(
                             selectedOption.Element))
                     {
@@ -388,20 +736,74 @@ public sealed partial class CodexComposerService
                         context.Value.ProcessId,
                         before,
                         DialPopupMountTimeoutMs);
+                    var mountedConfirmation =
+                        FindDialConfirmation(
+                            context.Value.Window);
+                    if (mountedConfirmation is not null)
+                    {
+                        ClearOwnedDialPopup();
+                        return new(
+                            true,
+                            mountedConfirmation.Title,
+                            IsMenuOpen: true,
+                            MenuWasPresent: true,
+                            RequiresConfirmation: true);
+                    }
+
+                    var initialFocusSucceeded = true;
                     if (afterEnter.IsOpen)
                     {
+                        var openedSurface =
+                            FindNewDialPopupSurface(
+                                before,
+                                afterEnter,
+                                selectedOption);
+                        if (openedSurface is not null)
+                        {
+                            AddOwnedDialSurface(
+                                openedSurface.Key,
+                                _dialActiveSurfaceKey);
+                        }
+
                         UpdateOwnedDialPopup(afterEnter);
+                        if (openedSurface is not null)
+                        {
+                            _dialActiveSurfaceKey =
+                                openedSurface.Key;
+                            initialFocusSucceeded =
+                                FocusInitialDialOption(
+                                context.Value.Window,
+                                context.Value.ProcessId,
+                                afterEnter,
+                                openedSurface.Key,
+                                menuSelection,
+                                preferFirst: false);
+                        }
                     }
                     else
                     {
                         ClearOwnedDialPopup();
-                        _dialControlName = menuSelection;
+                    }
+
+                    if (!initialFocusSucceeded)
+                    {
+                        return new(
+                            false,
+                            CurrentDialOptionName(afterEnter) ??
+                            menuSelection ??
+                            _dialControlName,
+                            afterEnter.IsOpen,
+                            AgentAutomationErrorCodes.ElementUnsupported,
+                            "dial-initial-focus");
                     }
 
                     return new(
                         true,
-                        afterEnter.FocusedName ?? menuSelection,
-                        afterEnter.IsOpen);
+                        CurrentDialOptionName(afterEnter) ??
+                        menuSelection ??
+                        _dialControlName,
+                        afterEnter.IsOpen,
+                        MenuWasPresent: true);
                 }
 
                 if (before.IsOpen)
@@ -461,10 +863,29 @@ public sealed partial class CodexComposerService
 
                     _dialMenuOpen = true;
                     _dialControlKey = selected.Key;
-                    UpdateOwnedDialPopup(afterOpen);
+                    var initialFocusSucceeded =
+                        InitializeOwnedDialPopup(
+                            context.Value.Window,
+                            context.Value.ProcessId,
+                            afterOpen,
+                            selected.Element);
+                    if (!initialFocusSucceeded)
+                    {
+                        return new(
+                            false,
+                            CurrentDialOptionName(afterOpen) ??
+                            selected.Name,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .ElementUnsupported,
+                            ErrorDetail: "dial-initial-focus");
+                    }
+
                     return new(
                         true,
-                        afterOpen.FocusedName ?? selected.Name,
+                        CurrentDialOptionName(afterOpen) ??
+                        selected.Name,
                         IsMenuOpen: true);
                 }
 
@@ -485,6 +906,186 @@ public sealed partial class CodexComposerService
                     false,
                     Error: AgentAutomationErrorCodes.AutomationStale,
                     ErrorDetail: "composer-dial-control");
+            }
+            catch (Exception exception)
+            {
+                return new(
+                    false,
+                    Error: AgentAutomationErrorCodes.Unexpected,
+                    ErrorDetail: exception.Message);
+            }
+        }
+    }
+
+    private ComposerDialResult DialBack(AppSettings settings)
+    {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        lock (_dialSync)
+        {
+            try
+            {
+                var context = FindCodexWindow();
+                if (context is null)
+                {
+                    return new(
+                        false,
+                        Error:
+                            AgentAutomationErrorCodes.AgentWindowNotFound);
+                }
+
+                var before = ProbeDialPopup(
+                    context.Value.Window,
+                    context.Value.ProcessId);
+                if (
+                    !OwnsDialPopup(
+                        context.Value.Window,
+                        before) &&
+                    !TryAdoptOpenDialPopup(
+                        context.Value.Window,
+                        context.Value.ProcessId,
+                        before))
+                {
+                    return new(
+                        false,
+                        ControlName:
+                            before.FocusedName ??
+                            _dialControlName,
+                        IsMenuOpen: before.IsOpen,
+                        Error:
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                        ErrorDetail: before.IsOpen
+                            ? "dial-popup-not-owned"
+                            : "dial-menu-not-open",
+                        MenuWasPresent: before.IsOpen);
+                }
+
+                UpdateOwnedDialPopup(before);
+                var surfaces =
+                    BuildOwnedSurfaceSnapshots(before);
+                _dialActiveSurfaceKey =
+                    ComposerDialMenuSelectionPolicy
+                        .ResolveActiveSurface(
+                            surfaces,
+                            _dialActiveSurfaceKey);
+                if (
+                    string.IsNullOrWhiteSpace(
+                        _dialActiveSurfaceKey) ||
+                    !_dialOwnedSurfaces.TryGetValue(
+                        _dialActiveSurfaceKey,
+                        out var activeSurface))
+                {
+                    return new(
+                        false,
+                        CurrentDialOptionName(before) ??
+                        before.FocusedName ??
+                        _dialControlName,
+                        IsMenuOpen: true,
+                        Error:
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                        ErrorDetail: "dial-navigation",
+                        MenuWasPresent: true);
+                }
+
+                if (string.IsNullOrWhiteSpace(
+                        activeSurface.ParentKey))
+                {
+                    return new(
+                        true,
+                        CurrentDialOptionName(before) ??
+                        before.FocusedName ??
+                        _dialControlName,
+                        IsMenuOpen: true,
+                        MenuWasPresent: true);
+                }
+
+                var parentSurfaceKey = activeSurface.ParentKey;
+                var parentOptionKey =
+                    _dialSurfaceOptionKeys.TryGetValue(
+                        parentSurfaceKey,
+                        out var rememberedParentOption)
+                        ? rememberedParentOption
+                        : null;
+                var parentOption = FindDialPopupOption(
+                    before,
+                    parentSurfaceKey,
+                    parentOptionKey);
+                if (
+                    parentOption is null ||
+                    !TryCollapseDialPopupOption(
+                        parentOption.Element))
+                {
+                    return new(
+                        false,
+                        CurrentDialOptionName(before) ??
+                        _dialControlName,
+                        IsMenuOpen: true,
+                        Error:
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                        ErrorDetail: "dial-back",
+                        MenuWasPresent: true);
+                }
+
+                var after = WaitForDialPopupTransition(
+                    context.Value.Window,
+                    context.Value.ProcessId,
+                    before,
+                    DialPopupMountTimeoutMs);
+                if (!after.IsOpen)
+                {
+                    ClearOwnedDialPopup();
+                    return new(
+                        false,
+                        parentOption.Name,
+                        IsMenuOpen: false,
+                        Error:
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                        ErrorDetail: "dial-back-closed-root",
+                        MenuWasPresent: true);
+                }
+
+                UpdateOwnedDialPopup(after);
+                _dialActiveSurfaceKey = parentSurfaceKey;
+                var refreshedParent = FindDialPopupOption(
+                    after,
+                    parentSurfaceKey,
+                    parentOption.Key);
+                if (refreshedParent is not null)
+                {
+                    _ = TryFocusDialPopupOption(refreshedParent);
+                    RememberDialOption(
+                        parentSurfaceKey,
+                        refreshedParent.Key,
+                        refreshedParent.Name);
+                }
+                else
+                {
+                    RememberDialOption(
+                        parentSurfaceKey,
+                        parentOption.Key,
+                        parentOption.Name);
+                }
+
+                return new(
+                    true,
+                    parentOption.Name,
+                    IsMenuOpen: true,
+                    MenuWasPresent: true);
+            }
+            catch (ElementNotAvailableException)
+            {
+                return new(
+                    false,
+                    Error: AgentAutomationErrorCodes.AutomationStale,
+                    ErrorDetail: "composer-dial-popup");
             }
             catch (Exception exception)
             {
@@ -517,18 +1118,77 @@ public sealed partial class CodexComposerService
                             AgentAutomationErrorCodes.AgentWindowNotFound);
                 }
 
+                var confirmationWasPresent = false;
+                var confirmation =
+                    FindDialConfirmation(
+                        context.Value.Window);
+                if (confirmation is not null)
+                {
+                    confirmationWasPresent = true;
+                    ClearOwnedDialPopup();
+                    if (
+                        !TryInvokeDialConfirmationButton(
+                            confirmation.CancelButton) ||
+                        !WaitForDialConfirmationClosed(
+                            context.Value.Window,
+                            DialConfirmationTimeoutMs))
+                    {
+                        return new(
+                            false,
+                            confirmation.Title,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .ElementUnsupported,
+                            ErrorDetail:
+                                "dial-confirmation-cancel",
+                            MenuWasPresent: true,
+                            RequiresConfirmation: true);
+                    }
+                }
+
                 var before = ProbeDialPopup(
                     context.Value.Window,
                     context.Value.ProcessId);
+                var expectedMenu =
+                    _dialMenuOpen || confirmationWasPresent;
+                var observedMenu = before.IsOpen;
+                if (
+                    !_dialMenuOpen &&
+                    before.IsOpen)
+                {
+                    _ = TryAdoptOpenDialPopup(
+                        context.Value.Window,
+                        context.Value.ProcessId,
+                        before);
+                }
+
                 var selected =
+                    CurrentDialOptionName(before) ??
                     before.FocusedName ??
                     _dialControlName;
                 if (!_dialMenuOpen)
                 {
+                    if (confirmationWasPresent && before.IsOpen)
+                    {
+                        return new(
+                            false,
+                            selected,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .ElementUnsupported,
+                            ErrorDetail:
+                                "dial-confirmation-residual-popup",
+                            MenuWasPresent: true);
+                    }
+
                     return new(
                         true,
                         selected,
-                        IsMenuOpen: false);
+                        IsMenuOpen: false,
+                        MenuWasPresent:
+                            confirmationWasPresent);
                 }
 
                 if (!OwnsDialPopup(context.Value.Window, before))
@@ -539,37 +1199,61 @@ public sealed partial class CodexComposerService
                         selected,
                         IsMenuOpen: false,
                         AgentAutomationErrorCodes.ElementUnsupported,
-                        "dial-popup-focus-lost");
+                        "dial-popup-focus-lost",
+                        MenuWasPresent:
+                            expectedMenu || observedMenu);
                 }
 
-                if (!TryCloseOwnedDialControl(context.Value.Window))
+                var after = before;
+                for (
+                    var attempt = 0;
+                    attempt < DialPopupCloseAttempts;
+                    attempt++)
                 {
-                    return new(
-                        false,
-                        selected,
-                        IsMenuOpen: true,
-                        AgentAutomationErrorCodes.ElementUnsupported,
-                        "dial-popup-close");
-                }
+                    if (!TryCloseOwnedDialControl(
+                            context.Value.Window))
+                    {
+                        return new(
+                            false,
+                            selected,
+                            IsMenuOpen: true,
+                            AgentAutomationErrorCodes
+                                .ElementUnsupported,
+                            "dial-popup-close",
+                            MenuWasPresent: true);
+                    }
 
-                var after = WaitForDialPopupTransition(
-                    context.Value.Window,
-                    context.Value.ProcessId,
-                    before,
-                    DialPopupMountTimeoutMs);
-                if (after.IsOpen)
-                {
+                    after = WaitForDialPopupTransition(
+                        context.Value.Window,
+                        context.Value.ProcessId,
+                        after,
+                        DialPopupMountTimeoutMs);
+                    if (
+                        !after.IsOpen ||
+                        !OwnsDialPopup(
+                            context.Value.Window,
+                            after))
+                    {
+                        ClearOwnedDialPopup();
+                        return new(
+                            true,
+                            selected,
+                            IsMenuOpen: false,
+                            MenuWasPresent: true);
+                    }
+
                     UpdateOwnedDialPopup(after);
-                }
-                else
-                {
-                    ClearOwnedDialPopup();
                 }
 
                 return new(
-                    true,
-                    after.FocusedName ?? selected,
-                    after.IsOpen);
+                    false,
+                    CurrentDialOptionName(after) ??
+                    after.FocusedName ??
+                    selected,
+                    IsMenuOpen: true,
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                    "dial-popup-close",
+                    MenuWasPresent: true);
             }
             catch (ElementNotAvailableException)
             {
@@ -916,6 +1600,127 @@ public sealed partial class CodexComposerService
         }
     }
 
+    public ComposerAutomationResult ClearComposer(AppSettings settings)
+    {
+        if (!settings.BridgeEnabled)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
+        }
+
+        if (
+            settings.OnlyWhenCodexForeground &&
+            !Win32Input.IsCodexForeground())
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
+        }
+
+        try
+        {
+            var context = FindCodexWindow();
+            if (context is null)
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
+            }
+
+            var editor = FindComposerEditor(context.Value.Window);
+            if (editor is null)
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    "composer-editor");
+            }
+
+            var text = ReadComposerText(editor);
+            if (text is null)
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                    "composer-text-read");
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ComposerEmpty);
+            }
+
+            if (
+                !Win32Input.IsCodexForeground() &&
+                !Win32Input.FocusCodexAndWait())
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.FocusRejected,
+                    "composer-editor");
+            }
+
+            editor.SetFocus();
+            Thread.Sleep(35);
+            var clearedThroughValuePattern = false;
+            if (
+                editor.TryGetCurrentPattern(
+                    ValuePattern.Pattern,
+                    out var valueObject) &&
+                valueObject is ValuePattern valuePattern &&
+                !valuePattern.Current.IsReadOnly)
+            {
+                try
+                {
+                    valuePattern.SetValue(string.Empty);
+                    clearedThroughValuePattern = true;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Chromium contenteditable nodes commonly expose a
+                    // read-like ValuePattern while rejecting SetValue.
+                }
+            }
+
+            if (
+                !clearedThroughValuePattern &&
+                (
+                    !Win32Input.SendShortcut("Ctrl+A") ||
+                    !Win32Input.SendKey(0x08)
+                ))
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    "Ctrl+A,Backspace");
+            }
+
+            return WaitForComposerTextToClear(editor, timeoutMs: 280)
+                ? new(true)
+                : new(
+                    false,
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                    "composer-clear-not-verified");
+        }
+        catch (ElementNotAvailableException)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.AutomationStale,
+                "composer-editor");
+        }
+        catch (Exception exception)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
+        }
+    }
+
     public ComposerAutomationResult CancelComposer(AppSettings settings)
     {
         if (!settings.BridgeEnabled)
@@ -980,6 +1785,52 @@ public sealed partial class CodexComposerService
                 AgentAutomationErrorCodes.Unexpected,
                 exception.Message);
         }
+    }
+
+    private static string? ReadComposerText(AutomationElement editor)
+    {
+        if (
+            editor.TryGetCurrentPattern(
+                TextPattern.Pattern,
+                out var textObject) &&
+            textObject is TextPattern textPattern)
+        {
+            return textPattern.DocumentRange.GetText(-1);
+        }
+
+        if (
+            editor.TryGetCurrentPattern(
+                ValuePattern.Pattern,
+                out var valueObject) &&
+            valueObject is ValuePattern valuePattern)
+        {
+            return valuePattern.Current.Value;
+        }
+
+        return null;
+    }
+
+    private static bool WaitForComposerTextToClear(
+        AutomationElement editor,
+        int timeoutMs)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        do
+        {
+            var text = ReadComposerText(editor);
+            if (text is not null && string.IsNullOrWhiteSpace(text))
+            {
+                return true;
+            }
+
+            Thread.Sleep(24);
+        }
+        while (Environment.TickCount64 < deadline);
+
+        var finalText = ReadComposerText(editor);
+        return
+            finalText is not null &&
+            string.IsNullOrWhiteSpace(finalText);
     }
 
     private static ComposerAutomationResult InvokeNamedButton(
@@ -1138,7 +1989,8 @@ public sealed partial class CodexComposerService
                     !CanOpenDialControl(
                         button,
                         className,
-                        out var allowInvoke))
+                        out var allowInvoke,
+                        out var supportsExpandCollapse))
                 {
                     continue;
                 }
@@ -1153,6 +2005,11 @@ public sealed partial class CodexComposerService
                     name,
                     bounds.Left,
                     bounds.Top,
+                    bounds.Width,
+                    bounds.Height,
+                    ComposerDialActionPolicy.PickerControlPriority(
+                        supportsExpandCollapse,
+                        allowInvoke),
                     allowInvoke,
                     button));
             }
@@ -1163,7 +2020,8 @@ public sealed partial class CodexComposerService
         }
 
         return controls
-            .OrderBy(control => control.Left)
+            .OrderBy(control => control.Priority)
+            .ThenBy(control => control.Left)
             .ThenBy(control => control.Top)
             .ToArray();
     }
@@ -1171,14 +2029,17 @@ public sealed partial class CodexComposerService
     private static bool CanOpenDialControl(
         AutomationElement element,
         string className,
-        out bool allowInvoke)
+        out bool allowInvoke,
+        out bool supportsExpandCollapse)
     {
         allowInvoke = false;
+        supportsExpandCollapse = false;
         if (
             element.TryGetCurrentPattern(
                 ExpandCollapsePattern.Pattern,
                 out _))
         {
+            supportsExpandCollapse = true;
             return true;
         }
 
@@ -1249,23 +2110,53 @@ public sealed partial class CodexComposerService
             return false;
         }
 
-        var control = FindDialControls(window)
-            .FirstOrDefault(candidate =>
-                string.Equals(
-                    candidate.Key,
-                    _dialControlKey,
-                    StringComparison.Ordinal));
         return
-            control is not null &&
-            IsDialControlExpanded(control.Element);
+            _dialOwnedSurfaces.Count > 0 &&
+            probe.Surfaces.Any(surface =>
+                _dialOwnedSurfaces.ContainsKey(surface.Key));
     }
 
     private void UpdateOwnedDialPopup(DialPopupProbe probe)
     {
         _dialMenuOpen = probe.IsOpen;
-        if (!string.IsNullOrWhiteSpace(probe.FocusedName))
+        if (!probe.IsOpen)
         {
-            _dialControlName = probe.FocusedName;
+            return;
+        }
+
+        var visibleSurfaceKeys = probe.Surfaces
+            .Select(surface => surface.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var staleKey in _dialOwnedSurfaces.Keys
+                     .Where(key => !visibleSurfaceKeys.Contains(key))
+                     .ToArray())
+        {
+            _dialOwnedSurfaces.Remove(staleKey);
+            _dialSurfaceOptionKeys.Remove(staleKey);
+            _dialSurfaceOptionNames.Remove(staleKey);
+        }
+
+        var surfaceSnapshots =
+            BuildOwnedSurfaceSnapshots(probe);
+        _dialActiveSurfaceKey =
+            ComposerDialMenuSelectionPolicy.ResolveActiveSurface(
+                surfaceSnapshots,
+                _dialActiveSurfaceKey);
+
+        var focusedOption = probe.Options
+            .Where(option =>
+                option.HasKeyboardFocus &&
+                _dialOwnedSurfaces.ContainsKey(option.SurfaceKey))
+            .OrderByDescending(option =>
+                _dialOwnedSurfaces[option.SurfaceKey].Depth)
+            .FirstOrDefault();
+        if (focusedOption is not null)
+        {
+            _dialActiveSurfaceKey = focusedOption.SurfaceKey;
+            RememberDialOption(
+                focusedOption.SurfaceKey,
+                focusedOption.Key,
+                focusedOption.Name);
         }
     }
 
@@ -1273,6 +2164,344 @@ public sealed partial class CodexComposerService
     {
         _dialMenuOpen = false;
         _dialControlKey = null;
+        _dialActiveSurfaceKey = null;
+        _dialOwnedSurfaces.Clear();
+        _dialSurfaceOptionKeys.Clear();
+        _dialSurfaceOptionNames.Clear();
+        _dialSurfaceMountSequence = 0;
+    }
+
+    private bool InitializeOwnedDialPopup(
+        AutomationElement window,
+        int processId,
+        DialPopupProbe probe,
+        AutomationElement trigger,
+        bool preferFirstForComposite = true)
+    {
+        _dialMenuOpen = probe.IsOpen;
+        _dialActiveSurfaceKey = null;
+        _dialOwnedSurfaces.Clear();
+        _dialSurfaceOptionKeys.Clear();
+        _dialSurfaceOptionNames.Clear();
+        _dialSurfaceMountSequence = 0;
+
+        var surface = FindInitialDialPopupSurface(
+            probe,
+            trigger);
+        if (surface is null)
+        {
+            return false;
+        }
+
+        AddOwnedDialSurface(surface.Key, parentKey: null);
+        _dialActiveSurfaceKey = surface.Key;
+        return FocusInitialDialOption(
+            window,
+            processId,
+            probe,
+            surface.Key,
+            parentSelectionName: null,
+            preferFirst:
+                preferFirstForComposite &&
+                surface.Options.Count(option =>
+                    option.CanExpand) >= 2);
+    }
+
+    private bool TryAdoptOpenDialPopup(
+        AutomationElement window,
+        int processId,
+        DialPopupProbe probe)
+    {
+        if (!probe.IsOpen || probe.Surfaces.Count == 0)
+        {
+            return false;
+        }
+
+        var control = FindDialControls(window)
+            .Select(candidate => new
+            {
+                Control = candidate,
+                IsExpanded =
+                    IsDialControlExpanded(candidate.Element),
+                Distance = probe.Surfaces.Min(surface =>
+                    DistanceBetween(
+                        new System.Windows.Rect(
+                            candidate.Left,
+                            candidate.Top,
+                            candidate.Width,
+                            candidate.Height),
+                        surface.Bounds)),
+            })
+            .OrderByDescending(candidate =>
+                candidate.IsExpanded)
+            .ThenBy(candidate => candidate.Distance)
+            .FirstOrDefault();
+        if (control is null || control.Distance > 180)
+        {
+            return false;
+        }
+
+        ClearOwnedDialPopup();
+        _dialMenuOpen = true;
+        _dialControlKey = control.Control.Key;
+        _dialControlName = control.Control.Name;
+        _ = InitializeOwnedDialPopup(
+            window,
+            processId,
+            probe,
+            control.Control.Element,
+            preferFirstForComposite: false);
+        return
+            _dialMenuOpen &&
+            _dialOwnedSurfaces.Count > 0;
+    }
+
+    private void AddOwnedDialSurface(
+        string surfaceKey,
+        string? parentKey)
+    {
+        if (_dialOwnedSurfaces.ContainsKey(surfaceKey))
+        {
+            return;
+        }
+
+        var depth =
+            parentKey is not null &&
+            _dialOwnedSurfaces.TryGetValue(
+                parentKey,
+                out var parent)
+                ? parent.Depth + 1
+                : 0;
+        _dialOwnedSurfaces[surfaceKey] =
+            new(
+                parentKey,
+                depth,
+                ++_dialSurfaceMountSequence);
+    }
+
+    private IReadOnlyList<ComposerDialMenuSurfaceSnapshot>
+        BuildOwnedSurfaceSnapshots(DialPopupProbe probe)
+    {
+        return probe.Surfaces
+            .Select(surface =>
+            {
+                var owned =
+                    _dialOwnedSurfaces.TryGetValue(
+                        surface.Key,
+                        out var state);
+                var containsActive =
+                    _dialSurfaceOptionKeys.TryGetValue(
+                        surface.Key,
+                        out var activeOptionKey) &&
+                    surface.Options.Any(option =>
+                        string.Equals(
+                            option.Key,
+                            activeOptionKey,
+                            StringComparison.Ordinal));
+                return new ComposerDialMenuSurfaceSnapshot(
+                    surface.Key,
+                    owned ? state!.ParentKey : null,
+                    owned ? state!.Depth : 0,
+                    owned ? state!.MountSequence : 0,
+                    owned,
+                    surface.Options.Any(option =>
+                        option.HasKeyboardFocus),
+                    containsActive);
+            })
+            .ToArray();
+    }
+
+    private static IReadOnlyList<ComposerDialMenuOptionSnapshot>
+        BuildOptionSnapshots(DialPopupProbe probe)
+    {
+        return probe.Surfaces
+            .SelectMany(surface =>
+                surface.Options.Select((option, visualOrder) =>
+                    new ComposerDialMenuOptionSnapshot(
+                        option.Key,
+                        surface.Key,
+                        option.Name,
+                        visualOrder,
+                        option.HasKeyboardFocus,
+                        IsActiveDescendant: false,
+                        option.IsSelected)))
+            .ToArray();
+    }
+
+    private string? CurrentDialOptionKey()
+    {
+        return
+            !string.IsNullOrWhiteSpace(_dialActiveSurfaceKey) &&
+            _dialSurfaceOptionKeys.TryGetValue(
+                _dialActiveSurfaceKey,
+                out var optionKey)
+                ? optionKey
+                : null;
+    }
+
+    private string? CurrentDialOptionName(
+        DialPopupProbe? probe = null)
+    {
+        if (string.IsNullOrWhiteSpace(_dialActiveSurfaceKey))
+        {
+            return null;
+        }
+
+        if (
+            _dialSurfaceOptionKeys.TryGetValue(
+                _dialActiveSurfaceKey,
+                out var optionKey) &&
+            probe is not null)
+        {
+            var current = FindDialPopupOption(
+                probe,
+                _dialActiveSurfaceKey,
+                optionKey);
+            if (current is not null)
+            {
+                return current.Name;
+            }
+        }
+
+        return _dialSurfaceOptionNames.TryGetValue(
+            _dialActiveSurfaceKey,
+            out var optionName)
+            ? optionName
+            : null;
+    }
+
+    private void RememberDialOption(
+        string surfaceKey,
+        string optionKey,
+        string optionName)
+    {
+        _dialActiveSurfaceKey = surfaceKey;
+        _dialSurfaceOptionKeys[surfaceKey] = optionKey;
+        _dialSurfaceOptionNames[surfaceKey] = optionName;
+    }
+
+    private bool FocusInitialDialOption(
+        AutomationElement window,
+        int processId,
+        DialPopupProbe probe,
+        string surfaceKey,
+        string? parentSelectionName,
+        bool preferFirst)
+    {
+        var target =
+            ComposerDialMenuSelectionPolicy.ResolveInitialTarget(
+                BuildOptionSnapshots(probe),
+                surfaceKey,
+                parentSelectionName,
+                preferFirst);
+        var option =
+            target is { } resolved
+                ? FindDialPopupOption(probe, resolved)
+                : null;
+        if (
+            target is null ||
+            option is null ||
+            !TryFocusDialPopupOption(option))
+        {
+            return false;
+        }
+
+        RememberDialOption(
+            target.Value.SurfaceKey,
+            target.Value.OptionKey,
+            target.Value.Name);
+        var focused = WaitForDialTargetFocus(
+            window,
+            processId,
+            target.Value.OptionKey,
+            DialPopupMountTimeoutMs);
+        return string.Equals(
+            focused.FocusedOptionKey,
+            target.Value.OptionKey,
+            StringComparison.Ordinal);
+    }
+
+    private static DialPopupOption? FindDialPopupOption(
+        DialPopupProbe probe,
+        ComposerDialMenuTarget target)
+    {
+        return FindDialPopupOption(
+            probe,
+            target.SurfaceKey,
+            target.OptionKey);
+    }
+
+    private static DialPopupOption? FindDialPopupOption(
+        DialPopupProbe probe,
+        string? surfaceKey,
+        string? optionKey)
+    {
+        if (
+            string.IsNullOrWhiteSpace(surfaceKey) ||
+            string.IsNullOrWhiteSpace(optionKey))
+        {
+            return null;
+        }
+
+        return probe.Options.FirstOrDefault(option =>
+            string.Equals(
+                option.SurfaceKey,
+                surfaceKey,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                option.Key,
+                optionKey,
+                StringComparison.Ordinal));
+    }
+
+    private static ComposerDialMenuTarget? CreateDialMenuTarget(
+        DialPopupProbe probe,
+        DialPopupOption option)
+    {
+        var surface = probe.Surfaces.FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.Key,
+                option.SurfaceKey,
+                StringComparison.Ordinal));
+        if (surface is null)
+        {
+            return null;
+        }
+
+        var index = surface.Options
+            .Select((candidate, visualIndex) =>
+                new { candidate, visualIndex })
+            .FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.candidate.Key,
+                    option.Key,
+                    StringComparison.Ordinal))
+            ?.visualIndex;
+        return index is null
+            ? null
+            : new(
+                option.SurfaceKey,
+                option.Key,
+                option.Name,
+                index.Value);
+    }
+
+    private static bool TryFocusDialPopupOption(
+        DialPopupOption option)
+    {
+        try
+        {
+            option.Element.SetFocus();
+            return true;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static bool IsDialControlExpanded(
@@ -1308,7 +2537,10 @@ public sealed partial class CodexComposerService
                 string.Equals(
                     candidate.Key,
                     _dialControlKey,
-                    StringComparison.Ordinal));
+                    StringComparison.Ordinal)) ??
+            FindDialControls(window)
+                .FirstOrDefault(candidate =>
+                    IsDialControlExpanded(candidate.Element));
         if (control is null)
         {
             return false;
@@ -1317,27 +2549,31 @@ public sealed partial class CodexComposerService
         try
         {
             if (
-                !control.Element.TryGetCurrentPattern(
+                control.Element.TryGetCurrentPattern(
                     ExpandCollapsePattern.Pattern,
-                    out var patternObject) ||
-                patternObject is not ExpandCollapsePattern pattern)
-            {
-                return false;
-            }
-
-            if (
+                    out var patternObject) &&
+                patternObject is ExpandCollapsePattern pattern &&
                 pattern.Current.ExpandCollapseState is
                     ExpandCollapseState.Expanded or
                     ExpandCollapseState.PartiallyExpanded)
             {
                 pattern.Collapse();
+                return true;
             }
 
-            return true;
+            return
+                Win32Input.IsCodexForeground() &&
+                Win32Input.SendKey(0x1B);
         }
         catch (ElementNotAvailableException)
         {
             return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return
+                Win32Input.IsCodexForeground() &&
+                Win32Input.SendKey(0x1B);
         }
     }
 
@@ -1353,9 +2589,11 @@ public sealed partial class CodexComposerService
         {
             if (
                 last.IsOpen &&
+                last.Options.Count > 0 &&
                 (
-                    !string.IsNullOrWhiteSpace(last.FocusedName) ||
                     stableOpenSamples >= 1
+                    || !string.IsNullOrWhiteSpace(
+                        last.FocusedOptionKey)
                 ))
             {
                 return last;
@@ -1427,10 +2665,10 @@ public sealed partial class CodexComposerService
         return last;
     }
 
-    private static DialPopupProbe WaitForDialSelectionChange(
+    private static DialPopupProbe WaitForDialTargetFocus(
         AutomationElement window,
         int processId,
-        DialPopupProbe before,
+        string targetOptionKey,
         int timeoutMs)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
@@ -1439,9 +2677,10 @@ public sealed partial class CodexComposerService
         {
             if (
                 !last.IsOpen ||
-                ComposerDialPolicy.HasFocusedSelectionChanged(
-                    before.FocusedName,
-                    last.FocusedName))
+                string.Equals(
+                    last.FocusedOptionKey,
+                    targetOptionKey,
+                    StringComparison.Ordinal))
             {
                 return last;
             }
@@ -1453,80 +2692,86 @@ public sealed partial class CodexComposerService
         return last;
     }
 
-    private static bool TryMoveDialPopupSelection(
+    private static DialPopupSurface? FindInitialDialPopupSurface(
         DialPopupProbe probe,
-        int delta,
-        out string? selectedName)
+        AutomationElement trigger)
     {
-        selectedName = null;
-        if (probe.ActiveOptions.Count == 0)
+        if (probe.Surfaces.Count == 0)
         {
-            return false;
+            return null;
         }
 
-        var currentIndex = -1;
-        for (var index = 0; index < probe.ActiveOptions.Count; index++)
-        {
-            try
-            {
-                if (probe.ActiveOptions[index]
-                    .Element.Current.HasKeyboardFocus)
-                {
-                    currentIndex = index;
-                    break;
-                }
-            }
-            catch (ElementNotAvailableException)
-            {
-                // The option list is re-probed after every detent.
-            }
-        }
-
-        var targetIndex = ComposerDialPolicy.ResolveVisualOptionIndex(
-            probe.ActiveOptions.Count,
-            currentIndex,
-            delta);
-        if (targetIndex < 0)
-        {
-            return false;
-        }
-
-        var target = probe.ActiveOptions[targetIndex];
+        System.Windows.Rect triggerBounds;
         try
         {
-            target.Element.SetFocus();
-            selectedName = target.Name;
-            return true;
+            triggerBounds = trigger.Current.BoundingRectangle;
         }
         catch (ElementNotAvailableException)
         {
-            return false;
+            triggerBounds = System.Windows.Rect.Empty;
         }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
+
+        return probe.Surfaces
+            .OrderByDescending(surface =>
+                surface.Options.Any(option =>
+                    option.HasKeyboardFocus))
+            .ThenBy(surface =>
+                DistanceBetween(
+                    triggerBounds,
+                    surface.Bounds))
+            .ThenByDescending(surface =>
+                surface.Options.Count)
+            .FirstOrDefault();
     }
 
-    private static DialPopupOption? FindFocusedDialPopupOption(
-        DialPopupProbe probe)
+    private static DialPopupSurface? FindNewDialPopupSurface(
+        DialPopupProbe before,
+        DialPopupProbe after,
+        DialPopupOption parentOption)
     {
-        foreach (var option in probe.ActiveOptions)
+        var previousKeys = before.Surfaces
+            .Select(surface => surface.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        var parentBounds = new System.Windows.Rect(
+            parentOption.Left,
+            parentOption.Top,
+            Math.Max(1, parentOption.Width),
+            Math.Max(1, parentOption.Height));
+        return after.Surfaces
+            .Where(surface =>
+                !previousKeys.Contains(surface.Key))
+            .OrderByDescending(surface =>
+                surface.Options.Any(option =>
+                    option.HasKeyboardFocus))
+            .ThenBy(surface =>
+                DistanceBetween(
+                    parentBounds,
+                    surface.Bounds))
+            .ThenByDescending(surface =>
+                surface.Options.Count)
+            .FirstOrDefault();
+    }
+
+    private static double DistanceBetween(
+        System.Windows.Rect left,
+        System.Windows.Rect right)
+    {
+        if (left.IsEmpty || right.IsEmpty)
         {
-            try
-            {
-                if (option.Element.Current.HasKeyboardFocus)
-                {
-                    return option;
-                }
-            }
-            catch (ElementNotAvailableException)
-            {
-                // A replaced Chromium node is not a confirmable selection.
-            }
+            return double.MaxValue;
         }
 
-        return null;
+        var horizontalGap = Math.Max(
+            0,
+            Math.Max(left.Left, right.Left) -
+            Math.Min(left.Right, right.Right));
+        var verticalGap = Math.Max(
+            0,
+            Math.Max(left.Top, right.Top) -
+            Math.Min(left.Bottom, right.Bottom));
+        return Math.Sqrt(
+            horizontalGap * horizontalGap +
+            verticalGap * verticalGap);
     }
 
     private static bool TryActivateDialPopupOption(
@@ -1598,16 +2843,49 @@ public sealed partial class CodexComposerService
         return false;
     }
 
+    private static bool TryCollapseDialPopupOption(
+        AutomationElement element)
+    {
+        try
+        {
+            if (
+                element.TryGetCurrentPattern(
+                    ExpandCollapsePattern.Pattern,
+                    out var expandObject) &&
+                expandObject is ExpandCollapsePattern expand &&
+                expand.Current.ExpandCollapseState is
+                    ExpandCollapseState.Expanded or
+                    ExpandCollapseState.PartiallyExpanded)
+            {
+                expand.Collapse();
+                return true;
+            }
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
     private static DialPopupProbe ProbeDialPopup(
         AutomationElement window,
         int processId)
     {
         var composerRegion = TryGetComposerPopupRegion(window);
-        var snapshots = new List<string>();
-        var popupOptions = new List<DialPopupOption>();
-        string? focusedName = null;
+        var popupOptions = new List<DialPopupOptionCandidate>();
         foreach (var root in FindDialPopupRoots(window, processId))
         {
+            var rootKey = StableAutomationKey(
+                root.Element,
+                root.IsPopupWindow
+                    ? "popup-window"
+                    : "main-window");
             var elements = new List<AutomationElement>();
             try
             {
@@ -1697,18 +2975,6 @@ public sealed partial class CodexComposerService
                     }
 
                     var name = current.Name?.Trim() ?? string.Empty;
-                    var automationId =
-                        current.AutomationId?.Trim() ?? string.Empty;
-                    snapshots.Add(
-                        string.Join(
-                            ':',
-                            kind.Value,
-                            NormalizeChoice(name),
-                            NormalizeChoice(automationId),
-                            Math.Round(bounds.Left),
-                            Math.Round(bounds.Top),
-                            Math.Round(bounds.Width),
-                            Math.Round(bounds.Height)));
                     if (
                         (
                             kind is
@@ -1716,6 +2982,7 @@ public sealed partial class CodexComposerService
                                 ComposerDialPopupElementKind.OptionItem
                         ) &&
                         name.Length > 0 &&
+                        ComposerDialActionPolicy.IsPickerControl(name) &&
                         current.IsKeyboardFocusable &&
                         TryGetDialPopupContainer(
                             element,
@@ -1723,22 +2990,37 @@ public sealed partial class CodexComposerService
                             out var containerKey,
                             out var containerBounds))
                     {
+                        var canExpand =
+                            element.TryGetCurrentPattern(
+                                ExpandCollapsePattern.Pattern,
+                                out _);
+                        var optionKey = StableAutomationKey(
+                            element,
+                            string.Join(
+                                ':',
+                                containerKey,
+                                kind.Value,
+                                NormalizeChoice(name),
+                                Math.Round(bounds.Left),
+                                Math.Round(bounds.Top)));
                         popupOptions.Add(
-                            new DialPopupOption(
+                            new DialPopupOptionCandidate(
+                                optionKey,
                                 name,
+                                rootKey,
                                 containerKey,
                                 containerBounds.Left,
                                 containerBounds.Top,
+                                containerBounds.Width,
+                                containerBounds.Height,
                                 bounds.Left,
                                 bounds.Top,
+                                bounds.Width,
+                                bounds.Height,
+                                current.HasKeyboardFocus,
+                                IsDialPopupOptionSelected(element),
+                                canExpand,
                                 element));
-                    }
-
-                    if (
-                        current.HasKeyboardFocus &&
-                        name.Length > 0)
-                    {
-                        focusedName = name;
                     }
                 }
                 catch (ElementNotAvailableException)
@@ -1748,38 +3030,263 @@ public sealed partial class CodexComposerService
             }
         }
 
-        var isOpen = snapshots.Count > 0;
-        if (isOpen && string.IsNullOrWhiteSpace(focusedName))
-        {
-            focusedName = TryReadFocusedPopupName(
-                processId,
-                composerRegion);
-        }
-
-        var activeOptions = popupOptions
-            .GroupBy(
-                option => option.ContainerKey,
-                StringComparer.Ordinal)
-            .OrderByDescending(group =>
-                group.First().ContainerLeft)
-            .ThenByDescending(group =>
-                group.First().ContainerTop)
-            .Select(group =>
-                group
-                    .OrderBy(option => option.Top)
-                    .ThenBy(option => option.Left)
-                    .ToArray())
-            .FirstOrDefault() ??
-            [];
+        var allSurfaces =
+            BuildDialPopupSurfaces(popupOptions);
+        var associatedSurfaceKeys =
+            ComposerDialMenuSelectionPolicy
+                .ResolveAssociatedSurfaceKeys(
+                    allSurfaces
+                        .Select(surface =>
+                            new ComposerDialMenuSurfaceGeometrySnapshot(
+                                surface.Key,
+                                ToContainerGeometry(
+                                    surface.Bounds)))
+                        .ToArray(),
+                    FindDialControls(window)
+                        .Select(control =>
+                            new ComposerDialMenuContainerGeometry(
+                                control.Left,
+                                control.Top,
+                                control.Width,
+                                control.Height))
+                        .ToArray());
+        var surfaces = allSurfaces
+            .Where(surface =>
+                associatedSurfaceKeys.Contains(surface.Key))
+            .ToArray();
+        var options = surfaces
+            .SelectMany(surface => surface.Options)
+            .ToArray();
+        var focusedOption = options
+            .FirstOrDefault(option =>
+                option.HasKeyboardFocus);
+        var isOpen = surfaces.Length > 0;
         return new DialPopupProbe(
             isOpen,
-            focusedName,
+            focusedOption?.Name,
+            focusedOption?.Key,
             string.Join(
                 '|',
-                snapshots
-                    .Distinct(StringComparer.Ordinal)
+                surfaces
+                    .Select(surface =>
+                        string.Join(
+                            ':',
+                            surface.Key,
+                            Math.Round(surface.Bounds.Left),
+                            Math.Round(surface.Bounds.Top),
+                            Math.Round(surface.Bounds.Width),
+                            Math.Round(surface.Bounds.Height)))
+                    .Concat(options.Select(option =>
+                        string.Join(
+                            ':',
+                            option.Key,
+                            option.SurfaceKey,
+                            NormalizeChoice(option.Name))))
                     .Order(StringComparer.Ordinal)),
-            activeOptions);
+            surfaces,
+            options);
+    }
+
+    private static IReadOnlyList<DialPopupSurface>
+        BuildDialPopupSurfaces(
+            IReadOnlyList<DialPopupOptionCandidate> candidates)
+    {
+        var surfaces = new List<DialPopupSurface>();
+        foreach (var rootGroup in candidates
+                     .GroupBy(
+                         candidate => candidate.RootKey,
+                         StringComparer.Ordinal))
+        {
+            var containers = rootGroup
+                .GroupBy(
+                    candidate => candidate.ContainerKey,
+                    StringComparer.Ordinal)
+                .Select(group =>
+                {
+                    var first = group.First();
+                    return new DialPopupContainer(
+                        group.Key,
+                        new(
+                            first.ContainerLeft,
+                            first.ContainerTop,
+                            first.ContainerWidth,
+                            first.ContainerHeight),
+                        group.ToArray());
+                })
+                .OrderBy(container => container.Bounds.Top)
+                .ThenBy(container => container.Bounds.Left)
+                .ToArray();
+            var clusters = new List<List<DialPopupContainer>>();
+            foreach (var container in containers)
+            {
+                var cluster = clusters.FirstOrDefault(candidate =>
+                    candidate.Any(existing =>
+                        ComposerDialMenuSelectionPolicy
+                            .SharesVisualSurface(
+                                ToContainerGeometry(
+                                    existing.Bounds),
+                                ToContainerGeometry(
+                                    container.Bounds))));
+                if (cluster is null)
+                {
+                    cluster = [];
+                    clusters.Add(cluster);
+                }
+
+                cluster.Add(container);
+            }
+
+            foreach (var cluster in clusters)
+            {
+                var orderedContainers = cluster
+                    .OrderBy(container =>
+                        container.Bounds.Top)
+                    .ThenBy(container =>
+                        container.Bounds.Left)
+                    .ToArray();
+                var surfaceKey = string.Join(
+                    ':',
+                    "surface",
+                    rootGroup.Key,
+                    orderedContainers[0].Key);
+                var options = orderedContainers
+                    .SelectMany(container =>
+                        container.Options)
+                    .GroupBy(
+                        option => option.Key,
+                        StringComparer.Ordinal)
+                    .Select(group =>
+                        group
+                            .OrderByDescending(option =>
+                                option.HasKeyboardFocus)
+                            .ThenByDescending(option =>
+                                option.IsSelected)
+                            .First())
+                    .OrderBy(option => option.Top)
+                    .ThenBy(option => option.Left)
+                    .Select(option =>
+                        new DialPopupOption(
+                            option.Key,
+                            option.Name,
+                            option.ContainerKey,
+                            surfaceKey,
+                            option.Left,
+                            option.Top,
+                            option.Width,
+                            option.Height,
+                            option.HasKeyboardFocus,
+                            option.IsSelected,
+                            option.CanExpand,
+                            option.Element))
+                    .ToArray();
+                surfaces.Add(
+                    new(
+                        surfaceKey,
+                        UnionBounds(
+                            orderedContainers.Select(
+                                container =>
+                                    container.Bounds)),
+                        options));
+            }
+        }
+
+        return surfaces
+            .OrderBy(surface => surface.Bounds.Top)
+            .ThenBy(surface => surface.Bounds.Left)
+            .ToArray();
+    }
+
+    private static ComposerDialMenuContainerGeometry
+        ToContainerGeometry(System.Windows.Rect bounds)
+    {
+        return new(
+            bounds.Left,
+            bounds.Top,
+            bounds.Width,
+            bounds.Height);
+    }
+
+    private static System.Windows.Rect UnionBounds(
+        IEnumerable<System.Windows.Rect> bounds)
+    {
+        var result = System.Windows.Rect.Empty;
+        foreach (var item in bounds)
+        {
+            result = result.IsEmpty
+                ? item
+                : System.Windows.Rect.Union(result, item);
+        }
+
+        return result;
+    }
+
+    private static string StableAutomationKey(
+        AutomationElement element,
+        string fallback)
+    {
+        try
+        {
+            var runtimeId = element.GetRuntimeId();
+            if (runtimeId is { Length: > 0 })
+            {
+                return $"rid:{string.Join('.', runtimeId)}";
+            }
+        }
+        catch
+        {
+            // The geometry fallback is scoped to one mounted popup.
+        }
+
+        return $"fallback:{fallback}";
+    }
+
+    private static bool IsDialPopupOptionSelected(
+        AutomationElement element)
+    {
+        try
+        {
+            if (
+                element.TryGetCurrentPattern(
+                    SelectionItemPattern.Pattern,
+                    out var selectionObject) &&
+                selectionObject is SelectionItemPattern selection &&
+                selection.Current.IsSelected)
+            {
+                return true;
+            }
+
+            var itemBounds = element.Current.BoundingRectangle;
+            if (itemBounds.IsEmpty)
+            {
+                return false;
+            }
+
+            var images = element.FindAll(
+                TreeScope.Descendants,
+                new PropertyCondition(
+                    AutomationElement.ControlTypeProperty,
+                    ControlType.Image));
+            foreach (AutomationElement image in images)
+            {
+                var bounds = image.Current.BoundingRectangle;
+                var className =
+                    image.Current.ClassName ?? string.Empty;
+                if (ComposerDialMenuSelectionPolicy
+                    .LooksLikeSelectionMarker(
+                        ToContainerGeometry(itemBounds),
+                        ToContainerGeometry(bounds),
+                        className))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     private static bool TryGetDialPopupContainer(
@@ -1974,6 +3481,152 @@ public sealed partial class CodexComposerService
         }
     }
 
+    private static DialConfirmationDialog? FindDialConfirmation(
+        AutomationElement window)
+    {
+        AutomationElementCollection dialogs;
+        try
+        {
+            dialogs = window.FindAll(
+                TreeScope.Descendants,
+                new PropertyCondition(
+                    AutomationElement.ControlTypeProperty,
+                    ControlType.Window));
+        }
+        catch
+        {
+            return null;
+        }
+
+        foreach (AutomationElement dialog in dialogs)
+        {
+            try
+            {
+                var className =
+                    dialog.Current.ClassName ?? string.Empty;
+                if (
+                    dialog.Current.IsOffscreen ||
+                    dialog.Current.BoundingRectangle.IsEmpty ||
+                    !className.Contains(
+                        "codex-dialog",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var confirmButton = FindVisibleNamedButton(
+                    dialog,
+                    ["Confirm", "确认"]);
+                var cancelButton = FindVisibleNamedButton(
+                    dialog,
+                    ["Cancel", "取消"]);
+                if (
+                    confirmButton is null ||
+                    cancelButton is null)
+                {
+                    continue;
+                }
+
+                var texts = dialog.FindAll(
+                    TreeScope.Descendants,
+                    new PropertyCondition(
+                        AutomationElement.ControlTypeProperty,
+                        ControlType.Text));
+                foreach (AutomationElement text in texts)
+                {
+                    string title;
+                    try
+                    {
+                        if (
+                            text.Current.IsOffscreen ||
+                            text.Current.BoundingRectangle.IsEmpty)
+                        {
+                            continue;
+                        }
+
+                        title = text.Current.Name?.Trim() ??
+                            string.Empty;
+                    }
+                    catch (ElementNotAvailableException)
+                    {
+                        continue;
+                    }
+
+                    if (IsFullAccessConfirmationTitle(title))
+                    {
+                        return new(
+                            title,
+                            confirmButton,
+                            cancelButton);
+                    }
+                }
+            }
+            catch (ElementNotAvailableException)
+            {
+                // Chromium may replace the dialog while it is being queried.
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsFullAccessConfirmationTitle(string title)
+    {
+        return
+            title.Contains(
+                "Full Access",
+                StringComparison.OrdinalIgnoreCase) ||
+            title.Contains(
+                "完全访问",
+                StringComparison.Ordinal) ||
+            title.Contains(
+                "完整访问",
+                StringComparison.Ordinal);
+    }
+
+    private static bool TryInvokeDialConfirmationButton(
+        AutomationElement button)
+    {
+        try
+        {
+            if (
+                !button.Current.IsEnabled ||
+                !button.TryGetCurrentPattern(
+                    InvokePattern.Pattern,
+                    out var patternObject) ||
+                patternObject is not InvokePattern pattern)
+            {
+                return false;
+            }
+
+            pattern.Invoke();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool WaitForDialConfirmationClosed(
+        AutomationElement window,
+        int timeoutMs)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        do
+        {
+            if (FindDialConfirmation(window) is null)
+            {
+                return true;
+            }
+
+            Thread.Sleep(DialPopupPollIntervalMs);
+        }
+        while (Environment.TickCount64 < deadline);
+
+        return FindDialConfirmation(window) is null;
+    }
+
     private static ComposerDialPopupElementKind? DialPopupKind(
         ControlType type)
     {
@@ -2039,11 +3692,21 @@ public sealed partial class CodexComposerService
         return null;
     }
 
+    private enum DialActivationIntent
+    {
+        OpenOnly,
+        EnterSubmenu,
+        SelectLeaf,
+    }
+
     private sealed record DialControl(
         string Key,
         string Name,
         double Left,
         double Top,
+        double Width,
+        double Height,
+        int Priority,
         bool AllowInvoke,
         AutomationElement Element);
 
@@ -2051,20 +3714,65 @@ public sealed partial class CodexComposerService
         AutomationElement Element,
         bool IsPopupWindow);
 
-    private sealed record DialPopupOption(
+    private sealed record DialPopupContainer(
+        string Key,
+        System.Windows.Rect Bounds,
+        IReadOnlyList<DialPopupOptionCandidate> Options);
+
+    private sealed record DialPopupOptionCandidate(
+        string Key,
         string Name,
+        string RootKey,
         string ContainerKey,
         double ContainerLeft,
         double ContainerTop,
+        double ContainerWidth,
+        double ContainerHeight,
         double Left,
         double Top,
+        double Width,
+        double Height,
+        bool HasKeyboardFocus,
+        bool IsSelected,
+        bool CanExpand,
         AutomationElement Element);
+
+    private sealed record DialPopupOption(
+        string Key,
+        string Name,
+        string ContainerKey,
+        string SurfaceKey,
+        double Left,
+        double Top,
+        double Width,
+        double Height,
+        bool HasKeyboardFocus,
+        bool IsSelected,
+        bool CanExpand,
+        AutomationElement Element);
+
+    private sealed record DialConfirmationDialog(
+        string Title,
+        AutomationElement ConfirmButton,
+        AutomationElement CancelButton);
+
+    private sealed record DialPopupSurface(
+        string Key,
+        System.Windows.Rect Bounds,
+        IReadOnlyList<DialPopupOption> Options);
 
     private sealed record DialPopupProbe(
         bool IsOpen,
         string? FocusedName,
+        string? FocusedOptionKey,
         string Signature,
-        IReadOnlyList<DialPopupOption> ActiveOptions);
+        IReadOnlyList<DialPopupSurface> Surfaces,
+        IReadOnlyList<DialPopupOption> Options);
+
+    private sealed record OwnedDialSurface(
+        string? ParentKey,
+        int Depth,
+        long MountSequence);
 
     private static ComposerAutomationResult SelectCore(
         ComposerSettingKind kind,

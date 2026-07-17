@@ -30,7 +30,11 @@ public partial class MainWindow : Window
     ];
     private const ControllerButtons DialExclusiveFrozenButtons =
         RadialInputMap.FrozenBaseButtons &
-        ~(ControllerButtons.RightThumb | ControllerButtons.B);
+        ~(
+            ControllerButtons.RightThumb |
+            ControllerButtons.A |
+            ControllerButtons.B
+        );
 
     private readonly SettingsService _settingsService;
     private readonly IWorkspaceReader _workspaceReader;
@@ -90,15 +94,18 @@ public partial class MainWindow : Window
     private bool _radialLayerCancelled;
     private bool _radialActionTriggered;
     private bool _radialPushToTalkActive;
+    private bool _actionPanelClearArmed;
     private bool _rightTriggerCandidate;
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
     private bool _virtualDialMenuOpen;
+    private bool _virtualDialConfirmationPending;
     private bool _virtualDialOpenPending;
     private bool _virtualDialCancelRequested;
     private bool _virtualDialCleanupPending;
     private bool _dialInputReleasePending;
     private bool _blockedPushToTalkHintShown;
+    private bool _bridgeDisabledHintShown;
     private bool _controllerWasConnected;
     private bool _hasSeenController;
     private bool _wakeInProgress;
@@ -122,8 +129,9 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _composerCommitCancellation;
     private CancellationTokenSource? _navigationConfirmCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
+    private CancellationTokenSource? _actionPanelConfirmationCancellation;
     private NavigationUndoState? _navigationUndo;
-    private int _pendingDialDelta;
+    private int _pendingDialNavigation;
     private int _dialPumpRunning;
     private int _virtualDialGeneration;
     private int _dictationPumpRunning;
@@ -373,6 +381,13 @@ public partial class MainWindow : Window
 
         _radialSuppressedButtons &= pressed;
         _pushToTalkSuppressedButtons &= pressed;
+        if (!_settings.BridgeEnabled)
+        {
+            PresentBridgeDisabledControllerAttempt(state);
+            DrainControllerFrame(pressed);
+            return;
+        }
+
         var radialModifierHeld =
             _radialLayer is not null ||
             pressed.HasFlag(ControllerButtons.LeftShoulder) ||
@@ -394,7 +409,6 @@ public partial class MainWindow : Window
         var foregroundAllowsInput =
             ObserveCodexForeground(foreground);
         if (
-            !_settings.BridgeEnabled ||
             !_controllerSession.IsArmed ||
             (
                 _settings.OnlyWhenCodexForeground &&
@@ -405,9 +419,7 @@ public partial class MainWindow : Window
                 state,
                 foreground,
                 waitingForNeutral: false);
-            if (
-                !_settings.BridgeEnabled ||
-                !_controllerSession.IsArmed)
+            if (!_controllerSession.IsArmed)
             {
                 PauseControllerInput(state);
             }
@@ -553,11 +565,13 @@ public partial class MainWindow : Window
         HandleButtonEdge(
             basePressed,
             ControllerButtons.Y,
-            onDown: JumpToProjectContext);
+            onDown: OpenActionPanel);
         HandleButtonEdge(
             basePressed,
             ControllerButtons.A,
-            onDown: OpenSelectedSidebarTask);
+            onDown: dialContextActive
+                ? SelectVirtualDialOption
+                : OpenSelectedSidebarTask);
         HandleButtonEdge(
             basePressed,
             ControllerButtons.X,
@@ -606,11 +620,26 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        if (VirtualDialInputPolicy.ShouldQueueStep(
+        _axisRepeater.Update(
+            "right-y",
+            dialContextActive
+                ? rightGesture.VerticalDirection
+                : 0,
+            _settings.RepeatDelayMs,
+            _settings.RepeatIntervalMs,
+            direction => QueueVirtualDialNavigation(
+                direction > 0
+                    ? ComposerDialNavigation.Up
+                    : ComposerDialNavigation.Down));
+        if (
+            VirtualDialInputPolicy.ShouldQueueStep(
                 rightGesture.HorizontalStarted,
                 rightGesture.HorizontalDirection))
         {
-            QueueVirtualDialStep(rightGesture.HorizontalDirection);
+            QueueVirtualDialNavigation(
+                rightGesture.HorizontalDirection > 0
+                    ? ComposerDialNavigation.Right
+                    : ComposerDialNavigation.Left);
         }
     }
 
@@ -620,16 +649,21 @@ public partial class MainWindow : Window
         _virtualDialCancelRequested ||
         _virtualDialCleanupPending;
 
-    private void SetVirtualDialMenuOpen(bool isOpen)
+    private void SetVirtualDialMenuOpen(
+        bool isOpen,
+        bool requiresConfirmation = false)
     {
         _virtualDialMenuOpen = isOpen;
+        _virtualDialConfirmationPending =
+            isOpen && requiresConfirmation;
         UpdateVirtualDialContextPresentation();
     }
 
     private void UpdateVirtualDialContextPresentation()
     {
         _devicePageViewModel.UpdateVirtualDialMenuState(
-            _virtualDialMenuOpen);
+            _virtualDialMenuOpen,
+            _virtualDialConfirmationPending);
     }
 
     private void DrainControllerFrame(ControllerButtons pressed)
@@ -645,7 +679,9 @@ public partial class MainWindow : Window
     {
         _dialInputReleasePending =
             !IsControllerNeutral(_xInputService.LastState);
-        Interlocked.Exchange(ref _pendingDialDelta, 0);
+        Interlocked.Exchange(
+            ref _pendingDialNavigation,
+            0);
         CancelVirtualDialPressHold();
         ResetRadialLayer(clearSuppression: false);
         _axisRepeater.Reset();
@@ -761,6 +797,12 @@ public partial class MainWindow : Window
 
         if (action == RadialInputAction.Cancel)
         {
+            if (layer == RadialMenuLayerKind.Action)
+            {
+                CloseActionPanel(pressed);
+                return RadialInputMap.FrozenBaseButtons;
+            }
+
             CancelRadialLayer();
             return RadialInputMap.FrozenBaseButtons;
         }
@@ -784,14 +826,20 @@ public partial class MainWindow : Window
         _radialLayer = layer;
         _rightTriggerCandidate = false;
         _radialLayerStartedAt = Environment.TickCount64;
-        _radialLayerEngaged = layer == RadialMenuLayerKind.Turn;
+        _radialLayerEngaged =
+            layer is
+                RadialMenuLayerKind.Turn or
+                RadialMenuLayerKind.Action;
         _radialLayerCancelled = false;
         _radialActionTriggered = false;
         _radialPushToTalkActive = false;
         _radialHighlightedItemId = null;
 
         _radialLearningTimer.Stop();
-        if (layer != RadialMenuLayerKind.Turn)
+        if (
+            layer is
+                RadialMenuLayerKind.Agent or
+                RadialMenuLayerKind.Command)
         {
             _radialLearningTimer.Start();
         }
@@ -863,6 +911,39 @@ public partial class MainWindow : Window
         Pulse(strength: 0.1);
     }
 
+    private void OpenActionPanel()
+    {
+        if (_radialLayer == RadialMenuLayerKind.Action)
+        {
+            CloseActionPanel(_latestControllerState.Buttons);
+            return;
+        }
+
+        if (_radialLayer is not null)
+        {
+            return;
+        }
+
+        BeginRadialLayer(RadialMenuLayerKind.Action);
+        ShowFeedback(
+            RadialText("动作面板", "Action panel"),
+            RadialText(
+                "按手柄图中的实体键执行 · B 或 Y 关闭",
+                "Press a mapped controller button · B or Y closes"));
+        Pulse(strength: 0.16);
+    }
+
+    private void CloseActionPanel(ControllerButtons pressed)
+    {
+        _radialSuppressedButtons |=
+            pressed & RadialInputMap.FrozenBaseButtons;
+        ResetRadialLayer(clearSuppression: false);
+        ShowFeedback(
+            RadialText("动作面板", "Action panel"),
+            RadialText("已关闭。", "Closed."));
+        Pulse(strength: 0.08);
+    }
+
     private void EndRadialLayer(ControllerButtons pressed)
     {
         _radialSuppressedButtons |=
@@ -886,6 +967,9 @@ public partial class MainWindow : Window
         _radialActionTriggered = false;
         _radialLayerStartedAt = 0;
         _radialHighlightedItemId = null;
+        _actionPanelClearArmed = false;
+        _actionPanelConfirmationCancellation?.Cancel();
+        _actionPanelConfirmationCancellation = null;
         if (clearSuppression)
         {
             _radialSuppressedButtons = ControllerButtons.None;
@@ -969,6 +1053,140 @@ public partial class MainWindow : Window
                     RadialText("停止当前运行", "Stop current turn"),
                     "Stop");
                 break;
+            case RadialInputAction.TogglePlan:
+                ExecuteActionPanelShortcut(
+                    RadialText("切换 Plan 模式", "Toggle Plan mode"),
+                    _settings.PlanToggleShortcut);
+                break;
+            case RadialInputAction.NavigateForward:
+                ExecuteActionPanelShortcut(
+                    RadialText("前进", "Forward"),
+                    "Ctrl+]");
+                break;
+            case RadialInputAction.ToggleSidebar:
+                ExecuteActionPanelShortcut(
+                    RadialText("切换侧边栏", "Toggle sidebar"),
+                    "Ctrl+B");
+                break;
+            case RadialInputAction.NavigateBack:
+                ExecuteActionPanelShortcut(
+                    RadialText("后退", "Back"),
+                    "Ctrl+[");
+                break;
+            case RadialInputAction.ClearComposer:
+                ConfirmOrClearComposer();
+                break;
+            case RadialInputAction.ProjectContext:
+                ResetRadialLayer(clearSuppression: false);
+                JumpToProjectContext();
+                break;
+        }
+    }
+
+    private void ExecuteActionPanelShortcut(
+        string title,
+        string shortcut)
+    {
+        var executed = _agentShortcuts.Execute(
+            shortcut,
+            _settings);
+        ResetRadialLayer(clearSuppression: false);
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                executed,
+                executed
+                    ? null
+                    : AgentAutomationErrorCodes.InputInjectionFailed,
+                shortcut));
+        ShowFeedback(
+            title,
+            executed
+                ? _localization.Strings.Get(
+                    StringKeys.MessageExecuted)
+                : ExecutionFailureLabel(
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    shortcut));
+        Pulse(strength: executed ? 0.2 : 0.1);
+    }
+
+    private void ConfirmOrClearComposer()
+    {
+        if (!_actionPanelClearArmed)
+        {
+            _actionPanelClearArmed = true;
+            _radialHighlightedItemId = "action-clear";
+            RefreshRadialMenu();
+            ShowFeedback(
+                RadialText("清空当前输入", "Clear current input"),
+                RadialText(
+                    "再次按 A 确认 · B 取消",
+                    "Press A again to confirm · B cancels"));
+            Pulse(strength: 0.12);
+            ScheduleActionPanelClearDisarm();
+            return;
+        }
+
+        _actionPanelConfirmationCancellation?.Cancel();
+        _actionPanelConfirmationCancellation = null;
+        var result = _composerAutomation.Clear(_settings);
+        ResetRadialLayer(clearSuppression: false);
+        var title = RadialText(
+            "清空当前输入",
+            "Clear current input");
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                result.Succeeded,
+                result.Error,
+                result.ErrorDetail));
+        ShowFeedback(
+            title,
+            result.Succeeded
+                ? RadialText("已清空。", "Cleared.")
+                : ExecutionFailureLabel(
+                    result.Error,
+                    result.ErrorDetail));
+        Pulse(strength: result.Succeeded ? 0.2 : 0.1);
+    }
+
+    private void ScheduleActionPanelClearDisarm()
+    {
+        _actionPanelConfirmationCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _actionPanelConfirmationCancellation = cancellation;
+        _ = DisarmActionPanelClearAsync(cancellation);
+    }
+
+    private async Task DisarmActionPanelClearAsync(
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(
+                TimeSpan.FromSeconds(2.5),
+                cancellation.Token);
+            if (
+                cancellation.IsCancellationRequested ||
+                !ReferenceEquals(
+                    _actionPanelConfirmationCancellation,
+                    cancellation))
+            {
+                return;
+            }
+
+            _actionPanelClearArmed = false;
+            _radialHighlightedItemId = null;
+            _actionPanelConfirmationCancellation = null;
+            RefreshRadialMenu();
+        }
+        catch (OperationCanceledException)
+        {
+            // A different action or panel close owns the current state.
+        }
+        finally
+        {
+            cancellation.Dispose();
         }
     }
 
@@ -1175,6 +1393,17 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     "松开 RT 关闭",
                     "Release RT to close")),
+            RadialMenuLayerKind.Action => new RadialMenuState(
+                layer,
+                RadialText("动作面板", "Action panel"),
+                Glyph(LogicalInput.FaceNorth),
+                BuildActionRadialItems(),
+                RadialMenuDisplayMode.Always,
+                isLayerEngaged: true,
+                isLearningCueReady: true,
+                subtitle: RadialText(
+                    $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} 关闭",
+                    $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} close")),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(layer),
                 layer,
@@ -1298,6 +1527,54 @@ public partial class MainWindow : Window
         ];
     }
 
+    private IReadOnlyList<RadialMenuItemState>
+        BuildActionRadialItems()
+    {
+        return
+        [
+            RadialItem(
+                "action-plan",
+                RadialMenuSlotPosition.Top,
+                Glyph(LogicalInput.DPadUp),
+                RadialText("Plan 模式", "Plan mode")),
+            RadialItem(
+                "action-forward",
+                RadialMenuSlotPosition.Right,
+                Glyph(LogicalInput.DPadRight),
+                RadialText("前进", "Forward")),
+            RadialItem(
+                "action-sidebar",
+                RadialMenuSlotPosition.Bottom,
+                Glyph(LogicalInput.DPadDown),
+                RadialText("切换侧边栏", "Toggle sidebar")),
+            RadialItem(
+                "action-back",
+                RadialMenuSlotPosition.Left,
+                Glyph(LogicalInput.DPadLeft),
+                RadialText("后退", "Back")),
+            RadialItem(
+                "action-clear",
+                RadialMenuSlotPosition.CenterLeft,
+                Glyph(LogicalInput.FaceSouth),
+                RadialText("清空当前输入", "Clear current input"),
+                _actionPanelClearArmed
+                    ? RadialText(
+                        "再次按 A 确认",
+                        "Press A again to confirm")
+                    : RadialText(
+                        "需要二次确认",
+                        "Requires confirmation")),
+            RadialItem(
+                "action-project",
+                RadialMenuSlotPosition.CenterRight,
+                Glyph(LogicalInput.FaceWest),
+                RadialText("项目上下文", "Project context"),
+                RadialText(
+                    "保留原 Y 键行为",
+                    "Previous Y-button action")),
+        ];
+    }
+
     private RadialMenuItemState RadialItem(
         string id,
         RadialMenuSlotPosition position,
@@ -1387,6 +1664,12 @@ public partial class MainWindow : Window
             RadialInputAction.Steer => "turn-steer",
             RadialInputAction.Queue => "turn-queue",
             RadialInputAction.StopTurn => "turn-stop",
+            RadialInputAction.TogglePlan => "action-plan",
+            RadialInputAction.NavigateForward => "action-forward",
+            RadialInputAction.ToggleSidebar => "action-sidebar",
+            RadialInputAction.NavigateBack => "action-back",
+            RadialInputAction.ClearComposer => "action-clear",
+            RadialInputAction.ProjectContext => "action-project",
             _ => string.Empty,
         };
     }
@@ -2415,7 +2698,9 @@ public partial class MainWindow : Window
             }
 
             _rightStickHoldTriggered = true;
-            Interlocked.Exchange(ref _pendingDialDelta, 0);
+            Interlocked.Exchange(
+                ref _pendingDialNavigation,
+                0);
             if (IsVirtualDialContextActive)
             {
                 await CloseVirtualDialMenuAsync(showFeedback: false)
@@ -2427,9 +2712,6 @@ public partial class MainWindow : Window
             SetSelectedNav(SettingsNavButton);
             _devicePageViewModel.UpdateRightMode(
                 RightControlMode.Dial,
-                _localization.Strings.ComposerDialSettingsOpened);
-            ShowFeedback(
-                _localization.Strings.VirtualDial,
                 _localization.Strings.ComposerDialSettingsOpened);
             Pulse(strength: 0.18);
         }
@@ -2470,10 +2752,10 @@ public partial class MainWindow : Window
         _ = PressVirtualDialAsync();
     }
 
-    private void QueueVirtualDialStep(int direction)
+    private void QueueVirtualDialNavigation(
+        ComposerDialNavigation navigation)
     {
         if (
-            direction == 0 ||
             _virtualDialCleanupPending ||
             _dialInputReleasePending)
         {
@@ -2482,8 +2764,8 @@ public partial class MainWindow : Window
 
         CancelPendingComposerSelection();
         Interlocked.Exchange(
-            ref _pendingDialDelta,
-            Math.Sign(direction));
+            ref _pendingDialNavigation,
+            (int)navigation);
         if (Interlocked.Exchange(ref _dialPumpRunning, 1) == 0)
         {
             _ = PumpVirtualDialStepsAsync();
@@ -2496,18 +2778,22 @@ public partial class MainWindow : Window
         {
             while (true)
             {
-                var delta =
-                    Interlocked.Exchange(ref _pendingDialDelta, 0);
-                if (delta == 0)
+                var navigationValue =
+                    Interlocked.Exchange(
+                        ref _pendingDialNavigation,
+                        0);
+                if (navigationValue == 0)
                 {
                     return;
                 }
 
+                var navigation =
+                    (ComposerDialNavigation)navigationValue;
                 var generation =
                     Volatile.Read(ref _virtualDialGeneration);
                 var result = await RunVirtualDialAutomationAsync(
-                        () => _composerAutomation.DialStep(
-                            delta,
+                        () => _composerAutomation.DialNavigate(
+                            navigation,
                             _settings))
                     .ConfigureAwait(true);
                 if (
@@ -2523,7 +2809,8 @@ public partial class MainWindow : Window
         {
             Volatile.Write(ref _dialPumpRunning, 0);
             if (
-                Volatile.Read(ref _pendingDialDelta) != 0 &&
+                Volatile.Read(
+                    ref _pendingDialNavigation) != 0 &&
                 Interlocked.Exchange(ref _dialPumpRunning, 1) == 0)
             {
                 _ = PumpVirtualDialStepsAsync();
@@ -2547,11 +2834,6 @@ public partial class MainWindow : Window
         _devicePageViewModel.UpdateRightMode(
             RightControlMode.Dial,
             RadialText("正在打开…", "Opening…"));
-        ShowFeedback(
-            _localization.Strings.VirtualDial,
-            RadialText(
-                "正在打开当前控件…",
-                "Opening the current control…"));
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
@@ -2572,7 +2854,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            SetVirtualDialMenuOpen(cleanup.IsMenuOpen);
+            SetVirtualDialMenuOpen(
+                cleanup.IsMenuOpen,
+                cleanup.RequiresConfirmation);
             if (!cleanup.IsMenuOpen)
             {
                 BeginVirtualDialReleaseDrain();
@@ -2591,33 +2875,72 @@ public partial class MainWindow : Window
         PresentVirtualDialResult(result);
     }
 
-    private void CancelActionOrDialMenu()
+    private void SelectVirtualDialOption()
     {
-        if (IsVirtualDialContextActive)
+        if (
+            !IsVirtualDialContextActive ||
+            _virtualDialOpenPending ||
+            _virtualDialCancelRequested ||
+            _virtualDialCleanupPending)
         {
-            if (
-                _virtualDialCancelRequested ||
-                _virtualDialCleanupPending)
-            {
-                return;
-            }
-
-            _virtualDialCancelRequested = true;
-            Interlocked.Exchange(ref _pendingDialDelta, 0);
-            _ = CloseVirtualDialMenuAsync(showFeedback: true);
             return;
         }
 
+        _ = SelectVirtualDialOptionAsync();
+    }
+
+    private async Task SelectVirtualDialOptionAsync()
+    {
+        CancelPendingComposerSelection();
+        var generation =
+            Volatile.Read(ref _virtualDialGeneration);
+        var result = await RunVirtualDialAutomationAsync(
+                () => _composerAutomation.DialSelect(
+                    _settings))
+            .ConfigureAwait(true);
+        if (
+            generation !=
+                Volatile.Read(ref _virtualDialGeneration) ||
+            _virtualDialCancelRequested)
+        {
+            return;
+        }
+
+        PresentVirtualDialResult(result);
+        if (result.Succeeded && !result.IsMenuOpen)
+        {
+            BeginVirtualDialReleaseDrain();
+        }
+    }
+
+    private void CancelActionOrDialMenu()
+    {
         if (_dictationInjected || _pushToTalkTrigger.BlocksBaseInput)
         {
             CancelAction();
             return;
         }
 
-        CancelAction();
+        if (
+            _virtualDialCancelRequested ||
+            _virtualDialCleanupPending)
+        {
+            return;
+        }
+
+        var expectedDialContext = IsVirtualDialContextActive;
+        _virtualDialCancelRequested = true;
+        Interlocked.Exchange(
+            ref _pendingDialNavigation,
+            0);
+        _ = CloseVirtualDialMenuAsync(
+            showFeedback: true,
+            fallbackToBaseCancel: !expectedDialContext);
     }
 
-    private async Task CloseVirtualDialMenuAsync(bool showFeedback)
+    private async Task CloseVirtualDialMenuAsync(
+        bool showFeedback,
+        bool fallbackToBaseCancel = false)
     {
         var hadContext = IsVirtualDialContextActive;
         var generation =
@@ -2633,11 +2956,19 @@ public partial class MainWindow : Window
         }
 
         SetVirtualDialMenuOpen(
-            result.Succeeded
-                ? result.IsMenuOpen
-                : result.IsMenuOpen || _virtualDialMenuOpen);
+            result.IsMenuOpen,
+            result.RequiresConfirmation);
         _virtualDialOpenPending = false;
         _virtualDialCancelRequested = false;
+        if (
+            fallbackToBaseCancel &&
+            result.Succeeded &&
+            !result.MenuWasPresent)
+        {
+            CancelAction();
+            return;
+        }
+
         if (result.Succeeded)
         {
             if (hadContext && !result.IsMenuOpen)
@@ -2653,13 +2984,6 @@ public partial class MainWindow : Window
                 if (result.IsMenuOpen)
                 {
                     PresentVirtualDialResult(result);
-                }
-                else
-                {
-                    ShowFeedback(
-                        _localization.Strings.VirtualDial,
-                        _localization.Strings.ComposerDialCanceled);
-                    Pulse(strength: 0.12);
                 }
             }
 
@@ -2689,25 +3013,31 @@ public partial class MainWindow : Window
 
     private void PresentVirtualDialResult(ComposerDialResult result)
     {
-        var wasContextActive = IsVirtualDialContextActive;
         if (!result.Succeeded)
         {
             SetVirtualDialMenuOpen(
-                result.IsMenuOpen || _virtualDialMenuOpen);
+                result.IsMenuOpen,
+                result.RequiresConfirmation);
             var failure = VirtualDialFailureLabel(result);
             _devicePageViewModel.UpdateRightMode(
                 RightControlMode.Dial,
                 failure);
             AddEvent(
                 $"{_localization.Strings.VirtualDial} · {failure}");
-            ShowFeedback(
-                _localization.Strings.VirtualDial,
-                failure);
+            if (ShouldShowVirtualDialFailure(result))
+            {
+                ShowFeedback(
+                    _localization.Strings.VirtualDial,
+                    failure);
+            }
+
             Pulse(strength: 0.08);
             return;
         }
 
-        SetVirtualDialMenuOpen(result.IsMenuOpen);
+        SetVirtualDialMenuOpen(
+            result.IsMenuOpen,
+            result.RequiresConfirmation);
 
         _rightMode = RightControlMode.Dial;
         var value = string.IsNullOrWhiteSpace(result.ControlName)
@@ -2718,19 +3048,17 @@ public partial class MainWindow : Window
             value);
         AddEvent(
             $"{_localization.Strings.VirtualDial} · {value}");
-        var instruction =
-            wasContextActive && !result.IsMenuOpen
-                ? RadialText(
-                    $"已选择 {value} · 左右拨动继续选择控件",
-                    $"Selected {value} · move the right stick left or right to continue")
-                : _localization.Strings.ControlRightStickHint(
-                    Glyph(LogicalInput.RightStickPress),
-                    Glyph(LogicalInput.FaceEast),
-                    result.IsMenuOpen);
-        ShowFeedback(
-            _localization.Strings.VirtualDial,
-            $"{value}\n{instruction}");
         Pulse(strength: result.IsMenuOpen ? 0.18 : 0.12);
+    }
+
+    private static bool ShouldShowVirtualDialFailure(
+        ComposerDialResult result)
+    {
+        return result.ErrorDetail is not
+            (
+                "dial-selection-unverified" or
+                "dial-step-no-selection-change"
+            );
     }
 
     private string VirtualDialFailureLabel(ComposerDialResult result)
@@ -2753,6 +3081,26 @@ public partial class MainWindow : Window
                 RadialText(
                     "没有可选项 · B 关闭 · RS 重新打开",
                     "No selectable option · B close · RS reopen"),
+            "dial-enter-with-right" =>
+                RadialText(
+                    "这是一个子菜单 · 右推右摇杆进入",
+                    "This item has a submenu · move the right stick right"),
+            "dial-no-submenu" =>
+                RadialText(
+                    "这是具体选项 · 按 A 确认",
+                    "This is a concrete option · press A to select"),
+            "dial-closed-horizontal-only" =>
+                RadialText(
+                    "菜单关闭时只用左右切换控件",
+                    "Use left or right to switch controls while closed"),
+            "dial-initial-focus" =>
+                RadialText(
+                    "菜单已打开，但选项未能高亮 · B 关闭后重试",
+                    "The picker opened but no option was highlighted · close with B and retry"),
+            "dial-popup-close" =>
+                RadialText(
+                    "选择器没有完全关闭 · 再按一次 B 或在 Codex 中关闭",
+                    "The picker did not fully close · press B again or close it in Codex"),
             "dial-popup-not-owned" =>
                 RadialText(
                     "Codex 中另一个菜单已打开，请先在 Codex 中关闭",
@@ -2797,7 +3145,9 @@ public partial class MainWindow : Window
         _virtualDialCancelRequested = false;
         _dialInputReleasePending = false;
         CancelVirtualDialPressHold();
-        Interlocked.Exchange(ref _pendingDialDelta, 0);
+        Interlocked.Exchange(
+            ref _pendingDialNavigation,
+            0);
 
         var hadOpenMenu = _virtualDialMenuOpen;
         SetVirtualDialMenuOpen(false);
@@ -3238,10 +3588,7 @@ public partial class MainWindow : Window
 
         _blockedPushToTalkHintShown = true;
         var menuGlyph = Glyph(LogicalInput.Menu);
-        var detail = !_settings.BridgeEnabled
-            ? ExecutionFailureLabel(
-                AgentAutomationErrorCodes.BridgeSafePreview)
-            : !_controllerSession.IsArmed
+        var detail = !_controllerSession.IsArmed
                 ? _localization.Strings.Format(
                     StringKeys.StatusAgentForegroundLocked,
                     _activeAgent.DisplayName,
@@ -3262,6 +3609,28 @@ public partial class MainWindow : Window
             _localization.Strings.ControlHoldToTalk(
                 Glyph(LogicalInput.LeftTrigger)),
             detail);
+        Pulse(strength: 0.12);
+    }
+
+    private void PresentBridgeDisabledControllerAttempt(
+        ControllerState state)
+    {
+        if (
+            _bridgeDisabledHintShown ||
+            !BridgeInputGate.HasControlIntent(
+                state,
+                _settings.DeadZone))
+        {
+            return;
+        }
+
+        _bridgeDisabledHintShown = true;
+        var title = _localization.Strings.Get(
+            StringKeys.MessageSafePreview);
+        var detail = _localization.Strings.Get(
+            StringKeys.MessageBridgeSafePreview);
+        AddEvent($"{title} · {detail}");
+        ShowFeedback(title, detail);
         Pulse(strength: 0.12);
     }
 
@@ -3438,7 +3807,9 @@ public partial class MainWindow : Window
         CloseVirtualDialForPushToTalkAsync()
     {
         Interlocked.Increment(ref _virtualDialGeneration);
-        Interlocked.Exchange(ref _pendingDialDelta, 0);
+        Interlocked.Exchange(
+            ref _pendingDialNavigation,
+            0);
         CancelVirtualDialPressHold();
         _virtualDialOpenPending = false;
         _virtualDialCancelRequested = false;
@@ -3457,13 +3828,17 @@ public partial class MainWindow : Window
                         BridgeTimings.DictationDialCloseTimeoutMs))
                 .ConfigureAwait(true);
             SetVirtualDialMenuOpen(
-                result.Succeeded && result.IsMenuOpen);
+                result.Succeeded && result.IsMenuOpen,
+                result.Succeeded &&
+                    result.RequiresConfirmation);
             return result;
         }
         catch (TimeoutException)
         {
             // Never block the Dispatcher behind a stalled UIA tree walk.
-            SetVirtualDialMenuOpen(true);
+            SetVirtualDialMenuOpen(
+                true,
+                _virtualDialConfirmationPending);
             return new(
                 false,
                 IsMenuOpen: true,
@@ -4390,6 +4765,7 @@ public partial class MainWindow : Window
         _ = ObserveCodexForeground(foreground);
 
         if (
+            _settings.BridgeEnabled &&
             _controllerSession.IsArmed &&
             _controllerWasConnected &&
             (!_settings.OnlyWhenCodexForeground || foreground))
@@ -4400,7 +4776,10 @@ public partial class MainWindow : Window
         var strings = _localization.Strings;
         var wakeGlyph = Glyph(LogicalInput.Menu);
         var statusText =
-            !_controllerWasConnected
+            !_settings.BridgeEnabled
+                ? strings.Get(
+                    StringKeys.MessageBridgeSafePreview)
+                : !_controllerWasConnected
                 ? strings.WaitingForReconnect
                 : foreground
                     ? !_controllerSession.IsArmed
@@ -4423,6 +4802,7 @@ public partial class MainWindow : Window
                                 _activeAgent.DisplayName,
                                 wakeGlyph);
         var isActive =
+            _settings.BridgeEnabled &&
             _controllerSession.IsArmed &&
             _controllerWasConnected &&
             _controllerSession.IsActive &&
@@ -4519,7 +4899,7 @@ public partial class MainWindow : Window
         if (!_settings.BridgeEnabled)
         {
             return _localization.Strings.Get(
-                StringKeys.MessageSafePreview);
+                StringKeys.MessageBridgeSafePreview);
         }
 
         if (
@@ -4642,15 +5022,38 @@ public partial class MainWindow : Window
             return;
         }
 
-        _settings.BridgeEnabled = BridgeEnabledCheckBox.IsChecked == true;
+        var enabled = BridgeEnabledCheckBox.IsChecked == true;
+        if (!enabled)
+        {
+            PauseControllerInput(_xInputService.LastState);
+            _previousButtons = _xInputService.LastState.Buttons;
+            _previousPhysicalButtons = _xInputService.LastState.Buttons;
+            _bridgeDisabledHintShown = true;
+        }
+        else
+        {
+            _bridgeDisabledHintShown = false;
+        }
+
+        _settings.BridgeEnabled = enabled;
         _settingsService.Save(_settings);
         ConfigureCodexKeybindings();
-        AddEvent(
-            _settings.BridgeEnabled
-                ? _localization.Strings.Get(
-                    StringKeys.MessageBridgeEnabled)
-                : _localization.Strings.Get(
-                    StringKeys.MessageBridgeSafePreview));
+        var eventText = enabled
+            ? _localization.Strings.Get(
+                StringKeys.MessageBridgeEnabled)
+            : _localization.Strings.Get(
+                StringKeys.MessageBridgeSafePreview);
+        AddEvent(eventText);
+        FooterStatusText.Text = eventText;
+        if (!enabled)
+        {
+            ShowFeedback(
+                _localization.Strings.Get(
+                    StringKeys.MessageSafePreview),
+                eventText);
+        }
+
+        UpdateCodexStatus();
     }
 
     private void RefreshDeviceData()

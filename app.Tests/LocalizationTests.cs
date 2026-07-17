@@ -143,7 +143,7 @@ public sealed class LocalizationTests
             "Bring Studio Agent to front and unlock controller input",
             en.ControlWakeAgentDescription("Studio Agent"));
         Assert.Equal(
-            "Menu cycles four root scopes; Y enters the owning project and toggles all / pinned-only within it",
+            "Menu cycles four root scopes; Y opens the action panel",
             en.ConfigRootProjectDescription("Menu", "Y"));
     }
 

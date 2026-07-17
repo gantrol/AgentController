@@ -26,6 +26,7 @@ public sealed class DevicePageViewModel : ObservableObject
     private string _rightStickHint = string.Empty;
     private string _rightPressGlyph = string.Empty;
     private bool _isVirtualDialMenuOpen;
+    private bool _isVirtualDialConfirmationPending;
     private string _primaryGlyph = string.Empty;
     private string _primaryActionTitle = string.Empty;
     private string _voiceGlyph = string.Empty;
@@ -465,9 +466,13 @@ public sealed class DevicePageViewModel : ObservableObject
         RefreshRightModeValue();
     }
 
-    public void UpdateVirtualDialMenuState(bool isOpen)
+    public void UpdateVirtualDialMenuState(
+        bool isOpen,
+        bool requiresConfirmation = false)
     {
         _isVirtualDialMenuOpen = isOpen;
+        _isVirtualDialConfirmationPending =
+            isOpen && requiresConfirmation;
         RefreshRightStickHint();
     }
 
@@ -567,7 +572,9 @@ public sealed class DevicePageViewModel : ObservableObject
         RightStickHint = _strings.ControlRightStickHint(
             _rightPressGlyph,
             CancelGlyph,
-            _isVirtualDialMenuOpen);
+            PrimaryGlyph,
+            _isVirtualDialMenuOpen,
+            _isVirtualDialConfirmationPending);
     }
 
     private void RefreshRightModeValue()

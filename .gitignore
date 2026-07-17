@@ -9,6 +9,9 @@
 !/app.Tests/
 !/docs/
 !/docs/**
+!/public/
+!/public/docs/
+!/public/docs/**
 
 # Build and IDE output
 **/bin/

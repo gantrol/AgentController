@@ -71,13 +71,16 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "← / → Control · RS Open · hold RS Settings",
+            "← / → Switch control · RS Open (model first) · hold RS Settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
             viewModel.PrimaryActionTitle);
         Assert.Equal("LT · Hold to talk", viewModel.VoiceActionTitle);
         Assert.Equal("X · Send", viewModel.SendActionTitle);
+        Assert.Equal(
+            "Y · Action panel",
+            viewModel.ProjectActionTitle);
         Assert.Contains("Studio Agent", viewModel.WakeActionTitle);
         Assert.Equal(
             "Studio Agent sidebar",
@@ -208,7 +211,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Move left or right to choose a control",
+            "Current control: model / reasoning effort / speed",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -244,7 +247,9 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateControllerState(
             ConnectedState("Windows.Gaming.Input"));
 
-        Assert.Equal("左右拨动以选择控件", viewModel.RightModeValue);
+        Assert.Equal(
+            "当前控件：模型 / 思考强度 / 速度",
+            viewModel.RightModeValue);
     }
 
     [Fact]
@@ -261,13 +266,33 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: true);
 
         Assert.Equal(
-            "← / → Option · RS Select · B Close",
+            "Gray row is current · ↑ / ↓ Move · → Enter · ← Back · A Select · B Close all",
             viewModel.RightStickHint);
 
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "← / → Control · RS Open · hold RS Settings",
+            "← / → Switch control · RS Open (model first) · hold RS Settings",
+            viewModel.RightStickHint);
+    }
+
+    [Fact]
+    public void VirtualDialHintExplainsFullAccessConfirmationButtons()
+    {
+        var viewModel = CreateViewModel();
+        var strings =
+            new LocalizationService(AppLanguage.EnUs).Strings;
+        viewModel.UpdateContext(
+            strings,
+            "Codex",
+            BuiltInControllerProfiles.Ultimate2);
+
+        viewModel.UpdateVirtualDialMenuState(
+            isOpen: true,
+            requiresConfirmation: true);
+
+        Assert.Equal(
+            "Full Access confirmation · A Confirm · B Cancel",
             viewModel.RightStickHint);
     }
 

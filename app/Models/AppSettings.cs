@@ -18,6 +18,7 @@ public sealed class AppSettings
     public int RepeatIntervalMs { get; set; } = 220;
     public string ReasoningDownShortcut { get; set; } = "F17";
     public string ReasoningUpShortcut { get; set; } = "F18";
+    public string PlanToggleShortcut { get; set; } = "F19";
     public string ModelPickerShortcut { get; set; } = "Ctrl+Shift+M";
     public string FastToggleShortcut { get; set; } = "F20";
     public string DictationShortcut { get; set; } = "Ctrl+Shift+D";

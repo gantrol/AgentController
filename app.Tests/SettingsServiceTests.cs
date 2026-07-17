@@ -137,6 +137,7 @@ public sealed class SettingsServiceTests
         {
             ReasoningDownShortcut = null!,
             ReasoningUpShortcut = string.Empty,
+            PlanToggleShortcut = " ",
             ModelPickerShortcut = " ",
             FastToggleShortcut = "\t",
             DictationShortcut = "\r\n",
@@ -153,6 +154,9 @@ public sealed class SettingsServiceTests
         Assert.Equal(
             defaults.ReasoningUpShortcut,
             settings.ReasoningUpShortcut);
+        Assert.Equal(
+            defaults.PlanToggleShortcut,
+            settings.PlanToggleShortcut);
         Assert.Equal(
             defaults.ModelPickerShortcut,
             settings.ModelPickerShortcut);

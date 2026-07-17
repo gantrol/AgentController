@@ -5,4 +5,5 @@ public enum RadialMenuLayerKind
     Agent,
     Command,
     Turn,
+    Action,
 }

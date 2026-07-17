@@ -140,6 +140,8 @@ public sealed class SettingsService
                 settings.ReasoningDownShortcut,
             ReasoningUpShortcut =
                 settings.ReasoningUpShortcut,
+            PlanToggleShortcut =
+                settings.PlanToggleShortcut,
             ModelPickerShortcut =
                 settings.ModelPickerShortcut,
             FastToggleShortcut =
@@ -182,6 +184,9 @@ public sealed class SettingsService
         settings.ReasoningUpShortcut = NormalizeShortcut(
             settings.ReasoningUpShortcut,
             defaults.ReasoningUpShortcut);
+        settings.PlanToggleShortcut = NormalizeShortcut(
+            settings.PlanToggleShortcut,
+            defaults.PlanToggleShortcut);
         settings.ModelPickerShortcut = NormalizeShortcut(
             settings.ModelPickerShortcut,
             defaults.ModelPickerShortcut);

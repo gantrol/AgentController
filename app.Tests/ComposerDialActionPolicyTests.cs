@@ -8,11 +8,31 @@ public sealed class ComposerDialActionPolicyTests
     [InlineData("Project: ai-keyboard")]
     [InlineData("Reasoning effort")]
     [InlineData("Fast")]
+    [InlineData("5.6 Sol Max")]
+    [InlineData("Full access")]
+    [InlineData("Approve for me")]
+    [InlineData("Workspace write")]
+    [InlineData("Read only")]
     [InlineData("Don't work in a project")]
     public void PickerControlsRemainAvailable(string name)
     {
         Assert.True(ComposerDialActionPolicy.IsPickerControl(name));
         Assert.Null(ComposerDialActionPolicy.BlockReason(name));
+    }
+
+    [Fact]
+    public void ExpandableModelPickerPrecedesInvokeOnlyProjectPicker()
+    {
+        var modelPriority =
+            ComposerDialActionPolicy.PickerControlPriority(
+                supportsExpandCollapse: true,
+                allowInvoke: false);
+        var projectPriority =
+            ComposerDialActionPolicy.PickerControlPriority(
+                supportsExpandCollapse: false,
+                allowInvoke: true);
+
+        Assert.True(modelPriority < projectPriority);
     }
 
     [Theory]

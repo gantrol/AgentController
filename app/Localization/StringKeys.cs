@@ -28,6 +28,8 @@ public static class StringKeys
     public const string ControlRightStickHint = "control.right-stick-hint";
     public const string ControlRightStickHintOpen =
         "control.right-stick-hint-open";
+    public const string ControlRightStickHintConfirmation =
+        "control.right-stick-hint-confirmation";
     public const string ControlPrimary = "control.primary";
     public const string ControlPrimaryDescription =
         "control.primary-description";
@@ -539,6 +541,7 @@ public static class StringKeys
         ControlRightStick,
         ControlRightStickHint,
         ControlRightStickHintOpen,
+        ControlRightStickHintConfirmation,
         ControlPrimary,
         ControlPrimaryDescription,
         ControlHoldToTalk,

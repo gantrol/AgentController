@@ -21,6 +21,12 @@ public enum RadialInputAction
     Steer,
     Queue,
     StopTurn,
+    TogglePlan,
+    NavigateForward,
+    ToggleSidebar,
+    NavigateBack,
+    ClearComposer,
+    ProjectContext,
 }
 
 public static class RadialInputMap
@@ -63,6 +69,8 @@ public static class RadialInputMap
                 ResolveCommand(downEdges),
             RadialMenuLayerKind.Turn =>
                 ResolveTurn(downEdges),
+            RadialMenuLayerKind.Action =>
+                ResolveAction(downEdges),
             _ => RadialInputAction.None,
         };
     }
@@ -142,6 +150,31 @@ public static class RadialInputMap
             return RadialInputAction.StopTurn;
         if (downEdges.HasFlag(ControllerButtons.A))
             return RadialInputAction.Fork;
+        return RadialInputAction.None;
+    }
+
+    private static RadialInputAction ResolveAction(
+        ControllerButtons downEdges)
+    {
+        if (
+            downEdges.HasFlag(ControllerButtons.B) ||
+            downEdges.HasFlag(ControllerButtons.Y))
+        {
+            return RadialInputAction.Cancel;
+        }
+
+        if (downEdges.HasFlag(ControllerButtons.DPadUp))
+            return RadialInputAction.TogglePlan;
+        if (downEdges.HasFlag(ControllerButtons.DPadRight))
+            return RadialInputAction.NavigateForward;
+        if (downEdges.HasFlag(ControllerButtons.DPadDown))
+            return RadialInputAction.ToggleSidebar;
+        if (downEdges.HasFlag(ControllerButtons.DPadLeft))
+            return RadialInputAction.NavigateBack;
+        if (downEdges.HasFlag(ControllerButtons.A))
+            return RadialInputAction.ClearComposer;
+        if (downEdges.HasFlag(ControllerButtons.X))
+            return RadialInputAction.ProjectContext;
         return RadialInputAction.None;
     }
 }

@@ -113,6 +113,18 @@ internal static class ComposerDialActionPolicy
         return ComposerDialActionKind.Picker;
     }
 
+    public static int PickerControlPriority(
+        bool supportsExpandCollapse,
+        bool allowInvoke)
+    {
+        if (supportsExpandCollapse)
+        {
+            return 0;
+        }
+
+        return allowInvoke ? 1 : 2;
+    }
+
     private static string Normalize(string value)
     {
         return new string(

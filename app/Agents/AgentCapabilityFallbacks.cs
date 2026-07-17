@@ -130,13 +130,24 @@ public static class AgentCapabilityFallbacks
             AppSettings settings) =>
             DialFailed();
 
+        public ComposerDialResult DialNavigate(
+            ComposerDialNavigation navigation,
+            AppSettings settings) =>
+            DialFailed();
+
         public ComposerDialResult DialPress(AppSettings settings) =>
+            DialFailed();
+
+        public ComposerDialResult DialSelect(AppSettings settings) =>
             DialFailed();
 
         public ComposerDialResult DialCancel(AppSettings settings) =>
             DialFailed();
 
         public ComposerAutomationResult Submit(AppSettings settings) =>
+            Failed();
+
+        public ComposerAutomationResult Clear(AppSettings settings) =>
             Failed();
 
         public ComposerAutomationResult Cancel(AppSettings settings) =>

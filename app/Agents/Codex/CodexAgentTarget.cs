@@ -302,9 +302,23 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _composer.DialStep(delta, settings);
         }
 
+        public ComposerDialResult DialNavigate(
+            ComposerDialNavigation navigation,
+            AppSettings settings)
+        {
+            return _composer.DialNavigate(
+                navigation,
+                settings);
+        }
+
         public ComposerDialResult DialPress(AppSettings settings)
         {
             return _composer.DialPress(settings);
+        }
+
+        public ComposerDialResult DialSelect(AppSettings settings)
+        {
+            return _composer.DialSelect(settings);
         }
 
         public ComposerDialResult DialCancel(AppSettings settings)
@@ -315,6 +329,11 @@ public sealed class CodexAgentTarget : IAgentTarget
         public ComposerAutomationResult Submit(AppSettings settings)
         {
             return _composer.SubmitComposer(settings);
+        }
+
+        public ComposerAutomationResult Clear(AppSettings settings)
+        {
+            return _composer.ClearComposer(settings);
         }
 
         public ComposerAutomationResult Cancel(AppSettings settings)

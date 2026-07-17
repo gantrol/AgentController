@@ -35,9 +35,11 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "← / → Control · {0} Open · hold {0} Settings",
+                "← / → Switch control · {0} Open (model first) · hold {0} Settings",
             [StringKeys.ControlRightStickHintOpen] =
-                "← / → Option · {0} Select · {1} Close",
+                "Gray row is current · ↑ / ↓ Move · → Enter · ← Back · {2} Select · {1} Close all",
+            [StringKeys.ControlRightStickHintConfirmation] =
+                "Full Access confirmation · {2} Confirm · {1} Cancel",
             [StringKeys.ControlPrimary] = "{0} · Open task",
             [StringKeys.ControlPrimaryDescription] =
                 "Open the focused task; use → to enter a project",
@@ -51,9 +53,9 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ControlCancelUndoDescription] =
                 "Cancel the action; briefly undo after opening",
             [StringKeys.ControlProjectContext] =
-                "{0} · Project context",
+                "{0} · Action panel",
             [StringKeys.ControlProjectContextDescription] =
-                "Enter its project; filter pinned tasks within a project",
+                "Plan, sidebar, history, clear input, and project context",
             [StringKeys.ControlWakeAgent] = "{0} · Wake {1}",
             [StringKeys.ControlWakeAgentDescription] =
                 "Bring {0} to front and unlock controller input",
@@ -63,7 +65,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
             [StringKeys.ComposerDialReady] =
-                "Move left or right to choose a control",
+                "Current control: model / reasoning effort / speed",
             [StringKeys.ComposerConnectController] =
                 "Connect a controller to begin",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -116,7 +118,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "→ enters the focused project; ← exits to its parent; A opens a focused task",
             [StringKeys.ConfigRootProjectGlyphs] = "{0} / {1}",
             [StringKeys.ConfigRootProjectDescription] =
-                "{0} cycles four root scopes; {1} enters the owning project and toggles all / pinned-only within it",
+                "{0} cycles four root scopes; {1} opens the action panel",
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ follows this app's stable wheel and syncs {0} sidebar focus without opening a conversation. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A opens tasks only. Pinning and project expansion remain independent.",
             [StringKeys.ConfigRightStickComposer] =
@@ -268,7 +270,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Dictation ended",
 
             [StringKeys.ErrorBridgeSafePreview] =
-                "The bridge is in safe preview",
+                "Bridge is off",
             [StringKeys.ErrorAgentNotForeground] =
                 "The Agent is not in the foreground",
             [StringKeys.ErrorAgentWindowNotFound] =
@@ -435,13 +437,13 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.MessageDataLoadFailed] =
                 "Data load failed · {0}",
             [StringKeys.MessageExecuted] = "Executed",
-            [StringKeys.MessageSafePreview] = "Safe preview",
+            [StringKeys.MessageSafePreview] = "Bridge is off",
             [StringKeys.MessageWaitingForAgentForeground] =
                 "Waiting for {0} to enter the foreground",
             [StringKeys.MessageNotExecuted] = "Not executed",
             [StringKeys.MessageBridgeEnabled] = "Bridge enabled",
             [StringKeys.MessageBridgeSafePreview] =
-                "Bridge switched to safe preview",
+                "The controller will not control Codex. Re-enable it at the top of Agent Controller.",
             [StringKeys.MessageAgentDataRefreshed] =
                 "Refreshed local {0} tasks",
             [StringKeys.MessageAgentShortcutsOpened] =

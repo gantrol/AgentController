@@ -34,9 +34,11 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "← / → 控件 · {0} 打开 · 长按 {0} 设置",
+                "← / → 切换控件 · {0} 打开（默认模型）· 长按 {0} 设置",
             [StringKeys.ControlRightStickHintOpen] =
-                "← / → 选项 · {0} 确认 · {1} 关闭",
+                "灰色行为当前项 · ↑ / ↓ 选择 · → 进入 · ← 返回 · {2} 确认 · {1} 全关",
+            [StringKeys.ControlRightStickHintConfirmation] =
+                "Full access 二次确认 · {2} 确认 · {1} 取消",
             [StringKeys.ControlPrimary] = "{0} · 打开任务",
             [StringKeys.ControlPrimaryDescription] =
                 "打开当前焦点任务；进入项目请按 →",
@@ -48,9 +50,9 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ControlCancelUndo] = "{0} · 取消 / 撤回",
             [StringKeys.ControlCancelUndoDescription] =
                 "取消操作；打开后短时返回",
-            [StringKeys.ControlProjectContext] = "{0} · 项目上下文",
+            [StringKeys.ControlProjectContext] = "{0} · 动作面板",
             [StringKeys.ControlProjectContextDescription] =
-                "进入所属项目；项目内筛选置顶任务",
+                "Plan、侧边栏、前后导航、清空输入与项目上下文",
             [StringKeys.ControlWakeAgent] = "{0} · 唤醒 {1}",
             [StringKeys.ControlWakeAgentDescription] =
                 "将 {0} 置于前台并解锁手柄控制",
@@ -59,7 +61,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆虚拟旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
             [StringKeys.ComposerDialReady] =
-                "左右拨动以选择控件",
+                "当前控件：模型 / 思考强度 / 速度",
             [StringKeys.ComposerConnectController] =
                 "连接手柄后开始",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -110,7 +112,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "→ 进入当前焦点项目；← 退出到父级；A 打开当前焦点任务",
             [StringKeys.ConfigRootProjectGlyphs] = "{0} / {1}",
             [StringKeys.ConfigRootProjectDescription] =
-                "{0} 循环四个根区域；{1} 进入所属项目，项目内切换全部 / 仅置顶",
+                "{0} 循环四个根区域；{1} 打开动作面板",
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ 遵循本程序的稳定滚轮目录，并同步 {0} 原生侧边栏焦点，但不会自动打开对话。任务活动时间不会重排滚轮；→ 进入项目，← 退出项目，A 只打开任务。置顶与项目折叠互相独立。",
             [StringKeys.ConfigRightStickComposer] =
@@ -253,7 +255,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "语音输入已结束",
 
             [StringKeys.ErrorBridgeSafePreview] =
-                "桥接处于安全预览",
+                "桥接已关闭",
             [StringKeys.ErrorAgentNotForeground] =
                 "目标 Agent 未在前台",
             [StringKeys.ErrorAgentWindowNotFound] =
@@ -419,13 +421,13 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.MessageDataLoadFailed] =
                 "数据读取失败 · {0}",
             [StringKeys.MessageExecuted] = "已执行",
-            [StringKeys.MessageSafePreview] = "安全预览",
+            [StringKeys.MessageSafePreview] = "桥接已关闭",
             [StringKeys.MessageWaitingForAgentForeground] =
                 "等待 {0} 前台",
             [StringKeys.MessageNotExecuted] = "未执行",
             [StringKeys.MessageBridgeEnabled] = "桥接已启用",
             [StringKeys.MessageBridgeSafePreview] =
-                "桥接已切换为安全预览",
+                "手柄不会控制 Codex。请在 Agent Controller 顶部重新启用。",
             [StringKeys.MessageAgentDataRefreshed] =
                 "已刷新 {0} 本机任务",
             [StringKeys.MessageAgentShortcutsOpened] =

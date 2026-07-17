@@ -36,6 +36,12 @@ public sealed class CodexKeybindingServiceTests
                     "composer.startDictation" &&
                 item["key"]?.GetValue<string>() ==
                     "Ctrl+Shift+D");
+        Assert.Contains(
+            bindings.OfType<JsonObject>(),
+            item =>
+                item["command"]?.GetValue<string>() ==
+                    "composer.togglePlanMode" &&
+                item["key"]?.GetValue<string>() == "F19");
         Assert.True(second.Succeeded);
         Assert.False(second.Changed);
         Assert.Empty(second.Added);
