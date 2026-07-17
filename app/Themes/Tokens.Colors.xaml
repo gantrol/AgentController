@@ -98,6 +98,44 @@
                      Color="#4753675A"
                      po:Freeze="True" />
 
+    <!-- Overlay surfaces stay warm and legible above both light and dark apps. -->
+    <SolidColorBrush x:Key="Brush.Overlay.Surface.Frosted"
+                     Color="#F7FBFBF8"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Surface.Glass"
+                     Color="#26FBFBF8"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Glyph.Fill"
+                     Color="#F4FBFBF8"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Anchor.Fill"
+                     Color="#F8FBFBF8"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Target.Fill"
+                     Color="#D9FBFBF8"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Halo"
+                     Color="#6BCFD9D1"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Border.Frosted"
+                     Color="#B9DEDDD7"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Border.OnAccent"
+                     Color="#DFFFFFFF"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Border.OnAccent.Strong"
+                     Color="#FFFFFFFF"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.OnAccent"
+                     Color="#FFFFFFFF"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.OnAccent.Muted"
+                     Color="#DFFFFFFF"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Overlay.Progress.Track"
+                     Color="#55FFFFFF"
+                     po:Freeze="True" />
+
     <!-- Transitional aliases used by existing views while they move to tokens. -->
     <SolidColorBrush x:Key="CanvasBrush"
                      Color="{StaticResource Color.Canvas.0}" />
