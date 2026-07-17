@@ -1,5 +1,6 @@
 using CodexController.Models;
 using CodexController.ViewModels;
+using CodexController.Controllers;
 
 namespace CodexController.Tests;
 
@@ -19,7 +20,8 @@ public sealed class RadialMenuViewModelTests
                     RadialMenuSlotPosition.Top,
                     "Y",
                     "Queue",
-                    "Send after the current turn"),
+                    "Send after the current turn",
+                    logicalInput: LogicalInput.FaceNorth),
                 new RadialMenuItemState(
                     "stop",
                     RadialMenuSlotPosition.Right,
@@ -44,6 +46,9 @@ public sealed class RadialMenuViewModelTests
         Assert.Equal(RadialMenuLayerKind.Turn, viewModel.Layer);
         Assert.Equal("RT", viewModel.ModifierGlyph);
         Assert.Equal("Queue", viewModel.Top.Title);
+        Assert.Equal(
+            LogicalInput.FaceNorth,
+            viewModel.Top.LogicalInput);
         Assert.False(viewModel.Right.IsActionEnabled);
         Assert.True(viewModel.Left.IsHighlighted);
         Assert.True(viewModel.Left.HasConfirmationProgress);
@@ -71,6 +76,7 @@ public sealed class RadialMenuViewModelTests
 
         Assert.False(viewModel.CenterLeft.IsPresent);
         Assert.Equal(string.Empty, viewModel.CenterLeft.Title);
+        Assert.Null(viewModel.CenterLeft.LogicalInput);
         Assert.True(viewModel.Bottom.IsPresent);
         Assert.Equal("Approve", viewModel.Bottom.Title);
     }

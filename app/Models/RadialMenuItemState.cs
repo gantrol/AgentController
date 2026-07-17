@@ -1,3 +1,5 @@
+using CodexController.Controllers;
+
 namespace CodexController.Models;
 
 public sealed record RadialMenuItemState
@@ -10,7 +12,8 @@ public sealed record RadialMenuItemState
         string? subtitle = null,
         bool isEnabled = true,
         bool isHighlighted = false,
-        double confirmationProgress = 0)
+        double confirmationProgress = 0,
+        LogicalInput? logicalInput = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputGlyph);
@@ -23,6 +26,7 @@ public sealed record RadialMenuItemState
         Subtitle = subtitle?.Trim() ?? string.Empty;
         IsEnabled = isEnabled;
         IsHighlighted = isHighlighted;
+        LogicalInput = logicalInput;
         ConfirmationProgress = Math.Clamp(
             confirmationProgress,
             0,
@@ -42,6 +46,8 @@ public sealed record RadialMenuItemState
     public bool IsEnabled { get; }
 
     public bool IsHighlighted { get; }
+
+    public LogicalInput? LogicalInput { get; }
 
     public double ConfirmationProgress { get; }
 

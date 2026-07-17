@@ -4,18 +4,44 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
-             d:DesignHeight="430"
-             d:DesignWidth="860"
+             d:DesignHeight="560"
+             d:DesignWidth="980"
              IsHitTestVisible="False"
-             SnapsToDevicePixels="True">
+             SnapsToDevicePixels="True"
+             Loaded="RadialMenuView_Loaded"
+             Unloaded="RadialMenuView_Unloaded"
+             SizeChanged="RadialMenuView_SizeChanged">
     <UserControl.Resources>
-        <Style x:Key="ControllerHint.Progress"
+        <LinearGradientBrush x:Key="RadialDial.SectorBrush"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Offset="0" Color="#F9FCFE" />
+            <GradientStop Offset="1" Color="#DDEAF2" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="RadialDial.SelectedBrush"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Offset="0" Color="#20BBB5" />
+            <GradientStop Offset="1" Color="#0B9298" />
+        </LinearGradientBrush>
+        <SolidColorBrush x:Key="RadialDial.LineBrush"
+                         Color="#169F9F" />
+        <DropShadowEffect x:Key="RadialDial.SectorShadow"
+                          BlurRadius="18"
+                          ShadowDepth="4"
+                          Opacity="0.13"
+                          Color="#587385" />
+        <DropShadowEffect x:Key="RadialDial.SelectedGlow"
+                          BlurRadius="24"
+                          ShadowDepth="0"
+                          Opacity="0.42"
+                          Color="#1CB9B1" />
+
+        <Style x:Key="RadialDial.Progress"
                TargetType="ProgressBar">
             <Setter Property="Height" Value="3" />
-            <Setter Property="Foreground"
-                    Value="{StaticResource Brush.Accent}" />
-            <Setter Property="Background"
-                    Value="{StaticResource Brush.Bg.Sunken}" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Background" Value="#55FFFFFF" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -32,245 +58,449 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ControllerHint.Slot"
+        <Style x:Key="RadialDial.Sector"
+               TargetType="Path">
+            <Setter Property="Fill"
+                    Value="{StaticResource RadialDial.SectorBrush}" />
+            <Setter Property="Stroke" Value="#EFFFFFFF" />
+            <Setter Property="StrokeThickness" Value="2" />
+            <Setter Property="Effect"
+                    Value="{StaticResource RadialDial.SectorShadow}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsPresent}" Value="False">
+                    <Setter Property="Opacity" Value="0.26" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsActionEnabled}" Value="False">
+                    <Setter Property="Opacity" Value="0.48" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                    <Setter Property="Fill"
+                            Value="{StaticResource RadialDial.SelectedBrush}" />
+                    <Setter Property="Stroke" Value="#DFFFFFFF" />
+                    <Setter Property="StrokeThickness" Value="3" />
+                    <Setter Property="Effect"
+                            Value="{StaticResource RadialDial.SelectedGlow}" />
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="RadialDial.Slot"
                TargetType="ContentControl">
-            <Setter Property="Width" Value="182" />
-            <Setter Property="Height" Value="62" />
+            <Setter Property="Width" Value="172" />
+            <Setter Property="Height" Value="82" />
             <Setter Property="Focusable" Value="False" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ContentControl">
-                        <Border x:Name="SlotCard"
-                                Padding="9,7"
-                                Background="{StaticResource Brush.Bg.Surface}"
-                                BorderBrush="{StaticResource Brush.Border.Subtle}"
-                                BorderThickness="1"
-                                CornerRadius="{StaticResource Radius.MD}"
-                                Effect="{StaticResource Shadow.Overlay}"
-                                AutomationProperties.Name="{Binding AccessibleName}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="38" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border x:Name="GlyphBadge"
-                                        Width="30"
-                                        Height="30"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Center"
-                                        Background="{StaticResource Brush.Bg.Inverse}"
-                                        CornerRadius="15">
-                                    <TextBlock Text="{Binding InputGlyph}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Foreground="{StaticResource Brush.Text.Inverse}"
-                                               FontFamily="{StaticResource Font.Mono}"
-                                               FontSize="{StaticResource Font.Size.Caption}"
-                                               FontWeight="{StaticResource Font.Weight.Bold}" />
-                                </Border>
-                                <StackPanel Grid.Column="1"
-                                            VerticalAlignment="Center">
-                                    <TextBlock x:Name="SlotTitle"
-                                               Text="{Binding Title}"
-                                               Foreground="{StaticResource Brush.Text.Primary}"
-                                               FontSize="{StaticResource Font.Size.Body}"
-                                               FontWeight="{StaticResource Font.Weight.Semibold}"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Subtitle}"
-                                               Margin="0,2,0,0"
-                                               Foreground="{StaticResource Brush.Text.Secondary}"
-                                               FontSize="{StaticResource Font.Size.Caption}"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility"
-                                                        Value="Visible" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding HasSubtitle}"
-                                                                 Value="False">
-                                                        <Setter Property="Visibility"
-                                                                Value="Collapsed" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                                <ProgressBar Grid.ColumnSpan="2"
-                                             Margin="0,0,0,-7"
-                                             VerticalAlignment="Bottom"
-                                             Minimum="0"
-                                             Maximum="1"
-                                             Value="{Binding ConfirmationProgress, Mode=OneWay}">
-                                    <ProgressBar.Style>
-                                        <Style TargetType="ProgressBar"
-                                               BasedOn="{StaticResource ControllerHint.Progress}">
-                                            <Setter Property="Visibility"
-                                                    Value="Visible" />
+                        <Grid x:Name="SlotRoot"
+                              AutomationProperties.Name="{Binding AccessibleName}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="42" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="GlyphBadge"
+                                    Width="34"
+                                    Height="34"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Top"
+                                    Background="#F4FFFFFF"
+                                    BorderBrush="#BCCFD9E1"
+                                    BorderThickness="1"
+                                    CornerRadius="17">
+                                <TextBlock x:Name="GlyphText"
+                                           Text="{Binding InputGlyph}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="#3B4B58"
+                                           FontFamily="{StaticResource Font.Mono}"
+                                           FontSize="15"
+                                           FontWeight="{StaticResource Font.Weight.Bold}" />
+                            </Border>
+                            <StackPanel Grid.Column="1"
+                                        Margin="4,1,0,0">
+                                <TextBlock x:Name="SlotTitle"
+                                           Text="{Binding Title}"
+                                           Foreground="#24313C"
+                                           FontSize="14"
+                                           FontWeight="{StaticResource Font.Weight.Semibold}"
+                                           LineHeight="17"
+                                           MaxHeight="36"
+                                           TextWrapping="Wrap" />
+                                <TextBlock x:Name="SlotSubtitle"
+                                           Text="{Binding Subtitle}"
+                                           Margin="0,4,0,0"
+                                           Foreground="#6C7E8A"
+                                           FontSize="11"
+                                           TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasConfirmationProgress}"
+                                                <DataTrigger Binding="{Binding HasSubtitle}"
                                                              Value="False">
                                                     <Setter Property="Visibility"
                                                             Value="Collapsed" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </ProgressBar.Style>
-                                </ProgressBar>
-                            </Grid>
-                        </Border>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <ProgressBar Grid.ColumnSpan="2"
+                                         Margin="0,0,8,1"
+                                         VerticalAlignment="Bottom"
+                                         Minimum="0"
+                                         Maximum="1"
+                                         Value="{Binding ConfirmationProgress, Mode=OneWay}">
+                                <ProgressBar.Style>
+                                    <Style TargetType="ProgressBar"
+                                           BasedOn="{StaticResource RadialDial.Progress}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasConfirmationProgress}"
+                                                         Value="False">
+                                                <Setter Property="Visibility"
+                                                        Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ProgressBar.Style>
+                            </ProgressBar>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsActionEnabled}"
                                          Value="False">
-                                <Setter TargetName="SlotCard"
+                                <Setter TargetName="SlotRoot"
                                         Property="Opacity"
-                                        Value="0.45" />
+                                        Value="0.52" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsHighlighted}"
                                          Value="True">
-                                <Setter TargetName="SlotCard"
-                                        Property="Background"
-                                        Value="{StaticResource Brush.Accent.Soft}" />
-                                <Setter TargetName="SlotCard"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource Brush.Accent}" />
-                                <Setter TargetName="SlotCard"
-                                        Property="BorderThickness"
-                                        Value="2" />
                                 <Setter TargetName="GlyphBadge"
                                         Property="Background"
-                                        Value="{StaticResource Brush.Accent}" />
+                                        Value="#F4FFFFFF" />
+                                <Setter TargetName="GlyphBadge"
+                                        Property="BorderBrush"
+                                        Value="#FFFFFFFF" />
+                                <Setter TargetName="GlyphText"
+                                        Property="Foreground"
+                                        Value="#0B8D91" />
                                 <Setter TargetName="SlotTitle"
                                         Property="Foreground"
-                                        Value="{StaticResource Brush.Text.Accent}" />
+                                        Value="#FFFFFFFF" />
+                                <Setter TargetName="SlotSubtitle"
+                                        Property="Foreground"
+                                        Value="#DFFFFFFF" />
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsPresent}"
-                             Value="False">
+                <DataTrigger Binding="{Binding IsPresent}" Value="False">
                     <Setter Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <Style x:Key="RadialDial.SourceAnchor"
+               TargetType="Border">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="Background" Value="#F8FFFFFF" />
+            <Setter Property="BorderBrush"
+                    Value="{StaticResource RadialDial.LineBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsPresent}" Value="False">
+                    <Setter Property="Opacity" Value="0" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsActionEnabled}" Value="False">
+                    <Setter Property="Opacity" Value="0.42" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="RadialDial.TargetAnchor"
+               TargetType="Ellipse">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Fill" Value="#D9FFFFFF" />
+            <Setter Property="Stroke"
+                    Value="{StaticResource RadialDial.LineBrush}" />
+            <Setter Property="StrokeThickness" Value="3" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
     </UserControl.Resources>
 
-    <Grid Width="860"
-          Height="430"
+    <Grid x:Name="RootGrid"
+          Width="980"
+          Height="560"
           Background="Transparent">
         <Grid.Style>
             <Style TargetType="Grid">
                 <Setter Property="Visibility" Value="Visible" />
                 <Style.Triggers>
-                    <DataTrigger Binding="{Binding IsVisible}"
-                                 Value="False">
-                        <Setter Property="Visibility"
-                                Value="Collapsed" />
+                    <DataTrigger Binding="{Binding IsVisible}" Value="False">
+                        <Setter Property="Visibility" Value="Collapsed" />
                     </DataTrigger>
                 </Style.Triggers>
             </Style>
         </Grid.Style>
 
-        <Border Margin="194,48,194,45"
-                Background="#F7F7F3"
-                BorderBrush="{StaticResource Brush.Border.Subtle}"
-                BorderThickness="1"
-                CornerRadius="28"
-                Effect="{StaticResource Shadow.Overlay}" />
+        <Canvas x:Name="DialCanvas"
+                Width="980"
+                Height="560">
+            <Ellipse Canvas.Left="214"
+                     Canvas.Top="34"
+                     Width="552"
+                     Height="552"
+                     Fill="#6BD6EBF6"
+                     IsHitTestVisible="False">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="32" />
+                </Ellipse.Effect>
+            </Ellipse>
 
-        <Image Margin="190,58,190,48"
-               Source="/Assets/controller.png"
-               Stretch="Uniform"
-               RenderOptions.BitmapScalingMode="HighQuality"
-               Opacity="0.96" />
+            <Path x:Name="TopSector"
+                  DataContext="{Binding Top}"
+                  Style="{StaticResource RadialDial.Sector}" />
+            <Path x:Name="RightSector"
+                  DataContext="{Binding Right}"
+                  Style="{StaticResource RadialDial.Sector}" />
+            <Path x:Name="CenterRightSector"
+                  DataContext="{Binding CenterRight}"
+                  Style="{StaticResource RadialDial.Sector}" />
+            <Path x:Name="BottomSector"
+                  DataContext="{Binding Bottom}"
+                  Style="{StaticResource RadialDial.Sector}" />
+            <Path x:Name="CenterLeftSector"
+                  DataContext="{Binding CenterLeft}"
+                  Style="{StaticResource RadialDial.Sector}" />
+            <Path x:Name="LeftSector"
+                  DataContext="{Binding Left}"
+                  Style="{StaticResource RadialDial.Sector}" />
 
-        <Border Width="310"
-                Height="70"
-                Margin="0,86,0,0"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                Padding="12,9"
-                Background="{StaticResource Brush.Bg.Panel}"
-                BorderBrush="{StaticResource Brush.Border.Strong}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource Radius.LG}"
-                Effect="{StaticResource Shadow.Overlay}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="42" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Border Width="34"
-                        Height="34"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Center"
-                        Background="{StaticResource Brush.Bg.Inverse}"
-                        CornerRadius="17">
-                    <TextBlock Text="{Binding ModifierGlyph}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Text.Inverse}"
-                               FontFamily="{StaticResource Font.Mono}"
-                               FontSize="{StaticResource Font.Size.Label}"
-                               FontWeight="{StaticResource Font.Weight.Bold}" />
-                </Border>
-                <StackPanel Grid.Column="1"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Title}"
-                               Foreground="{StaticResource Brush.Text.Primary}"
-                               FontSize="{StaticResource Font.Size.Title}"
-                               FontWeight="{StaticResource Font.Weight.Semibold}"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Subtitle}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextTrimming="CharacterEllipsis">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility"
-                                        Value="Visible" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding HasSubtitle}"
-                                                 Value="False">
-                                        <Setter Property="Visibility"
-                                                Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </StackPanel>
-            </Grid>
-        </Border>
+            <Ellipse Canvas.Left="344"
+                     Canvas.Top="164"
+                     Width="292"
+                     Height="292"
+                     Fill="#EDF7FB"
+                     Stroke="#EFFFFFFF"
+                     StrokeThickness="3">
+                <Ellipse.Effect>
+                    <DropShadowEffect BlurRadius="18"
+                                      ShadowDepth="3"
+                                      Opacity="0.16"
+                                      Color="#547080" />
+                </Ellipse.Effect>
+            </Ellipse>
+            <Ellipse Canvas.Left="356"
+                     Canvas.Top="176"
+                     Width="268"
+                     Height="268"
+                     Fill="#26FFFFFF"
+                     Stroke="#B9D8E5EC"
+                     StrokeThickness="1" />
 
-        <Canvas>
-            <ContentControl Canvas.Left="339"
-                            Canvas.Top="8"
+            <Viewbox Canvas.Left="310"
+                     Canvas.Top="195"
+                     Width="360"
+                     Height="228"
+                     Stretch="Uniform">
+                <Grid Width="600" Height="380">
+                    <Image Source="/AgentController;component/Assets/controller.png"
+                           Width="600"
+                           Height="380"
+                           Stretch="Uniform"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           Opacity="0.97" />
+                </Grid>
+            </Viewbox>
+
+            <Canvas x:Name="LeaderCanvas"
+                    Width="980"
+                    Height="560"
+                    IsHitTestVisible="False" />
+
+            <Viewbox Canvas.Left="310"
+                     Canvas.Top="195"
+                     Width="360"
+                     Height="228"
+                     Stretch="Uniform"
+                     IsHitTestVisible="False">
+                <Canvas Width="600" Height="380">
+                    <!-- Controller asset calibration: the D-pad silhouette is
+                         centered at approximately (249, 221) on this canvas. -->
+                    <Ellipse x:Name="DPadUpAnchor"
+                             Canvas.Left="240"
+                             Canvas.Top="196"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="DPadRightAnchor"
+                             Canvas.Left="256"
+                             Canvas.Top="212"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="DPadDownAnchor"
+                             Canvas.Left="240"
+                             Canvas.Top="228"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="DPadLeftAnchor"
+                             Canvas.Left="224"
+                             Canvas.Top="212"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="ViewAnchor"
+                             Canvas.Left="265"
+                             Canvas.Top="147"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="MenuAnchor"
+                             Canvas.Left="320"
+                             Canvas.Top="147"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="FaceNorthAnchor"
+                             Canvas.Left="390"
+                             Canvas.Top="125"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="FaceEastAnchor"
+                             Canvas.Left="416"
+                             Canvas.Top="151"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="FaceSouthAnchor"
+                             Canvas.Left="389"
+                             Canvas.Top="177"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="FaceWestAnchor"
+                             Canvas.Left="364"
+                             Canvas.Top="151"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="LeftStickAnchor"
+                             Canvas.Left="192"
+                             Canvas.Top="152"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="RightStickAnchor"
+                             Canvas.Left="340"
+                             Canvas.Top="210"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                    <Ellipse x:Name="GuideAnchor"
+                             Canvas.Left="291"
+                             Canvas.Top="104"
+                             Style="{StaticResource RadialDial.TargetAnchor}" />
+                </Canvas>
+            </Viewbox>
+
+            <Border x:Name="TopSourceAnchor"
+                    DataContext="{Binding Top}"
+                    Style="{StaticResource RadialDial.SourceAnchor}" />
+            <Border x:Name="RightSourceAnchor"
+                    DataContext="{Binding Right}"
+                    Style="{StaticResource RadialDial.SourceAnchor}" />
+            <Border x:Name="CenterRightSourceAnchor"
+                    DataContext="{Binding CenterRight}"
+                    Style="{StaticResource RadialDial.SourceAnchor}" />
+            <Border x:Name="BottomSourceAnchor"
+                    DataContext="{Binding Bottom}"
+                    Style="{StaticResource RadialDial.SourceAnchor}" />
+            <Border x:Name="CenterLeftSourceAnchor"
+                    DataContext="{Binding CenterLeft}"
+                    Style="{StaticResource RadialDial.SourceAnchor}" />
+            <Border x:Name="LeftSourceAnchor"
+                    DataContext="{Binding Left}"
+                    Style="{StaticResource RadialDial.SourceAnchor}" />
+
+            <ContentControl x:Name="TopSlot"
+                            Canvas.Left="380"
+                            Canvas.Top="96"
+                            Width="220"
                             DataContext="{Binding Top}"
-                            Style="{StaticResource ControllerHint.Slot}" />
-            <ContentControl Canvas.Left="670"
-                            Canvas.Top="126"
+                            Style="{StaticResource RadialDial.Slot}" />
+            <ContentControl x:Name="RightSlot"
+                            Canvas.Left="594"
+                            Canvas.Top="174"
                             DataContext="{Binding Right}"
-                            Style="{StaticResource ControllerHint.Slot}" />
-            <ContentControl Canvas.Left="339"
-                            Canvas.Top="360"
-                            DataContext="{Binding Bottom}"
-                            Style="{StaticResource ControllerHint.Slot}" />
-            <ContentControl Canvas.Left="8"
-                            Canvas.Top="126"
-                            DataContext="{Binding Left}"
-                            Style="{StaticResource ControllerHint.Slot}" />
-            <ContentControl Canvas.Left="80"
-                            Canvas.Top="290"
-                            DataContext="{Binding CenterLeft}"
-                            Style="{StaticResource ControllerHint.Slot}" />
-            <ContentControl Canvas.Left="598"
-                            Canvas.Top="290"
+                            Style="{StaticResource RadialDial.Slot}" />
+            <ContentControl x:Name="CenterRightSlot"
+                            Canvas.Left="594"
+                            Canvas.Top="363"
                             DataContext="{Binding CenterRight}"
-                            Style="{StaticResource ControllerHint.Slot}" />
+                            Style="{StaticResource RadialDial.Slot}" />
+            <ContentControl x:Name="BottomSlot"
+                            Canvas.Left="375"
+                            Canvas.Top="452"
+                            Width="230"
+                            DataContext="{Binding Bottom}"
+                            Style="{StaticResource RadialDial.Slot}" />
+            <ContentControl x:Name="CenterLeftSlot"
+                            Canvas.Left="214"
+                            Canvas.Top="363"
+                            DataContext="{Binding CenterLeft}"
+                            Style="{StaticResource RadialDial.Slot}" />
+            <ContentControl x:Name="LeftSlot"
+                            Canvas.Left="214"
+                            Canvas.Top="174"
+                            DataContext="{Binding Left}"
+                            Style="{StaticResource RadialDial.Slot}" />
+
+            <Border Canvas.Left="274"
+                    Canvas.Top="8"
+                    Width="432"
+                    Height="88"
+                    Background="#F7FFFFFF"
+                    BorderBrush="#D5E4EBF1"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    Effect="{StaticResource Shadow.Overlay}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="78" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Background="{StaticResource RadialDial.SelectedBrush}"
+                            CornerRadius="18,0,0,18">
+                        <Border Width="42"
+                                Height="42"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Background="#F4FFFFFF"
+                                CornerRadius="21">
+                            <TextBlock Text="{Binding ModifierGlyph}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="#0B8D91"
+                                       FontFamily="{StaticResource Font.Mono}"
+                                       FontSize="14"
+                                       FontWeight="{StaticResource Font.Weight.Bold}" />
+                        </Border>
+                    </Border>
+                    <StackPanel Grid.Column="1"
+                                Margin="20,0,18,0"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}"
+                                   Foreground="#1D2A34"
+                                   FontSize="21"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Subtitle}"
+                                   Margin="0,4,0,0"
+                                   Foreground="#6B7C88"
+                                   FontSize="12"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSubtitle}"
+                                                     Value="False">
+                                            <Setter Property="Visibility"
+                                                    Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Canvas>
     </Grid>
 </UserControl>

@@ -1415,33 +1415,16 @@ public partial class MainWindow : Window
         BuildAgentRadialItems()
     {
         var threads = _snapshot.Threads.Take(6).ToArray();
-        var positions = new[]
-        {
-            RadialMenuSlotPosition.Top,
-            RadialMenuSlotPosition.Right,
-            RadialMenuSlotPosition.Bottom,
-            RadialMenuSlotPosition.Left,
-            RadialMenuSlotPosition.CenterLeft,
-            RadialMenuSlotPosition.CenterRight,
-        };
-        var glyphs = new[]
-        {
-            Glyph(LogicalInput.DPadUp),
-            Glyph(LogicalInput.DPadRight),
-            Glyph(LogicalInput.DPadDown),
-            Glyph(LogicalInput.DPadLeft),
-            Glyph(LogicalInput.View),
-            Glyph(LogicalInput.Menu),
-        };
         var items = new List<RadialMenuItemState>(6);
         for (var index = 0; index < 6; index++)
         {
             var thread =
                 index < threads.Length ? threads[index] : null;
+            var binding = AgentRadialSlotLayout.Bindings[index];
             items.Add(RadialItem(
                 $"agent-slot-{index + 1}",
-                positions[index],
-                glyphs[index],
+                binding.Position,
+                binding.Input,
                 thread?.Title ??
                     RadialText("未分配", "Unassigned"),
                 RadialText(
@@ -1462,33 +1445,33 @@ public partial class MainWindow : Window
             RadialItem(
                 "command-fast",
                 RadialMenuSlotPosition.Top,
-                Glyph(LogicalInput.FaceNorth),
+                LogicalInput.FaceNorth,
                 _localization.Strings.ConfigToggleFast),
             RadialItem(
                 "command-decline",
                 RadialMenuSlotPosition.Right,
-                Glyph(LogicalInput.FaceEast),
+                LogicalInput.FaceEast,
                 RadialText("拒绝更改", "Decline changes")),
             RadialItem(
                 "command-approve",
                 RadialMenuSlotPosition.Bottom,
-                Glyph(LogicalInput.FaceSouth),
+                LogicalInput.FaceSouth,
                 RadialText("接受更改", "Approve changes")),
             RadialItem(
                 "command-fork",
                 RadialMenuSlotPosition.Left,
-                Glyph(LogicalInput.FaceWest),
+                LogicalInput.FaceWest,
                 RadialText("分支任务", "Fork task")),
             RadialItem(
                 "command-ptt",
                 RadialMenuSlotPosition.CenterLeft,
-                Glyph(LogicalInput.View),
+                LogicalInput.View,
                 _localization.Strings.ConfigDictation,
                 RadialText("按住说话", "Hold to talk")),
             RadialItem(
                 "command-dispatch",
                 RadialMenuSlotPosition.CenterRight,
-                Glyph(LogicalInput.Menu),
+                LogicalInput.Menu,
                 dispatch.Label,
                 dispatch.Description),
         ];
@@ -1505,23 +1488,23 @@ public partial class MainWindow : Window
             RadialItem(
                 "turn-queue",
                 RadialMenuSlotPosition.Top,
-                Glyph(LogicalInput.FaceNorth),
+                LogicalInput.FaceNorth,
                 RadialText("排到下一轮", "Queue next turn"),
                 contextual),
             RadialItem(
                 "turn-stop",
                 RadialMenuSlotPosition.Right,
-                Glyph(LogicalInput.FaceEast),
+                LogicalInput.FaceEast,
                 RadialText("停止", "Stop")),
             RadialItem(
                 "turn-fork",
                 RadialMenuSlotPosition.Bottom,
-                Glyph(LogicalInput.FaceSouth),
+                LogicalInput.FaceSouth,
                 RadialText("分支任务", "Fork task")),
             RadialItem(
                 "turn-steer",
                 RadialMenuSlotPosition.Left,
-                Glyph(LogicalInput.FaceWest),
+                LogicalInput.FaceWest,
                 RadialText("加入当前运行", "Steer current turn"),
                 contextual),
         ];
@@ -1535,27 +1518,27 @@ public partial class MainWindow : Window
             RadialItem(
                 "action-plan",
                 RadialMenuSlotPosition.Top,
-                Glyph(LogicalInput.DPadUp),
+                LogicalInput.DPadUp,
                 RadialText("Plan 模式", "Plan mode")),
             RadialItem(
                 "action-forward",
                 RadialMenuSlotPosition.Right,
-                Glyph(LogicalInput.DPadRight),
+                LogicalInput.DPadRight,
                 RadialText("前进", "Forward")),
             RadialItem(
                 "action-sidebar",
                 RadialMenuSlotPosition.Bottom,
-                Glyph(LogicalInput.DPadDown),
+                LogicalInput.DPadDown,
                 RadialText("切换侧边栏", "Toggle sidebar")),
             RadialItem(
                 "action-back",
                 RadialMenuSlotPosition.Left,
-                Glyph(LogicalInput.DPadLeft),
+                LogicalInput.DPadLeft,
                 RadialText("后退", "Back")),
             RadialItem(
                 "action-clear",
                 RadialMenuSlotPosition.CenterLeft,
-                Glyph(LogicalInput.FaceSouth),
+                LogicalInput.FaceSouth,
                 RadialText("清空当前输入", "Clear current input"),
                 _actionPanelClearArmed
                     ? RadialText(
@@ -1567,7 +1550,7 @@ public partial class MainWindow : Window
             RadialItem(
                 "action-project",
                 RadialMenuSlotPosition.CenterRight,
-                Glyph(LogicalInput.FaceWest),
+                LogicalInput.FaceWest,
                 RadialText("项目上下文", "Project context"),
                 RadialText(
                     "保留原 Y 键行为",
@@ -1578,7 +1561,7 @@ public partial class MainWindow : Window
     private RadialMenuItemState RadialItem(
         string id,
         RadialMenuSlotPosition position,
-        string inputGlyph,
+        LogicalInput input,
         string title,
         string? subtitle = null,
         bool isEnabled = true)
@@ -1586,14 +1569,15 @@ public partial class MainWindow : Window
         return new RadialMenuItemState(
             id,
             position,
-            inputGlyph,
+            Glyph(input),
             title,
             subtitle,
             isEnabled,
             isHighlighted: string.Equals(
                 id,
                 _radialHighlightedItemId,
-                StringComparison.Ordinal));
+                StringComparison.Ordinal),
+            logicalInput: input);
     }
 
     private DispatchDisplay ResolveDispatchDisplay()

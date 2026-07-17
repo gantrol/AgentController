@@ -1,4 +1,5 @@
 using CodexController.Models;
+using CodexController.Controllers;
 
 namespace CodexController.ViewModels;
 
@@ -11,6 +12,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
     private bool _isActionEnabled;
     private bool _isHighlighted;
     private double _confirmationProgress;
+    private LogicalInput? _logicalInput;
 
     public RadialMenuSlotViewModel(
         RadialMenuSlotPosition position)
@@ -77,6 +79,12 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         private set => SetProperty(ref _isHighlighted, value);
     }
 
+    public LogicalInput? LogicalInput
+    {
+        get => _logicalInput;
+        private set => SetProperty(ref _logicalInput, value);
+    }
+
     public double ConfirmationProgress
     {
         get => _confirmationProgress;
@@ -118,6 +126,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         Subtitle = item.Subtitle;
         IsActionEnabled = item.IsEnabled;
         IsHighlighted = item.IsHighlighted;
+        LogicalInput = item.LogicalInput;
         ConfirmationProgress = item.ConfirmationProgress;
     }
 
@@ -129,6 +138,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         Subtitle = string.Empty;
         IsActionEnabled = false;
         IsHighlighted = false;
+        LogicalInput = null;
         ConfirmationProgress = 0;
     }
 }
