@@ -3,7 +3,9 @@ namespace CodexController.Services;
 public readonly record struct StickGestureSample(
     int VerticalDirection,
     int HorizontalDirection,
-    bool HorizontalStarted);
+    bool HorizontalStarted,
+    double VerticalMagnitude = 0,
+    double HorizontalMagnitude = 0);
 
 public sealed class StickGestureRouter
 {
@@ -60,7 +62,8 @@ public sealed class StickGestureRouter
                 return new(
                     0,
                     _horizontalDirection,
-                    HorizontalStarted: true);
+                    HorizontalStarted: true,
+                    HorizontalMagnitude: Math.Clamp(absX, 0, 1));
             }
 
             if (absY >= engageZone && absY >= absX * 1.15)
@@ -83,7 +86,8 @@ public sealed class StickGestureRouter
             return new(
                 0,
                 _horizontalDirection,
-                HorizontalStarted: false);
+                HorizontalStarted: false,
+                HorizontalMagnitude: Math.Clamp(absX, 0, 1));
         }
 
         if (absY < releaseZone)
@@ -95,7 +99,8 @@ public sealed class StickGestureRouter
         return new(
             invertVertical ? -vertical : vertical,
             0,
-            HorizontalStarted: false);
+            HorizontalStarted: false,
+            VerticalMagnitude: Math.Clamp(absY, 0, 1));
     }
 
     public void RequireNeutral()

@@ -36,10 +36,13 @@ public sealed class StickGestureRouterTests
 
         Assert.Equal(1, first.HorizontalDirection);
         Assert.True(first.HorizontalStarted);
+        Assert.Equal(0.9, first.HorizontalMagnitude);
         Assert.Equal(1, held.HorizontalDirection);
         Assert.False(held.HorizontalStarted);
+        Assert.Equal(0.9, held.HorizontalMagnitude);
         Assert.Equal(-1, second.HorizontalDirection);
         Assert.True(second.HorizontalStarted);
+        Assert.Equal(0.9, second.HorizontalMagnitude);
     }
 
     [Fact]
@@ -120,5 +123,6 @@ public sealed class StickGestureRouterTests
         Assert.Equal(expectedDirection, sample.VerticalDirection);
         Assert.Equal(0, sample.HorizontalDirection);
         Assert.False(sample.HorizontalStarted);
+        Assert.Equal(0.9, sample.VerticalMagnitude);
     }
 }

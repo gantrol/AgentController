@@ -3,6 +3,13 @@ namespace CodexController.Services;
 public sealed class AxisRepeater
 {
     private readonly Dictionary<string, AxisState> _states = [];
+    private readonly Func<long> _tickProvider;
+
+    public AxisRepeater(Func<long>? tickProvider = null)
+    {
+        _tickProvider =
+            tickProvider ?? (() => Environment.TickCount64);
+    }
 
     public void Update(
         string id,
@@ -11,7 +18,9 @@ public sealed class AxisRepeater
         int repeatIntervalMs,
         Action<int> action)
     {
-        var now = Environment.TickCount64;
+        var now = _tickProvider();
+        var delay = Math.Max(1, repeatDelayMs);
+        var interval = Math.Max(1, repeatIntervalMs);
         if (!_states.TryGetValue(id, out var state))
         {
             state = new AxisState();
@@ -22,20 +31,40 @@ public sealed class AxisRepeater
         {
             state.Direction = 0;
             state.NextAt = 0;
+            state.LastActionAt = 0;
+            state.ScheduledDurationMs = 0;
+            state.WaitingForInitialRepeat = false;
             return;
         }
 
         if (state.Direction != direction)
         {
             state.Direction = direction;
-            state.NextAt = now + repeatDelayMs;
+            state.LastActionAt = now;
+            state.ScheduledDurationMs = delay;
+            state.NextAt = now + delay;
+            state.WaitingForInitialRepeat = true;
             action(direction);
             return;
         }
 
+        var desiredDuration = state.WaitingForInitialRepeat
+            ? delay
+            : interval;
+        if (desiredDuration < state.ScheduledDurationMs)
+        {
+            state.ScheduledDurationMs = desiredDuration;
+            state.NextAt = Math.Min(
+                state.NextAt,
+                state.LastActionAt + desiredDuration);
+        }
+
         if (now >= state.NextAt)
         {
-            state.NextAt = now + repeatIntervalMs;
+            state.LastActionAt = now;
+            state.ScheduledDurationMs = interval;
+            state.NextAt = now + interval;
+            state.WaitingForInitialRepeat = false;
             action(direction);
         }
     }
@@ -49,5 +78,8 @@ public sealed class AxisRepeater
     {
         public int Direction { get; set; }
         public long NextAt { get; set; }
+        public long LastActionAt { get; set; }
+        public int ScheduledDurationMs { get; set; }
+        public bool WaitingForInitialRepeat { get; set; }
     }
 }
