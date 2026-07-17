@@ -6,6 +6,8 @@ public readonly record struct AnalogRepeatTiming(
 
 public static class AnalogRepeatTimingPolicy
 {
+    public const int DefaultAccelerationDurationMs = 2_000;
+
     private const int MinimumDelayMs = 90;
     private const int MinimumIntervalMs = 70;
     private const double FullTiltDelayScale = 0.38;
@@ -14,8 +16,11 @@ public static class AnalogRepeatTimingPolicy
     public static AnalogRepeatTiming Resolve(
         double magnitude,
         double engageDeadZone,
+        long heldDurationMs,
         int configuredDelayMs,
-        int configuredIntervalMs)
+        int configuredIntervalMs,
+        int accelerationDurationMs =
+            DefaultAccelerationDurationMs)
     {
         var delay = Math.Max(1, configuredDelayMs);
         var interval = Math.Max(1, configuredIntervalMs);
@@ -25,11 +30,20 @@ public static class AnalogRepeatTimingPolicy
         var strength = double.IsFinite(magnitude)
             ? Math.Clamp(Math.Abs(magnitude), 0, 1)
             : deadZone;
-        var normalized = Math.Clamp(
+        var normalizedStrength = Math.Clamp(
             (strength - deadZone) / (1 - deadZone),
             0,
             1);
-        var eased = normalized * normalized * (3 - (2 * normalized));
+        var strengthAmount = SmoothStep(normalizedStrength);
+        var safeAccelerationDuration =
+            Math.Max(1, accelerationDurationMs);
+        var normalizedTime = Math.Clamp(
+            Math.Max(0, heldDurationMs) /
+                (double)safeAccelerationDuration,
+            0,
+            1);
+        var momentumAmount =
+            strengthAmount * SmoothStep(normalizedTime);
         var fastestDelay = Math.Min(
             delay,
             Math.Max(
@@ -42,9 +56,12 @@ public static class AnalogRepeatTimingPolicy
                 Round(interval * FullTiltIntervalScale)));
 
         return new(
-            Round(Lerp(delay, fastestDelay, eased)),
-            Round(Lerp(interval, fastestInterval, eased)));
+            Round(Lerp(delay, fastestDelay, momentumAmount)),
+            Round(Lerp(interval, fastestInterval, momentumAmount)));
     }
+
+    private static double SmoothStep(double amount) =>
+        amount * amount * (3 - (2 * amount));
 
     private static double Lerp(
         double start,

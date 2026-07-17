@@ -53,6 +53,8 @@ Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controlle
 | X | Send the prompt |
 | B | Cancel / stop; shortly after opening a task, undo the navigation |
 
+Holding a right-stick direction builds momentum over about two seconds: the first detent is immediate, then repeat speed ramps smoothly; deeper tilt permits a higher final speed.
+
 The interface can switch between Simplified Chinese, English, or follow the Windows display language.
 
 ### Build from source

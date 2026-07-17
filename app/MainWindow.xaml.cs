@@ -660,24 +660,13 @@ public partial class MainWindow : Window
             }
         }
 
-        var rightVerticalTiming =
-            AnalogRepeatTimingPolicy.Resolve(
-                rightGesture.VerticalMagnitude,
-                virtualDialDeadZone,
-                _settings.RepeatDelayMs,
-                _settings.RepeatIntervalMs);
-        var rightHorizontalTiming =
-            AnalogRepeatTimingPolicy.Resolve(
-                rightGesture.HorizontalMagnitude,
-                virtualDialDeadZone,
-                _settings.RepeatDelayMs,
-                _settings.RepeatIntervalMs);
-
-        _axisRepeater.Update(
+        _axisRepeater.UpdateAnalog(
             "right-y",
             rightGesture.VerticalDirection,
-            rightVerticalTiming.InitialDelayMs,
-            rightVerticalTiming.IntervalMs,
+            rightGesture.VerticalMagnitude,
+            virtualDialDeadZone,
+            _settings.RepeatDelayMs,
+            _settings.RepeatIntervalMs,
             direction =>
             {
                 if (dialContextActive)
@@ -699,13 +688,15 @@ public partial class MainWindow : Window
                     }
                 }
             });
-        _axisRepeater.Update(
+        _axisRepeater.UpdateAnalog(
             "right-x",
             !dialContextActive && !advancedComposerDial
                 ? rightGesture.HorizontalDirection
                 : 0,
-            rightHorizontalTiming.InitialDelayMs,
-            rightHorizontalTiming.IntervalMs,
+            rightGesture.HorizontalMagnitude,
+            virtualDialDeadZone,
+            _settings.RepeatDelayMs,
+            _settings.RepeatIntervalMs,
             QueueSimplePowerStep);
         if (rightGesture.HorizontalStarted)
         {

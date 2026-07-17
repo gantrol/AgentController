@@ -19,27 +19,114 @@ public sealed class AxisRepeater
         Action<int> action)
     {
         var now = _tickProvider();
-        var delay = Math.Max(1, repeatDelayMs);
-        var interval = Math.Max(1, repeatIntervalMs);
+        var state = StateFor(id);
+        if (!PrepareDirection(
+                state,
+                direction,
+                now,
+                out var started,
+                out _))
+        {
+            return;
+        }
+
+        ApplyTiming(
+            state,
+            direction,
+            now,
+            Math.Max(1, repeatDelayMs),
+            Math.Max(1, repeatIntervalMs),
+            started,
+            action);
+    }
+
+    public void UpdateAnalog(
+        string id,
+        int direction,
+        double magnitude,
+        double engageDeadZone,
+        int configuredDelayMs,
+        int configuredIntervalMs,
+        Action<int> action)
+    {
+        var now = _tickProvider();
+        var state = StateFor(id);
+        if (!PrepareDirection(
+                state,
+                direction,
+                now,
+                out var started,
+                out var heldDurationMs))
+        {
+            return;
+        }
+
+        var timing = AnalogRepeatTimingPolicy.Resolve(
+            magnitude,
+            engageDeadZone,
+            heldDurationMs,
+            configuredDelayMs,
+            configuredIntervalMs);
+        ApplyTiming(
+            state,
+            direction,
+            now,
+            timing.InitialDelayMs,
+            timing.IntervalMs,
+            started,
+            action);
+    }
+
+    private AxisState StateFor(string id)
+    {
         if (!_states.TryGetValue(id, out var state))
         {
             state = new AxisState();
             _states[id] = state;
         }
 
+        return state;
+    }
+
+    private static bool PrepareDirection(
+        AxisState state,
+        int direction,
+        long now,
+        out bool started,
+        out long heldDurationMs)
+    {
         if (direction == 0)
         {
-            state.Direction = 0;
-            state.NextAt = 0;
-            state.LastActionAt = 0;
-            state.ScheduledDurationMs = 0;
-            state.WaitingForInitialRepeat = false;
-            return;
+            state.Reset();
+            started = false;
+            heldDurationMs = 0;
+            return false;
         }
 
-        if (state.Direction != direction)
+        started = state.Direction != direction;
+        if (started)
         {
             state.Direction = direction;
+            state.DirectionStartedAt = now;
+        }
+
+        heldDurationMs = Math.Max(
+            0,
+            now - state.DirectionStartedAt);
+        return true;
+    }
+
+    private static void ApplyTiming(
+        AxisState state,
+        int direction,
+        long now,
+        int delay,
+        int interval,
+        bool started,
+        Action<int> action)
+    {
+        if (started)
+        {
             state.LastActionAt = now;
             state.ScheduledDurationMs = delay;
             state.NextAt = now + delay;
@@ -77,9 +164,20 @@ public sealed class AxisRepeater
     private sealed class AxisState
     {
         public int Direction { get; set; }
+        public long DirectionStartedAt { get; set; }
         public long NextAt { get; set; }
         public long LastActionAt { get; set; }
         public int ScheduledDurationMs { get; set; }
         public bool WaitingForInitialRepeat { get; set; }
+
+        public void Reset()
+        {
+            Direction = 0;
+            DirectionStartedAt = 0;
+            NextAt = 0;
+            LastActionAt = 0;
+            ScheduledDurationMs = 0;
+            WaitingForInitialRepeat = false;
+        }
     }
 }
