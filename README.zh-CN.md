@@ -5,11 +5,7 @@
 
 ![version](https://img.shields.io/badge/version-0.7.0--hotfix-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-> 把 XInput 手柄变成 Codex 桌面版的掌上控制台：浏览任务、录音并发送提示词、调整模型设置，以及处理正在运行的任务，不必反复伸手去摸键盘。
-
 ![Agent Controller 手柄指令](public/images/agent-controller-gamepad-guide-zh-CN-v2.png)
-
----
 
 Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想买吗？但你注意到没有：
 
