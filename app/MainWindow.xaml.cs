@@ -34,6 +34,8 @@ public partial class MainWindow : Window
         RightControlMode.Reasoning,
         RightControlMode.Speed,
     ];
+    private static readonly TimeSpan SimpleModeUpgradePromptDuration =
+        TimeSpan.FromSeconds(30);
     private const ControllerButtons DialExclusiveFrozenButtons =
         RadialInputMap.FrozenBaseButtons &
         ~(
@@ -111,6 +113,7 @@ public partial class MainWindow : Window
     private bool _virtualDialCancelRequested;
     private bool _virtualDialCleanupPending;
     private bool _dialInputReleasePending;
+    private bool _simpleModeUpgradePromptPending;
     private bool _blockedPushToTalkHintShown;
     private bool _bridgeDisabledHintShown;
     private bool _controllerWasConnected;
@@ -122,6 +125,7 @@ public partial class MainWindow : Window
     private long _leftNavigationBlockedUntil;
     private long _rightAdjustmentBlockedUntil;
     private long _radialLayerStartedAt;
+    private long _simpleModeUpgradePromptExpiresAt;
     private CancellationTokenSource? _sidebarFocusCancellation;
     private ControllerState _latestControllerState;
     private ComposerCatalog? _composerCatalog;
@@ -478,6 +482,11 @@ public partial class MainWindow : Window
                 _leftStickRouter.Reset();
                 _rightStickRouter.Reset();
             }
+        }
+
+        if (ProcessSimpleModeUpgradePrompt(pressed))
+        {
+            return;
         }
 
         var physicalDownEdges =
@@ -3519,6 +3528,10 @@ public partial class MainWindow : Window
     private void ApplyComposerDialMode(bool forceReset)
     {
         var useAdvanced = UsesAdvancedComposerDial;
+        if (useAdvanced && _simpleModeUpgradePromptPending)
+        {
+            ClearSimpleModeUpgradePrompt();
+        }
 
         if (forceReset)
         {
@@ -3824,12 +3837,137 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BeginSimpleModeUpgradePrompt(string sourceTitle)
+    {
+        if (_simpleModeUpgradePromptPending)
+        {
+            return;
+        }
+
+        _simpleModeUpgradePromptPending = true;
+        _simpleModeUpgradePromptExpiresAt =
+            Environment.TickCount64 +
+            (long)SimpleModeUpgradePromptDuration.TotalMilliseconds;
+        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        _simpleSpeedHeldDirection = 0;
+        _axisRepeater.Reset();
+        _rightStickRouter.RequireNeutral();
+
+        var promptTitle = RadialText(
+            "Sol Max 不支持简易模式",
+            "Sol Max does not support Simple mode");
+        var prompt = RadialText(
+            $"是否改为高级模式？{Glyph(LogicalInput.FaceSouth)} 切换 · {Glyph(LogicalInput.FaceEast)} 保持简易模式（Speed 仍可用）",
+            $"Switch to Advanced mode? {Glyph(LogicalInput.FaceSouth)} switch · {Glyph(LogicalInput.FaceEast)} keep Simple (Speed still works)");
+        _devicePageViewModel.UpdateRightModeValue(prompt);
+        AddEvent($"{sourceTitle} · {promptTitle} · {prompt}");
+        _overlayWindow?.ShowMessage(
+            promptTitle,
+            prompt,
+            SimpleModeUpgradePromptDuration);
+        Pulse(strength: 0.12);
+    }
+
+    private bool ProcessSimpleModeUpgradePrompt(
+        ControllerButtons pressed)
+    {
+        if (!_simpleModeUpgradePromptPending)
+        {
+            return false;
+        }
+
+        var downEdges = pressed & ~_previousPhysicalButtons;
+        var choice =
+            SimpleModeCompatibilityPrompt.ResolveChoice(downEdges);
+        if (
+            choice ==
+            SimpleModeCompatibilityChoice.SwitchToAdvanced)
+        {
+            SwitchSimpleModePromptToAdvanced();
+        }
+        else if (
+            choice ==
+            SimpleModeCompatibilityChoice.KeepSimple)
+        {
+            KeepSimpleModeFromPrompt(timedOut: false);
+        }
+        else if (
+            Environment.TickCount64 >=
+            _simpleModeUpgradePromptExpiresAt)
+        {
+            KeepSimpleModeFromPrompt(timedOut: true);
+        }
+
+        DrainControllerFrame(pressed);
+        return true;
+    }
+
+    private void SwitchSimpleModePromptToAdvanced()
+    {
+        _settingsPageViewModel.ComposerDialMode =
+            ComposerDialModes.Advanced;
+        SaveSettings(RadialText(
+            "Sol Max · 已切换为高级模式",
+            "Sol Max · switched to Advanced mode"));
+
+        var title = RadialText(
+            "已切换为高级模式",
+            "Advanced mode enabled");
+        var detail = RadialText(
+            "右摇杆左右切换 Model / Effort / Speed，上下调整选项。",
+            "Move the right stick left / right for Model, Effort, or Speed; up / down changes its option.");
+        _overlayWindow?.ShowMessage(
+            title,
+            detail,
+            TimeSpan.FromMilliseconds(1800));
+        Pulse(strength: 0.24);
+    }
+
+    private void KeepSimpleModeFromPrompt(bool timedOut)
+    {
+        ClearSimpleModeUpgradePrompt();
+        var title = timedOut
+            ? RadialText("未切换模式", "No mode change")
+            : RadialText("保持简易模式", "Keeping Simple mode");
+        var detail = RadialText(
+            "Sol Max 的简易 Power 不可用；Standard / Fast 仍可切换。",
+            "Simple Power is unavailable for Sol Max; Standard / Fast still work.");
+        _devicePageViewModel.UpdateRightModeValue(detail);
+        AddEvent($"{title} · {detail}");
+        _overlayWindow?.ShowMessage(
+            title,
+            detail,
+            TimeSpan.FromMilliseconds(1800));
+        Pulse(strength: 0.08);
+    }
+
+    private void ClearSimpleModeUpgradePrompt()
+    {
+        _simpleModeUpgradePromptPending = false;
+        _simpleModeUpgradePromptExpiresAt = 0;
+        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        _simpleSpeedHeldDirection = 0;
+        _rightAdjustmentBlockedUntil =
+            Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
+        _axisRepeater.Reset();
+        _rightStickRouter.RequireNeutral();
+    }
+
     private void PresentSimplePickerResult(
         string title,
         ComposerPickerResult result)
     {
         if (!result.Succeeded)
         {
+            if (
+                SimpleModeCompatibilityPrompt.ShouldOfferAdvanced(
+                    UsesAdvancedComposerDial,
+                    result))
+            {
+                BeginSimpleModeUpgradePrompt(title);
+                return;
+            }
+
             var failure = SimplePickerFailureLabel(result);
             _devicePageViewModel.UpdateRightModeValue(failure);
             AddEvent($"{title} · {failure}");
@@ -3875,8 +4013,8 @@ public partial class MainWindow : Window
                     "Power did not change; it may be at this account's lowest level or the UI may still be updating"),
             "composer-picker-view:simple" =>
                 RadialText(
-                    "当前模型与档位无法显示为简易菜单；可在设置中使用高级模式",
-                    "The current model and effort cannot be represented by the Simple picker; use Advanced mode in Settings"),
+                    "当前模型与档位不提供简易 Power；Standard / Fast 仍可切换，也可改用高级模式",
+                    "The current model and effort do not provide Simple Power; Standard / Fast still work, or switch to Advanced mode"),
             "composer-picker-view:advanced" =>
                 RadialText(
                     "无法切换到当前账户的高级模型菜单",
