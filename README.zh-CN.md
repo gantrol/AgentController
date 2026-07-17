@@ -26,9 +26,9 @@ Codex Micro很快就断货了，Codex 专用的迷你键盘。但你注意到没
 
 那么，就可以有一个软件，让手柄去代替Codex小键盘。
 
-我指挥Codex，两小时就做出样品，磨了一天，终于还算可以。
+我指挥Codex，两小时就做出样品，磨了一天交互（跟Codex的界面搏斗），终于基本成型。
 
-可惜交互有一定问题，不过呢，经过一晚上。
+由于Codex一直拒绝使用小键盘相关SDK
 
 （当前以 8BitDo Ultimate 2 、Xbox Series、Flydig Vader 4 Pro 实测）
 
