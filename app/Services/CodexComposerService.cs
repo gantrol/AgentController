@@ -1717,6 +1717,17 @@ public sealed partial class CodexComposerService
             cancellationToken);
     }
 
+    public Task<ComposerPickerResult> ToggleSpeedAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        return Task.Run(
+            () => ToggleSpeedCore(
+                settings,
+                cancellationToken),
+            cancellationToken);
+    }
+
     public Task<ComposerPickerResult> StepAdvancedAsync(
         ComposerSettingKind kind,
         int direction,
@@ -5273,9 +5284,7 @@ public sealed partial class CodexComposerService
 
         var powerItem = context!.Items.FirstOrDefault(item =>
             ComposerPickerViewPolicy.IsPowerItem(SafeName(item)));
-        if (
-            powerItem is null ||
-            !TryFocusPickerItem(powerItem, context.ProcessId))
+        if (powerItem is null)
         {
             return new(
                 false,
@@ -5287,19 +5296,34 @@ public sealed partial class CodexComposerService
 
         var previousValue = SafeName(context.ComposerButton);
         cancellationToken.ThrowIfCancellationRequested();
-        var key = direction > 0
-            ? ComposerDialNativeInputPolicy.RightKey
-            : ComposerDialNativeInputPolicy.LeftKey;
-        if (
-            !Win32Input.IsProcessForeground(context.ProcessId) ||
-            !Win32Input.SendKey(key))
+        var changedThroughRange =
+            TryStepPowerRangeValue(powerItem, direction);
+        if (!changedThroughRange)
         {
-            return new(
-                false,
-                SafeName(context.ComposerButton),
-                IsMenuOpen: true,
-                Error: AgentAutomationErrorCodes.ElementUnsupported,
-                ErrorDetail: "composer-power-input");
+            if (!TryFocusPickerItem(powerItem, context.ProcessId))
+            {
+                return new(
+                    false,
+                    SafeName(context.ComposerButton),
+                    IsMenuOpen: true,
+                    Error: AgentAutomationErrorCodes.ElementUnsupported,
+                    ErrorDetail: "composer-power-focus");
+            }
+
+            var key = direction > 0
+                ? ComposerDialNativeInputPolicy.RightKey
+                : ComposerDialNativeInputPolicy.LeftKey;
+            if (
+                !Win32Input.IsProcessForeground(context.ProcessId) ||
+                !Win32Input.SendKey(key))
+            {
+                return new(
+                    false,
+                    SafeName(context.ComposerButton),
+                    IsMenuOpen: true,
+                    Error: AgentAutomationErrorCodes.ElementUnsupported,
+                    ErrorDetail: "composer-power-input");
+            }
         }
 
         var deadline = Environment.TickCount64 + 700;
@@ -5326,6 +5350,14 @@ public sealed partial class CodexComposerService
         }
         while (Environment.TickCount64 < deadline);
 
+        if (changedThroughRange)
+        {
+            return new(
+                true,
+                previousValue,
+                IsMenuOpen: true);
+        }
+
         return new(
             false,
             previousValue,
@@ -5336,7 +5368,190 @@ public sealed partial class CodexComposerService
                 : "composer-power-no-change-left");
     }
 
+    private ComposerPickerResult ToggleSpeedCore(
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var simpleFailure = PreparePicker(
+            ComposerPickerView.Simple,
+            settings,
+            cancellationToken,
+            out var simpleContext);
+        if (simpleFailure is null)
+        {
+            var hasEnableFast = simpleContext!.Items.Any(item =>
+                ComposerPickerViewPolicy.IsEnableFastAction(
+                    SafeName(item)));
+            var hasEnableStandard = simpleContext.Items.Any(item =>
+                ComposerPickerViewPolicy.IsEnableStandardAction(
+                    SafeName(item)));
+            if (hasEnableFast != hasEnableStandard)
+            {
+                return SetSimpleSpeedCore(
+                    fast: hasEnableFast,
+                    settings,
+                    cancellationToken);
+            }
+        }
+        else if (
+            !string.Equals(
+                simpleFailure.ErrorDetail,
+                "composer-picker-view:simple",
+                StringComparison.Ordinal))
+        {
+            return simpleFailure;
+        }
+
+        var advancedFailure = PreparePicker(
+            ComposerPickerView.Advanced,
+            settings,
+            cancellationToken,
+            out var advancedContext);
+        if (advancedFailure is not null)
+        {
+            return advancedFailure;
+        }
+
+        const string category = "Speed";
+        var categoryItem = advancedContext!.Items.FirstOrDefault(item =>
+            IsAdvancedCategoryItem(SafeName(item), category));
+        var categoryName = categoryItem is null
+            ? string.Empty
+            : SafeName(categoryItem);
+        if (
+            categoryItem is null ||
+            (
+                !ComposerSpeedSelectionPolicy.MatchesCategory(
+                    categoryName,
+                    fast: true) &&
+                !ComposerSpeedSelectionPolicy.MatchesCategory(
+                    categoryName,
+                    fast: false)
+            ))
+        {
+            return new(
+                false,
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.ElementNotFound,
+                ErrorDetail: "composer-speed-current");
+        }
+
+        var targetFast =
+            !ComposerSpeedSelectionPolicy.MatchesCategory(
+                categoryName,
+                fast: true);
+        return SetSimpleSpeedCore(
+            targetFast,
+            settings,
+            cancellationToken);
+    }
+
     private ComposerPickerResult SetSimpleSpeedCore(
+        bool fast,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var direct = SetSimpleSpeedDirectCore(
+            fast,
+            settings,
+            cancellationToken);
+        if (
+            direct.Succeeded ||
+            direct.ErrorDetail is not
+                (
+                    "composer-picker-view:simple" or
+                    "composer-speed-option" or
+                    "composer-speed-readback"
+                ))
+        {
+            return direct;
+        }
+
+        return SetAdvancedSpeedCore(
+            fast,
+            settings,
+            cancellationToken);
+    }
+
+    private ComposerPickerResult SetSimpleSpeedDirectCore(
+        bool fast,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var failure = PreparePicker(
+            ComposerPickerView.Simple,
+            settings,
+            cancellationToken,
+            out var context);
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        var enableFast = context!.Items.FirstOrDefault(item =>
+            ComposerPickerViewPolicy.IsEnableFastAction(SafeName(item)));
+        var enableStandard = context.Items.FirstOrDefault(item =>
+            ComposerPickerViewPolicy.IsEnableStandardAction(
+                SafeName(item)));
+        var action = fast ? enableFast : enableStandard;
+        var alreadySelected = fast
+            ? enableStandard is not null
+            : enableFast is not null;
+        if (action is null && alreadySelected)
+        {
+            return new(
+                true,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: true);
+        }
+
+        if (
+            action is null ||
+            !TryInvokePickerItem(action, context.ProcessId))
+        {
+            return new(
+                false,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.ElementNotFound,
+                ErrorDetail: "composer-speed-option");
+        }
+
+        Thread.Sleep(80);
+        cancellationToken.ThrowIfCancellationRequested();
+        var readbackFailure = PreparePicker(
+            ComposerPickerView.Simple,
+            settings,
+            cancellationToken,
+            out var refreshed);
+        if (readbackFailure is not null)
+        {
+            return readbackFailure with
+            {
+                Value = ComposerSpeedSelectionPolicy.TargetLabel(fast),
+            };
+        }
+
+        var hasEnableFast = refreshed!.Items.Any(item =>
+            ComposerPickerViewPolicy.IsEnableFastAction(SafeName(item)));
+        var hasEnableStandard = refreshed.Items.Any(item =>
+            ComposerPickerViewPolicy.IsEnableStandardAction(
+                SafeName(item)));
+        var confirmed = fast ? hasEnableStandard : hasEnableFast;
+        return confirmed
+            ? new(
+                true,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: true)
+            : new(
+                false,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.ElementUnsupported,
+                ErrorDetail: "composer-speed-readback");
+    }
+
+    private ComposerPickerResult SetAdvancedSpeedCore(
         bool fast,
         AppSettings settings,
         CancellationToken cancellationToken)
@@ -5583,10 +5798,11 @@ public sealed partial class CodexComposerService
                 ErrorDetail: $"composer-advanced-current:{category}");
         }
 
-        var nextIndex = Math.Clamp(
-            currentIndex + Math.Sign(direction),
-            0,
-            options.Count - 1);
+        var nextIndex =
+            ComposerPickerVisualOrderPolicy.ResolveNextIndex(
+                currentIndex,
+                options.Count,
+                direction);
         if (nextIndex == currentIndex)
         {
             return new(
@@ -5716,6 +5932,7 @@ public sealed partial class CodexComposerService
                     candidates.Add(new(
                         containerKey,
                         containerBounds,
+                        item.Current.BoundingRectangle,
                         name,
                         itemSequence,
                         IsDialPopupOptionSelected(item),
@@ -5749,7 +5966,9 @@ public sealed partial class CodexComposerService
             if (group is not null)
             {
                 return group.Options
-                    .OrderBy(option => option.Sequence)
+                    .OrderBy(option => option.ItemBounds.Top)
+                    .ThenBy(option => option.ItemBounds.Left)
+                    .ThenBy(option => option.Sequence)
                     .ToArray();
             }
 
@@ -5936,34 +6155,184 @@ public sealed partial class CodexComposerService
     {
         try
         {
+            if (!Win32Input.IsProcessForeground(processId))
+            {
+                return false;
+            }
+
             var focused = AutomationElement.FocusedElement;
-            if (
-                focused is not null &&
-                ComposerPickerViewPolicy.IsPowerItem(SafeName(focused)) &&
-                Win32Input.IsProcessForeground(processId))
+            if (IsPickerItemFocusWithin(element, focused))
             {
                 return true;
             }
 
-            element.SetFocus();
-            var deadline = Environment.TickCount64 + 180;
-            do
+            var focusRequested = false;
+            try
             {
-                Thread.Sleep(15);
-                focused = AutomationElement.FocusedElement;
-                if (
-                    focused is not null &&
-                    ComposerPickerViewPolicy.IsPowerItem(
-                        SafeName(focused)))
-                {
-                    return Win32Input.IsProcessForeground(processId);
-                }
+                element.SetFocus();
+                focusRequested = true;
             }
-            while (Environment.TickCount64 < deadline);
+            catch (InvalidOperationException)
+            {
+                // Chromium may delegate focus to an unnamed descendant.
+            }
 
-            return false;
+            if (WaitForPickerItemFocus(element, processId))
+            {
+                return true;
+            }
+
+            if (
+                TryClickAutomationElement(element, processId) &&
+                WaitForPickerItemFocus(element, processId))
+            {
+                return true;
+            }
+
+            // SetFocus succeeding is useful evidence even when Chromium does
+            // not expose the focused descendant in its accessibility tree.
+            return
+                focusRequested &&
+                Win32Input.IsProcessForeground(processId);
         }
         catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryStepPowerRangeValue(
+        AutomationElement powerItem,
+        int direction)
+    {
+        try
+        {
+            var candidates = new List<AutomationElement>
+            {
+                powerItem,
+            };
+            candidates.AddRange(
+                powerItem
+                    .FindAll(
+                        TreeScope.Descendants,
+                        Condition.TrueCondition)
+                    .Cast<AutomationElement>());
+            foreach (var candidate in candidates)
+            {
+                if (
+                    !candidate.TryGetCurrentPattern(
+                        RangeValuePattern.Pattern,
+                        out var patternObject) ||
+                    patternObject is not RangeValuePattern range ||
+                    range.Current.IsReadOnly)
+                {
+                    continue;
+                }
+
+                var current = range.Current.Value;
+                var step = range.Current.SmallChange;
+                if (!double.IsFinite(step) || step <= 0)
+                {
+                    step = 1;
+                }
+
+                var target = Math.Clamp(
+                    current + Math.Sign(direction) * step,
+                    range.Current.Minimum,
+                    range.Current.Maximum);
+                if (Math.Abs(target - current) < double.Epsilon)
+                {
+                    return false;
+                }
+
+                range.SetValue(target);
+                Thread.Sleep(35);
+                return
+                    Math.Abs(range.Current.Value - current) >
+                    double.Epsilon;
+            }
+        }
+        catch (ElementNotAvailableException)
+        {
+            // The keyboard fallback reacquires focus on the live menu item.
+        }
+        catch (InvalidOperationException)
+        {
+            // Chromium may expose a read-only-looking range that rejects set.
+        }
+
+        return false;
+    }
+
+    private static bool WaitForPickerItemFocus(
+        AutomationElement item,
+        int processId)
+    {
+        var deadline = Environment.TickCount64 + 240;
+        do
+        {
+            Thread.Sleep(15);
+            if (
+                Win32Input.IsProcessForeground(processId) &&
+                IsPickerItemFocusWithin(
+                    item,
+                    AutomationElement.FocusedElement))
+            {
+                return true;
+            }
+        }
+        while (Environment.TickCount64 < deadline);
+
+        return false;
+    }
+
+    private static bool IsPickerItemFocusWithin(
+        AutomationElement item,
+        AutomationElement? focused)
+    {
+        if (focused is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (
+                focused.Equals(item) ||
+                ComposerPickerViewPolicy.IsPowerItem(
+                    SafeName(focused)))
+            {
+                return true;
+            }
+
+            var parent = focused;
+            for (var depth = 0; depth < 8; depth++)
+            {
+                parent = TreeWalker.ControlViewWalker.GetParent(parent);
+                if (parent is null)
+                {
+                    break;
+                }
+
+                if (parent.Equals(item))
+                {
+                    return true;
+                }
+            }
+
+            var itemBounds = item.Current.BoundingRectangle;
+            var focusedBounds = focused.Current.BoundingRectangle;
+            if (itemBounds.IsEmpty || focusedBounds.IsEmpty)
+            {
+                return false;
+            }
+
+            var center = new System.Windows.Point(
+                focusedBounds.Left + focusedBounds.Width / 2,
+                focusedBounds.Top + focusedBounds.Height / 2);
+            return itemBounds.Contains(center);
+        }
+        catch (ElementNotAvailableException)
         {
             return false;
         }
@@ -6035,6 +6404,7 @@ public sealed partial class CodexComposerService
     private sealed record AdvancedPickerOption(
         string ContainerKey,
         System.Windows.Rect ContainerBounds,
+        System.Windows.Rect ItemBounds,
         string Name,
         int Sequence,
         bool IsSelected,

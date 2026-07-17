@@ -47,7 +47,7 @@ internal static class ComposerPickerViewPolicy
     }
 
     internal static bool IsPowerItem(string? name) =>
-        MatchesAny(name, PowerNames);
+        StartsWithAny(name, PowerNames);
 
     internal static bool IsModelItem(string? name) =>
         StartsWithAny(name, ModelNames);

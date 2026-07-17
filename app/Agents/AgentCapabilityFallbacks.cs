@@ -122,6 +122,11 @@ public static class AgentCapabilityFallbacks
             CancellationToken cancellationToken) =>
             Task.FromResult(PickerFailed());
 
+        public Task<ComposerPickerResult> ToggleSpeedAsync(
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PickerFailed());
+
         public Task<ComposerPickerResult> StepAdvancedAsync(
             ComposerSettingKind kind,
             int direction,

@@ -286,6 +286,15 @@ public sealed class CodexAgentTarget : IAgentTarget
                 cancellationToken);
         }
 
+        public Task<ComposerPickerResult> ToggleSpeedAsync(
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.ToggleSpeedAsync(
+                settings,
+                cancellationToken);
+        }
+
         public Task<ComposerPickerResult> StepAdvancedAsync(
             ComposerSettingKind kind,
             int direction,

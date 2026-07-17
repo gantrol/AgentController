@@ -103,6 +103,10 @@ public interface IComposerAutomation
         AppSettings settings,
         CancellationToken cancellationToken);
 
+    Task<ComposerPickerResult> ToggleSpeedAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
     Task<ComposerPickerResult> StepAdvancedAsync(
         ComposerSettingKind kind,
         int direction,

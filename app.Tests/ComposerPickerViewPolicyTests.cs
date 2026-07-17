@@ -6,6 +6,8 @@ public sealed class ComposerPickerViewPolicyTests
 {
     [Theory]
     [InlineData("Power")]
+    [InlineData("Power 7")]
+    [InlineData("Power: Max")]
     [InlineData("Show advanced options")]
     public void DetectsSimpleFromLiveMenuItems(string marker)
     {

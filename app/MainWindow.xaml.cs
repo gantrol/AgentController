@@ -1495,25 +1495,63 @@ public partial class MainWindow : Window
 
     private void ExecuteFastToggle()
     {
-        var title = _localization.Strings.ConfigToggleFast;
-        var executed = _agentShortcuts.Execute(
-            _settings.FastToggleShortcut,
-            _settings);
-        AddEvent(
-            title +
-            ExecutionSuffix(
-                executed,
-                executed
-                    ? null
-                    : AgentAutomationErrorCodes.InputInjectionFailed,
-                _settings.FastToggleShortcut));
-        ShowFeedback(
-            title,
-            executed
-                ? RadialText("已执行。", "Executed.")
-                : ExecutionFailureLabel(
-                    AgentAutomationErrorCodes.InputInjectionFailed));
-        Pulse(strength: executed ? 0.22 : 0.1);
+        CancelPendingComposerSelection(cancelComposerPicker: false);
+        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+        var cancellation = BeginComposerPickerAutomation(
+            clearPendingPowerSteps: true);
+        _ = ExecuteFastToggleAsync(cancellation);
+    }
+
+    private async Task ExecuteFastToggleAsync(
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var result = await RunComposerPickerAutomationAsync(
+                    token => _composerAutomation.ToggleSpeedAsync(
+                        _settings,
+                        token),
+                    cancellation.Token)
+                .ConfigureAwait(true);
+            if (
+                cancellation.IsCancellationRequested ||
+                result.Error == AgentAutomationErrorCodes.OperationCanceled)
+            {
+                return;
+            }
+
+            if (result.Succeeded)
+            {
+                _speedIndex = string.Equals(
+                    result.Value,
+                    "Fast",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? 1
+                    : 0;
+            }
+
+            PresentSimplePickerResult(
+                _localization.Strings.ConfigToggleFast,
+                result);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer composer action owns the picker.
+        }
+        catch (Exception exception)
+        {
+            PresentSimplePickerResult(
+                _localization.Strings.ConfigToggleFast,
+                new ComposerPickerResult(
+                    false,
+                    Error: AgentAutomationErrorCodes.Unexpected,
+                    ErrorDetail: exception.Message));
+        }
+        finally
+        {
+            CompleteComposerPickerAutomation(cancellation);
+        }
     }
 
     private void ExecuteNamedRadialAction(
@@ -3014,6 +3052,12 @@ public partial class MainWindow : Window
     private void HandleComposerDialShortPress()
     {
         _rightStickRouter.RequireNeutral();
+        if (IsVirtualDialContextActive)
+        {
+            _ = CloseVirtualDialMenuAsync(showFeedback: false);
+            return;
+        }
+
         if (UsesAdvancedComposerDial)
         {
             _ = OpenComposerPickerAsync(ComposerPickerView.Advanced);
@@ -3757,6 +3801,11 @@ public partial class MainWindow : Window
                 result.Error == AgentAutomationErrorCodes.OperationCanceled)
             {
                 return;
+            }
+
+            if (result.Succeeded && result.IsMenuOpen)
+            {
+                SetVirtualDialMenuOpen(true);
             }
 
             PresentSimplePickerResult(
