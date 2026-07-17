@@ -34,7 +34,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "简易：← / → 调 Power、↑ Fast、↓ Standard · 高级：← / → 切控件、↑ / ↓ 调实际选项 · 单击 {0} 打开对应菜单 · 长按 {0} 设置",
+                "简易：← / → 调 Power、↑ Standard、↓ Fast · 高级：← / → 切控件、↑ / ↓ 调实际选项 · 单击 {0} 打开对应菜单 · 长按 {0} 设置",
             [StringKeys.ControlRightStickHintOpen] =
                 "模型选择器已打开 · ↑ / ↓ 选择 · {2} 确认 · {1} 关闭",
             [StringKeys.ControlRightStickHintConfirmation] =
@@ -119,7 +119,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆 · 模型旋钮",
             [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "简易模式用 ← / → 调整实际 Power、↑ 请求 Fast、↓ 请求 Standard；高级模式用 ← / → 切换模型、思考强度或速度，用 ↑ / ↓ 调整当前值",
+                "简易模式用 ← / → 调整实际 Power，并按屏幕顺序用 ↑ 选择 Standard、↓ 选择 Fast；高级模式用 ← / → 切换模型、思考强度或速度，用 ↑ / ↓ 调整当前值",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
                 "单击打开对应的简易或高级菜单；长按 500 ms 打开手柄设置",

@@ -5356,98 +5356,16 @@ public sealed partial class CodexComposerService
             ComposerSpeedSelectionPolicy.TargetLabel(fast);
         var categoryItem = context!.Items.FirstOrDefault(item =>
             IsAdvancedCategoryItem(SafeName(item), category));
-        var categoryName = categoryItem is null
-            ? string.Empty
-            : SafeName(categoryItem);
-        if (
-            categoryItem is not null &&
-            ComposerSpeedSelectionPolicy.MatchesCategory(
-                categoryName,
-                fast))
+        AutomationElement? refreshedCategoryItem = null;
+        try
         {
-            return new(
-                true,
-                targetName,
-                IsMenuOpen: true);
-        }
-
-        if (
-            categoryItem is null ||
-            !TryGetDialPopupContainer(
-                categoryItem,
-                context.Window,
-                out var rootContainerKey,
-                out _) ||
-            !TryExpand(categoryItem))
-        {
-            return new(
-                false,
-                targetName,
-                IsMenuOpen: true,
-                Error: AgentAutomationErrorCodes.ElementNotFound,
-                ErrorDetail: "composer-speed-option");
-        }
-
-        var currentValue = AdvancedCategoryValue(
-            categoryName,
-            category);
-        var options = WaitForAdvancedOptions(
-            context.Window,
-            context.ProcessId,
-            rootContainerKey,
-            currentValue,
-            cancellationToken);
-        var target = options?.FirstOrDefault(option =>
-            ComposerSpeedSelectionPolicy.MatchesOption(
-                option.Name,
-                fast));
-        if (
-            target is null ||
-            !TryInvokePickerItem(target.Element, context.ProcessId))
-        {
-            return new(
-                false,
-                targetName,
-                IsMenuOpen: true,
-                Error: AgentAutomationErrorCodes.ElementNotFound,
-                ErrorDetail: "composer-speed-option");
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var readbackDeadline = Environment.TickCount64 + 900;
-        ComposerPickerResult? lastReadbackFailure = null;
-        do
-        {
-            Thread.Sleep(80);
-            cancellationToken.ThrowIfCancellationRequested();
-            var readbackFailure = PreparePicker(
-                ComposerPickerView.Advanced,
-                settings,
-                cancellationToken,
-                out var refreshed);
-            if (readbackFailure is not null)
-            {
-                lastReadbackFailure = readbackFailure;
-                if (
-                    readbackFailure.Error ==
-                        AgentAutomationErrorCodes.OperationCanceled ||
-                    readbackFailure.Error ==
-                        AgentAutomationErrorCodes.AgentNotForeground ||
-                    readbackFailure.Error ==
-                        AgentAutomationErrorCodes.BridgeSafePreview)
-                {
-                    return readbackFailure with { Value = targetName };
-                }
-
-                continue;
-            }
-
-            var refreshedCategory = refreshed!.Items.FirstOrDefault(item =>
-                IsAdvancedCategoryItem(SafeName(item), category));
+            var categoryName = categoryItem is null
+                ? string.Empty
+                : SafeName(categoryItem);
             if (
-                refreshedCategory is not null &&
+                categoryItem is not null &&
                 ComposerSpeedSelectionPolicy.MatchesCategory(
-                    SafeName(refreshedCategory),
+                    categoryName,
                     fast))
             {
                 return new(
@@ -5455,20 +5373,121 @@ public sealed partial class CodexComposerService
                     targetName,
                     IsMenuOpen: true);
             }
-        }
-        while (Environment.TickCount64 < readbackDeadline);
 
-        if (lastReadbackFailure is not null)
+            if (
+                categoryItem is null ||
+                !TryGetDialPopupContainer(
+                    categoryItem,
+                    context.Window,
+                    out var rootContainerKey,
+                    out _) ||
+                !TryExpand(categoryItem))
+            {
+                return new(
+                    false,
+                    targetName,
+                    IsMenuOpen: true,
+                    Error: AgentAutomationErrorCodes.ElementNotFound,
+                    ErrorDetail: "composer-speed-option");
+            }
+
+            var currentValue = AdvancedCategoryValue(
+                categoryName,
+                category);
+            var options = WaitForAdvancedOptions(
+                context.Window,
+                context.ProcessId,
+                rootContainerKey,
+                currentValue,
+                cancellationToken);
+            var target = options?.FirstOrDefault(option =>
+                ComposerSpeedSelectionPolicy.MatchesOption(
+                    option.Name,
+                    fast));
+            if (
+                target is null ||
+                !TryInvokePickerItem(target.Element, context.ProcessId))
+            {
+                return new(
+                    false,
+                    targetName,
+                    IsMenuOpen: true,
+                    Error: AgentAutomationErrorCodes.ElementNotFound,
+                    ErrorDetail: "composer-speed-option");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var readbackDeadline = Environment.TickCount64 + 900;
+            ComposerPickerResult? lastReadbackFailure = null;
+            do
+            {
+                Thread.Sleep(80);
+                cancellationToken.ThrowIfCancellationRequested();
+                var readbackFailure = PreparePicker(
+                    ComposerPickerView.Advanced,
+                    settings,
+                    cancellationToken,
+                    out var refreshed);
+                if (readbackFailure is not null)
+                {
+                    lastReadbackFailure = readbackFailure;
+                    if (
+                        readbackFailure.Error ==
+                            AgentAutomationErrorCodes.OperationCanceled ||
+                        readbackFailure.Error ==
+                            AgentAutomationErrorCodes.AgentNotForeground ||
+                        readbackFailure.Error ==
+                            AgentAutomationErrorCodes.BridgeSafePreview)
+                    {
+                        return readbackFailure with
+                        {
+                            Value = targetName,
+                        };
+                    }
+
+                    continue;
+                }
+
+                var refreshedCategory =
+                    refreshed!.Items.FirstOrDefault(item =>
+                        IsAdvancedCategoryItem(
+                            SafeName(item),
+                            category));
+                refreshedCategoryItem = refreshedCategory;
+                if (
+                    refreshedCategory is not null &&
+                    ComposerSpeedSelectionPolicy.MatchesCategory(
+                        SafeName(refreshedCategory),
+                        fast))
+                {
+                    return new(
+                        true,
+                        targetName,
+                        IsMenuOpen: true);
+                }
+            }
+            while (Environment.TickCount64 < readbackDeadline);
+
+            if (lastReadbackFailure is not null)
+            {
+                return lastReadbackFailure with
+                {
+                    Value = targetName,
+                };
+            }
+
+            return new(
+                false,
+                targetName,
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.ElementUnsupported,
+                ErrorDetail: "composer-speed-readback");
+        }
+        finally
         {
-            return lastReadbackFailure with { Value = targetName };
+            TryCollapse(refreshedCategoryItem);
+            TryCollapse(categoryItem);
         }
-
-        return new(
-            false,
-            targetName,
-            IsMenuOpen: true,
-            Error: AgentAutomationErrorCodes.ElementUnsupported,
-            ErrorDetail: "composer-speed-readback");
     }
 
     private ComposerPickerResult StepAdvancedCore(

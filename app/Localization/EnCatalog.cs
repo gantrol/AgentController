@@ -35,7 +35,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "Simple: ← / → Power, ↑ Fast, ↓ Standard · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click {0} opens the picker · hold {0} Settings",
+                "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click {0} opens the picker · hold {0} Settings",
             [StringKeys.ControlRightStickHintOpen] =
                 "Model picker active · ↑ / ↓ Move · {2} Select · {1} Close",
             [StringKeys.ControlRightStickHintConfirmation] =
@@ -125,7 +125,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Right stick · Model dial",
             [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "Simple: ← / → steps the live Power control, ↑ requests Fast, and ↓ requests Standard. Advanced: ← / → changes Model, Effort, or Speed; ↑ / ↓ changes its value.",
+                "Simple: ← / → steps the live Power control, ↑ selects Standard, and ↓ selects Fast in screen order. Advanced: ← / → changes Model, Effort, or Speed; ↑ / ↓ changes its value.",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
                 "Click opens the matching Simple or Advanced picker; hold for 500 ms to open controller settings",

@@ -3642,8 +3642,10 @@ public partial class MainWindow : Window
     private void AdjustSimpleSpeed(int direction)
     {
         direction = Math.Sign(direction);
+        var fast =
+            SimpleSpeedInputPolicy.ResolveFastTarget(direction);
         if (
-            direction == 0 ||
+            !fast.HasValue ||
             direction == _simpleSpeedHeldDirection)
         {
             return;
@@ -3653,15 +3655,14 @@ public partial class MainWindow : Window
         CancelPendingComposerSelection(cancelComposerPicker: false);
         Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
         Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        var fast = direction > 0;
-        _speedIndex = fast ? 1 : 0;
+        _speedIndex = fast.Value ? 1 : 0;
         _devicePageViewModel.UpdateRightModeValue(
             _localization.Strings.Format(
                 StringKeys.MessageApplyingValue,
                 SpeedLabel(_speedIndex)));
         var cancellation = BeginComposerPickerAutomation(
             clearPendingPowerSteps: true);
-        _ = SetSimpleSpeedAsync(fast, cancellation);
+        _ = SetSimpleSpeedAsync(fast.Value, cancellation);
     }
 
     private async Task SetSimpleSpeedAsync(

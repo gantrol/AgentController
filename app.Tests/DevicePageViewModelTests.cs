@@ -71,7 +71,7 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Simple: ← / → Power, ↑ Fast, ↓ Standard · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
+            "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -272,7 +272,7 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Simple: ← / → Power, ↑ Fast, ↓ Standard · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
+            "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
             viewModel.RightStickHint);
     }
 
