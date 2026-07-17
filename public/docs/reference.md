@@ -100,6 +100,8 @@ webview/assets/codex-micro-signals-DPWNMrvO.js
 
 - [v0.4a 语义与频率规范](../docs/interaction-spec-v0.4-controller-mapping.md)
 - [v0.4b 实体手柄映射](../docs/interaction-spec-v0.4b-physical-controller-mapping.md)
+- [v0.7 当前手柄指令清单](controller-command-reference-v0.7.md)
+- [v0.7 发布说明与风险](release-v0.7.md)
 - [LogicalInput.cs](../app/Controllers/LogicalInput.cs)
 - [BuiltInControllerProfiles.cs](../app/Controllers/BuiltInControllerProfiles.cs)
 - [XInputNative.cs](../app/Native/XInputNative.cs)

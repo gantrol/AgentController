@@ -1,5 +1,8 @@
 # Agent Controller 交互规范 v0.4b
 
+> 历史设计草案，不代表 v0.7 当前按键行为；当前指令以
+> [v0.7 手柄指令清单](../public/docs/controller-command-reference-v0.7.md) 为准。
+
 ## 标准 XInput 与四背键增强手柄映射
 
 | 项目 | 内容 |

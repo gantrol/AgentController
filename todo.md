@@ -3,13 +3,21 @@
 - Support more than Codex, starting with a researched Claude Code adapter
 - Not only windows? Change `app` directory to `windows`
 - Copy? e.g. controller assets in https://github.com/univrsal/input-overlay ?
-- Fast switch error
+- v0.7 shipped behavior / remaining validation
+  - [x] Use live UI controls and readback for Simple Power, Standard / Fast, and RB+Y Fast toggle
+  - [x] Ramp right-stick repeat speed over about two seconds and scale the final rate by stick magnitude
+  - [x] Navigate Advanced options in visual screen order, with lower values at the top
+  - [x] Add Y → D-pad Up for New task and remove the unstable Plan controller entry
+  - [x] Require a three-second B hold with countdown to cancel an active turn
+  - [x] Add short chat-turn navigation plus four-second Top / three-second Bottom holds without success popups
+  - [ ] Run physical end-to-end validation of Power and Fast on a non-Max model; current Sol Max exposes no native Power control
+  - [ ] Validate the self-contained v0.7 package on a clean Windows account
 - v0.7 deferred / experimental work
   - [ ] Re-enable Plan mode only after the route can verify the visible Codex state before and after every change; v0.7 exposes no controller binding for it
   - [ ] Prototype a virtual HID identity compatible with `v.oai.rad` only in an isolated experimental build; follow `public/docs/codex-micro-virtual-hid-bridge-plan.md`
   - [ ] Require Center → Direction → Center reports, device-fingerprint/version guards, explicit opt-in, and result verification before any virtual-HID action can report success
   - [ ] Do not ship or install a virtual HID driver in v0.7
-- v0.4b current trial
+- Historical v0.4b trial notes
   - [x] Stable controller-owned sidebar directory; running-task recency
         updates no longer reorder the active navigation session
   - [x] Bottom-center previous / current / next sidebar wheel with

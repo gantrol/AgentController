@@ -1,5 +1,8 @@
 # Agent Controller 交互规范 v0.4a
 
+> 历史设计草案，不代表 v0.7 当前按键行为；当前指令以
+> [v0.7 手柄指令清单](../public/docs/controller-command-reference-v0.7.md) 为准。
+
 ## Codex Micro 语义模型、操作频率与手柄适配架构
 
 | 项目 | 内容 |

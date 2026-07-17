@@ -12,6 +12,8 @@
 !/public/
 !/public/docs/
 !/public/docs/**
+!/scripts/
+!/scripts/**
 
 # Build and IDE output
 **/bin/
