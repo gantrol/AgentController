@@ -153,6 +153,14 @@ dotnet test app.Tests/AgentController.Tests.csproj -c Release
 
 编译产物位于 `app/bin/Release/net9.0-windows10.0.19041.0/`。封包脚本会在 `dist/` 生成自包含的 Windows x64 zip 与 SHA-256 校验文件。
 
+如需创建或更新 GitHub Release 并上传两个产物，请先安装并登录 GitHub CLI、推送对应标签，然后运行：
+
+```powershell
+./scripts/publish-release.ps1 -Version 0.7.0-hotfix
+```
+
+该命令会重新构建发布包、核验 SHA-256、检查远程标签，并以幂等方式创建或更新 Release。若只需上传现有产物，可加 `-SkipBuild`。
+
 ### 如果你想改源码
 
 思路上，模拟 Micro 的交互协议会更快，更少错误。但是GPT 5.6 Sol会一直拒绝，说什么这样不稳定，不如界面UIA。而它“稳定”界面的方法是加700到1400ms时延，不是人能忍受的操作。为了抢时间，我先让它继续这样搞。
