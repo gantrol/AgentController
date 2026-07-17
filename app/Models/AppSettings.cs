@@ -25,6 +25,5 @@ public sealed class AppSettings
     public string FastToggleShortcut { get; set; } = "F20";
     public string ForkShortcut { get; set; } = "F21";
     public string DictationShortcut { get; set; } = "Ctrl+Shift+D";
-    public string SubmitShortcut { get; set; } = "F22";
     public string CancelShortcut { get; set; } = "Escape";
 }

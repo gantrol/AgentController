@@ -4,6 +4,18 @@ namespace CodexController.Tests;
 
 public sealed class ComposerCatalogTests
 {
+    [Theory]
+    [InlineData("GPT-5.6-Sol-Max", "5.6 Sol Max")]
+    [InlineData("GPT-5.6 Sol Max", "5.6 Sol Max")]
+    public void CatalogLabelKeepsSolMaxSelectable(
+        string displayName,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            CodexComposerService.ModelLabel(displayName));
+    }
+
     [Fact]
     public void EmptyCatalogDoesNotInventReasoningEfforts()
     {

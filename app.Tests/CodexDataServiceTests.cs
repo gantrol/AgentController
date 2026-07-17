@@ -837,6 +837,207 @@ public sealed class CodexDataServiceTests
             NativeTitle: id);
     }
 
+    [Fact]
+    public void LoadSnapshotResolvesCurrentLocalProjectIds()
+    {
+        const string agentProjectId =
+            "local-f88cad0e029a924e3e9bb7fbc91d00ec";
+        const string keyboardProjectId =
+            "local-38371ed986b6ba8e5c7e639a9305580a";
+        const string timelineProjectId =
+            "local-bf457e4f8f41db8abfe1d0d7056e3490";
+        const string agentPath = @"D:\AgentController";
+        const string keyboardPath = @"D:\ai-keyboard";
+        const string timelinePath =
+            @"D:\project\test-void0\llm-timeline";
+        var codexHome = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-controller-projects-{Guid.NewGuid():N}");
+        var sessionsPath = Path.Combine(codexHome, "sessions");
+        Directory.CreateDirectory(sessionsPath);
+        try
+        {
+            var threadId = Guid.NewGuid().ToString();
+            File.WriteAllText(
+                Path.Combine(codexHome, "session_index.jsonl"),
+                JsonSerializer.Serialize(new
+                {
+                    id = threadId,
+                    thread_name = "timeline-task",
+                    updated_at = DateTimeOffset.UtcNow.ToString("O"),
+                }) + "\n");
+            File.WriteAllText(
+                Path.Combine(
+                    sessionsPath,
+                    $"rollout-{threadId}.jsonl"),
+                string.Empty);
+            File.WriteAllText(
+                Path.Combine(codexHome, ".codex-global-state.json"),
+                JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["local-projects"] =
+                        new Dictionary<string, object?>
+                        {
+                            [agentProjectId] = new
+                            {
+                                id = agentProjectId,
+                                name = "AgentController",
+                                rootPaths = new[] { agentPath },
+                            },
+                            [keyboardProjectId] = new
+                            {
+                                id = keyboardProjectId,
+                                name = "ai-keyboard",
+                                rootPaths = new[] { keyboardPath },
+                            },
+                            [timelineProjectId] = new
+                            {
+                                id = timelineProjectId,
+                                name = "llm-timeline",
+                                rootPaths = new[] { timelinePath },
+                            },
+                        },
+                    ["pinned-project-ids"] = new[]
+                    {
+                        agentProjectId,
+                        keyboardProjectId,
+                        timelineProjectId,
+                    },
+                    ["project-order"] = new[]
+                    {
+                        agentProjectId,
+                        keyboardProjectId,
+                        timelineProjectId,
+                    },
+                    ["thread-project-assignments"] =
+                        new Dictionary<string, object?>
+                        {
+                            [threadId] = new
+                            {
+                                projectKind = "local",
+                                projectId = timelineProjectId,
+                                path = timelinePath,
+                                cwd = timelinePath,
+                            },
+                        },
+                    ["sidebar-project-thread-orders"] =
+                        new Dictionary<string, object?>
+                        {
+                            [timelineProjectId] = new
+                            {
+                                threadIds = new[] { threadId },
+                            },
+                        },
+                }));
+
+            var snapshot = CreateServiceForCodexHome(codexHome)
+                .LoadSnapshot();
+
+            Assert.Equal(
+                [agentPath, keyboardPath, timelinePath],
+                snapshot.Projects.Select(project => project.Path));
+            Assert.Equal(
+                ["AgentController", "ai-keyboard", "llm-timeline"],
+                snapshot.Projects.Select(project => project.Name));
+            Assert.All(snapshot.Projects, project => Assert.True(
+                project.IsPinned));
+            var timeline = snapshot.Projects[2];
+            Assert.Equal(
+                threadId,
+                Assert.Single(timeline.Threads).Id);
+            Assert.DoesNotContain(
+                snapshot.Projects,
+                project => project.Name.StartsWith(
+                    "local-",
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(codexHome, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LoadSnapshotBindsRolloutAndPersistedUnreadStatus()
+    {
+        var codexHome = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-controller-status-{Guid.NewGuid():N}");
+        var sessionsPath = Path.Combine(codexHome, "sessions");
+        Directory.CreateDirectory(sessionsPath);
+        try
+        {
+            var id = Guid.NewGuid().ToString();
+            File.WriteAllText(
+                Path.Combine(codexHome, "session_index.jsonl"),
+                JsonSerializer.Serialize(new
+                {
+                    id,
+                    thread_name = "status-test",
+                    updated_at = DateTimeOffset.UtcNow.ToString("O"),
+                }) + "\n");
+            File.WriteAllText(
+                Path.Combine(codexHome, ".codex-global-state.json"),
+                JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["projectless-thread-ids"] = new[] { id },
+                    ["electron-persisted-atom-state"] =
+                        new Dictionary<string, object?>
+                        {
+                            ["unread-thread-ids-by-host-v1"] =
+                                new Dictionary<string, object?>
+                                {
+                                    ["local"] = new[] { id },
+                                },
+                        },
+                }));
+            var rolloutPath = Path.Combine(
+                sessionsPath,
+                $"rollout-{id}.jsonl");
+            File.WriteAllText(
+                rolloutPath,
+                JsonSerializer.Serialize(new
+                {
+                    type = "event_msg",
+                    payload = new { type = "task_complete" },
+                }) + "\n");
+
+            var service = CreateServiceForCodexHome(codexHome);
+            Assert.Equal(
+                ThreadStatus.CompleteUnread,
+                Assert.Single(service.LoadSnapshot().Threads).Status);
+
+            File.AppendAllText(
+                rolloutPath,
+                JsonSerializer.Serialize(new
+                {
+                    type = "event_msg",
+                    payload = new { type = "task_started" },
+                }) + "\n");
+            Assert.Equal(
+                ThreadStatus.Thinking,
+                Assert.Single(service.LoadSnapshot().Threads).Status);
+
+            File.WriteAllText(
+                Path.Combine(codexHome, ".codex-global-state.json"),
+                "{\"electron-persisted-atom-state\":");
+            File.AppendAllText(
+                rolloutPath,
+                JsonSerializer.Serialize(new
+                {
+                    type = "event_msg",
+                    payload = new { type = "task_complete" },
+                }) + "\n");
+            Assert.Equal(
+                ThreadStatus.CompleteUnread,
+                Assert.Single(service.LoadSnapshot().Threads).Status);
+        }
+        finally
+        {
+            Directory.Delete(codexHome, recursive: true);
+        }
+    }
+
     private static CodexDataService CreateServiceForCodexHome(
         string codexHome)
     {

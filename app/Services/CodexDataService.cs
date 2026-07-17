@@ -18,6 +18,8 @@ public sealed class CodexDataService
     private readonly string _archivedSessionsPath;
     private readonly LocalizationService _localization;
     private readonly Func<DateTimeOffset> _utcNowProvider;
+    private readonly CodexRolloutStatusReader _rolloutStatusReader = new();
+    private GlobalState? _lastGoodGlobalState;
 
     public CodexDataService()
         : this(new LocalizationService())
@@ -49,6 +51,8 @@ public sealed class CodexDataService
         var state = ReadGlobalState();
         var catalog = ReadThreadCatalog();
         var pinnedThreadIds = state.PinnedThreadIds.ToHashSet(
+            StringComparer.OrdinalIgnoreCase);
+        var unreadThreadIds = state.UnreadThreadIds.ToHashSet(
             StringComparer.OrdinalIgnoreCase);
         var assignments = state.ThreadProjectAssignments;
         var threads = new List<CodexThread>();
@@ -133,6 +137,30 @@ public sealed class CodexDataService
         threads = threads
             .OrderByDescending(item => item.UpdatedAt)
             .ToList();
+
+        // The Agent keypad currently exposes the six most recent threads.
+        // Probe only those rollouts so refresh stays incremental and bounded.
+        for (var index = 0; index < Math.Min(6, threads.Count); index++)
+        {
+            var thread = threads[index];
+            if (catalog.TryGetValue(thread.Id, out var metadata))
+            {
+                var status = _rolloutStatusReader.Read(
+                    metadata.RolloutPath);
+                if (
+                    status is not ThreadStatus.Thinking and
+                        not ThreadStatus.Error &&
+                    unreadThreadIds.Contains(thread.Id))
+                {
+                    status = ThreadStatus.CompleteUnread;
+                }
+
+                threads[index] = thread with
+                {
+                    Status = status,
+                };
+            }
+        }
 
         var threadLookup = threads.ToDictionary(
             thread => thread.Id,
@@ -503,6 +531,7 @@ public sealed class CodexDataService
                         !string.IsNullOrWhiteSpace(reader.GetString(2)),
                         IsUserFacingSource(reader.GetString(3)),
                         NormalizePath(reader.GetString(4)),
+                        rolloutPath,
                         File.Exists(rolloutPath),
                         ReadDatabaseTimestamp(reader, 6),
                         ReadDatabaseTimestamp(reader, 7));
@@ -575,6 +604,7 @@ public sealed class CodexDataService
                     HasPreview: true,
                     IsUserFacing: true,
                     WorkingDirectory: null,
+                    RolloutPath: path,
                     RolloutExists: true,
                     UpdatedAt: null,
                     RecencyAt: null);
@@ -613,7 +643,7 @@ public sealed class CodexDataService
     {
         if (!File.Exists(_globalStatePath))
         {
-            return new GlobalState();
+            return _lastGoodGlobalState ?? new GlobalState();
         }
 
         try
@@ -630,7 +660,10 @@ public sealed class CodexDataService
             var knownProjects = new List<string>();
             var projectOrder = new List<string>();
             var projectlessThreads = new List<string>();
+            var unreadThreads = new List<string>();
             var assignments = new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+            var projectPathsById = new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase);
             var workspaceRootLabels = new Dictionary<string, string>(
                 PathComparer);
@@ -645,7 +678,9 @@ public sealed class CodexDataService
                 knownProjects,
                 projectOrder,
                 projectlessThreads,
+                unreadThreads,
                 assignments,
+                projectPathsById,
                 workspaceRootLabels,
                 projectThreadOrders);
 
@@ -662,7 +697,9 @@ public sealed class CodexDataService
                     knownProjects,
                     projectOrder,
                     projectlessThreads,
+                    unreadThreads,
                     assignments,
+                    projectPathsById,
                     workspaceRootLabels,
                     projectThreadOrders);
             }
@@ -677,21 +714,27 @@ public sealed class CodexDataService
                 AddDistinctPath(knownProjects, path);
             }
 
-            return new GlobalState
+            var state = new GlobalState
             {
                 PinnedThreadIds = pinnedThreads,
                 PinnedProjectIds = pinnedProjects,
                 KnownProjectPaths = knownProjects,
                 ProjectOrder = projectOrder,
                 ProjectlessThreadIds = projectlessThreads,
+                UnreadThreadIds = unreadThreads,
                 ThreadProjectAssignments = assignments,
                 WorkspaceRootLabels = workspaceRootLabels,
                 ProjectThreadOrders = projectThreadOrders,
             };
+            _lastGoodGlobalState = state;
+            return state;
         }
         catch
         {
-            return new GlobalState();
+            // Electron replaces this file while saving. Preserve the last
+            // complete snapshot so unread LEDs do not flicker to Idle on a
+            // partially written refresh.
+            return _lastGoodGlobalState ?? new GlobalState();
         }
     }
 
@@ -702,7 +745,9 @@ public sealed class CodexDataService
         List<string> knownProjects,
         List<string> projectOrder,
         List<string> projectlessThreads,
+        List<string> unreadThreads,
         Dictionary<string, string> assignments,
+        Dictionary<string, string> projectPathsById,
         Dictionary<string, string> workspaceRootLabels,
         Dictionary<string, IReadOnlyList<string>> projectThreadOrders)
     {
@@ -711,16 +756,21 @@ public sealed class CodexDataService
             return;
         }
 
+        AddLocalProjects(
+            container,
+            projectPathsById,
+            knownProjects,
+            workspaceRootLabels);
         AddStringArray(
             container,
             "pinned-thread-ids",
             pinnedThreads,
             normalizeAsPath: false);
-        AddStringArray(
+        AddProjectReferenceArray(
             container,
             "pinned-project-ids",
             pinnedProjects,
-            normalizeAsPath: true);
+            projectPathsById);
         AddStringArray(
             container,
             "electron-saved-workspace-roots",
@@ -731,16 +781,17 @@ public sealed class CodexDataService
             "active-workspace-roots",
             knownProjects,
             normalizeAsPath: true);
-        AddStringArray(
+        AddProjectReferenceArray(
             container,
             "project-order",
             projectOrder,
-            normalizeAsPath: true);
+            projectPathsById);
         AddStringArray(
             container,
             "projectless-thread-ids",
             projectlessThreads,
             normalizeAsPath: false);
+        AddUnreadThreadIds(container, unreadThreads);
         foreach (var path in projectOrder)
         {
             AddDistinctPath(knownProjects, path);
@@ -779,7 +830,15 @@ public sealed class CodexDataService
                     continue;
                 }
 
-                projectThreadOrders[NormalizePath(property.Name)] =
+                var projectPath = ResolveProjectReference(
+                    property.Name,
+                    projectPathsById);
+                if (projectPath is null)
+                {
+                    continue;
+                }
+
+                projectThreadOrders[projectPath] =
                     idsElement
                         .EnumerateArray()
                         .Select(element => element.GetString())
@@ -800,15 +859,125 @@ public sealed class CodexDataService
 
         foreach (var property in assignmentElement.EnumerateObject())
         {
-            var projectPath =
-                ReadString(property.Value, "projectId") ??
+            var projectReference =
                 ReadString(property.Value, "path") ??
-                ReadString(property.Value, "cwd");
-            if (!string.IsNullOrWhiteSpace(projectPath))
+                ReadString(property.Value, "cwd") ??
+                ReadString(property.Value, "projectId");
+            var projectPath = ResolveProjectReference(
+                projectReference,
+                projectPathsById);
+            if (projectPath is not null)
             {
-                assignments[property.Name] = NormalizePath(projectPath);
+                assignments[property.Name] = projectPath;
             }
         }
+    }
+
+    private static void AddLocalProjects(
+        JsonElement container,
+        Dictionary<string, string> projectPathsById,
+        List<string> knownProjects,
+        Dictionary<string, string> workspaceRootLabels)
+    {
+        if (
+            !container.TryGetProperty(
+                "local-projects",
+                out var projects) ||
+            projects.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        foreach (var property in projects.EnumerateObject())
+        {
+            if (
+                property.Value.ValueKind != JsonValueKind.Object ||
+                !property.Value.TryGetProperty(
+                    "rootPaths",
+                    out var roots) ||
+                roots.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            var projectPath = roots
+                .EnumerateArray()
+                .Where(root => root.ValueKind == JsonValueKind.String)
+                .Select(root => root.GetString())
+                .FirstOrDefault(root =>
+                    !string.IsNullOrWhiteSpace(root));
+            if (projectPath is null)
+            {
+                continue;
+            }
+
+            projectPath = NormalizePath(projectPath);
+            projectPathsById[property.Name] = projectPath;
+            if (
+                ReadString(property.Value, "id") is { Length: > 0 } id)
+            {
+                projectPathsById[id] = projectPath;
+            }
+
+            AddDistinctPath(knownProjects, projectPath);
+            if (
+                ReadString(property.Value, "name") is { Length: > 0 } name)
+            {
+                workspaceRootLabels[projectPath] = name;
+            }
+        }
+    }
+
+    private static void AddProjectReferenceArray(
+        JsonElement parent,
+        string propertyName,
+        List<string> target,
+        IReadOnlyDictionary<string, string> projectPathsById)
+    {
+        if (
+            !parent.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var element in value.EnumerateArray())
+        {
+            var projectPath = ResolveProjectReference(
+                element.ValueKind == JsonValueKind.String
+                    ? element.GetString()
+                    : null,
+                projectPathsById);
+            if (
+                projectPath is not null &&
+                !target.Contains(projectPath, PathComparer))
+            {
+                target.Add(projectPath);
+            }
+        }
+    }
+
+    private static string? ResolveProjectReference(
+        string? reference,
+        IReadOnlyDictionary<string, string> projectPathsById)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return null;
+        }
+
+        if (projectPathsById.TryGetValue(reference, out var projectPath))
+        {
+            return projectPath;
+        }
+
+        // Current Codex uses opaque `local-*` IDs in ordering and pinning
+        // arrays. Never surface an unresolved ID as a project name/path.
+        return reference.StartsWith(
+            "local-",
+            StringComparison.OrdinalIgnoreCase)
+            ? null
+            : NormalizePath(reference);
     }
 
     private static void AddStringArray(
@@ -993,6 +1162,41 @@ public sealed class CodexDataService
         return firstLine.Length > 70 ? $"{firstLine[..67]}…" : firstLine;
     }
 
+    private static void AddUnreadThreadIds(
+        JsonElement container,
+        List<string> target)
+    {
+        if (
+            !container.TryGetProperty(
+                "unread-thread-ids-by-host-v1",
+                out var byHost) ||
+            byHost.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        foreach (var host in byHost.EnumerateObject())
+        {
+            if (host.Value.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var value in host.Value.EnumerateArray())
+            {
+                if (
+                    value.ValueKind == JsonValueKind.String &&
+                    value.GetString() is { Length: > 0 } id &&
+                    !target.Contains(
+                        id,
+                        StringComparer.OrdinalIgnoreCase))
+                {
+                    target.Add(id);
+                }
+            }
+        }
+    }
+
     private static string NormalizeNativeTitle(string title)
     {
         var firstLine = title
@@ -1058,6 +1262,7 @@ public sealed class CodexDataService
         bool HasPreview,
         bool IsUserFacing,
         string? WorkingDirectory,
+        string? RolloutPath,
         bool RolloutExists,
         DateTimeOffset? UpdatedAt,
         DateTimeOffset? RecencyAt)
@@ -1076,6 +1281,7 @@ public sealed class CodexDataService
         public IReadOnlyList<string> KnownProjectPaths { get; init; } = [];
         public IReadOnlyList<string> ProjectOrder { get; init; } = [];
         public IReadOnlyList<string> ProjectlessThreadIds { get; init; } = [];
+        public IReadOnlyList<string> UnreadThreadIds { get; init; } = [];
         public Dictionary<string, string> WorkspaceRootLabels { get; init; } =
             new(PathComparer);
         public Dictionary<string, IReadOnlyList<string>> ProjectThreadOrders

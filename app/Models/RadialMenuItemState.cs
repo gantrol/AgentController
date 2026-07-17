@@ -13,7 +13,8 @@ public sealed record RadialMenuItemState
         bool isEnabled = true,
         bool isHighlighted = false,
         double confirmationProgress = 0,
-        LogicalInput? logicalInput = null)
+        LogicalInput? logicalInput = null,
+        ThreadStatus status = ThreadStatus.Unknown)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputGlyph);
@@ -27,6 +28,7 @@ public sealed record RadialMenuItemState
         IsEnabled = isEnabled;
         IsHighlighted = isHighlighted;
         LogicalInput = logicalInput;
+        Status = status;
         ConfirmationProgress = Math.Clamp(
             confirmationProgress,
             0,
@@ -48,6 +50,8 @@ public sealed record RadialMenuItemState
     public bool IsHighlighted { get; }
 
     public LogicalInput? LogicalInput { get; }
+
+    public ThreadStatus Status { get; }
 
     public double ConfirmationProgress { get; }
 

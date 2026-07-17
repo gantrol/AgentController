@@ -110,6 +110,8 @@ public partial class MainWindow : Window
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
     private bool _virtualDialMenuOpen;
+    private bool _simpleModelPickerOpen;
+    private bool _modelPickerShortcutReady;
     private bool _virtualDialConfirmationPending;
     private bool _virtualDialOpenPending;
     private bool _virtualDialCancelRequested;
@@ -307,6 +309,7 @@ public partial class MainWindow : Window
 
     private void ConfigureCodexKeybindings()
     {
+        _modelPickerShortcutReady = false;
         if (!_settings.BridgeEnabled)
         {
             return;
@@ -318,6 +321,8 @@ public partial class MainWindow : Window
         }
 
         var result = _keybindingProvisioner.EnsureBindings(_settings);
+        _modelPickerShortcutReady =
+            result.CanUseShortcut(_settings.ModelPickerShortcut);
         if (!result.Succeeded)
         {
             AddEvent(_localization.Strings.Format(
@@ -761,6 +766,11 @@ public partial class MainWindow : Window
         bool requiresConfirmation = false)
     {
         _virtualDialMenuOpen = isOpen;
+        if (!isOpen)
+        {
+            _simpleModelPickerOpen = false;
+        }
+
         _virtualDialConfirmationPending =
             isOpen && requiresConfirmation;
         UpdateVirtualDialContextPresentation();
@@ -877,6 +887,13 @@ public partial class MainWindow : Window
 
         if (
             layer == RadialMenuLayerKind.Turn &&
+            upEdges.HasFlag(ControllerButtons.B))
+        {
+            EndBaseCancelPress();
+        }
+
+        if (
+            layer == RadialMenuLayerKind.Turn &&
             state.RightTrigger <=
                 RadialInputMap.TurnReleaseThreshold)
         {
@@ -961,6 +978,7 @@ public partial class MainWindow : Window
     {
         return
             action == RadialInputAction.PushToTalk ||
+            action == RadialInputAction.BeginStopHold ||
             (
                 action == RadialInputAction.ClearComposer &&
                 !_actionPanelClearArmed
@@ -1006,6 +1024,10 @@ public partial class MainWindow : Window
         }
 
         RefreshRadialMenu();
+        if (layer == RadialMenuLayerKind.Agent)
+        {
+            RefreshCodexData(preserveSelection: true);
+        }
     }
 
     private void PromoteRadialLearningCue()
@@ -1241,10 +1263,8 @@ public partial class MainWindow : Window
                     "排到下一轮",
                     "排入下一轮");
                 break;
-            case RadialInputAction.StopTurn:
-                ExecuteNamedRadialAction(
-                    RadialText("停止当前运行", "Stop current turn"),
-                    "Stop");
+            case RadialInputAction.BeginStopHold:
+                BeginCancelHold();
                 break;
             case RadialInputAction.NewTask:
                 ExecuteNewTaskAction();
@@ -1635,9 +1655,10 @@ public partial class MainWindow : Window
                 isLayerEngaged: true,
                 isLearningCueReady: _radialLayerEngaged,
                 subtitle: RadialText(
-                    $"{Glyph(LogicalInput.FaceEast)} 取消",
-                    $"{Glyph(LogicalInput.FaceEast)} cancel"),
-                interactionPhase: _radialInteraction.Phase),
+                    "虚拟 Codex Micro 小键盘 · 按对应键切换",
+                    "Virtual Codex Micro keypad · Press a mapped key to switch"),
+                interactionPhase: _radialInteraction.Phase,
+                agentKeypad: BuildAgentKeypadPresentation()),
             RadialMenuLayerKind.Command => new RadialMenuState(
                 layer,
                 RadialText("Codex 命令", "Codex commands"),
@@ -1691,16 +1712,25 @@ public partial class MainWindow : Window
             var thread =
                 index < threads.Length ? threads[index] : null;
             var binding = AgentRadialSlotLayout.Bindings[index];
+            var isCurrent =
+                thread is not null &&
+                string.Equals(
+                    thread.Id,
+                    DevicePage.SelectedEntry?.ThreadId,
+                    StringComparison.OrdinalIgnoreCase);
+            var status = thread is null
+                ? ThreadStatus.Unassigned
+                : thread.Status;
             items.Add(RadialItem(
                 $"agent-slot-{index + 1}",
                 binding.Position,
                 binding.Input,
                 thread?.Title ??
                     RadialText("未分配", "Unassigned"),
-                RadialText(
-                    $"Agent 槽 {index + 1}",
-                    $"Agent slot {index + 1}"),
-                isEnabled: thread is not null));
+                AgentSlotSubtitle(index + 1, status, isCurrent),
+                isEnabled: thread is not null,
+                isHighlighted: isCurrent,
+                status: status));
         }
 
         return items;
@@ -1765,7 +1795,8 @@ public partial class MainWindow : Window
                 "turn-stop",
                 RadialMenuSlotPosition.Right,
                 LogicalInput.FaceEast,
-                RadialText("停止", "Stop")),
+                RadialText("停止", "Stop"),
+                RadialText("长按 3 秒", "Hold for 3 seconds")),
             RadialItem(
                 "turn-fork",
                 RadialMenuSlotPosition.Bottom,
@@ -1831,7 +1862,9 @@ public partial class MainWindow : Window
         LogicalInput input,
         string title,
         string? subtitle = null,
-        bool isEnabled = true)
+        bool isEnabled = true,
+        bool isHighlighted = false,
+        ThreadStatus status = ThreadStatus.Unknown)
     {
         return new RadialMenuItemState(
             id,
@@ -1840,11 +1873,57 @@ public partial class MainWindow : Window
             title,
             subtitle,
             isEnabled,
-            isHighlighted: string.Equals(
-                id,
-                _radialHighlightedItemId,
-                StringComparison.Ordinal),
-            logicalInput: input);
+            isHighlighted:
+                isHighlighted ||
+                string.Equals(
+                    id,
+                    _radialHighlightedItemId,
+                    StringComparison.Ordinal),
+            logicalInput: input,
+            status: status);
+    }
+
+    private string AgentSlotSubtitle(
+        int slotNumber,
+        ThreadStatus status,
+        bool isCurrent)
+    {
+        var statusLabel = status switch
+        {
+            ThreadStatus.Unassigned => RadialText("未绑定", "Unassigned"),
+            ThreadStatus.Idle => RadialText("空闲", "Idle"),
+            ThreadStatus.Thinking => RadialText("运行中", "Working"),
+            ThreadStatus.CompleteUnread =>
+                RadialText("完成 · 未读", "Complete · Unread"),
+            ThreadStatus.RequiresInput =>
+                RadialText("需要回应", "Needs response"),
+            ThreadStatus.Error => RadialText("出错", "Error"),
+            _ => RadialText("状态未知", "Status unknown"),
+        };
+        var subtitle =
+            $"{RadialText("槽", "Slot")} {slotNumber} · {statusLabel}";
+        return isCurrent
+            ? $"{subtitle} · {RadialText("当前选中", "Selected")}"
+            : subtitle;
+    }
+
+    private AgentKeypadPresentation BuildAgentKeypadPresentation()
+    {
+        return new AgentKeypadPresentation(
+            RadialText(
+                "虚拟 Codex Micro 小键盘 · 按对应键切换",
+                "Virtual Codex Micro keypad · Press a mapped key to switch"),
+            Glyph(LogicalInput.FaceEast),
+            RadialText("取消", "Cancel"),
+            RadialText(
+                "选中键按其状态色脉冲",
+                "The selected key pulses in its status color"),
+            RadialText("空闲", "Idle"),
+            RadialText("运行中", "Working"),
+            RadialText("完成未读", "Complete unread"),
+            RadialText("需要回应", "Needs response"),
+            RadialText("出错", "Error"),
+            RadialText("未绑定", "Unassigned"));
     }
 
     private DispatchDisplay ResolveDispatchDisplay()
@@ -1914,7 +1993,7 @@ public partial class MainWindow : Window
             RadialInputAction.Dispatch => "command-dispatch",
             RadialInputAction.Steer => "turn-steer",
             RadialInputAction.Queue => "turn-queue",
-            RadialInputAction.StopTurn => "turn-stop",
+            RadialInputAction.BeginStopHold => "turn-stop",
             RadialInputAction.NewTask => "action-new-task",
             RadialInputAction.NavigateForward => "action-forward",
             RadialInputAction.ToggleSidebar => "action-sidebar",
@@ -3219,13 +3298,22 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (UsesAdvancedComposerDial)
+        var view = ComposerPickerViewPolicy.ResolveEntryView(
+            UsesAdvancedComposerDial);
+        if (
+            view == ComposerPickerView.Model &&
+            !_modelPickerShortcutReady)
         {
-            _ = OpenComposerPickerAsync(ComposerPickerView.Advanced);
+            PresentAdvancedPickerMenuResult(
+                new ComposerPickerResult(
+                    false,
+                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                    ErrorDetail:
+                        "composer-model-picker-keybinding-conflict"));
             return;
         }
 
-        _ = OpenComposerPickerAsync(ComposerPickerView.Simple);
+        _ = OpenComposerPickerAsync(view);
     }
 
     private void QueueVirtualDialNavigation(
@@ -3409,6 +3497,8 @@ public partial class MainWindow : Window
     private async Task SelectVirtualDialOptionAsync()
     {
         CancelPendingComposerSelection();
+        var selectedFromSimpleModelPicker =
+            _simpleModelPickerOpen;
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
@@ -3426,6 +3516,15 @@ public partial class MainWindow : Window
         PresentVirtualDialResult(result);
         if (result.Succeeded && !result.IsMenuOpen)
         {
+            _composerPickerMenuLikelyOpen = false;
+            if (selectedFromSimpleModelPicker)
+            {
+                await Task.Delay(
+                        BridgeTimings.ComposerFallbackSettleMs)
+                    .ConfigureAwait(true);
+                InitializeComposerControls();
+            }
+
             BeginVirtualDialReleaseDrain();
         }
     }
@@ -3456,11 +3555,15 @@ public partial class MainWindow : Window
         var hasPendingLocalAction =
             _composerPickerCancellation is not null ||
             Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
-            Volatile.Read(ref _pendingAdvancedSteps) != 0 ||
-            _navigationUndo is not null;
+            Volatile.Read(ref _pendingAdvancedSteps) != 0;
         if (hasPendingLocalAction)
         {
             CancelAction();
+            return;
+        }
+
+        if (TryHandleNavigationUndo())
+        {
             return;
         }
 
@@ -3528,7 +3631,7 @@ public partial class MainWindow : Window
             }
 
             _cancelHoldCancellation = null;
-            CancelAction();
+            StopCurrentTurn();
         }
         catch (OperationCanceledException)
         {
@@ -3685,7 +3788,7 @@ public partial class MainWindow : Window
             result.Succeeded &&
             !result.MenuWasPresent)
         {
-            CancelAction();
+            BeginCancelHold();
             return;
         }
 
@@ -4227,8 +4330,12 @@ public partial class MainWindow : Window
         ComposerPickerView view,
         bool startPendingDialNavigation = false)
     {
-        var advanced = view == ComposerPickerView.Advanced;
-        if (advanced)
+        var ownsNativeNavigation =
+            view is ComposerPickerView.Advanced or
+                ComposerPickerView.Model;
+        var simpleModelPicker =
+            view == ComposerPickerView.Model;
+        if (ownsNativeNavigation)
         {
             if (_virtualDialOpenPending)
             {
@@ -4272,17 +4379,15 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (advanced)
+            if (ownsNativeNavigation)
             {
                 _virtualDialOpenPending = false;
-                // Only the Advanced picker takes exclusive stick ownership
-                // for native navigation. The Simple picker stays a visual
-                // aid: the right stick keeps Power (left/right) and
-                // Standard/Fast (up/down) semantics while it is open, so
-                // "flick directly" and "R3 first, then flick" behave the
-                // same way.
                 SetVirtualDialMenuOpen(
                     result.Succeeded && result.IsMenuOpen);
+                _simpleModelPickerOpen =
+                    simpleModelPicker &&
+                    result.Succeeded &&
+                    result.IsMenuOpen;
                 PresentAdvancedPickerMenuResult(result);
                 if (
                     result.Succeeded &&
@@ -4316,7 +4421,7 @@ public partial class MainWindow : Window
                 false,
                 Error: AgentAutomationErrorCodes.Unexpected,
                 ErrorDetail: exception.Message);
-            if (advanced)
+            if (ownsNativeNavigation)
             {
                 PresentAdvancedPickerMenuResult(result);
             }
@@ -4329,7 +4434,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            if (advanced)
+            if (ownsNativeNavigation)
             {
                 _virtualDialOpenPending = false;
             }
@@ -4604,6 +4709,14 @@ public partial class MainWindow : Window
                 RadialText(
                     "无法切换到当前账户的高级模型菜单",
                     "Could not switch to the Advanced model picker for the current account"),
+            "composer-model-picker-keybinding-conflict" =>
+                RadialText(
+                    "模型选择快捷键未就绪或有冲突；请检查设置并重启 Codex",
+                    "The model picker shortcut is unavailable or conflicts; check Settings and restart Codex"),
+            "composer-model-picker-refocus" =>
+                RadialText(
+                    "未能结束模型选择会话；请保持 Codex 在前台后再按 B/R3",
+                    "Could not end the model picker session; keep Codex in front and press B/R3 again"),
             "composer-speed-option" =>
                 RadialText(
                     "当前账户或模型没有提供这个速度选项",
@@ -5286,7 +5399,8 @@ public partial class MainWindow : Window
                 ? _localization.Strings.Get(
                     StringKeys.MessageSent)
                 : ExecutionFailureLabel(
-                    automation.Error));
+                    automation.Error,
+                    automation.ErrorDetail));
         Pulse(strength: 0.28);
     }
 
@@ -5348,58 +5462,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var active = _composerAutomation.InvokeAction(
-            _settings,
-            "Stop",
-            "Cancel",
-            "Cancel request");
-        if (active.Succeeded)
+        if (TryHandleNavigationUndo())
         {
-            ClearNavigationUndo();
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageCurrentOperationStopped,
-                cancelGlyph));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonCancel,
-                    cancelGlyph),
-                _localization.Strings.Get(
-                    StringKeys.MessageCurrentOperationStoppedDetail));
-            Pulse(strength: 0.18);
             return;
-        }
-
-        if (_navigationUndo is { } undo)
-        {
-            if (
-                !undo.Confirmed ||
-                undo.ExpiresAt is null)
-            {
-                undo.UndoRequested = true;
-                var cancelGlyph = Glyph(LogicalInput.FaceEast);
-                AddEvent(_localization.Strings.Format(
-                    StringKeys.MessageUndoQueued,
-                    cancelGlyph));
-                ShowFeedback(
-                    _localization.Strings.Format(
-                        StringKeys.MessageButtonUndo,
-                        cancelGlyph),
-                    _localization.Strings.Get(
-                        StringKeys.MessageUndoAfterOpen));
-                Pulse(strength: 0.12);
-                return;
-            }
-
-            if (DateTimeOffset.UtcNow > undo.ExpiresAt)
-            {
-                ClearNavigationUndo();
-            }
-            else
-            {
-                ExecuteNavigationUndo(undo);
-                return;
-            }
         }
 
         var automation = _composerAutomation.Cancel(_settings);
@@ -5422,6 +5487,90 @@ public partial class MainWindow : Window
                     StringKeys.MessageCanceled)
                 : ExecutionFailureLabel(
                     automation.Error));
+        Pulse(strength: 0.18);
+    }
+
+    private bool TryHandleNavigationUndo()
+    {
+        if (_navigationUndo is not { } undo)
+        {
+            return false;
+        }
+
+        var action = NavigationUndoPressPolicy.Resolve(
+            undo.Confirmed,
+            undo.ExpiresAt,
+            DateTimeOffset.UtcNow);
+        if (
+            action ==
+                NavigationUndoPressAction.QueueUntilNavigationConfirms)
+        {
+            undo.UndoRequested = true;
+            var cancelGlyph = Glyph(LogicalInput.FaceEast);
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageUndoQueued,
+                cancelGlyph));
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonUndo,
+                    cancelGlyph),
+                _localization.Strings.Get(
+                    StringKeys.MessageUndoAfterOpen));
+            Pulse(strength: 0.12);
+            return true;
+        }
+
+        if (
+            action ==
+                NavigationUndoPressAction.ExpireAndBeginStopHold)
+        {
+            ClearNavigationUndo();
+            return false;
+        }
+
+        ExecuteNavigationUndo(undo);
+        return true;
+    }
+
+    private void StopCurrentTurn()
+    {
+        var automation = _composerAutomation.InvokeAction(
+            _settings,
+            "Stop",
+            "Cancel",
+            "Cancel request");
+        var cancelGlyph = Glyph(LogicalInput.FaceEast);
+        if (automation.Succeeded)
+        {
+            ClearNavigationUndo();
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageCurrentOperationStopped,
+                cancelGlyph));
+            ShowFeedback(
+                _localization.Strings.Format(
+                    StringKeys.MessageButtonCancel,
+                    cancelGlyph),
+                _localization.Strings.Get(
+                    StringKeys.MessageCurrentOperationStoppedDetail));
+            Pulse(strength: 0.18);
+            return;
+        }
+
+        AddEvent(
+            _localization.Strings.Format(
+                StringKeys.MessageCurrentOperationStopped,
+                cancelGlyph) +
+            ExecutionSuffix(
+                false,
+                automation.Error,
+                automation.ErrorDetail));
+        ShowFeedback(
+            _localization.Strings.Format(
+                StringKeys.MessageButtonCancel,
+                cancelGlyph),
+            ExecutionFailureLabel(
+                automation.Error,
+                automation.ErrorDetail));
         Pulse(strength: 0.18);
     }
 
@@ -5652,6 +5801,10 @@ public partial class MainWindow : Window
             }
 
             UpdateLayerTabs();
+            if (_radialLayer == RadialMenuLayerKind.Agent)
+            {
+                RefreshRadialMenu();
+            }
             FooterStatusText.Text = _localization.Strings.Format(
                 StringKeys.MessageDataLoaded,
                 _snapshot.Threads.Count,

@@ -160,7 +160,6 @@ public sealed class SettingsService
                 settings.FastToggleShortcut,
             ForkShortcut = settings.ForkShortcut,
             DictationShortcut = settings.DictationShortcut,
-            SubmitShortcut = settings.SubmitShortcut,
             CancelShortcut = settings.CancelShortcut,
         };
 
@@ -214,9 +213,6 @@ public sealed class SettingsService
         settings.DictationShortcut = NormalizeShortcut(
             settings.DictationShortcut,
             defaults.DictationShortcut);
-        settings.SubmitShortcut = NormalizeShortcut(
-            settings.SubmitShortcut,
-            defaults.SubmitShortcut);
         settings.CancelShortcut = NormalizeShortcut(
             settings.CancelShortcut,
             defaults.CancelShortcut);

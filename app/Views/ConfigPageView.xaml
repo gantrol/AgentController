@@ -173,15 +173,6 @@
                                                     UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Grid.Row="2" Grid.Column="2">
-                            <TextBlock Text="{Binding Strings.ConfigSubmitPrompt,
-                                                    ElementName=Root}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       Foreground="{StaticResource MutedBrush}" />
-                            <TextBox Margin="0,5,0,0"
-                                     Text="{Binding SubmitShortcut,
-                                                    UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Row="4" Grid.Column="0">
                             <TextBlock Text="{Binding Strings.ConfigDictation,
                                                     ElementName=Root}"
                                        FontSize="{StaticResource Font.Size.Label}"
@@ -190,7 +181,7 @@
                                      Text="{Binding DictationShortcut,
                                                     UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
-                        <StackPanel Grid.Row="4" Grid.Column="2">
+                        <StackPanel Grid.Row="4" Grid.Column="0">
                             <TextBlock Text="{Binding Strings.ConfigModelPicker,
                                                     ElementName=Root}"
                                        FontSize="{StaticResource Font.Size.Label}"

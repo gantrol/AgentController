@@ -11,7 +11,6 @@ public sealed class ConfigPageViewModel : ObservableObject
     private string _modelPickerShortcut = "Ctrl+Shift+M";
     private string _fastToggleShortcut = "F20";
     private string _dictationShortcut = "Ctrl+Shift+D";
-    private string _submitShortcut = "F22";
     private string _description = string.Empty;
     private string _leftStickSidebarTitle = string.Empty;
     private string _moveFocusDescription = string.Empty;
@@ -152,12 +151,6 @@ public sealed class ConfigPageViewModel : ObservableObject
         set => SetProperty(ref _dictationShortcut, value);
     }
 
-    public string SubmitShortcut
-    {
-        get => _submitShortcut;
-        set => SetProperty(ref _submitShortcut, value);
-    }
-
     public void UpdateContext(
         LocalizedStrings strings,
         string agentName,
@@ -205,7 +198,6 @@ public sealed class ConfigPageViewModel : ObservableObject
         ModelPickerShortcut = settings.ModelPickerShortcut;
         FastToggleShortcut = settings.FastToggleShortcut;
         DictationShortcut = settings.DictationShortcut;
-        SubmitShortcut = settings.SubmitShortcut;
     }
 
     public void ApplyTo(AppSettings settings)
@@ -226,9 +218,6 @@ public sealed class ConfigPageViewModel : ObservableObject
         settings.DictationShortcut = Normalize(
             DictationShortcut,
             "Ctrl+Shift+D");
-        settings.SubmitShortcut = Normalize(
-            SubmitShortcut,
-            "F22");
     }
 
     public void ResetToDefaults()

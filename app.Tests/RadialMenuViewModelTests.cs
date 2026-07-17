@@ -82,6 +82,45 @@ public sealed class RadialMenuViewModelTests
     }
 
     [Fact]
+    public void AgentLayerProjectsKeypadPresentationAndStatus()
+    {
+        var presentation = new AgentKeypadPresentation(
+            "Press a mapped key",
+            "B",
+            "Cancel",
+            "Selected key pulses",
+            "Idle",
+            "Working",
+            "Complete unread",
+            "Needs response",
+            "Error",
+            "Unassigned");
+        var viewModel = new RadialMenuViewModel();
+        viewModel.Update(
+            new RadialMenuState(
+                RadialMenuLayerKind.Agent,
+                "Agent tasks",
+                "LB",
+                [
+                    new RadialMenuItemState(
+                        "agent-slot-1",
+                        RadialMenuSlotPosition.Top,
+                        "Up",
+                        "Task one",
+                        status: ThreadStatus.Thinking),
+                ],
+                RadialMenuDisplayMode.Always,
+                agentKeypad: presentation));
+
+        Assert.True(viewModel.IsAgentLayer);
+        Assert.Same(presentation, viewModel.AgentKeypad);
+        Assert.Equal(ThreadStatus.Thinking, viewModel.Top.Status);
+        Assert.Equal(
+            ThreadStatus.Unassigned,
+            viewModel.Right.Status);
+    }
+
+    [Fact]
     public void HideDoesNotDiscardPreparedMenu()
     {
         var viewModel = new RadialMenuViewModel();

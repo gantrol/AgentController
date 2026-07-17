@@ -2,6 +2,12 @@ namespace CodexController.Services;
 
 internal static class ComposerPickerViewPolicy
 {
+    internal static ComposerPickerView ResolveEntryView(
+        bool usesAdvancedMode) =>
+        usesAdvancedMode
+            ? ComposerPickerView.Advanced
+            : ComposerPickerView.Model;
+
     private static readonly string[] PowerNames =
         ["power", "功率", "强度"];
 

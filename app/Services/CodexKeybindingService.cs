@@ -13,13 +13,13 @@ public sealed class CodexKeybindingService
         "composer.decreaseReasoningEffort";
     private const string ReasoningUpCommand =
         "composer.increaseReasoningEffort";
+    private const string ModelPickerCommand =
+        "composer.openModelPicker";
     private const string FastToggleCommand =
         "composer.toggleFastMode";
     private const string ForkCommand = "forkThread";
     private const string DictationCommand =
         "composer.startDictation";
-    private const string SubmitCommand =
-        "composer.submit";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -52,6 +52,9 @@ public sealed class CodexKeybindingService
                     ReasoningUpCommand,
                     settings.ReasoningUpShortcut.Trim()),
                 new DesiredBinding(
+                    ModelPickerCommand,
+                    settings.ModelPickerShortcut.Trim()),
+                new DesiredBinding(
                     FastToggleCommand,
                     settings.FastToggleShortcut.Trim()),
                 new DesiredBinding(
@@ -60,9 +63,6 @@ public sealed class CodexKeybindingService
                 new DesiredBinding(
                     DictationCommand,
                     settings.DictationShortcut.Trim()),
-                new DesiredBinding(
-                    SubmitCommand,
-                    settings.SubmitShortcut.Trim()),
             };
 
             var added = new List<string>();
@@ -349,6 +349,20 @@ public sealed record CodexKeybindingMergeResult(
     string? ErrorDetail = null)
 {
     public bool Succeeded => Error is null;
+
+    public bool CanUseShortcut(string? key)
+    {
+        if (!Succeeded || string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        var prefix = $"key={key.Trim()};";
+        return !Conflicts.Any(conflict =>
+            conflict.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase));
+    }
 
     public AgentAutomationError? Failure =>
         Error is null

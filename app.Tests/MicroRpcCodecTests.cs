@@ -1,6 +1,8 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using CodexController.Models;
+using CodexController.Services;
 using CodexController.Services.Micro;
 
 namespace CodexController.Tests;
@@ -92,6 +94,19 @@ public sealed class MicroRpcCodecTests
 public sealed class MicroInputServiceTests
 {
     [Fact]
+    public void MissingBrokerIsANormalNotSentResult()
+    {
+        using var transport = new NamedPipeMicroReportTransport(
+            $"AgentController.Tests.Missing.{Guid.NewGuid():N}");
+
+        var result = transport.Send(
+            MicroRpcCodec.EncodeHid("ACT12", action: 1));
+
+        Assert.Equal(MicroReportSendResult.NotSent, result);
+        Assert.Equal(MicroTransportState.Unavailable, transport.State);
+    }
+
+    [Fact]
     public void FastUsesOfficialAct06PressAndRelease()
     {
         using var transport = new RecordingTransport();
@@ -152,12 +167,15 @@ public sealed class MicroInputServiceTests
     {
         public List<byte[]> Reports { get; } = [];
 
+        public MicroReportSendResult Result { get; init; } =
+            MicroReportSendResult.Accepted;
+
         public MicroTransportState State => MicroTransportState.Ready;
 
-        public bool TrySend(IReadOnlyList<byte[]> reports)
+        public MicroReportSendResult Send(IReadOnlyList<byte[]> reports)
         {
             Reports.AddRange(reports);
-            return true;
+            return Result;
         }
 
         public void Dispose()

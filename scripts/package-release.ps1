@@ -76,6 +76,12 @@ Copy-Item -LiteralPath (
 Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\release-v0.7.md") `
     -Destination $docsRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "public\docs\codex-micro-virtual-hid-bridge-plan.md") `
+    -Destination $docsRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "docs\codex-26.707.12708-vhf-status-input.zh-CN.md") `
+    -Destination $docsRoot
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force

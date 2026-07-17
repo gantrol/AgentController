@@ -20,7 +20,7 @@ public enum RadialInputAction
     Dispatch,
     Steer,
     Queue,
-    StopTurn,
+    BeginStopHold,
     NewTask,
     NavigateForward,
     ToggleSidebar,
@@ -147,7 +147,7 @@ public static class RadialInputMap
         if (downEdges.HasFlag(ControllerButtons.Y))
             return RadialInputAction.Queue;
         if (downEdges.HasFlag(ControllerButtons.B))
-            return RadialInputAction.StopTurn;
+            return RadialInputAction.BeginStopHold;
         if (downEdges.HasFlag(ControllerButtons.A))
             return RadialInputAction.Fork;
         return RadialInputAction.None;

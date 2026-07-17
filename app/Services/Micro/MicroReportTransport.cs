@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 
 namespace CodexController.Services.Micro;
 
@@ -10,11 +11,18 @@ public enum MicroTransportState
     Faulted,
 }
 
+public enum MicroReportSendResult
+{
+    NotSent,
+    Accepted,
+    OutcomeUnknown,
+}
+
 public interface IMicroReportTransport : IDisposable
 {
     MicroTransportState State { get; }
 
-    bool TrySend(IReadOnlyList<byte[]> reports);
+    MicroReportSendResult Send(IReadOnlyList<byte[]> reports);
 }
 
 public sealed class UnavailableMicroReportTransport : IMicroReportTransport
@@ -27,7 +35,8 @@ public sealed class UnavailableMicroReportTransport : IMicroReportTransport
 
     public MicroTransportState State => MicroTransportState.Unavailable;
 
-    public bool TrySend(IReadOnlyList<byte[]> reports) => false;
+    public MicroReportSendResult Send(IReadOnlyList<byte[]> reports) =>
+        MicroReportSendResult.NotSent;
 
     public void Dispose()
     {
@@ -73,12 +82,12 @@ public sealed class NamedPipeMicroReportTransport : IMicroReportTransport
         }
     }
 
-    public bool TrySend(IReadOnlyList<byte[]> reports)
+    public MicroReportSendResult Send(IReadOnlyList<byte[]> reports)
     {
         ArgumentNullException.ThrowIfNull(reports);
         if (reports.Count == 0 || reports.Count > ushort.MaxValue)
         {
-            return false;
+            return MicroReportSendResult.NotSent;
         }
 
         foreach (var report in reports)
@@ -95,7 +104,7 @@ public sealed class NamedPipeMicroReportTransport : IMicroReportTransport
         {
             if (!EnsureConnected())
             {
-                return false;
+                return MicroReportSendResult.NotSent;
             }
 
             try
@@ -126,26 +135,26 @@ public sealed class NamedPipeMicroReportTransport : IMicroReportTransport
                     response[0] == SuccessAcknowledgement)
                 {
                     _state = MicroTransportState.Ready;
-                    return true;
+                    return MicroReportSendResult.Accepted;
                 }
 
                 FailConnection();
-                return false;
+                return MicroReportSendResult.OutcomeUnknown;
             }
             catch (IOException)
             {
                 FailConnection();
-                return false;
+                return MicroReportSendResult.OutcomeUnknown;
             }
             catch (ObjectDisposedException)
             {
                 FailConnection();
-                return false;
+                return MicroReportSendResult.OutcomeUnknown;
             }
             catch (OperationCanceledException)
             {
                 FailConnection();
-                return false;
+                return MicroReportSendResult.OutcomeUnknown;
             }
         }
     }
@@ -169,6 +178,14 @@ public sealed class NamedPipeMicroReportTransport : IMicroReportTransport
 
         if (Environment.TickCount64 < _retryAfter)
         {
+            return false;
+        }
+
+        if (!WaitNamedPipe(
+            $@"\\.\pipe\{_pipeName}",
+            milliseconds: 1))
+        {
+            FailConnection();
             return false;
         }
 
@@ -211,4 +228,14 @@ public sealed class NamedPipeMicroReportTransport : IMicroReportTransport
             ? MicroTransportState.Faulted
             : MicroTransportState.Unavailable;
     }
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "WaitNamedPipeW",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WaitNamedPipe(
+        string name,
+        int milliseconds);
 }

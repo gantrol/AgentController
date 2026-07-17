@@ -1,5 +1,6 @@
 using CodexController.Services;
 using CodexController.Models;
+using CodexController.Services.Micro;
 
 namespace CodexController.Tests;
 
@@ -82,5 +83,59 @@ public sealed class ComposerDialNativeInputPolicyTests
         Assert.False(
             ComposerDialNativeInputPolicy
                 .RequiresMicroSemanticNavigation(name));
+    }
+
+    [Fact]
+    public async Task ModelPickerEnterKeepsNativeSessionUntilExplicitDismiss()
+    {
+        var shortcuts = new List<string>();
+        var keys = new List<ushort>();
+        var service = new CodexComposerService(
+            MicroInputService.Unavailable,
+            shortcut =>
+            {
+                shortcuts.Add(shortcut);
+                return true;
+            },
+            key =>
+            {
+                keys.Add(key);
+                return true;
+            });
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+            ModelPickerShortcut = "Ctrl+Shift+M",
+        };
+
+        var opened = await service.OpenPickerAsync(
+            ComposerPickerView.Model,
+            settings,
+            CancellationToken.None);
+        var selected = service.DialSelect(settings);
+        var navigated = service.DialNavigate(
+            ComposerDialNavigation.Down,
+            settings);
+        var dismissed = service.DialCancel(settings);
+
+        Assert.True(opened.Succeeded);
+        Assert.True(opened.IsMenuOpen);
+        Assert.True(selected.Succeeded);
+        Assert.True(selected.IsMenuOpen);
+        Assert.True(navigated.Succeeded);
+        Assert.True(navigated.IsMenuOpen);
+        Assert.True(dismissed.Succeeded);
+        Assert.False(dismissed.IsMenuOpen);
+        Assert.Equal(
+            ["Ctrl+Shift+M", "Ctrl+Shift+M"],
+            shortcuts);
+        Assert.Equal(
+            [
+                ComposerDialNativeInputPolicy.EnterKey,
+                ComposerDialNativeInputPolicy.DownKey,
+                ComposerDialNativeInputPolicy.EscapeKey,
+            ],
+            keys);
     }
 }

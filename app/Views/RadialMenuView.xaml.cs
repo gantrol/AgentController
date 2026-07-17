@@ -207,7 +207,9 @@ public partial class RadialMenuView : UserControl
         LeaderCanvas.Children.Clear();
         HideAllTargetAnchors();
 
-        if (_subscribedViewModel is not { IsVisible: true } viewModel)
+        if (
+            _subscribedViewModel is not { IsVisible: true } viewModel ||
+            viewModel.IsAgentLayer)
         {
             return;
         }

@@ -19,7 +19,8 @@ public sealed class RadialMenuState
         bool isLearningCueReady = false,
         string? subtitle = null,
         RadialMenuInteractionPhase interactionPhase =
-            RadialMenuInteractionPhase.AwaitingInput)
+            RadialMenuInteractionPhase.AwaitingInput,
+        AgentKeypadPresentation? agentKeypad = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(modifierGlyph);
@@ -51,6 +52,7 @@ public sealed class RadialMenuState
         IsLayerEngaged = isLayerEngaged;
         IsLearningCueReady = isLearningCueReady;
         InteractionPhase = interactionPhase;
+        AgentKeypad = agentKeypad ?? AgentKeypadPresentation.Empty;
         Items = new ReadOnlyCollection<RadialMenuItemState>(itemList);
         _itemsByPosition = new ReadOnlyDictionary<
             RadialMenuSlotPosition,
@@ -73,6 +75,8 @@ public sealed class RadialMenuState
     public bool IsLearningCueReady { get; }
 
     public RadialMenuInteractionPhase InteractionPhase { get; }
+
+    public AgentKeypadPresentation AgentKeypad { get; }
 
     public IReadOnlyList<RadialMenuItemState> Items { get; }
 

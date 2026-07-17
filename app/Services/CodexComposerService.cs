@@ -90,6 +90,7 @@ public enum ComposerPickerView
     Unknown,
     Simple,
     Advanced,
+    Model,
 }
 
 public sealed record ComposerPickerResult(
@@ -101,10 +102,13 @@ public sealed record ComposerPickerResult(
 
 public sealed partial class CodexComposerService
 {
+    internal const string NativeSubmitShortcut = "Ctrl+Enter";
+
     private const int DialPopupMountTimeoutMs = 240;
     private const int DialConfirmationTimeoutMs = 650;
     private const int DialPopupPollIntervalMs = 24;
     private const int DialPopupCloseAttempts = 3;
+    private const int NativePickerRefocusSettleMs = 55;
     private const int PlanStateChangeTimeoutMs = 900;
     private const int PlanStatePollIntervalMs = 40;
 
@@ -113,6 +117,8 @@ public sealed partial class CodexComposerService
     private readonly ComposerShortcutHealth _powerShortcutHealth = new();
     private readonly ComposerShortcutHealth _speedShortcutHealth = new();
     private readonly MicroInputService _microInput;
+    private readonly Func<string, bool> _sendShortcut;
+    private readonly Func<ushort, bool> _sendKey;
     private readonly Dictionary<string, OwnedDialSurface>
         _dialOwnedSurfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string>
@@ -120,6 +126,7 @@ public sealed partial class CodexComposerService
     private readonly Dictionary<string, string>
         _dialSurfaceOptionNames = new(StringComparer.Ordinal);
     private bool _dialMenuOpen;
+    private bool _dialSelectionRequiresExplicitDismiss;
     private string? _dialControlKey;
     private string? _dialControlName;
     private string? _dialActiveSurfaceKey;
@@ -128,14 +135,39 @@ public sealed partial class CodexComposerService
     private long _dialSurfaceMountSequence;
 
     public CodexComposerService()
-        : this(MicroInputService.Unavailable)
+        : this(
+            MicroInputService.Unavailable,
+            Win32Input.SendShortcut,
+            Win32Input.SendKey)
     {
     }
 
     public CodexComposerService(MicroInputService microInput)
+        : this(
+            microInput,
+            Win32Input.SendShortcut,
+            Win32Input.SendKey)
+    {
+    }
+
+    internal CodexComposerService(
+        MicroInputService microInput,
+        Func<string, bool> sendShortcut)
+        : this(microInput, sendShortcut, Win32Input.SendKey)
+    {
+    }
+
+    internal CodexComposerService(
+        MicroInputService microInput,
+        Func<string, bool> sendShortcut,
+        Func<ushort, bool> sendKey)
     {
         _microInput = microInput ??
             throw new ArgumentNullException(nameof(microInput));
+        _sendShortcut = sendShortcut ??
+            throw new ArgumentNullException(nameof(sendShortcut));
+        _sendKey = sendKey ??
+            throw new ArgumentNullException(nameof(sendKey));
     }
 
     /// <summary>
@@ -486,7 +518,7 @@ public sealed partial class CodexComposerService
                     !ComposerDialNativeInputPolicy.TryGetNavigationKey(
                         navigation,
                         out var nativeKey) ||
-                    !Win32Input.SendKey(nativeKey))
+                    !_sendKey(nativeKey))
                 {
                     return new(
                         false,
@@ -908,7 +940,7 @@ public sealed partial class CodexComposerService
         {
             if (_dialMenuOpen)
             {
-                if (!Win32Input.SendKey(0x0D))
+                if (!_sendKey(ComposerDialNativeInputPolicy.EnterKey))
                 {
                     return new(
                         false,
@@ -921,6 +953,22 @@ public sealed partial class CodexComposerService
                 }
 
                 var selected = _dialControlName;
+                if (_dialSelectionRequiresExplicitDismiss)
+                {
+                    // Codex's model picker is hierarchical. Enter can switch
+                    // Compact/Advanced views, open Model/Effort/Speed, or
+                    // commit a leaf. The VHF/keyboard acknowledgement only
+                    // proves input delivery, so it cannot tell those cases
+                    // apart. Keep native ownership until B/R3 explicitly
+                    // dismisses the session; otherwise the next stick frame
+                    // leaks into the Simple Power F17/F18 fallback.
+                    return new(
+                        true,
+                        selected,
+                        IsMenuOpen: true,
+                        MenuWasPresent: true);
+                }
+
                 ClearOwnedDialPopup();
                 return new(
                     true,
@@ -1542,9 +1590,37 @@ public sealed partial class CodexComposerService
             if (_dialMenuOpen)
             {
                 var selected = _dialControlName;
+                if (_dialSelectionRequiresExplicitDismiss)
+                {
+                    // `composer.openModelPicker` is idempotent while open:
+                    // Codex focuses the root picker target instead of
+                    // toggling it. If a leaf already closed the picker, the
+                    // same command reopens it. In either case the following
+                    // Escape is delivered to an owned root surface, not the
+                    // base composer, and closes any nested flyout with it.
+                    var shortcut = settings.ModelPickerShortcut.Trim();
+                    if (
+                        shortcut.Length == 0 ||
+                        !_sendShortcut(shortcut))
+                    {
+                        return new(
+                            false,
+                            selected,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .InputInjectionFailed,
+                            ErrorDetail:
+                                "composer-model-picker-refocus",
+                            MenuWasPresent: true);
+                    }
+
+                    Thread.Sleep(NativePickerRefocusSettleMs);
+                }
+
                 var sent =
                     _microInput.TryDismissOpenMenu() ||
-                    Win32Input.SendKey(0x1B);
+                    _sendKey(ComposerDialNativeInputPolicy.EscapeKey);
                 if (!sent)
                 {
                     return new(
@@ -2291,73 +2367,19 @@ public sealed partial class CodexComposerService
 
         try
         {
-            var context = FindCodexWindow();
-            if (context is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.AgentWindowNotFound);
-            }
-
-            var namedSubmit = InvokeNamedButton(
-                context.Value.Window,
-                ["Send", "Send message", "Submit", "Submit prompt",
-                 "Transcribe and send"]);
-            if (namedSubmit.Succeeded)
-            {
-                return namedSubmit;
-            }
-
-            var editor = FindComposerEditor(context.Value.Window);
-            if (editor is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.ElementNotFound,
-                    "composer-editor");
-            }
-
-            if (
-                editor.TryGetCurrentPattern(
-                    TextPattern.Pattern,
-                    out var textObject) &&
-                textObject is TextPattern textPattern &&
-                string.IsNullOrWhiteSpace(
-                    textPattern.DocumentRange.GetText(-1)))
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.ComposerEmpty);
-            }
-
-            editor.SetFocus();
-            Thread.Sleep(45);
-            if (
-                !Win32Input.IsCodexForeground() &&
-                !Win32Input.FocusCodexAndWait())
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.FocusRejected,
-                    "composer-editor");
-            }
-
-            editor.SetFocus();
-            Thread.Sleep(25);
-            if (!Win32Input.SendShortcut(settings.SubmitShortcut))
+            // Codex 26.707.12708.0 maps Mod-Enter directly to the composer
+            // submit command for every composerEnterBehavior value. On
+            // Windows, Mod is Control. This intentionally bypasses UIA,
+            // custom keybindings, and the optional Micro bridge.
+            if (!_sendShortcut(NativeSubmitShortcut))
             {
                 return new(
                     false,
                     AgentAutomationErrorCodes.InputInjectionFailed,
-                    settings.SubmitShortcut);
+                    NativeSubmitShortcut);
             }
 
-            return WaitForComposerTextToClear(editor, timeoutMs: 600)
-                ? new(true)
-                : new(
-                    false,
-                    AgentAutomationErrorCodes.ElementUnsupported,
-                    "composer-submit-not-verified");
+            return new(true);
         }
         catch (Exception exception)
         {
@@ -2585,8 +2607,13 @@ public sealed partial class CodexComposerService
         var deadline = Environment.TickCount64 + timeoutMs;
         do
         {
+            if (IsComposerEditorEmpty(editor))
+            {
+                return true;
+            }
+
             var text = ReadComposerText(editor);
-            if (text is not null && string.IsNullOrWhiteSpace(text))
+            if (IsComposerTextEffectivelyEmpty(text))
             {
                 return true;
             }
@@ -2595,10 +2622,23 @@ public sealed partial class CodexComposerService
         }
         while (Environment.TickCount64 < deadline);
 
-        var finalText = ReadComposerText(editor);
         return
-            finalText is not null &&
-            string.IsNullOrWhiteSpace(finalText);
+            IsComposerEditorEmpty(editor) ||
+            IsComposerTextEffectivelyEmpty(ReadComposerText(editor));
+    }
+
+    private static bool IsComposerTextEffectivelyEmpty(string? text)
+    {
+        if (text is null)
+        {
+            return false;
+        }
+
+        return string.IsNullOrWhiteSpace(
+            text
+                .Replace("\u200B", string.Empty, StringComparison.Ordinal)
+                .Replace("\uFEFF", string.Empty, StringComparison.Ordinal)
+                .Replace("\uFFFC", string.Empty, StringComparison.Ordinal));
     }
 
     private static ComposerAutomationResult InvokeNamedButton(
@@ -3033,11 +3073,15 @@ public sealed partial class CodexComposerService
         }
     }
 
-    private void MarkNativePickerOpen(string? controlName)
+    private void MarkNativePickerOpen(
+        string? controlName,
+        bool selectionRequiresExplicitDismiss = false)
     {
         lock (_dialSync)
         {
             _dialMenuOpen = true;
+            _dialSelectionRequiresExplicitDismiss =
+                selectionRequiresExplicitDismiss;
             if (!string.IsNullOrWhiteSpace(controlName))
             {
                 _dialControlName = controlName;
@@ -3048,6 +3092,7 @@ public sealed partial class CodexComposerService
     private void ClearOwnedDialPopup()
     {
         _dialMenuOpen = false;
+        _dialSelectionRequiresExplicitDismiss = false;
         _dialControlKey = null;
         _dialActiveSurfaceKey = null;
         _dialControlGeometry = null;
@@ -5588,6 +5633,43 @@ public sealed partial class CodexComposerService
         AppSettings settings,
         CancellationToken cancellationToken)
     {
+        if (view == ComposerPickerView.Model)
+        {
+            var gate = ValidateInteractiveBridge(settings);
+            if (gate is not null)
+            {
+                return new(
+                    false,
+                    Error: gate.Error,
+                    ErrorDetail: gate.ErrorDetail);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var shortcut = settings.ModelPickerShortcut.Trim();
+            if (
+                shortcut.Length == 0 ||
+                !_sendShortcut(shortcut))
+            {
+                return new(
+                    false,
+                    Error:
+                        AgentAutomationErrorCodes.InputInjectionFailed,
+                    ErrorDetail: "composer-model-picker-shortcut");
+            }
+
+            // The shortcut is provisioned to the official
+            // `composer.openModelPicker` command. Once Codex accepts it,
+            // arrows, Enter, and Escape own the complete interaction. The
+            // Chromium accessibility tree is deliberately not inspected.
+            MarkNativePickerOpen(
+                "Model",
+                selectionRequiresExplicitDismiss: true);
+            return new(
+                true,
+                "Model",
+                IsMenuOpen: true);
+        }
+
         if (view == ComposerPickerView.Simple)
         {
             var gate = ValidateInteractiveBridge(settings);
@@ -8015,7 +8097,7 @@ public sealed partial class CodexComposerService
             : "Standard";
     }
 
-    private static string ModelLabel(string displayName)
+    internal static string ModelLabel(string displayName)
     {
         var value = displayName.StartsWith(
             "GPT-",

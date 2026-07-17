@@ -193,7 +193,6 @@ public sealed class SettingsServiceTests
             FastToggleShortcut = "\t",
             ForkShortcut = string.Empty,
             DictationShortcut = "\r\n",
-            SubmitShortcut = null!,
             CancelShortcut = "  ",
         });
 
@@ -221,9 +220,6 @@ public sealed class SettingsServiceTests
         Assert.Equal(
             defaults.DictationShortcut,
             settings.DictationShortcut);
-        Assert.Equal(
-            defaults.SubmitShortcut,
-            settings.SubmitShortcut);
         Assert.Equal(
             defaults.CancelShortcut,
             settings.CancelShortcut);

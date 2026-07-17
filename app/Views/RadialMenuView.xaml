@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="clr-namespace:CodexController.Views"
              mc:Ignorable="d"
              d:DesignHeight="560"
              d:DesignWidth="980"
@@ -263,6 +264,17 @@
         <Canvas x:Name="DialCanvas"
                 Width="980"
                 Height="560">
+            <Canvas.Style>
+                <Style TargetType="Canvas">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsAgentLayer}"
+                                     Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Canvas.Style>
             <Ellipse Canvas.Left="214"
                      Canvas.Top="34"
                      Width="552"
@@ -512,5 +524,21 @@
                 </Grid>
             </Border>
         </Canvas>
+
+        <views:AgentKeypadView Margin="0,0,0,12"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Bottom">
+            <views:AgentKeypadView.Style>
+                <Style TargetType="views:AgentKeypadView">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsAgentLayer}"
+                                     Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </views:AgentKeypadView.Style>
+        </views:AgentKeypadView>
     </Grid>
 </UserControl>

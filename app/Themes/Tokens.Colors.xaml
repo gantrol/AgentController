@@ -20,6 +20,7 @@
     <Color x:Key="Color.Sage.200">#CFD9D1</Color>
     <Color x:Key="Color.Sage.300">#91A397</Color>
     <Color x:Key="Color.Sage.600">#53675A</Color>
+    <Color x:Key="Color.Blue.600">#347FC4</Color>
     <Color x:Key="Color.Green.600">#2F6A45</Color>
     <Color x:Key="Color.Amber.600">#A56A1C</Color>
     <Color x:Key="Color.Red.600">#9E4A43</Color>
@@ -134,6 +135,29 @@
                      po:Freeze="True" />
     <SolidColorBrush x:Key="Brush.Overlay.Progress.Track"
                      Color="#55FFFFFF"
+                     po:Freeze="True" />
+
+    <!-- Codex Micro-compatible task status lights. -->
+    <SolidColorBrush x:Key="Brush.Led.Idle"
+                     Color="{StaticResource Color.Sand.400}"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Led.Unknown"
+                     Color="{StaticResource Color.Sand.500}"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Led.Working"
+                     Color="{StaticResource Color.Blue.600}"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Led.CompleteUnread"
+                     Color="#78B64D"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Led.RequiresInput"
+                     Color="#F09A22"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Led.Error"
+                     Color="#E24B4B"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Led.Off"
+                     Color="#00FFFFFF"
                      po:Freeze="True" />
 
     <!-- Transitional aliases used by existing views while they move to tokens. -->

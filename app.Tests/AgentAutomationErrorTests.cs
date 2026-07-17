@@ -2,6 +2,7 @@ using CodexController.Agents;
 using CodexController.Localization;
 using CodexController.Models;
 using CodexController.Services;
+using CodexController.Services.Micro;
 
 namespace CodexController.Tests;
 
@@ -39,6 +40,50 @@ public sealed class AgentAutomationErrorTests
             new AgentAutomationError(
                 AgentAutomationErrorCodes.BridgeSafePreview),
             sidebar.Failure);
+    }
+
+    [Fact]
+    public void ComposerSubmitUsesNativeCtrlEnter()
+    {
+        string? sentShortcut = null;
+        var service = new CodexComposerService(
+            MicroInputService.Unavailable,
+            shortcut =>
+            {
+                sentShortcut = shortcut;
+                return true;
+            });
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        var result = service.SubmitComposer(settings);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Ctrl+Enter", sentShortcut);
+    }
+
+    [Fact]
+    public void ComposerSubmitReportsNativeInjectionFailure()
+    {
+        var service = new CodexComposerService(
+            MicroInputService.Unavailable,
+            _ => false);
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        var result = service.SubmitComposer(settings);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(
+            AgentAutomationErrorCodes.InputInjectionFailed,
+            result.Error);
+        Assert.Equal("Ctrl+Enter", result.ErrorDetail);
     }
 
     [Fact]

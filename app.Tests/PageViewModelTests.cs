@@ -16,7 +16,6 @@ public sealed class PageViewModelTests
             ModelPickerShortcut = "Ctrl+M",
             FastToggleShortcut = "F15",
             DictationShortcut = "Ctrl+D",
-            SubmitShortcut = "Ctrl+Enter",
         };
         var target = new AppSettings();
         var viewModel = new ConfigPageViewModel(
@@ -24,12 +23,11 @@ public sealed class PageViewModelTests
             () => { });
 
         viewModel.Load(source);
-        viewModel.SubmitShortcut = "  ";
         viewModel.ApplyTo(target);
 
         Assert.Equal("F13", target.ReasoningDownShortcut);
         Assert.Equal("Ctrl+M", target.ModelPickerShortcut);
-        Assert.Equal("F22", target.SubmitShortcut);
+        Assert.Equal("Ctrl+D", target.DictationShortcut);
     }
 
     [Fact]

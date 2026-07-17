@@ -5,6 +5,19 @@ namespace CodexController.Tests;
 public sealed class ComposerPickerViewPolicyTests
 {
     [Theory]
+    [InlineData(false, ComposerPickerView.Model)]
+    [InlineData(true, ComposerPickerView.Advanced)]
+    public void EntryViewKeepsModelSelectionAvailableInSimpleMode(
+        bool usesAdvancedMode,
+        ComposerPickerView expected)
+    {
+        Assert.Equal(
+            expected,
+            ComposerPickerViewPolicy.ResolveEntryView(
+                usesAdvancedMode));
+    }
+
+    [Theory]
     [InlineData("Power")]
     [InlineData("Power 7")]
     [InlineData("Power: Max")]

@@ -13,6 +13,8 @@ public sealed class RadialMenuViewModel : ObservableObject
     private RadialMenuInteractionPhase _interactionPhase =
         RadialMenuInteractionPhase.AwaitingInput;
     private bool _isVisible;
+    private AgentKeypadPresentation _agentKeypad =
+        AgentKeypadPresentation.Empty;
 
     public RadialMenuViewModel()
     {
@@ -33,8 +35,16 @@ public sealed class RadialMenuViewModel : ObservableObject
     public RadialMenuLayerKind Layer
     {
         get => _layer;
-        private set => SetProperty(ref _layer, value);
+        private set
+        {
+            if (SetProperty(ref _layer, value))
+            {
+                OnPropertyChanged(nameof(IsAgentLayer));
+            }
+        }
     }
+
+    public bool IsAgentLayer => Layer == RadialMenuLayerKind.Agent;
 
     public string Title
     {
@@ -90,6 +100,12 @@ public sealed class RadialMenuViewModel : ObservableObject
         InteractionPhase ==
         RadialMenuInteractionPhase.WaitingForResponse;
 
+    public AgentKeypadPresentation AgentKeypad
+    {
+        get => _agentKeypad;
+        private set => SetProperty(ref _agentKeypad, value);
+    }
+
     public RadialMenuSlotViewModel Top { get; }
 
     public RadialMenuSlotViewModel Right { get; }
@@ -112,6 +128,7 @@ public sealed class RadialMenuViewModel : ObservableObject
         ModifierGlyph = state.ModifierGlyph;
         DisplayMode = state.DisplayMode;
         InteractionPhase = state.InteractionPhase;
+        AgentKeypad = state.AgentKeypad;
         IsVisible = state.IsVisible;
 
         Top.Update(state.GetItem(RadialMenuSlotPosition.Top));

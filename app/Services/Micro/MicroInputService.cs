@@ -56,17 +56,23 @@ public sealed class MicroInputService : IDisposable
             Append(reports, MicroRpcCodec.EncodeHid(key, action: 2));
         }
 
-        return _transport.TrySend(reports);
+        return WasPossiblySent(_transport.Send(reports));
     }
 
     public void Dispose() => _transport.Dispose();
 
     private bool TryTap(string key)
+        => WasPossiblySent(SendTap(key));
+
+    private MicroReportSendResult SendTap(string key)
     {
         var reports = new List<byte[]>();
         AppendTap(reports, key);
-        return _transport.TrySend(reports);
+        return _transport.Send(reports);
     }
+
+    private static bool WasPossiblySent(MicroReportSendResult result) =>
+        result is not MicroReportSendResult.NotSent;
 
     private static void AppendTap(List<byte[]> reports, string key)
     {

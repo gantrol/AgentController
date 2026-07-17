@@ -87,7 +87,7 @@ public sealed class RadialInputMapTests
     [Theory]
     [InlineData(ControllerButtons.X, RadialInputAction.Steer)]
     [InlineData(ControllerButtons.Y, RadialInputAction.Queue)]
-    [InlineData(ControllerButtons.B, RadialInputAction.StopTurn)]
+    [InlineData(ControllerButtons.B, RadialInputAction.BeginStopHold)]
     [InlineData(ControllerButtons.A, RadialInputAction.Fork)]
     public void TurnLayerNeverFallsThroughToBaseActions(
         ControllerButtons button,

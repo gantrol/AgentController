@@ -30,7 +30,8 @@ public sealed record CodexThread(
     DateTimeOffset UpdatedAt,
     string? ProjectPath,
     bool IsPinned,
-    string? NativeTitle = null);
+    string? NativeTitle = null,
+    ThreadStatus Status = ThreadStatus.Unknown);
 
 public sealed record CodexProject(
     string Path,

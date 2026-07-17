@@ -97,6 +97,26 @@ public sealed class RadialMenuStateTests
     }
 
     [Theory]
+    [InlineData(ThreadStatus.Unknown)]
+    [InlineData(ThreadStatus.Thinking)]
+    [InlineData(ThreadStatus.CompleteUnread)]
+    [InlineData(ThreadStatus.RequiresInput)]
+    [InlineData(ThreadStatus.Error)]
+    [InlineData(ThreadStatus.Unassigned)]
+    public void ItemCarriesThreadStatusIndependently(
+        ThreadStatus status)
+    {
+        var item = new RadialMenuItemState(
+            "agent-slot-1",
+            RadialMenuSlotPosition.Top,
+            "Up",
+            "Task",
+            status: status);
+
+        Assert.Equal(status, item.Status);
+    }
+
+    [Theory]
     [InlineData("always", RadialMenuDisplayMode.Always)]
     [InlineData("ALWAYS", RadialMenuDisplayMode.Always)]
     [InlineData("learning", RadialMenuDisplayMode.Learning)]

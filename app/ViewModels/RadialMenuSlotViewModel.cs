@@ -14,6 +14,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
     private bool _isHighlighted;
     private double _confirmationProgress;
     private LogicalInput? _logicalInput;
+    private ThreadStatus _status = ThreadStatus.Unassigned;
 
     public RadialMenuSlotViewModel(
         RadialMenuSlotPosition position)
@@ -92,6 +93,12 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         private set => SetProperty(ref _logicalInput, value);
     }
 
+    public ThreadStatus Status
+    {
+        get => _status;
+        private set => SetProperty(ref _status, value);
+    }
+
     public double ConfirmationProgress
     {
         get => _confirmationProgress;
@@ -135,6 +142,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         IsActionEnabled = item.IsEnabled;
         IsHighlighted = item.IsHighlighted;
         LogicalInput = item.LogicalInput;
+        Status = item.Status;
         ConfirmationProgress = item.ConfirmationProgress;
     }
 
@@ -148,6 +156,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         IsActionEnabled = false;
         IsHighlighted = false;
         LogicalInput = null;
+        Status = ThreadStatus.Unassigned;
         ConfirmationProgress = 0;
     }
 

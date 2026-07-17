@@ -13,7 +13,6 @@ public sealed class CodexKeybindingServiceTests
         var settings = new AppSettings
         {
             DictationShortcut = "Ctrl+Shift+D",
-            SubmitShortcut = "F23",
         };
 
         var first = CodexKeybindingService.EnsureBridgeBindings(
@@ -41,8 +40,14 @@ public sealed class CodexKeybindingServiceTests
             bindings.OfType<JsonObject>(),
             item =>
                 item["command"]?.GetValue<string>() ==
-                    "composer.submit" &&
-                item["key"]?.GetValue<string>() == "F23");
+                    "composer.openModelPicker" &&
+                item["key"]?.GetValue<string>() ==
+                    "Ctrl+Shift+M");
+        Assert.DoesNotContain(
+            bindings.OfType<JsonObject>(),
+            item =>
+                item["command"]?.GetValue<string>() ==
+                    "composer.submit");
         Assert.DoesNotContain(
             bindings.OfType<JsonObject>(),
             item =>
@@ -73,6 +78,8 @@ public sealed class CodexKeybindingServiceTests
             File.ReadAllText(store.Path))!.AsArray();
 
         Assert.True(result.Succeeded);
+        Assert.False(result.CanUseShortcut("Ctrl+Shift+D"));
+        Assert.True(result.CanUseShortcut("Ctrl+Shift+M"));
         Assert.Contains(
             "key=Ctrl+Shift+D;command=another.command",
             result.Conflicts);
