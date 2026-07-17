@@ -153,6 +153,14 @@ dotnet test app.Tests/AgentController.Tests.csproj -c Release
 
 Build output is written to `app/bin/Release/net9.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
 
+To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
+
+```powershell
+./scripts/publish-release.ps1 -Version 0.7.0-hotfix
+```
+
+The command rebuilds the package, verifies its SHA-256 checksum, checks the remote tag, and idempotently creates or updates the Release. Pass `-SkipBuild` to upload already-built artifacts.
+
 ### If you want to modify the source
 
 In principle, emulating Micro's interaction protocol would be faster and less error-prone. But GPT-5.6 Sol kept refusing, arguing that it would be unstable and that UI Automation was the better approach. Its way of making the UI “stable” was to add 700–1,400 ms of latency—not something a human can tolerate as an interaction. To save time, I let it carry on that way at first.
