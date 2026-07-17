@@ -5,12 +5,6 @@
 
 ![version](https://img.shields.io/badge/version-0.7.0--hotfix-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-> Turn an XInput gamepad into a handheld control surface for the Codex desktop app: browse tasks, dictate and send prompts, adjust model settings, and act on running turns without reaching for the keyboard.
-
-![Agent Controller gamepad controls](public/images/agent-controller-gamepad-guide-en.png)
-
----
-
 Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex, and perhaps you wanted one. But consider the evidence:
 
 - Codex Micro has one dial and one stick; a gamepad has two sticks.
@@ -21,6 +15,8 @@ Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex,
 - Most importantly, it cannot play games.
 
 The gamepad wins. QED. (To be fair, very few controllers can compete with six gloriously distracting color-changing lights.)
+
+![Agent Controller gamepad controls](public/images/agent-controller-gamepad-guide-en.png)
 
 > One catch: you still need a microphone for voice input. Neither device usually records audio by itself.
 
