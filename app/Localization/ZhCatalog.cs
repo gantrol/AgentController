@@ -55,7 +55,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "Plan、侧边栏、前后导航、清空输入与项目上下文",
             [StringKeys.ControlWakeAgent] = "{0} · 唤醒 {1}",
             [StringKeys.ControlWakeAgentDescription] =
-                "将 {0} 置于前台并解锁手柄控制",
+                "将 {0} 置于前台；前台控制会自动启用",
 
             [StringKeys.ComposerRightStickAdjustment] =
                 "右摇杆模型旋钮",
@@ -146,7 +146,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SettingsOnlyForeground] =
                 "仅前台时控制 {0}",
             [StringKeys.SettingsOnlyForegroundDescription] =
-                "推荐保持开启。首次按 {0} 将 {1} 置于前台并解锁；之后离开前台只暂停，回到 {1} 且手柄回中后自动恢复。手柄休眠重连同样会恢复。",
+                "推荐保持开启。{1} 位于前台且手柄回中时会自动启用控制；仅在需要将 {1} 置于前台时按 {0}。离开前台会暂停，返回或休眠重连后回中即恢复。",
             [StringKeys.SettingsHaptic] =
                 "操作成功时提供轻微震动",
             [StringKeys.SettingsOverlay] =
@@ -217,7 +217,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.StatusWaitingForReconnect] =
                 "等待手柄重新连接",
             [StringKeys.StatusAgentForegroundLocked] =
-                "按 {1} 弹出 {0}",
+                "{0} 位于前台 · 正在自动启用手柄控制",
             [StringKeys.StatusAgentForegroundNeutral] =
                 "{0} 位于前台 · 松开按键后恢复",
             [StringKeys.StatusAgentForegroundArmed] =
@@ -231,7 +231,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} 未在前台 · 按 {1} 唤醒",
             [StringKeys.StatusControllerHelp] =
-                "{0} 首次唤醒并解锁 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · {2} 项目上下文 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 取消 / 撤回",
+                "需要时按 {0} 唤醒；进入前台后自动启用 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · {2} 项目上下文 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 取消 / 撤回",
             [StringKeys.TrayOpenApplication] =
                 "打开 Agent Controller",
             [StringKeys.TrayOpenAgent] = "打开 {0}",

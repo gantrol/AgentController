@@ -414,6 +414,7 @@ public partial class MainWindow : Window
             onDown: WakeCodex);
 
         var foreground = _activeAgent.Presence.IsForeground;
+        TryAutoArmController(foreground);
         var foregroundAllowsInput =
             ObserveCodexForeground(foreground);
         if (
@@ -1981,6 +1982,32 @@ public partial class MainWindow : Window
         // This avoids requiring Menu again after Codex has been open for a while.
         PauseControllerInput(_xInputService.LastState);
         return false;
+    }
+
+    private bool TryAutoArmController(bool foreground)
+    {
+        if (!_controllerSession.TryAutoArm(
+                _settings.BridgeEnabled,
+                _controllerWasConnected,
+                foreground))
+        {
+            return false;
+        }
+
+        _axisRepeater.Reset();
+        _leftStickRouter.RequireNeutral();
+        _rightStickRouter.RequireNeutral();
+        _bridgeEvents.Publish(
+            BridgeEventKeys.ControllerArmed,
+            parameters: new Dictionary<string, string>
+            {
+                ["trigger"] = "agent-foreground",
+                ["requiresNeutral"] = "true",
+            },
+            overlay: new BridgeOverlayMetadata(
+                BridgeOverlayTarget.Footer,
+                CoalesceKey: "controller.session"));
+        return true;
     }
 
     private void PauseControllerInput(
@@ -5288,6 +5315,7 @@ public partial class MainWindow : Window
     private void UpdateCodexStatus()
     {
         var foreground = _activeAgent.Presence.IsForeground;
+        TryAutoArmController(foreground);
         _ = ObserveCodexForeground(foreground);
 
         if (

@@ -58,7 +58,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Plan, sidebar, history, clear input, and project context",
             [StringKeys.ControlWakeAgent] = "{0} · Wake {1}",
             [StringKeys.ControlWakeAgentDescription] =
-                "Bring {0} to front and unlock controller input",
+                "Bring {0} to front; foreground control enables automatically",
 
             [StringKeys.ComposerRightStickAdjustment] =
                 "Right-stick model dial",
@@ -155,7 +155,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SettingsOnlyForeground] =
                 "Control {0} only when it is in the foreground",
             [StringKeys.SettingsOnlyForegroundDescription] =
-                "Recommended. Press {0} once to bring {1} forward and unlock it. Leaving the foreground pauses input; returning to {1} resumes after the controller is neutral. Reconnecting after sleep works the same way.",
+                "Recommended. Controller input enables automatically while {1} is foreground and the controls are neutral. Press {0} only to bring {1} forward. Leaving the foreground pauses input; returning or reconnecting resumes after neutral.",
             [StringKeys.SettingsHaptic] =
                 "Use light haptic feedback after successful actions",
             [StringKeys.SettingsOverlay] =
@@ -231,7 +231,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.StatusWaitingForReconnect] =
                 "Waiting for the controller to reconnect",
             [StringKeys.StatusAgentForegroundLocked] =
-                "{0} is in the foreground · press {1} to unlock",
+                "{0} is in the foreground · enabling controller input",
             [StringKeys.StatusAgentForegroundNeutral] =
                 "{0} is in the foreground · release controls to resume",
             [StringKeys.StatusAgentForegroundArmed] =
@@ -245,7 +245,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} is not in the foreground · press {1} to wake",
             [StringKeys.StatusControllerHelp] =
-                "{0} wakes and unlocks · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · {2} project context · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} cancels / undoes",
+                "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · {2} project context · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} cancels / undoes",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
             [StringKeys.TrayOpenAgent] = "Open {0}",

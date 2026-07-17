@@ -146,7 +146,7 @@ public sealed class LocalizationTests
             "LB · Hold to talk",
             en.ControlHoldToTalk("LB"));
         Assert.Equal(
-            "Bring Studio Agent to front and unlock controller input",
+            "Bring Studio Agent to front; foreground control enables automatically",
             en.ControlWakeAgentDescription("Studio Agent"));
         Assert.Equal(
             "Menu cycles four root scopes; Y opens the action panel",

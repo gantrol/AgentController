@@ -34,6 +34,24 @@ public sealed class ControllerSession
         Phase = ControllerSessionPhase.WaitingForNeutral;
     }
 
+    public bool TryAutoArm(
+        bool bridgeEnabled,
+        bool controllerConnected,
+        bool agentForeground)
+    {
+        if (
+            IsArmed ||
+            !bridgeEnabled ||
+            !controllerConnected ||
+            !agentForeground)
+        {
+            return false;
+        }
+
+        Arm();
+        return true;
+    }
+
     public void Pause(bool requireNeutral)
     {
         if (!IsArmed)
