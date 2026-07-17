@@ -44,7 +44,7 @@ Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controlle
 | Left stick ↑↓ | Move through Agent Controller's stable sidebar wheel without opening |
 | Left stick ← | Return from project tasks; right has no Base action |
 | L3 | Cycle roots: pinned tasks → pinned projects → projects → projectless tasks |
-| Y | Enter the focused item's project; inside a project, toggle all / pinned-only |
+| Y | Open the action panel |
 | Right stick (Simple) | ←→ steps Codex's live Power control; ↑ selects Standard; ↓ selects Fast |
 | Right stick (Advanced) | ←→ chooses Model / Effort / Speed; ↑↓ changes an account-provided option |
 | R3 tap / hold | Open the matching Simple or Advanced picker / open controller settings |

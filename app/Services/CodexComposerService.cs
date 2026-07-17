@@ -2024,12 +2024,20 @@ public sealed partial class CodexComposerService
 
             editor.SetFocus();
             Thread.Sleep(25);
-            return Win32Input.SendKey(0x0D)
+            if (!Win32Input.SendShortcut(settings.SubmitShortcut))
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    settings.SubmitShortcut);
+            }
+
+            return WaitForComposerTextToClear(editor, timeoutMs: 600)
                 ? new(true)
                 : new(
                     false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    "Enter");
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                    "composer-submit-not-verified");
         }
         catch (Exception exception)
         {

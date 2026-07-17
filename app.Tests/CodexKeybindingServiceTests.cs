@@ -13,6 +13,7 @@ public sealed class CodexKeybindingServiceTests
         var settings = new AppSettings
         {
             DictationShortcut = "Ctrl+Shift+D",
+            SubmitShortcut = "F23",
         };
 
         var first = CodexKeybindingService.EnsureBridgeBindings(
@@ -36,6 +37,12 @@ public sealed class CodexKeybindingServiceTests
                     "composer.startDictation" &&
                 item["key"]?.GetValue<string>() ==
                     "Ctrl+Shift+D");
+        Assert.Contains(
+            bindings.OfType<JsonObject>(),
+            item =>
+                item["command"]?.GetValue<string>() ==
+                    "composer.submit" &&
+                item["key"]?.GetValue<string>() == "F23");
         Assert.DoesNotContain(
             bindings.OfType<JsonObject>(),
             item =>

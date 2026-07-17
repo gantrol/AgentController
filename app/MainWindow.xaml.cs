@@ -1797,10 +1797,7 @@ public partial class MainWindow : Window
                 "action-project",
                 RadialMenuSlotPosition.CenterRight,
                 LogicalInput.FaceWest,
-                RadialText("项目上下文", "Project context"),
-                RadialText(
-                    "保留原 Y 键行为",
-                    "Previous Y-button action")),
+                RadialText("项目上下文", "Project context")),
         ];
     }
 

@@ -322,7 +322,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.MessageAlreadyAtRootScope] =
                 "Already at a root scope",
             [StringKeys.MessageFocusedEntryHasNoChildDirectory] =
-                "The focused entry has no child directory · A opens tasks; Y finds the owning project",
+                "The focused entry has no child directory · A opens the task",
             [StringKeys.MessageUseRightToEnterProject] =
                 "Projects are directories · press → to enter; A opens tasks only",
             [StringKeys.MessageNoAvailableEntries] =

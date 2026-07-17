@@ -307,7 +307,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.MessageAlreadyAtRootScope] =
                 "当前已在根区域",
             [StringKeys.MessageFocusedEntryHasNoChildDirectory] =
-                "当前条目没有下级目录 · A 打开任务；Y 定位所属项目",
+                "当前条目没有下级目录 · A 打开任务",
             [StringKeys.MessageUseRightToEnterProject] =
                 "项目是目录 · 按 → 进入；A 只打开任务",
             [StringKeys.MessageNoAvailableEntries] =
