@@ -45,8 +45,9 @@ Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controlle
 | Left stick ← | Return from project tasks; right has no Base action |
 | L3 | Cycle roots: pinned tasks → pinned projects → projects → projectless tasks |
 | Y | Enter the focused item's project; inside a project, toggle all / pinned-only |
-| Right stick ←→ | Turn the virtual composer dial; traverse options while a picker is open |
-| R3 tap / hold | Open or select the dial target / open controller settings |
+| Right stick (Simple) | ←→ steps Codex's live Power control; ↑ requests Fast; ↓ requests Standard |
+| Right stick (Advanced) | ←→ chooses Model / Effort / Speed; ↑↓ changes an account-provided option |
+| R3 tap / hold | Open the matching Simple or Advanced picker / open controller settings |
 | A | Enter the focused project or open the focused task |
 | LT (hold) | Push-to-talk dictation; release to finish |
 | X | Send the prompt |

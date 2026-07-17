@@ -35,7 +35,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "Simple: ← / → changes model + effort · Advanced: ← / → changes control, ↑ / ↓ changes value · hold {0} Settings",
+                "Simple: ← / → Power, ↑ Fast, ↓ Standard · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click {0} opens the picker · hold {0} Settings",
             [StringKeys.ControlRightStickHintOpen] =
                 "Model picker active · ↑ / ↓ Move · {2} Select · {1} Close",
             [StringKeys.ControlRightStickHintConfirmation] =
@@ -65,7 +65,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
             [StringKeys.ComposerDialReady] =
-                "Simple mode · combined model + effort presets",
+                "Simple mode · live Power and Speed controls",
             [StringKeys.ComposerConnectController] =
                 "Connect a controller to begin",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -125,12 +125,12 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Right stick · Model dial",
             [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "Simple: change the combined model + effort preset. Advanced: ← / → changes Model, Effort, or Speed; ↑ / ↓ changes its value.",
+                "Simple: ← / → steps the live Power control, ↑ requests Fast, and ↓ requests Standard. Advanced: ← / → changes Model, Effort, or Speed; ↑ / ↓ changes its value.",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "Click shows the current Simple preset or cycles the Advanced control; hold for 500 ms to open controller settings",
+                "Click opens the matching Simple or Advanced picker; hold for 500 ms to open controller settings",
             [StringKeys.ConfigSelectionBehavior] =
-                "The dial is restricted to model settings. Simple combines model and reasoning effort; Advanced separates Model, Effort, and Speed. It never enters Full access or Project selectors.",
+                "The dial uses only options currently exposed by Codex for this account and model. Simple drives Power and Speed; Advanced separates Model, Effort, and Speed. It never enters Full access or Project selectors.",
             [StringKeys.ConfigAgentShortcuts] = "{0} shortcuts",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "The app safely appends fallback bindings; new bindings take effect after {0} restarts.",
@@ -173,7 +173,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SettingsComposerDialMode] =
                 "Composer dial mode",
             [StringKeys.SettingsComposerDialModeDescription] =
-                "Simple steps through combined model and reasoning presets. Advanced exposes Model, Reasoning effort, and Speed as separate controls.",
+                "Simple drives Codex's live Power and Speed controls. Advanced exposes the Model, Reasoning effort, and Speed options currently available to this account.",
             [StringKeys.SettingsComposerDialModeSimple] =
                 "Simple",
             [StringKeys.SettingsComposerDialModeAdvanced] =

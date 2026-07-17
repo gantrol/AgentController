@@ -13,8 +13,6 @@ public sealed class CodexKeybindingService
         "composer.decreaseReasoningEffort";
     private const string ReasoningUpCommand =
         "composer.increaseReasoningEffort";
-    private const string PlanToggleCommand =
-        "composer.togglePlanMode";
     private const string FastToggleCommand =
         "composer.toggleFastMode";
     private const string DictationCommand =
@@ -52,9 +50,6 @@ public sealed class CodexKeybindingService
                 new DesiredBinding(
                     ReasoningUpCommand,
                     settings.ReasoningUpShortcut.Trim()),
-                new DesiredBinding(
-                    PlanToggleCommand,
-                    settings.PlanToggleShortcut.Trim()),
                 new DesiredBinding(
                     FastToggleCommand,
                     settings.FastToggleShortcut.Trim()),

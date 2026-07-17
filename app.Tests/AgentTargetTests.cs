@@ -135,6 +135,37 @@ public sealed class AgentTargetTests
                 "model",
                 new(),
                 CancellationToken.None);
+        var planToggle = await target
+            .ComposerOrUnavailable()
+            .TogglePlanModeAsync(
+                "F19",
+                new(),
+                CancellationToken.None);
+        var picker = await target
+            .ComposerOrUnavailable()
+            .OpenPickerAsync(
+                ComposerPickerView.Simple,
+                new(),
+                CancellationToken.None);
+        var power = await target
+            .ComposerOrUnavailable()
+            .StepSimplePowerAsync(
+                1,
+                new(),
+                CancellationToken.None);
+        var speed = await target
+            .ComposerOrUnavailable()
+            .SetSimpleSpeedAsync(
+                true,
+                new(),
+                CancellationToken.None);
+        var advanced = await target
+            .ComposerOrUnavailable()
+            .StepAdvancedAsync(
+                ComposerSettingKind.Effort,
+                1,
+                new(),
+                CancellationToken.None);
         var dial = target
             .ComposerOrUnavailable()
             .DialStep(1, new());
@@ -151,6 +182,19 @@ public sealed class AgentTargetTests
         Assert.Equal(
             AgentCapabilityFallbacks.CapabilityUnavailable,
             composer.Error);
+        Assert.False(planToggle.Succeeded);
+        Assert.Equal(
+            AgentCapabilityFallbacks.CapabilityUnavailable,
+            planToggle.Error);
+        Assert.All(
+            new[] { picker, power, speed, advanced },
+            result =>
+            {
+                Assert.False(result.Succeeded);
+                Assert.Equal(
+                    AgentCapabilityFallbacks.CapabilityUnavailable,
+                    result.Error);
+            });
         Assert.False(dial.Succeeded);
         Assert.Equal(
             AgentCapabilityFallbacks.CapabilityUnavailable,

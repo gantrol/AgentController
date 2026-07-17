@@ -17,7 +17,6 @@ public static class BridgeTimings
     public const int NavigationConfirmTimeoutMs = 8000;
     public const int NavigationConfirmPollMs = 130;
     public const int ComposerSettleMs = 520;
-    public const int ComposerPowerSettleMs = 140;
     public const int ComposerFallbackSettleMs = 180;
     public const int ComposerMenuPollMs = 55;
     public const int DialHoldMs = 500;

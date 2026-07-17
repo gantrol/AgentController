@@ -34,7 +34,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "简易：← / → 切模型＋思考档位 · 高级：← / → 切控件、↑ / ↓ 调值 · 长按 {0} 设置",
+                "简易：← / → 调 Power、↑ Fast、↓ Standard · 高级：← / → 切控件、↑ / ↓ 调实际选项 · 单击 {0} 打开对应菜单 · 长按 {0} 设置",
             [StringKeys.ControlRightStickHintOpen] =
                 "模型选择器已打开 · ↑ / ↓ 选择 · {2} 确认 · {1} 关闭",
             [StringKeys.ControlRightStickHintConfirmation] =
@@ -61,7 +61,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆模型旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
             [StringKeys.ComposerDialReady] =
-                "简易模式 · 模型＋思考强度组合档位",
+                "简易模式 · 实际 Power 与速度控件",
             [StringKeys.ComposerConnectController] =
                 "连接手柄后开始",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -119,12 +119,12 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆 · 模型旋钮",
             [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "简易模式切换模型＋思考强度组合档位；高级模式用 ← / → 切换模型、思考强度或速度，用 ↑ / ↓ 调整当前值",
+                "简易模式用 ← / → 调整实际 Power、↑ 请求 Fast、↓ 请求 Standard；高级模式用 ← / → 切换模型、思考强度或速度，用 ↑ / ↓ 调整当前值",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "单击显示当前简易档位，或循环高级模式控件；长按 500 ms 打开手柄设置",
+                "单击打开对应的简易或高级菜单；长按 500 ms 打开手柄设置",
             [StringKeys.ConfigSelectionBehavior] =
-                "旋钮只操作模型相关设置。简易模式合并模型与思考强度；高级模式拆分模型、思考强度和速度，绝不会进入 Full access 或 Project 选择器。",
+                "旋钮只使用 Codex 针对当前账户和模型实际提供的选项。简易模式操作 Power 与速度；高级模式拆分模型、思考强度和速度，绝不会进入 Full access 或 Project 选择器。",
             [StringKeys.ConfigAgentShortcuts] = "{0} 快捷键",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "程序会安全追加降级绑定；新绑定在 {0} 重启后生效。",
@@ -164,7 +164,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SettingsComposerDialMode] =
                 "模型旋钮模式",
             [StringKeys.SettingsComposerDialModeDescription] =
-                "简易模式按组合档位切换模型与思考强度；高级模式分别提供模型、思考强度和速度三个控件。",
+                "简易模式操作 Codex 当前实际的 Power 与速度控件；高级模式分别使用当前账户可用的模型、思考强度和速度选项。",
             [StringKeys.SettingsComposerDialModeSimple] =
                 "简易模式",
             [StringKeys.SettingsComposerDialModeAdvanced] =
@@ -217,7 +217,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.StatusWaitingForReconnect] =
                 "等待手柄重新连接",
             [StringKeys.StatusAgentForegroundLocked] =
-                "{0} 位于前台 · 按 {1} 解锁",
+                "按 {1} 弹出 {0}",
             [StringKeys.StatusAgentForegroundNeutral] =
                 "{0} 位于前台 · 松开按键后恢复",
             [StringKeys.StatusAgentForegroundArmed] =

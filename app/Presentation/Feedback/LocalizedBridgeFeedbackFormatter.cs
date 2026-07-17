@@ -214,10 +214,18 @@ public sealed class LocalizedBridgeFeedbackFormatter :
         var scope = rawScope is null
             ? _strings.FeedbackStatusUpdated
             : _strings.ScopeValue(rawScope);
+        var project = FirstParameter(bridgeEvent, "project");
+        var projectTitle = string.IsNullOrWhiteSpace(project)
+            ? null
+            : _strings.Format(
+                StringKeys.MessageProjectTitle,
+                project.Trim());
 
         return Content(
-            _strings.FeedbackScopeChanged(scope),
-            _strings.SidebarAgent(_agentName),
+            Join(
+                _strings.FeedbackScopeChanged(scope),
+                projectTitle)!,
+            projectTitle ?? _strings.SidebarAgent(_agentName),
             scope);
     }
 

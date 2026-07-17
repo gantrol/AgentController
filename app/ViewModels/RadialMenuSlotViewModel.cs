@@ -5,6 +5,7 @@ namespace CodexController.ViewModels;
 
 public sealed class RadialMenuSlotViewModel : ObservableObject
 {
+    private string _id = string.Empty;
     private bool _isPresent;
     private string _inputGlyph = string.Empty;
     private string _title = string.Empty;
@@ -21,6 +22,12 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
     }
 
     public RadialMenuSlotPosition Position { get; }
+
+    public string Id
+    {
+        get => _id;
+        private set => SetProperty(ref _id, value);
+    }
 
     public bool IsPresent
     {
@@ -121,6 +128,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         }
 
         IsPresent = true;
+        Id = item.Id;
         InputGlyph = item.InputGlyph;
         Title = item.Title;
         Subtitle = item.Subtitle;
@@ -133,6 +141,7 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
     private void Clear()
     {
         IsPresent = false;
+        Id = string.Empty;
         InputGlyph = string.Empty;
         Title = string.Empty;
         Subtitle = string.Empty;
@@ -140,5 +149,10 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         IsHighlighted = false;
         LogicalInput = null;
         ConfirmationProgress = 0;
+    }
+
+    internal void SetHighlighted(bool isHighlighted)
+    {
+        IsHighlighted = isHighlighted;
     }
 }

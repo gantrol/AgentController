@@ -5,8 +5,13 @@ namespace CodexController.Native;
 
 internal static partial class Win32Input
 {
+    private const uint InputMouse = 0;
     private const uint InputKeyboard = 1;
+    private const uint MouseEventLeftDown = 0x0002;
+    private const uint MouseEventLeftUp = 0x0004;
+    private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventKeyUp = 0x0002;
+    private const uint KeyEventUnicode = 0x0004;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Input
@@ -49,6 +54,13 @@ internal static partial class Win32Input
         public nuint ExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
     [LibraryImport("user32.dll")]
     private static partial uint SendInput(
         uint count,
@@ -74,6 +86,14 @@ internal static partial class Win32Input
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ShowWindowAsync(nint window, int command);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetCursorPos(out NativePoint point);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetCursorPos(int x, int y);
 
     public static bool IsCodexForeground()
     {
@@ -238,6 +258,57 @@ internal static partial class Win32Input
             Marshal.SizeOf<Input>()) == inputs.Length;
     }
 
+    public static bool SendText(string text)
+    {
+        if (text.Length == 0)
+        {
+            return true;
+        }
+
+        var inputs = new Input[text.Length * 2];
+        var index = 0;
+        foreach (var character in text)
+        {
+            inputs[index++] = UnicodeInput(character, keyUp: false);
+            inputs[index++] = UnicodeInput(character, keyUp: true);
+        }
+
+        return SendInput(
+            (uint)inputs.Length,
+            inputs,
+            Marshal.SizeOf<Input>()) == inputs.Length;
+    }
+
+    public static bool ClickAt(int x, int y)
+    {
+        if (!GetCursorPos(out var original))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!SetCursorPos(x, y))
+            {
+                return false;
+            }
+
+            var inputs = new[]
+            {
+                MouseButtonInput(MouseEventLeftDown),
+                MouseButtonInput(MouseEventLeftUp),
+            };
+            return SendInput(
+                (uint)inputs.Length,
+                inputs,
+                Marshal.SizeOf<Input>()) == inputs.Length;
+        }
+        finally
+        {
+            _ = SetCursorPos(original.X, original.Y);
+        }
+    }
+
     private static Input KeyInput(ushort key, bool keyUp)
     {
         return new Input
@@ -248,11 +319,75 @@ internal static partial class Win32Input
                 Keyboard = new KeyboardInput
                 {
                     VirtualKey = key,
-                    Flags = keyUp ? KeyEventKeyUp : 0,
+                    Flags = GetKeyboardEventFlags(key, keyUp),
                 },
             },
         };
     }
+
+    private static Input UnicodeInput(char character, bool keyUp)
+    {
+        return new Input
+        {
+            Type = InputKeyboard,
+            Data = new InputUnion
+            {
+                Keyboard = new KeyboardInput
+                {
+                    ScanCode = character,
+                    Flags = KeyEventUnicode |
+                        (keyUp ? KeyEventKeyUp : 0),
+                },
+            },
+        };
+    }
+
+    private static Input MouseButtonInput(uint flags)
+    {
+        return new Input
+        {
+            Type = InputMouse,
+            Data = new InputUnion
+            {
+                Mouse = new MouseInput
+                {
+                    Flags = flags,
+                },
+            },
+        };
+    }
+
+    internal static uint GetKeyboardEventFlags(
+        ushort virtualKey,
+        bool keyUp)
+    {
+        var flags = IsExtendedVirtualKey(virtualKey)
+            ? KeyEventExtendedKey
+            : 0;
+        if (keyUp)
+        {
+            flags |= KeyEventKeyUp;
+        }
+
+        return flags;
+    }
+
+    private static bool IsExtendedVirtualKey(ushort virtualKey) =>
+        virtualKey is
+            0x21 or // Page Up
+            0x22 or // Page Down
+            0x23 or // End
+            0x24 or // Home
+            0x25 or // Left
+            0x26 or // Up
+            0x27 or // Right
+            0x28 or // Down
+            0x2D or // Insert
+            0x2E or // Delete
+            0x6F or // Numpad Divide
+            0x90 or // Num Lock
+            0xA3 or // Right Control
+            0xA5;   // Right Alt
 
     private static bool TryParseShortcut(
         string shortcut,

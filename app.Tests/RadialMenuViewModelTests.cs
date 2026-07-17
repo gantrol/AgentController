@@ -98,6 +98,68 @@ public sealed class RadialMenuViewModelTests
     }
 
     [Fact]
+    public void InputAcknowledgementIsLocalAndThenEntersWaiting()
+    {
+        var viewModel = new RadialMenuViewModel();
+        viewModel.Update(
+            new RadialMenuState(
+                RadialMenuLayerKind.Command,
+                "Commands",
+                "RB",
+                [
+                    new RadialMenuItemState(
+                        "command-dispatch",
+                        RadialMenuSlotPosition.CenterRight,
+                        "Menu",
+                        "Send"),
+                ],
+                RadialMenuDisplayMode.Learning,
+                isLearningCueReady: false));
+
+        Assert.False(viewModel.IsVisible);
+        Assert.True(
+            viewModel.TryAcceptInput(
+                "command-dispatch",
+                out var title));
+        Assert.Equal("Send", title);
+        Assert.True(viewModel.IsVisible);
+        Assert.True(viewModel.CenterRight.IsHighlighted);
+        Assert.Equal(
+            RadialMenuInteractionPhase.InputAccepted,
+            viewModel.InteractionPhase);
+
+        viewModel.EnterWaitingForResponse();
+
+        Assert.False(viewModel.IsVisible);
+        Assert.True(viewModel.IsWaitingForResponse);
+    }
+
+    [Fact]
+    public void InputAcknowledgementHonorsOffDisplayPolicy()
+    {
+        var viewModel = new RadialMenuViewModel();
+        viewModel.Update(
+            new RadialMenuState(
+                RadialMenuLayerKind.Agent,
+                "Agents",
+                "LB",
+                [
+                    new RadialMenuItemState(
+                        "agent-slot-1",
+                        RadialMenuSlotPosition.Top,
+                        "Up",
+                        "Task one"),
+                ],
+                RadialMenuDisplayMode.Off));
+
+        Assert.True(
+            viewModel.TryAcceptInput(
+                "agent-slot-1",
+                out _));
+        Assert.False(viewModel.IsVisible);
+    }
+
+    [Fact]
     public void DisabledAccessibleNameExplainsAvailability()
     {
         var viewModel = new RadialMenuViewModel();

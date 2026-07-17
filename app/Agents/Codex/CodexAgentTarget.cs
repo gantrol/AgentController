@@ -253,6 +253,63 @@ public sealed class CodexAgentTarget : IAgentTarget
                 cancellationToken);
         }
 
+        public Task<ComposerPickerResult> OpenPickerAsync(
+            ComposerPickerView view,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.OpenPickerAsync(
+                view,
+                settings,
+                cancellationToken);
+        }
+
+        public Task<ComposerPickerResult> StepSimplePowerAsync(
+            int direction,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.StepSimplePowerAsync(
+                direction,
+                settings,
+                cancellationToken);
+        }
+
+        public Task<ComposerPickerResult> SetSimpleSpeedAsync(
+            bool fast,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.SetSimpleSpeedAsync(
+                fast,
+                settings,
+                cancellationToken);
+        }
+
+        public Task<ComposerPickerResult> StepAdvancedAsync(
+            ComposerSettingKind kind,
+            int direction,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.StepAdvancedAsync(
+                kind,
+                direction,
+                settings,
+                cancellationToken);
+        }
+
+        public Task<ComposerPlanToggleResult> TogglePlanModeAsync(
+            string shortcut,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.TogglePlanModeAsync(
+                shortcut,
+                settings,
+                cancellationToken);
+        }
+
         public string? TryReadComposerButtonName()
         {
             return _composer.TryReadComposerButtonName();

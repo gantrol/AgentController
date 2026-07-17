@@ -10,6 +10,8 @@ public sealed class RadialMenuViewModel : ObservableObject
     private string _modifierGlyph = string.Empty;
     private RadialMenuDisplayMode _displayMode =
         RadialMenuDisplayMode.Learning;
+    private RadialMenuInteractionPhase _interactionPhase =
+        RadialMenuInteractionPhase.AwaitingInput;
     private bool _isVisible;
 
     public RadialMenuViewModel()
@@ -72,6 +74,22 @@ public sealed class RadialMenuViewModel : ObservableObject
         private set => SetProperty(ref _isVisible, value);
     }
 
+    public RadialMenuInteractionPhase InteractionPhase
+    {
+        get => _interactionPhase;
+        private set
+        {
+            if (SetProperty(ref _interactionPhase, value))
+            {
+                OnPropertyChanged(nameof(IsWaitingForResponse));
+            }
+        }
+    }
+
+    public bool IsWaitingForResponse =>
+        InteractionPhase ==
+        RadialMenuInteractionPhase.WaitingForResponse;
+
     public RadialMenuSlotViewModel Top { get; }
 
     public RadialMenuSlotViewModel Right { get; }
@@ -93,6 +111,7 @@ public sealed class RadialMenuViewModel : ObservableObject
         Subtitle = state.Subtitle;
         ModifierGlyph = state.ModifierGlyph;
         DisplayMode = state.DisplayMode;
+        InteractionPhase = state.InteractionPhase;
         IsVisible = state.IsVisible;
 
         Top.Update(state.GetItem(RadialMenuSlotPosition.Top));
@@ -105,8 +124,62 @@ public sealed class RadialMenuViewModel : ObservableObject
             state.GetItem(RadialMenuSlotPosition.CenterRight));
     }
 
+    public bool TryAcceptInput(
+        string actionId,
+        out string actionTitle)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionId);
+        actionTitle = string.Empty;
+        if (
+            InteractionPhase !=
+            RadialMenuInteractionPhase.AwaitingInput)
+        {
+            return false;
+        }
+
+        var slots = AllSlots().ToArray();
+        var selected = slots.FirstOrDefault(slot =>
+            slot.IsPresent &&
+            string.Equals(
+                slot.Id,
+                actionId,
+                StringComparison.Ordinal));
+        if (selected is null)
+        {
+            return false;
+        }
+
+        foreach (var slot in slots)
+        {
+            slot.SetHighlighted(ReferenceEquals(slot, selected));
+        }
+
+        actionTitle = selected.Title;
+        InteractionPhase =
+            RadialMenuInteractionPhase.InputAccepted;
+        IsVisible = DisplayMode != RadialMenuDisplayMode.Off;
+        return true;
+    }
+
+    public void EnterWaitingForResponse()
+    {
+        InteractionPhase =
+            RadialMenuInteractionPhase.WaitingForResponse;
+        IsVisible = false;
+    }
+
     public void Hide()
     {
         IsVisible = false;
+    }
+
+    private IEnumerable<RadialMenuSlotViewModel> AllSlots()
+    {
+        yield return Top;
+        yield return Right;
+        yield return Bottom;
+        yield return Left;
+        yield return CenterLeft;
+        yield return CenterRight;
     }
 }

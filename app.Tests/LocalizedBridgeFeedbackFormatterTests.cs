@@ -31,6 +31,25 @@ public sealed class LocalizedBridgeFeedbackFormatterTests
     }
 
     [Fact]
+    public void SidebarScopeToastIncludesCurrentProjectWhenAvailable()
+    {
+        var localization = new LocalizationService(AppLanguage.ZhCn);
+        var formatter = new LocalizedBridgeFeedbackFormatter(
+            localization.Strings);
+
+        var content = formatter.Format(Event(
+            BridgeEventKeys.SidebarScopeChanged,
+            ("scope", "PinnedProjects"),
+            ("project", "AgentController")));
+
+        Assert.Equal(
+            "侧边栏区域：置顶项目 · 项目 › AgentController",
+            content.LogText);
+        Assert.Equal("项目 › AgentController", content.Toast?.Title);
+        Assert.Equal("置顶项目", content.Toast?.Value);
+    }
+
+    [Fact]
     public void LocalizesAgentAndProductSpecificEvents()
     {
         var localization = new LocalizationService(AppLanguage.EnUs);

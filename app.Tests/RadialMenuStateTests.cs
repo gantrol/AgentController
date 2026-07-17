@@ -64,6 +64,21 @@ public sealed class RadialMenuStateTests
     }
 
     [Fact]
+    public void WaitingForResponseKeepsWheelHidden()
+    {
+        var state = new RadialMenuState(
+            RadialMenuLayerKind.Command,
+            "Commands",
+            "RB",
+            [Item("send", RadialMenuSlotPosition.Left)],
+            RadialMenuDisplayMode.Always,
+            interactionPhase:
+                RadialMenuInteractionPhase.WaitingForResponse);
+
+        Assert.False(state.IsVisible);
+    }
+
+    [Fact]
     public void ItemNormalizesTextAndClampsConfirmationProgress()
     {
         var item = new RadialMenuItemState(

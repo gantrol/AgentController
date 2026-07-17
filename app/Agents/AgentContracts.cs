@@ -88,6 +88,32 @@ public interface IComposerAutomation
         AppSettings settings,
         CancellationToken cancellationToken);
 
+    Task<ComposerPickerResult> OpenPickerAsync(
+        ComposerPickerView view,
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
+    Task<ComposerPickerResult> StepSimplePowerAsync(
+        int direction,
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
+    Task<ComposerPickerResult> SetSimpleSpeedAsync(
+        bool fast,
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
+    Task<ComposerPickerResult> StepAdvancedAsync(
+        ComposerSettingKind kind,
+        int direction,
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
+    Task<ComposerPlanToggleResult> TogglePlanModeAsync(
+        string shortcut,
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
     string? TryReadComposerButtonName();
 
     string? TryReadDispatchButtonName();

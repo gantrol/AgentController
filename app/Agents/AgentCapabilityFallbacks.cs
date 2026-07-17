@@ -104,6 +104,39 @@ public static class AgentCapabilityFallbacks
             CancellationToken cancellationToken) =>
             Task.FromResult(Failed());
 
+        public Task<ComposerPickerResult> OpenPickerAsync(
+            ComposerPickerView view,
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PickerFailed());
+
+        public Task<ComposerPickerResult> StepSimplePowerAsync(
+            int direction,
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PickerFailed());
+
+        public Task<ComposerPickerResult> SetSimpleSpeedAsync(
+            bool fast,
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PickerFailed());
+
+        public Task<ComposerPickerResult> StepAdvancedAsync(
+            ComposerSettingKind kind,
+            int direction,
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PickerFailed());
+
+        public Task<ComposerPlanToggleResult> TogglePlanModeAsync(
+            string shortcut,
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new ComposerPlanToggleResult(
+                false,
+                Error: CapabilityUnavailable));
+
         public string? TryReadComposerButtonName() => null;
 
         public string? TryReadDispatchButtonName() => null;
@@ -157,6 +190,11 @@ public static class AgentCapabilityFallbacks
             new(false, CapabilityUnavailable);
 
         private static ComposerDialResult DialFailed() =>
+            new(
+                false,
+                Error: CapabilityUnavailable);
+
+        private static ComposerPickerResult PickerFailed() =>
             new(
                 false,
                 Error: CapabilityUnavailable);

@@ -68,6 +68,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _dataTimer;
     private readonly DispatcherTimer _radialLearningTimer;
     private readonly ControllerStateBuffer _controllerStateBuffer = new();
+    private readonly RadialMenuInteractionState _radialInteraction = new();
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
@@ -125,22 +126,21 @@ public partial class MainWindow : Window
     private ControllerState _latestControllerState;
     private ComposerCatalog? _composerCatalog;
     private int _modelIndex;
-    private int _committedModelIndex;
     private int _reasoningIndex;
-    private int _committedReasoningIndex;
     private int _speedIndex;
-    private int _committedSpeedIndex;
-    private ComposerSettingKind? _pendingComposerKind;
-    private string? _pendingComposerTarget;
-    private ComposerPowerSelection? _pendingPowerSelection;
-    private bool _simpleDialFallbackNotified;
-    private CancellationTokenSource? _composerCommitCancellation;
+    private CancellationTokenSource? _composerPickerCancellation;
     private CancellationTokenSource? _navigationConfirmCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
     private CancellationTokenSource? _actionPanelConfirmationCancellation;
     private NavigationUndoState? _navigationUndo;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
+    private int _pendingSimplePowerSteps;
+    private int _simplePowerPumpRunning;
+    private int _pendingAdvancedSteps;
+    private int _advancedStepPumpRunning;
+    private ComposerSettingKind _pendingAdvancedKind;
+    private int _simpleSpeedHeldDirection;
     private int _virtualDialGeneration;
     private int _dictationPumpRunning;
     private Forms.NotifyIcon? _trayIcon;
@@ -554,6 +554,13 @@ public partial class MainWindow : Window
             EndVirtualDialPress();
         }
 
+        var conversationNavigation = ConversationTurnInputMap.Resolve(
+            basePressed & ~_previousButtons);
+        if (conversationNavigation != ConversationTurnInputAction.None)
+        {
+            NavigateConversationTurn(conversationNavigation);
+        }
+
         HandleButtonEdge(
             basePressed,
             ControllerButtons.DPadLeft,
@@ -629,11 +636,32 @@ public partial class MainWindow : Window
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
         var advancedComposerDial = UsesAdvancedComposerDial;
+        if (
+            !dialContextActive &&
+            !advancedComposerDial &&
+            rightGesture.VerticalDirection == 0)
+        {
+            _simpleSpeedHeldDirection = 0;
+        }
+        if (!dialContextActive)
+        {
+            if (
+                advancedComposerDial &&
+                rightGesture.VerticalDirection == 0)
+            {
+                Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+            }
+            else if (
+                !advancedComposerDial &&
+                rightGesture.HorizontalDirection == 0)
+            {
+                Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+            }
+        }
+
         _axisRepeater.Update(
             "right-y",
-            dialContextActive || advancedComposerDial
-                ? rightGesture.VerticalDirection
-                : 0,
+            rightGesture.VerticalDirection,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
             direction =>
@@ -647,7 +675,14 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    AdjustRightMode(direction);
+                    if (advancedComposerDial)
+                    {
+                        QueueAdvancedPickerStep(direction);
+                    }
+                    else
+                    {
+                        AdjustSimpleSpeed(direction);
+                    }
                 }
             });
         _axisRepeater.Update(
@@ -657,7 +692,7 @@ public partial class MainWindow : Window
                 : 0,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
-            AdjustPowerSelection);
+            QueueSimplePowerStep);
         if (rightGesture.HorizontalStarted)
         {
             if (dialContextActive)
@@ -816,6 +851,11 @@ public partial class MainWindow : Window
             StopDictation(physicalRelease: true);
         }
 
+        if (_radialPushToTalkActive)
+        {
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
         if (_radialLayerCancelled)
         {
             return RadialInputMap.FrozenBaseButtons;
@@ -839,13 +879,59 @@ public partial class MainWindow : Window
             return RadialInputMap.FrozenBaseButtons;
         }
 
+        if (KeepsRadialOpenForFollowUp(action))
+        {
+            _radialActionTriggered = true;
+            _radialLayerEngaged = true;
+            _radialLearningTimer.Stop();
+            _radialHighlightedItemId = RadialActionId(action);
+            RefreshRadialMenu();
+            ExecuteRadialAction(action);
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
+        var actionId = RadialActionId(action);
+        if (!_radialInteraction.TryAcceptInput(actionId))
+        {
+            return RadialInputMap.FrozenBaseButtons;
+        }
+
         _radialActionTriggered = true;
         _radialLayerEngaged = true;
         _radialLearningTimer.Stop();
-        _radialHighlightedItemId = RadialActionId(action);
-        RefreshRadialMenu();
-        ExecuteRadialAction(action);
+        _radialHighlightedItemId = actionId;
+        var actionTitle =
+            _radialMenuOverlayWindow?.AcknowledgeInputAndFade(actionId) ??
+            RadialText("轮盘指令", "Radial command");
+        ShowFeedback(
+            actionTitle,
+            RadialText(
+                "已接收，等待 Codex 响应…",
+                "Received. Waiting for Codex…"));
+        Pulse(strength: 0.18);
+        _radialInteraction.TryBeginWaiting();
+        _ = ExecuteRadialActionAfterAcknowledgementAsync(action);
         return RadialInputMap.FrozenBaseButtons;
+    }
+
+    private bool KeepsRadialOpenForFollowUp(
+        RadialInputAction action)
+    {
+        return
+            action == RadialInputAction.PushToTalk ||
+            (
+                action == RadialInputAction.ClearComposer &&
+                !_actionPanelClearArmed
+            );
+    }
+
+    private async Task ExecuteRadialActionAfterAcknowledgementAsync(
+        RadialInputAction action)
+    {
+        // Let WPF render the local acknowledgement before any slower Codex
+        // automation or deep-link handling begins on the UI thread.
+        await Dispatcher.Yield(DispatcherPriority.Background);
+        ExecuteRadialAction(action);
     }
 
     private void BeginRadialLayer(RadialMenuLayerKind layer)
@@ -866,6 +952,7 @@ public partial class MainWindow : Window
         _radialActionTriggered = false;
         _radialPushToTalkActive = false;
         _radialHighlightedItemId = null;
+        _radialInteraction.Reset();
 
         _radialLearningTimer.Stop();
         if (
@@ -980,11 +1067,19 @@ public partial class MainWindow : Window
     {
         _radialSuppressedButtons |=
             pressed & RadialInputMap.FrozenBaseButtons;
-        ResetRadialLayer(clearSuppression: false);
+        ResetRadialLayer(
+            clearSuppression: false,
+            preserveInputAcknowledgement: true);
     }
 
-    private void ResetRadialLayer(bool clearSuppression)
+    private void ResetRadialLayer(
+        bool clearSuppression,
+        bool preserveInputAcknowledgement = false)
     {
+        var allowAcknowledgementToFinish =
+            preserveInputAcknowledgement &&
+            _radialInteraction.Phase ==
+                RadialMenuInteractionPhase.WaitingForResponse;
         _radialLearningTimer.Stop();
         if (_radialPushToTalkActive)
         {
@@ -999,6 +1094,7 @@ public partial class MainWindow : Window
         _radialActionTriggered = false;
         _radialLayerStartedAt = 0;
         _radialHighlightedItemId = null;
+        _radialInteraction.Reset();
         _actionPanelClearArmed = false;
         _actionPanelConfirmationCancellation?.Cancel();
         _actionPanelConfirmationCancellation = null;
@@ -1007,7 +1103,10 @@ public partial class MainWindow : Window
             _radialSuppressedButtons = ControllerButtons.None;
         }
 
-        _radialMenuOverlayWindow?.HideMenu();
+        if (!allowAcknowledgementToFinish)
+        {
+            _radialMenuOverlayWindow?.HideMenu();
+        }
     }
 
     private void ExecuteRadialAction(RadialInputAction action)
@@ -1086,9 +1185,7 @@ public partial class MainWindow : Window
                     "Stop");
                 break;
             case RadialInputAction.TogglePlan:
-                ExecuteActionPanelShortcut(
-                    RadialText("切换 Plan 模式", "Toggle Plan mode"),
-                    _settings.PlanToggleShortcut);
+                _ = TogglePlanModeAsync();
                 break;
             case RadialInputAction.NavigateForward:
                 ExecuteActionPanelShortcut(
@@ -1109,10 +1206,71 @@ public partial class MainWindow : Window
                 ConfirmOrClearComposer();
                 break;
             case RadialInputAction.ProjectContext:
-                ResetRadialLayer(clearSuppression: false);
+                EndRadialLayer(_latestControllerState.Buttons);
                 JumpToProjectContext();
                 break;
         }
+    }
+
+    private async Task TogglePlanModeAsync()
+    {
+        EndRadialLayer(_latestControllerState.Buttons);
+        var title = RadialText(
+            "切换 Plan 模式",
+            "Toggle Plan mode");
+        var result = await _composerAutomation.TogglePlanModeAsync(
+                _settings.PlanToggleShortcut,
+                _settings,
+                CancellationToken.None)
+            .ConfigureAwait(true);
+        if (result.Succeeded)
+        {
+            var state = result.IsPlanMode == true
+                ? RadialText("Plan 模式已开启。", "Plan mode is on.")
+                : RadialText("Plan 模式已关闭。", "Plan mode is off.");
+            AddEvent($"{title} · {state}");
+            ShowFeedback(title, state);
+            Pulse(strength: 0.2);
+            return;
+        }
+
+        var failure = result.ErrorDetail switch
+        {
+            PlanModeAutomationPolicy.RunningUnavailableDetail =>
+                RadialText(
+                    "当前任务运行中，请在完成后切换 Plan 模式。",
+                    "Switch Plan mode after the current turn finishes."),
+            PlanModeAutomationPolicy.StateUnchangedDetail =>
+                RadialText(
+                    "Codex 未应用 Plan 模式切换。",
+                    "Codex did not apply the Plan mode change."),
+            PlanModeAutomationPolicy.StateUnavailableDetail =>
+                RadialText(
+                    "无法读取 Plan 状态，请确认 Codex 编辑器可用。",
+                    "Could not read Plan state; make sure the Codex composer is available."),
+            PlanModeAutomationPolicy.CommandUnavailableDetail =>
+                RadialText(
+                    "未找到 Codex 的 /plan 命令。",
+                    "Could not find Codex's /plan command."),
+            PlanModeAutomationPolicy.CommandInvokeDetail =>
+                RadialText(
+                    "Codex 未接受 /plan 命令。",
+                    "Codex did not accept the /plan command."),
+            PlanModeAutomationPolicy.DraftUnavailableDetail =>
+                RadialText(
+                    "无法安全读取当前草稿，Plan 模式未切换。",
+                    "Could not safely read the draft; Plan mode was not changed."),
+            PlanModeAutomationPolicy.DraftRestoreDetail =>
+                RadialText(
+                    "无法恢复切换前的草稿，请检查 Codex 编辑器。",
+                    "Could not restore the draft; check the Codex composer."),
+            _ => ExecutionFailureLabel(
+                result.Error,
+                result.ErrorDetail),
+        };
+        AddEvent($"{title} · {failure}");
+        ShowFeedback(title, failure);
+        Pulse(strength: 0.1);
     }
 
     private void ExecuteActionPanelShortcut(
@@ -1122,7 +1280,7 @@ public partial class MainWindow : Window
         var executed = _agentShortcuts.Execute(
             shortcut,
             _settings);
-        ResetRadialLayer(clearSuppression: false);
+        EndRadialLayer(_latestControllerState.Buttons);
         AddEvent(
             title +
             ExecutionSuffix(
@@ -1162,7 +1320,7 @@ public partial class MainWindow : Window
         _actionPanelConfirmationCancellation?.Cancel();
         _actionPanelConfirmationCancellation = null;
         var result = _composerAutomation.Clear(_settings);
-        ResetRadialLayer(clearSuppression: false);
+        EndRadialLayer(_latestControllerState.Buttons);
         var title = RadialText(
             "清空当前输入",
             "Clear current input");
@@ -1402,7 +1560,8 @@ public partial class MainWindow : Window
                 isLearningCueReady: _radialLayerEngaged,
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.FaceEast)} 取消",
-                    $"{Glyph(LogicalInput.FaceEast)} cancel")),
+                    $"{Glyph(LogicalInput.FaceEast)} cancel"),
+                interactionPhase: _radialInteraction.Phase),
             RadialMenuLayerKind.Command => new RadialMenuState(
                 layer,
                 RadialText("Codex 命令", "Codex commands"),
@@ -1413,7 +1572,8 @@ public partial class MainWindow : Window
                 isLearningCueReady: _radialLayerEngaged,
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.LeftStickPress)} 取消",
-                    $"{Glyph(LogicalInput.LeftStickPress)} cancel")),
+                    $"{Glyph(LogicalInput.LeftStickPress)} cancel"),
+                interactionPhase: _radialInteraction.Phase),
             RadialMenuLayerKind.Turn => new RadialMenuState(
                 layer,
                 RadialText("运行中操作", "Active turn"),
@@ -1424,7 +1584,8 @@ public partial class MainWindow : Window
                 isLearningCueReady: true,
                 subtitle: RadialText(
                     "松开 RT 关闭",
-                    "Release RT to close")),
+                    "Release RT to close"),
+                interactionPhase: _radialInteraction.Phase),
             RadialMenuLayerKind.Action => new RadialMenuState(
                 layer,
                 RadialText("动作面板", "Action panel"),
@@ -1435,7 +1596,8 @@ public partial class MainWindow : Window
                 isLearningCueReady: true,
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} 关闭",
-                    $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} close")),
+                    $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} close"),
+                interactionPhase: _radialInteraction.Phase),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(layer),
                 layer,
@@ -1891,21 +2053,55 @@ public partial class MainWindow : Window
                 break;
             case SidebarNavigationIntent.AlreadyAtRoot:
                 ShowFeedback(
-                    _localization.Strings.Format(
-                        StringKeys.MessageAgentSidebar,
-                        _activeAgent.DisplayName),
+                    CurrentSidebarContextTitle(),
                     _localization.Strings.Get(
                         StringKeys.MessageAlreadyAtRootScope));
                 break;
             case SidebarNavigationIntent.NoChildDirectory:
                 ShowFeedback(
-                    _localization.Strings.Format(
-                        StringKeys.MessageAgentSidebar,
-                        _activeAgent.DisplayName),
+                    CurrentSidebarContextTitle(),
                     _localization.Strings.Get(
                         StringKeys.MessageFocusedEntryHasNoChildDirectory));
                 break;
         }
+    }
+
+    private void NavigateConversationTurn(
+        ConversationTurnInputAction action)
+    {
+        var shortcut = ConversationTurnInputMap.ShortcutFor(action);
+        if (shortcut is null)
+        {
+            return;
+        }
+
+        var title = action ==
+            ConversationTurnInputAction.PreviousUserMessage
+                ? RadialText(
+                    "上一条用户消息",
+                    "Previous user message")
+                : RadialText(
+                    "下一条用户消息",
+                    "Next user message");
+        var executed = _agentShortcuts.Execute(shortcut, _settings);
+        AddEvent(
+            title +
+            (executed
+                ? $" · {_localization.Strings.Get(
+                    StringKeys.MessageShortcutSent)}"
+                : ExecutionSuffix(
+                    false,
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    shortcut)));
+        ShowFeedback(
+            title,
+            executed
+                ? _localization.Strings.Get(
+                    StringKeys.MessageShortcutSent)
+                : ExecutionFailureLabel(
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    shortcut));
+        Pulse(strength: executed ? 0.16 : 0.1);
     }
 
     private void CycleRootSidebarScope()
@@ -1982,13 +2178,20 @@ public partial class MainWindow : Window
 
         if (showFeedback)
         {
+            var projectName = CurrentSidebarProjectName();
+            var parameters = new Dictionary<string, string>
+            {
+                ["scope"] = scope.ToString(),
+                ["label"] = ScopeLabel(scope),
+            };
+            if (!string.IsNullOrWhiteSpace(projectName))
+            {
+                parameters["project"] = projectName;
+            }
+
             _bridgeEvents.Publish(
                 BridgeEventKeys.SidebarScopeChanged,
-                parameters: new Dictionary<string, string>
-                {
-                    ["scope"] = scope.ToString(),
-                    ["label"] = ScopeLabel(scope),
-                },
+                parameters: parameters,
                 overlay: new BridgeOverlayMetadata(
                     BridgeOverlayTarget.Toast,
                     TimeSpan.FromMilliseconds(900),
@@ -2773,15 +2976,11 @@ public partial class MainWindow : Window
         _rightStickRouter.RequireNeutral();
         if (UsesAdvancedComposerDial)
         {
-            SwitchRightControlMode(1, source: "R3");
+            _ = OpenComposerPickerAsync(ComposerPickerView.Advanced);
             return;
         }
 
-        UpdateRightModeUi();
-        ShowFeedback(
-            _localization.Strings.Model,
-            CurrentPowerSelectionDisplay());
-        Pulse(strength: 0.12);
+        _ = OpenComposerPickerAsync(ComposerPickerView.Simple);
     }
 
     private void QueueVirtualDialNavigation(
@@ -3261,46 +3460,10 @@ public partial class MainWindow : Window
     }
 
     private bool UsesAdvancedComposerDial =>
-        ComposerDialModes.IsAdvanced(_settings.ComposerDialMode) ||
-        !TryGetCurrentPowerSelection(out _, out _);
-
-    private bool TryGetCurrentPowerSelection(
-        out IReadOnlyList<ComposerPowerSelection> selections,
-        out int currentIndex)
-    {
-        selections = _composerCatalog is null
-            ? []
-            : ComposerPowerSelectionPolicy.Build(
-                _composerCatalog.Models);
-        if (selections.Count == 0)
-        {
-            currentIndex = -1;
-            return false;
-        }
-
-        var efforts = CurrentEfforts();
-        var effort = efforts[Math.Clamp(
-            _reasoningIndex,
-            0,
-            efforts.Count - 1)];
-        currentIndex = ComposerPowerSelectionPolicy.FindCurrentIndex(
-            selections,
-            _modelIndex,
-            effort);
-        return true;
-    }
+        ComposerDialModes.IsAdvanced(_settings.ComposerDialMode);
 
     private string CurrentPowerSelectionDisplay()
     {
-        if (
-            TryGetCurrentPowerSelection(
-                out var selections,
-                out var currentIndex) &&
-            currentIndex >= 0)
-        {
-            return selections[currentIndex].DisplayName;
-        }
-
         if (
             _composerCatalog is null ||
             _composerCatalog.Models.Count == 0)
@@ -3314,22 +3477,17 @@ public partial class MainWindow : Window
             0,
             _composerCatalog.Models.Count - 1)];
         var efforts = CurrentEfforts();
-        return $"{model.DisplayName} {efforts[Math.Clamp(
-            _reasoningIndex,
-            0,
-            efforts.Count - 1)]}";
+        return efforts.Count == 0
+            ? model.DisplayName
+            : $"{model.DisplayName} {efforts[Math.Clamp(
+                _reasoningIndex,
+                0,
+                efforts.Count - 1)]}";
     }
 
-    private void ApplyComposerDialMode(
-        bool forceReset,
-        bool showFallbackFeedback)
+    private void ApplyComposerDialMode(bool forceReset)
     {
-        var configuredAdvanced =
-            ComposerDialModes.IsAdvanced(
-                _settings.ComposerDialMode);
-        var simpleAvailable =
-            TryGetCurrentPowerSelection(out _, out _);
-        var useAdvanced = configuredAdvanced || !simpleAvailable;
+        var useAdvanced = UsesAdvancedComposerDial;
 
         if (forceReset)
         {
@@ -3349,702 +3507,523 @@ public partial class MainWindow : Window
             _rightMode = RightControlMode.Dial;
         }
 
-        if (
-            !configuredAdvanced &&
-            !simpleAvailable &&
-            showFallbackFeedback &&
-            !_simpleDialFallbackNotified)
-        {
-            _simpleDialFallbackNotified = true;
-            ShowFeedback(
-                _localization.Strings.Model,
-                RadialText(
-                    "当前模型与思考强度不属于简易档位，已临时使用高级模式",
-                    "The current model and reasoning effort are outside the Simple presets; Advanced mode is active temporarily"));
-        }
-        else if (configuredAdvanced || simpleAvailable)
-        {
-            _simpleDialFallbackNotified = false;
-        }
-
         UpdateRightModeUi();
     }
 
-    private void AdjustPowerSelection(int direction)
+    private void QueueSimplePowerStep(int direction)
     {
-        if (
-            direction == 0 ||
-            !TryGetCurrentPowerSelection(
-                out var selections,
-                out var currentIndex))
+        if (direction == 0)
         {
-            ApplyComposerDialMode(
-                forceReset: false,
-                showFallbackFeedback: true);
             return;
         }
 
-        var efforts = CurrentEfforts();
-        var currentEffort = efforts[Math.Clamp(
-            _reasoningIndex,
-            0,
-            efforts.Count - 1)];
-        var nextIndex = ComposerPowerSelectionPolicy.ResolveNextIndex(
-            selections,
-            _modelIndex,
-            currentEffort,
+        CancelPendingComposerSelection(cancelComposerPicker: false);
+        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+        QueueBoundedStep(
+            ref _pendingSimplePowerSteps,
             direction);
-        if (nextIndex == currentIndex)
+        if (
+            Interlocked.CompareExchange(
+                ref _simplePowerPumpRunning,
+                1,
+                0) == 0)
         {
-            return;
-        }
-
-        var target = selections[nextIndex];
-        _modelIndex = target.ModelIndex;
-        _reasoningIndex = FindValueIndex(
-            _composerCatalog!.EffortsForModel(target.ModelIndex),
-            target.Effort);
-        _devicePageViewModel.UpdateRightModeValue(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                target.DisplayName));
-        SchedulePowerSelectionCommit(target);
-        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
-            _localization.Strings.Model,
-            target.DisplayName));
-        ShowFeedback(
-            _localization.Strings.Model,
-            _localization.Strings.Format(
-                StringKeys.MessageSettleToConfirm,
-                target.DisplayName));
-        Pulse();
-    }
-
-    private void AdjustRightMode(int direction)
-    {
-        switch (_rightMode)
-        {
-            case RightControlMode.Reasoning:
-                AdjustReasoning(direction);
-                break;
-            case RightControlMode.Model:
-                AdjustModel(direction);
-                break;
-            case RightControlMode.Speed:
-                AdjustSpeed(direction);
-                break;
+            _ = PumpSimplePowerStepsAsync();
         }
     }
 
-    private void AdjustReasoning(int direction)
+    private async Task PumpSimplePowerStepsAsync()
     {
-        var efforts = CurrentEfforts();
-        var next = Math.Clamp(
-            _reasoningIndex + direction,
-            0,
-            efforts.Count - 1);
-        if (next == _reasoningIndex)
-        {
-            RefreshPendingComposerDeadline(ComposerSettingKind.Effort);
-            return;
-        }
-
-        _reasoningIndex = next;
-        var target = efforts[_reasoningIndex];
-        var displayTarget = ComposerTargetLabel(
-            ComposerSettingKind.Effort,
-            target);
-        _devicePageViewModel.UpdateRightModeValue(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                displayTarget));
-        ScheduleComposerCommit(ComposerSettingKind.Effort, target);
-        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
-            ComposerKindLabel(ComposerSettingKind.Effort),
-            displayTarget));
-        ShowFeedback(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                ComposerKindLabel(ComposerSettingKind.Effort)),
-            _localization.Strings.Format(
-                StringKeys.MessageSettleToConfirm,
-                displayTarget));
-        Pulse();
-    }
-
-    private void AdjustModel(int direction)
-    {
-        if (_composerCatalog is null || _composerCatalog.Models.Count == 0)
-        {
-            return;
-        }
-
-        var next = Math.Clamp(
-            _modelIndex + direction,
-            0,
-            _composerCatalog.Models.Count - 1);
-        if (next == _modelIndex)
-        {
-            RefreshPendingComposerDeadline(ComposerSettingKind.Model);
-            return;
-        }
-
-        _modelIndex = next;
-        var target = _composerCatalog.Models[_modelIndex].DisplayName;
-        _devicePageViewModel.UpdateRightModeValue(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                target));
-        ScheduleComposerCommit(ComposerSettingKind.Model, target);
-        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
-            ComposerKindLabel(ComposerSettingKind.Model),
-            target));
-        ShowFeedback(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                ComposerKindLabel(ComposerSettingKind.Model)),
-            _localization.Strings.Format(
-                StringKeys.MessageSettleToConfirm,
-                target));
-        Pulse();
-    }
-
-    private void AdjustSpeed(int direction)
-    {
-        var next = direction > 0 ? 1 : 0;
-        if (next == _speedIndex)
-        {
-            RefreshPendingComposerDeadline(ComposerSettingKind.Speed);
-            return;
-        }
-
-        _speedIndex = next;
-        var target = _speedIndex > 0 ? "Fast" : "Standard";
-        var displayTarget = ComposerTargetLabel(
-            ComposerSettingKind.Speed,
-            target);
-        _devicePageViewModel.UpdateRightModeValue(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                displayTarget));
-        ScheduleComposerCommit(ComposerSettingKind.Speed, target);
-        AddEvent(_localization.Strings.FeedbackSelectionPreviewed(
-            ComposerKindLabel(ComposerSettingKind.Speed),
-            displayTarget));
-        ShowFeedback(
-            _localization.Strings.Format(
-                StringKeys.MessagePreviewValue,
-                ComposerKindLabel(ComposerSettingKind.Speed)),
-            _localization.Strings.Format(
-                StringKeys.MessageSettleToConfirm,
-                displayTarget));
-        Pulse();
-    }
-
-    private void ScheduleComposerCommit(
-        ComposerSettingKind kind,
-        string target)
-    {
-        _composerCommitCancellation?.Cancel();
-        var cancellation = new CancellationTokenSource();
-        _composerCommitCancellation = cancellation;
-        _pendingComposerKind = kind;
-        _pendingComposerTarget = target;
-        _pendingPowerSelection = null;
-        _ = CommitComposerAfterSettleAsync(kind, target, cancellation);
-    }
-
-    private void SchedulePowerSelectionCommit(
-        ComposerPowerSelection target)
-    {
-        _composerCommitCancellation?.Cancel();
-        var cancellation = new CancellationTokenSource();
-        _composerCommitCancellation = cancellation;
-        _pendingComposerKind = null;
-        _pendingComposerTarget = target.DisplayName;
-        _pendingPowerSelection = target;
-        _ = CommitPowerSelectionAfterSettleAsync(target, cancellation);
-    }
-
-    private async Task CommitPowerSelectionAfterSettleAsync(
-        ComposerPowerSelection target,
-        CancellationTokenSource cancellation)
-    {
+        var cancellation = BeginComposerPickerAutomation(
+            clearPendingPowerSteps: false);
         try
         {
-            await Task.Delay(
-                    BridgeTimings.ComposerPowerSettleMs,
-                    cancellation.Token)
-                .ConfigureAwait(true);
-            _devicePageViewModel.UpdateRightModeValue(
-                _localization.Strings.Format(
-                    StringKeys.MessageApplyingValue,
-                    target.DisplayName));
-
-            var catalog = _composerAutomation.LoadCatalog();
-            var usedExactFallback = false;
-            if (!CatalogUsesModel(catalog, target.ModelSlug))
+            while (!cancellation.IsCancellationRequested)
             {
-                var targetModelIndex = FindModelIndexBySlug(
-                    catalog.Models,
-                    target.ModelSlug);
-                var steps = targetModelIndex - catalog.InitialModelIndex;
-                var shortcutSucceeded =
-                    targetModelIndex >= 0 &&
-                    steps != 0 &&
-                    await _agentShortcuts.StepModelAsync(
-                            steps,
-                            _settings,
-                            cancellation.Token)
-                        .ConfigureAwait(true);
-                if (!shortcutSucceeded)
+                var pending = Volatile.Read(
+                    ref _pendingSimplePowerSteps);
+                if (pending == 0)
                 {
-                    usedExactFallback = true;
-                    var exact = await _composerAutomation.SelectAsync(
-                            ComposerSettingKind.Model,
-                            target.ModelName,
-                            _settings,
-                            cancellation.Token)
-                        .ConfigureAwait(true);
-                    if (!exact.Succeeded)
-                    {
-                        PresentPowerSelectionFailure(target.DisplayName);
-                        InitializeComposerControls();
-                        return;
-                    }
+                    break;
                 }
 
-                await Task.Delay(
-                        BridgeTimings.ComposerFallbackSettleMs,
+                var direction = Math.Sign(pending);
+                Interlocked.Add(
+                    ref _pendingSimplePowerSteps,
+                    -direction);
+                var result = await RunComposerPickerAutomationAsync(
+                        token => _composerAutomation.StepSimplePowerAsync(
+                            direction,
+                            _settings,
+                            token),
                         cancellation.Token)
                     .ConfigureAwait(true);
-                catalog = _composerAutomation.LoadCatalog();
-                if (!CatalogUsesModel(catalog, target.ModelSlug))
+                if (
+                    cancellation.IsCancellationRequested ||
+                    result.Error ==
+                        AgentAutomationErrorCodes.OperationCanceled)
                 {
-                    if (!usedExactFallback)
-                    {
-                        usedExactFallback = true;
-                        var exact = await _composerAutomation.SelectAsync(
-                                ComposerSettingKind.Model,
-                                target.ModelName,
-                                _settings,
-                                cancellation.Token)
-                            .ConfigureAwait(true);
-                        if (exact.Succeeded)
-                        {
-                            await Task.Delay(
-                                    BridgeTimings.ComposerFallbackSettleMs,
-                                    cancellation.Token)
-                                .ConfigureAwait(true);
-                            catalog = _composerAutomation.LoadCatalog();
-                        }
-                    }
-
-                    if (!CatalogUsesModel(catalog, target.ModelSlug))
-                    {
-                        PresentPowerSelectionFailure(target.DisplayName);
-                        InitializeComposerControls();
-                        return;
-                    }
+                    break;
                 }
+
+                PresentSimplePickerResult(
+                    _localization.Strings.Model,
+                    result);
+                if (!result.Succeeded)
+                {
+                    Interlocked.Exchange(
+                        ref _pendingSimplePowerSteps,
+                        0);
+                    break;
+                }
+
             }
-
-            if (!string.Equals(
-                    catalog.InitialEffort,
-                    target.Effort,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                var modelIndex = FindModelIndexBySlug(
-                    catalog.Models,
-                    target.ModelSlug);
-                var efforts = modelIndex >= 0
-                    ? catalog.EffortsForModel(modelIndex)
-                    : [];
-                var currentEffortIndex = FindValueIndex(
-                    efforts,
-                    catalog.InitialEffort);
-                var targetEffortIndex = FindValueIndex(
-                    efforts,
-                    target.Effort);
-                var effortSteps = targetEffortIndex - currentEffortIndex;
-                var shortcutSucceeded =
-                    efforts.Count > 0 &&
-                    effortSteps != 0 &&
-                    await ExecuteReasoningStepsAsync(
-                            effortSteps,
-                            cancellation.Token)
-                        .ConfigureAwait(true);
-                if (!shortcutSucceeded)
-                {
-                    usedExactFallback = true;
-                    var exact = await _composerAutomation.SelectAsync(
-                            ComposerSettingKind.Effort,
-                            target.Effort,
-                            _settings,
-                            cancellation.Token)
-                        .ConfigureAwait(true);
-                    if (!exact.Succeeded)
-                    {
-                        PresentPowerSelectionFailure(target.DisplayName);
-                        InitializeComposerControls();
-                        return;
-                    }
-                }
-
-                await Task.Delay(
-                        BridgeTimings.ComposerFallbackSettleMs,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                catalog = _composerAutomation.LoadCatalog();
-                if (!string.Equals(
-                        catalog.InitialEffort,
-                        target.Effort,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    PresentPowerSelectionFailure(target.DisplayName);
-                    InitializeComposerControls();
-                    return;
-                }
-            }
-
-            InitializeComposerControls();
-            _devicePageViewModel.UpdateRightModeValue(
-                target.DisplayName);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageComposerSelectionApplied,
-                _localization.Strings.Model,
-                target.DisplayName,
-                usedExactFallback
-                    ? _localization.Strings.Get(
-                        StringKeys.MessageExactSelection)
-                    : _localization.Strings.Get(
-                        StringKeys.MessageShortcutSent)));
-            ShowFeedback(
-                _localization.Strings.Model,
-                target.DisplayName);
         }
         catch (OperationCanceledException)
         {
-            // A newer detent owns the preview and will reconcile actual state.
+            // A newer Simple picker action owns the menu now.
+        }
+        catch (Exception exception)
+        {
+            PresentSimplePickerResult(
+                _localization.Strings.Model,
+                new ComposerPickerResult(
+                    false,
+                    Error: AgentAutomationErrorCodes.Unexpected,
+                    ErrorDetail: exception.Message));
         }
         finally
         {
-            if (ReferenceEquals(
-                    _composerCommitCancellation,
-                    cancellation))
+            CompleteComposerPickerAutomation(cancellation);
+            Volatile.Write(ref _simplePowerPumpRunning, 0);
+            if (
+                Volatile.Read(ref _pendingSimplePowerSteps) != 0 &&
+                Interlocked.CompareExchange(
+                    ref _simplePowerPumpRunning,
+                    1,
+                    0) == 0)
             {
-                _composerCommitCancellation = null;
-                _pendingComposerTarget = null;
-                _pendingPowerSelection = null;
-            }
-
-            cancellation.Dispose();
-        }
-    }
-
-    private async Task<bool> ExecuteReasoningStepsAsync(
-        int steps,
-        CancellationToken cancellationToken)
-    {
-        if (steps == 0)
-        {
-            return true;
-        }
-
-        var shortcut = steps > 0
-            ? _settings.ReasoningUpShortcut
-            : _settings.ReasoningDownShortcut;
-        for (var index = 0; index < Math.Abs(steps); index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!_agentShortcuts.Execute(shortcut, _settings))
-            {
-                return false;
-            }
-
-            await Task.Delay(
-                    BridgeTimings.ComposerMenuPollMs,
-                    cancellationToken)
-                .ConfigureAwait(true);
-        }
-
-        return true;
-    }
-
-    private static bool CatalogUsesModel(
-        ComposerCatalog catalog,
-        string slug)
-    {
-        return
-            catalog.Models.Count > 0 &&
-            string.Equals(
-                catalog.Models[Math.Clamp(
-                    catalog.InitialModelIndex,
-                    0,
-                    catalog.Models.Count - 1)].Slug,
-                slug,
-                StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int FindModelIndexBySlug(
-        IReadOnlyList<ComposerModelOption> models,
-        string slug)
-    {
-        for (var index = 0; index < models.Count; index++)
-        {
-            if (string.Equals(
-                    models[index].Slug,
-                    slug,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return index;
+                _ = PumpSimplePowerStepsAsync();
             }
         }
-
-        return -1;
     }
 
-    private void PresentPowerSelectionFailure(string target)
+    private void AdjustSimpleSpeed(int direction)
     {
+        direction = Math.Sign(direction);
+        if (
+            direction == 0 ||
+            direction == _simpleSpeedHeldDirection)
+        {
+            return;
+        }
+
+        _simpleSpeedHeldDirection = direction;
+        CancelPendingComposerSelection(cancelComposerPicker: false);
+        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+        var fast = direction > 0;
+        _speedIndex = fast ? 1 : 0;
         _devicePageViewModel.UpdateRightModeValue(
             _localization.Strings.Format(
-                StringKeys.MessageNotExecutedValue,
-                target));
-        AddEvent(_localization.Strings.Format(
-            StringKeys.MessageComposerSelectionFailed,
-            _localization.Strings.Model,
-            target));
-        ShowFeedback(
-            _localization.Strings.Model,
-            _localization.Strings.Format(
-                StringKeys.MessageNotExecutedValue,
-                target));
+                StringKeys.MessageApplyingValue,
+                SpeedLabel(_speedIndex)));
+        var cancellation = BeginComposerPickerAutomation(
+            clearPendingPowerSteps: true);
+        _ = SetSimpleSpeedAsync(fast, cancellation);
     }
 
-    private void RefreshPendingComposerDeadline(ComposerSettingKind kind)
-    {
-        if (
-            _pendingComposerKind == kind &&
-            !string.IsNullOrWhiteSpace(_pendingComposerTarget))
-        {
-            ScheduleComposerCommit(kind, _pendingComposerTarget);
-        }
-    }
-
-    private async Task CommitComposerAfterSettleAsync(
-        ComposerSettingKind kind,
-        string target,
+    private async Task SetSimpleSpeedAsync(
+        bool fast,
         CancellationTokenSource cancellation)
     {
         try
         {
-            await Task.Delay(
-                    BridgeTimings.ComposerSettleMs,
+            var result = await RunComposerPickerAutomationAsync(
+                    token => _composerAutomation.SetSimpleSpeedAsync(
+                        fast,
+                        _settings,
+                        token),
                     cancellation.Token)
                 .ConfigureAwait(true);
-            var displayTarget = ComposerTargetLabel(kind, target);
-            _devicePageViewModel.UpdateRightModeValue(
-                _localization.Strings.Format(
-                    StringKeys.MessageApplyingValue,
-                    displayTarget));
-            var automation = await _composerAutomation
-                .SelectAsync(kind, target, _settings, cancellation.Token)
-                .ConfigureAwait(true);
-            var fallback = false;
-            if (!automation.Succeeded)
-            {
-                fallback = await ExecuteComposerFallbackAsync(
-                        kind,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-            }
-
-            if (cancellation.IsCancellationRequested)
+            if (
+                cancellation.IsCancellationRequested ||
+                result.Error == AgentAutomationErrorCodes.OperationCanceled)
             {
                 return;
             }
 
-            if (automation.Succeeded || fallback)
+            if (result.Succeeded && !result.IsMenuOpen)
             {
-                ClearNavigationUndo();
-                if (kind == ComposerSettingKind.Model)
+                var reopened = await RunComposerPickerAutomationAsync(
+                        token => _composerAutomation.OpenPickerAsync(
+                            ComposerPickerView.Simple,
+                            _settings,
+                            token),
+                        cancellation.Token)
+                    .ConfigureAwait(true);
+                if (reopened.Succeeded)
                 {
-                    await Task.Delay(
-                            BridgeTimings.ComposerFallbackSettleMs,
-                            cancellation.Token)
-                        .ConfigureAwait(true);
-                    InitializeComposerControls();
+                    result = result with { IsMenuOpen = true };
                 }
-                else
+            }
+
+            PresentSimplePickerResult(
+                _localization.Strings.Speed,
+                result);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer Simple picker action owns the menu now.
+        }
+        catch (Exception exception)
+        {
+            PresentSimplePickerResult(
+                _localization.Strings.Speed,
+                new ComposerPickerResult(
+                    false,
+                    Error: AgentAutomationErrorCodes.Unexpected,
+                    ErrorDetail: exception.Message));
+        }
+        finally
+        {
+            CompleteComposerPickerAutomation(cancellation);
+        }
+    }
+
+    private async Task OpenComposerPickerAsync(
+        ComposerPickerView view)
+    {
+        CancelPendingComposerSelection(cancelComposerPicker: false);
+        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+        var cancellation = BeginComposerPickerAutomation(
+            clearPendingPowerSteps: true);
+        try
+        {
+            var result = await RunComposerPickerAutomationAsync(
+                    token => _composerAutomation.OpenPickerAsync(
+                        view,
+                        _settings,
+                        token),
+                    cancellation.Token)
+                .ConfigureAwait(true);
+            if (
+                cancellation.IsCancellationRequested ||
+                result.Error == AgentAutomationErrorCodes.OperationCanceled)
+            {
+                return;
+            }
+
+            PresentSimplePickerResult(
+                _localization.Strings.Model,
+                result);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer Simple picker action owns the menu now.
+        }
+        catch (Exception exception)
+        {
+            PresentSimplePickerResult(
+                _localization.Strings.Model,
+                new ComposerPickerResult(
+                    false,
+                    Error: AgentAutomationErrorCodes.Unexpected,
+                    ErrorDetail: exception.Message));
+        }
+        finally
+        {
+            CompleteComposerPickerAutomation(cancellation);
+        }
+    }
+
+    private CancellationTokenSource BeginComposerPickerAutomation(
+        bool clearPendingPowerSteps)
+    {
+        if (clearPendingPowerSteps)
+        {
+            Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        }
+
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(
+            ref _composerPickerCancellation,
+            cancellation);
+        previous?.Cancel();
+        return cancellation;
+    }
+
+    private void CompleteComposerPickerAutomation(
+        CancellationTokenSource cancellation)
+    {
+        Interlocked.CompareExchange(
+            ref _composerPickerCancellation,
+            null,
+            cancellation);
+        cancellation.Dispose();
+    }
+
+    private void CancelComposerPickerAutomation()
+    {
+        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+        _simpleSpeedHeldDirection = 0;
+        var cancellation = Interlocked.Exchange(
+            ref _composerPickerCancellation,
+            null);
+        cancellation?.Cancel();
+    }
+
+    private async Task<ComposerPickerResult>
+        RunComposerPickerAutomationAsync(
+            Func<CancellationToken, Task<ComposerPickerResult>> action,
+            CancellationToken cancellationToken)
+    {
+        await _dialAutomationGate
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(true);
+        try
+        {
+            return await action(cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            _dialAutomationGate.Release();
+        }
+    }
+
+    private void PresentSimplePickerResult(
+        string title,
+        ComposerPickerResult result)
+    {
+        if (!result.Succeeded)
+        {
+            var failure = SimplePickerFailureLabel(result);
+            _devicePageViewModel.UpdateRightModeValue(failure);
+            AddEvent($"{title} · {failure}");
+            ShowFeedback(title, failure);
+            Pulse(strength: 0.1);
+            return;
+        }
+
+        var value = string.IsNullOrWhiteSpace(result.Value)
+            ? CurrentPowerSelectionDisplay()
+            : result.Value;
+        _devicePageViewModel.UpdateRightModeValue(value);
+        AddEvent($"{title} · {value}");
+        ShowFeedback(title, value);
+        Pulse(strength: 0.18);
+    }
+
+    private string SimplePickerFailureLabel(ComposerPickerResult result)
+    {
+        return result.ErrorDetail switch
+        {
+            "composer-power-no-change-right" =>
+                RadialText(
+                    "Power 未变化；可能已到当前账户的最高档，或界面仍在更新",
+                    "Power did not change; it may be at this account's highest level or the UI may still be updating"),
+            "composer-power-no-change-left" =>
+                RadialText(
+                    "Power 未变化；可能已到当前账户的最低档，或界面仍在更新",
+                    "Power did not change; it may be at this account's lowest level or the UI may still be updating"),
+            "composer-picker-view:simple" =>
+                RadialText(
+                    "当前模型与档位无法显示为简易菜单；可在设置中使用高级模式",
+                    "The current model and effort cannot be represented by the Simple picker; use Advanced mode in Settings"),
+            "composer-picker-view:advanced" =>
+                RadialText(
+                    "无法切换到当前账户的高级模型菜单",
+                    "Could not switch to the Advanced model picker for the current account"),
+            "composer-speed-option" =>
+                RadialText(
+                    "当前账户或模型没有提供这个速度选项",
+                    "This speed option is not available for the current account or model"),
+            "composer-speed-readback" =>
+                RadialText(
+                    "界面没有确认速度切换；未把它当作已执行",
+                    "The UI did not confirm the speed change, so it was not treated as executed"),
+            "composer-power-focus" or "composer-power-input" =>
+                RadialText(
+                    "未能控制当前简易菜单的 Power 横条",
+                    "Could not control the live Power slider in the Simple picker"),
+            _ => ExecutionFailureLabel(
+                result.Error,
+                result.ErrorDetail),
+        };
+    }
+
+    private void QueueAdvancedPickerStep(int direction)
+    {
+        if (direction == 0)
+        {
+            return;
+        }
+
+        var kind = _rightMode switch
+        {
+            RightControlMode.Model => ComposerSettingKind.Model,
+            RightControlMode.Reasoning => ComposerSettingKind.Effort,
+            RightControlMode.Speed => ComposerSettingKind.Speed,
+            _ => (ComposerSettingKind?)null,
+        };
+        if (!kind.HasValue)
+        {
+            return;
+        }
+
+        CancelPendingComposerSelection(cancelComposerPicker: false);
+        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
+        _pendingAdvancedKind = kind.Value;
+        QueueBoundedStep(ref _pendingAdvancedSteps, direction);
+        if (
+            Interlocked.CompareExchange(
+                ref _advancedStepPumpRunning,
+                1,
+                0) == 0)
+        {
+            _ = PumpAdvancedPickerStepsAsync();
+        }
+    }
+
+    private async Task PumpAdvancedPickerStepsAsync()
+    {
+        var cancellation = BeginComposerPickerAutomation(
+            clearPendingPowerSteps: false);
+        try
+        {
+            while (!cancellation.IsCancellationRequested)
+            {
+                var pending = Volatile.Read(ref _pendingAdvancedSteps);
+                if (pending == 0)
                 {
-                    MarkComposerCommitted(kind);
+                    break;
                 }
 
-                _devicePageViewModel.UpdateRightModeValue(
-                    automation.Succeeded
-                        ? displayTarget
-                        : _localization.Strings.Format(
-                            StringKeys.MessageShortcutSentValue,
-                            displayTarget));
-                var channel =
-                    automation.Succeeded
-                        ? _localization.Strings.Get(
-                            StringKeys.MessageExactSelection)
-                        : _localization.Strings.Format(
-                            StringKeys.MessageShortcutSentRestart,
-                            _activeAgent.DisplayName);
-                AddEvent(_localization.Strings.Format(
-                    StringKeys.MessageComposerSelectionApplied,
-                    ComposerKindLabel(kind),
-                    displayTarget,
-                    channel));
-                ShowFeedback(
-                    ComposerKindLabel(kind),
-                    automation.Succeeded
-                        ? displayTarget
-                        : _localization.Strings.Get(
-                            StringKeys.MessageShortcutSent));
-            }
-            else
-            {
-                _devicePageViewModel.UpdateRightModeValue(
-                    _localization.Strings.Format(
-                        StringKeys.MessageNotExecutedValue,
-                        displayTarget));
-                AddEvent(_localization.Strings.Format(
-                    StringKeys.MessageComposerSelectionFailed,
-                    ComposerKindLabel(kind),
-                    ExecutionFailureLabel(
-                        automation.Error,
-                        automation.ErrorDetail)));
+                var direction = Math.Sign(pending);
+                Interlocked.Add(ref _pendingAdvancedSteps, -direction);
+                var kind = _pendingAdvancedKind;
+                var result = await RunComposerPickerAutomationAsync(
+                        token => _composerAutomation.StepAdvancedAsync(
+                            kind,
+                            direction,
+                            _settings,
+                            token),
+                        cancellation.Token)
+                    .ConfigureAwait(true);
+                if (
+                    cancellation.IsCancellationRequested ||
+                    result.Error ==
+                        AgentAutomationErrorCodes.OperationCanceled)
+                {
+                    break;
+                }
+
+                PresentAdvancedPickerResult(kind, result);
+                if (!result.Succeeded)
+                {
+                    Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
+                    break;
+                }
+
+                ClearNavigationUndo();
             }
         }
         catch (OperationCanceledException)
         {
-            // A newer stick input replaced this pending selection.
+            // A newer picker action owns the menu now.
+        }
+        catch (Exception exception)
+        {
+            PresentAdvancedPickerResult(
+                _pendingAdvancedKind,
+                new ComposerPickerResult(
+                    false,
+                    Error: AgentAutomationErrorCodes.Unexpected,
+                    ErrorDetail: exception.Message));
         }
         finally
         {
-            if (ReferenceEquals(_composerCommitCancellation, cancellation))
+            CompleteComposerPickerAutomation(cancellation);
+            Volatile.Write(ref _advancedStepPumpRunning, 0);
+            if (
+                Volatile.Read(ref _pendingAdvancedSteps) != 0 &&
+                Interlocked.CompareExchange(
+                    ref _advancedStepPumpRunning,
+                    1,
+                    0) == 0)
             {
-                _composerCommitCancellation = null;
-                _pendingComposerKind = null;
-                _pendingComposerTarget = null;
+                _ = PumpAdvancedPickerStepsAsync();
             }
-
-            cancellation.Dispose();
         }
     }
 
-    private async Task<bool> ExecuteComposerFallbackAsync(
+    private void PresentAdvancedPickerResult(
         ComposerSettingKind kind,
-        CancellationToken cancellationToken)
+        ComposerPickerResult result)
     {
-        switch (kind)
+        var title = ComposerKindLabel(kind);
+        if (!result.Succeeded)
         {
-            case ComposerSettingKind.Model:
+            var failure = result.ErrorDetail switch
             {
-                var steps = _modelIndex - _committedModelIndex;
-                return steps != 0 &&
-                       await _agentShortcuts
-                           .StepModelAsync(
-                               steps,
-                               _settings,
-                               cancellationToken)
-                           .ConfigureAwait(true);
-            }
-            case ComposerSettingKind.Effort:
+                "composer-advanced-upper-boundary" =>
+                    RadialText(
+                        "已到当前菜单实际提供的最高一项",
+                        "Already at the highest option in the live menu"),
+                "composer-advanced-lower-boundary" =>
+                    RadialText(
+                        "已到当前菜单实际提供的最低一项",
+                        "Already at the lowest option in the live menu"),
+                var detail when detail?.StartsWith(
+                    "composer-advanced-readback:",
+                    StringComparison.Ordinal) == true =>
+                    RadialText(
+                        "界面没有确认这次选择，未更新本地状态",
+                        "The UI did not confirm this selection; local state was not advanced"),
+                _ => SimplePickerFailureLabel(result),
+            };
+            _devicePageViewModel.UpdateRightModeValue(failure);
+            AddEvent($"{title} · {failure}");
+            ShowFeedback(title, failure);
+            Pulse(strength: 0.1);
+            return;
+        }
+
+        var value = ComposerTargetLabel(
+            kind,
+            result.Value ?? string.Empty);
+        _devicePageViewModel.UpdateRightModeValue(value);
+        AddEvent($"{title} · {value}");
+        ShowFeedback(title, value);
+        Pulse(strength: 0.18);
+    }
+
+    private static void QueueBoundedStep(
+        ref int pending,
+        int direction)
+    {
+        direction = Math.Sign(direction);
+        while (direction != 0)
+        {
+            var current = Volatile.Read(ref pending);
+            var next = Math.Clamp(current + direction, -2, 2);
+            if (Interlocked.CompareExchange(
+                    ref pending,
+                    next,
+                    current) == current)
             {
-                var steps = _reasoningIndex - _committedReasoningIndex;
-                if (steps == 0)
-                {
-                    return true;
-                }
-
-                var shortcut =
-                    steps > 0
-                        ? _settings.ReasoningUpShortcut
-                        : _settings.ReasoningDownShortcut;
-                for (var index = 0; index < Math.Abs(steps); index++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (!_agentShortcuts.Execute(
-                            shortcut,
-                            _settings))
-                    {
-                        return false;
-                    }
-
-                    await Task.Delay(
-                            BridgeTimings.ComposerMenuPollMs,
-                            cancellationToken)
-                        .ConfigureAwait(true);
-                }
-
-                return true;
+                return;
             }
-            case ComposerSettingKind.Speed:
-                return
-                    _speedIndex == _committedSpeedIndex ||
-                    _agentShortcuts.Execute(
-                        _settings.FastToggleShortcut,
-                        _settings);
-            default:
-                return false;
         }
     }
 
-    private void MarkComposerCommitted(ComposerSettingKind kind)
+    private void CancelPendingComposerSelection(
+        bool cancelComposerPicker = true)
     {
-        switch (kind)
+        if (cancelComposerPicker)
         {
-            case ComposerSettingKind.Model:
-                _committedModelIndex = _modelIndex;
-                var efforts = CurrentEfforts();
-                _reasoningIndex = Math.Clamp(
-                    _reasoningIndex,
-                    0,
-                    efforts.Count - 1);
-                _committedReasoningIndex = _reasoningIndex;
-                break;
-            case ComposerSettingKind.Effort:
-                _committedReasoningIndex = _reasoningIndex;
-                break;
-            case ComposerSettingKind.Speed:
-                _committedSpeedIndex = _speedIndex;
-                break;
-        }
-    }
-
-    private void CancelPendingComposerSelection()
-    {
-        var pendingKind = _pendingComposerKind;
-        var pendingPower = _pendingPowerSelection;
-        _composerCommitCancellation?.Cancel();
-        _composerCommitCancellation = null;
-        _pendingComposerKind = null;
-        _pendingComposerTarget = null;
-        _pendingPowerSelection = null;
-
-        if (pendingPower is not null)
-        {
-            _modelIndex = _committedModelIndex;
-            _reasoningIndex = _committedReasoningIndex;
-        }
-        else
-        {
-            switch (pendingKind)
-            {
-                case ComposerSettingKind.Model:
-                    _modelIndex = _committedModelIndex;
-                    break;
-                case ComposerSettingKind.Effort:
-                    _reasoningIndex = _committedReasoningIndex;
-                    break;
-                case ComposerSettingKind.Speed:
-                    _speedIndex = _committedSpeedIndex;
-                    break;
-            }
+            CancelComposerPickerAutomation();
         }
 
         if (_composerCatalog is not null)
@@ -4562,8 +4541,9 @@ public partial class MainWindow : Window
         }
 
         var hadPendingSelection =
-            _pendingComposerKind is not null ||
-            _composerCommitCancellation is not null;
+            _composerPickerCancellation is not null ||
+            Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
+            Volatile.Read(ref _pendingAdvancedSteps) != 0;
         CancelPendingSidebarFocus();
         CancelPendingComposerSelection();
         if (hadPendingSelection)
@@ -5102,13 +5082,10 @@ public partial class MainWindow : Window
             _composerCatalog.InitialModelIndex,
             0,
             Math.Max(0, _composerCatalog.Models.Count - 1));
-        _committedModelIndex = _modelIndex;
-
         var efforts = CurrentEfforts();
         _reasoningIndex = FindValueIndex(
             efforts,
             _composerCatalog.InitialEffort);
-        _committedReasoningIndex = _reasoningIndex;
         _speedIndex =
             string.Equals(
                 _composerCatalog.InitialSpeed,
@@ -5116,16 +5093,13 @@ public partial class MainWindow : Window
                 StringComparison.OrdinalIgnoreCase)
                 ? 1
                 : 0;
-        _committedSpeedIndex = _speedIndex;
-        ApplyComposerDialMode(
-            forceReset: false,
-            showFallbackFeedback: false);
+        ApplyComposerDialMode(forceReset: false);
     }
 
     private IReadOnlyList<string> CurrentEfforts()
     {
         return _composerCatalog?.EffortsForModel(_modelIndex)
-               ?? ["Light", "Medium", "High", "Extra High", "Max", "Ultra"];
+               ?? [];
     }
 
     private static int FindValueIndex(
@@ -5153,12 +5127,7 @@ public partial class MainWindow : Window
             RightControlMode.Dial =>
                 CurrentPowerSelectionDisplay(),
             RightControlMode.Reasoning =>
-                ComposerTargetLabel(
-                    ComposerSettingKind.Effort,
-                    CurrentEfforts()[Math.Clamp(
-                        _reasoningIndex,
-                        0,
-                        CurrentEfforts().Count - 1)]),
+                CurrentReasoningDisplay(),
             RightControlMode.Model =>
                 _composerCatalog is not null &&
                 _composerCatalog.Models.Count > 0
@@ -5174,6 +5143,20 @@ public partial class MainWindow : Window
         _devicePageViewModel.UpdateRightMode(
             _rightMode,
             value);
+    }
+
+    private string CurrentReasoningDisplay()
+    {
+        var efforts = CurrentEfforts();
+        return efforts.Count == 0
+            ? _localization.Strings.ComposerAgentNotForeground(
+                _activeAgent.DisplayName)
+            : ComposerTargetLabel(
+                ComposerSettingKind.Effort,
+                efforts[Math.Clamp(
+                    _reasoningIndex,
+                    0,
+                    efforts.Count - 1)]);
     }
 
     private string SpeedLabel(int index)
@@ -5265,9 +5248,7 @@ public partial class MainWindow : Window
                 ComposerDialModes.Normalize(
                     _settings.ComposerDialMode),
                 StringComparison.Ordinal);
-        ApplyComposerDialMode(
-            forceReset: composerDialModeChanged,
-            showFallbackFeedback: true);
+        ApplyComposerDialMode(forceReset: composerDialModeChanged);
         ConfigureCodexKeybindings();
         RefreshRadialMenu();
         AddEvent(eventText);
@@ -5346,6 +5327,42 @@ public partial class MainWindow : Window
     private string ScopeLabel(SidebarScope scope)
     {
         return _localization.Strings.ScopeValue(scope.ToString());
+    }
+
+    private string CurrentSidebarContextTitle()
+    {
+        var projectName = CurrentSidebarProjectName();
+        return string.IsNullOrWhiteSpace(projectName)
+            ? _localization.Strings.Format(
+                StringKeys.MessageAgentSidebar,
+                _activeAgent.DisplayName)
+            : _localization.Strings.Format(
+                StringKeys.MessageProjectTitle,
+                projectName);
+    }
+
+    private string? CurrentSidebarProjectName()
+    {
+        var selected = DevicePage.SelectedEntry;
+        if (selected is { IsProject: true })
+        {
+            return selected.Title;
+        }
+
+        var projectPath = selected?.ProjectPath;
+        if (string.IsNullOrWhiteSpace(projectPath) &&
+            _scope == SidebarScope.ProjectTasks)
+        {
+            projectPath = _selectedProjectPath;
+        }
+
+        return string.IsNullOrWhiteSpace(projectPath)
+            ? null
+            : _snapshot.Projects.FirstOrDefault(project =>
+                string.Equals(
+                    project.Path,
+                    projectPath,
+                    StringComparison.OrdinalIgnoreCase))?.Name;
     }
 
     private string SidebarWheelScopeLabel(SidebarScope scope)

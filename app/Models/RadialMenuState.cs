@@ -17,7 +17,9 @@ public sealed class RadialMenuState
             RadialMenuDisplayMode.Learning,
         bool isLayerEngaged = true,
         bool isLearningCueReady = false,
-        string? subtitle = null)
+        string? subtitle = null,
+        RadialMenuInteractionPhase interactionPhase =
+            RadialMenuInteractionPhase.AwaitingInput)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(modifierGlyph);
@@ -48,6 +50,7 @@ public sealed class RadialMenuState
         DisplayMode = displayMode;
         IsLayerEngaged = isLayerEngaged;
         IsLearningCueReady = isLearningCueReady;
+        InteractionPhase = interactionPhase;
         Items = new ReadOnlyCollection<RadialMenuItemState>(itemList);
         _itemsByPosition = new ReadOnlyDictionary<
             RadialMenuSlotPosition,
@@ -69,10 +72,14 @@ public sealed class RadialMenuState
 
     public bool IsLearningCueReady { get; }
 
+    public RadialMenuInteractionPhase InteractionPhase { get; }
+
     public IReadOnlyList<RadialMenuItemState> Items { get; }
 
     public bool IsVisible =>
         IsLayerEngaged &&
+        InteractionPhase !=
+            RadialMenuInteractionPhase.WaitingForResponse &&
         DisplayMode switch
         {
             RadialMenuDisplayMode.Always => true,

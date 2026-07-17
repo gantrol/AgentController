@@ -3,9 +3,7 @@
 - Support more than Codex, starting with a researched Claude Code adapter
 - Not only windows? Change `app` directory to `windows`
 - Copy? e.g. controller assets in https://github.com/univrsal/input-overlay ?
-- Plan Mode error
 - Fast switch error
-- up/down cannot jump within chat turns
 - v0.4b current trial
   - [x] Stable controller-owned sidebar directory; running-task recency
         updates no longer reorder the active navigation session

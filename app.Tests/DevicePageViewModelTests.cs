@@ -71,7 +71,7 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Simple: ← / → changes model + effort · Advanced: ← / → changes control, ↑ / ↓ changes value · hold RS Settings",
+            "Simple: ← / → Power, ↑ Fast, ↓ Standard · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -211,7 +211,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Simple mode · combined model + effort presets",
+            "Simple mode · live Power and Speed controls",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -248,7 +248,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "简易模式 · 模型＋思考强度组合档位",
+            "简易模式 · 实际 Power 与速度控件",
             viewModel.RightModeValue);
     }
 
@@ -272,7 +272,7 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Simple: ← / → changes model + effort · Advanced: ← / → changes control, ↑ / ↓ changes value · hold RS Settings",
+            "Simple: ← / → Power, ↑ Fast, ↓ Standard · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
             viewModel.RightStickHint);
     }
 
