@@ -319,6 +319,17 @@ public sealed class CodexAgentTarget : IAgentTarget
                 cancellationToken);
         }
 
+        public Task<ComposerAutomationResult> ScrollConversationAsync(
+            ConversationBoundary boundary,
+            AppSettings settings,
+            CancellationToken cancellationToken)
+        {
+            return _composer.ScrollConversationAsync(
+                boundary,
+                settings,
+                cancellationToken);
+        }
+
         public string? TryReadComposerButtonName()
         {
             return _composer.TryReadComposerButtonName();

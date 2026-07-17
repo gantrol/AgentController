@@ -1756,6 +1756,19 @@ public sealed partial class CodexComposerService
             cancellationToken);
     }
 
+    public Task<ComposerAutomationResult> ScrollConversationAsync(
+        ConversationBoundary boundary,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        return Task.Run(
+            () => ScrollConversationCore(
+                boundary,
+                settings,
+                cancellationToken),
+            cancellationToken);
+    }
+
     public string? TryReadComposerButtonName()
     {
         try
@@ -1949,6 +1962,199 @@ public sealed partial class CodexComposerService
 
             return result;
         }, cancellationToken);
+    }
+
+    private static ComposerAutomationResult ScrollConversationCore(
+        ConversationBoundary boundary,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        if (!settings.BridgeEnabled)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.BridgeSafePreview);
+        }
+
+        if (
+            settings.OnlyWhenCodexForeground &&
+            !Win32Input.IsCodexForeground())
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.AgentNotForeground);
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var context = FindCodexWindow();
+            if (context is null)
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.AgentWindowNotFound);
+            }
+
+            var editor = FindComposerEditor(context.Value.Window);
+            var scroll = FindConversationScrollPattern(
+                context.Value.Window,
+                editor);
+            if (scroll is null)
+            {
+                return new(
+                    false,
+                    AgentAutomationErrorCodes.ElementNotFound,
+                    "conversation-scroll");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (
+                !scroll.Value.Pattern.Current.VerticallyScrollable ||
+                scroll.Value.Pattern.Current.VerticalViewSize >= 99.5)
+            {
+                return new(true);
+            }
+
+            var target = boundary == ConversationBoundary.Top
+                ? 0d
+                : 100d;
+            scroll.Value.Pattern.SetScrollPercent(
+                ScrollPattern.NoScroll,
+                target);
+            var deadline = Environment.TickCount64 + 500;
+            do
+            {
+                Thread.Sleep(30);
+                cancellationToken.ThrowIfCancellationRequested();
+                var current =
+                    scroll.Value.Pattern.Current.VerticalScrollPercent;
+                if (
+                    current == ScrollPattern.NoScroll ||
+                    Math.Abs(current - target) <= 1.5)
+                {
+                    return new(true);
+                }
+            }
+            while (Environment.TickCount64 < deadline);
+
+            return new(
+                false,
+                AgentAutomationErrorCodes.ElementUnsupported,
+                "conversation-scroll-not-verified");
+        }
+        catch (OperationCanceledException)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.OperationCanceled);
+        }
+        catch (ElementNotAvailableException)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.AutomationStale,
+                "conversation-scroll");
+        }
+        catch (InvalidOperationException)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.ElementUnsupported,
+                "conversation-scroll");
+        }
+        catch (Exception exception)
+        {
+            return new(
+                false,
+                AgentAutomationErrorCodes.Unexpected,
+                exception.Message);
+        }
+    }
+
+    private static (AutomationElement Element, ScrollPattern Pattern)?
+        FindConversationScrollPattern(
+            AutomationElement window,
+            AutomationElement? editor)
+    {
+        System.Windows.Rect? editorBounds = null;
+        try
+        {
+            if (editor is not null)
+            {
+                editorBounds = editor.Current.BoundingRectangle;
+            }
+        }
+        catch (ElementNotAvailableException)
+        {
+            editorBounds = null;
+        }
+
+        (AutomationElement Element, ScrollPattern Pattern)? best = null;
+        var bestScore = double.NegativeInfinity;
+        var candidates = window.FindAll(
+            TreeScope.Descendants,
+            Condition.TrueCondition);
+        foreach (AutomationElement candidate in candidates)
+        {
+            try
+            {
+                var bounds = candidate.Current.BoundingRectangle;
+                if (
+                    candidate.Current.IsOffscreen ||
+                    bounds.IsEmpty ||
+                    bounds.Width < 280 ||
+                    bounds.Height < 180 ||
+                    !candidate.TryGetCurrentPattern(
+                        ScrollPattern.Pattern,
+                        out var patternObject) ||
+                    patternObject is not ScrollPattern pattern)
+                {
+                    continue;
+                }
+
+                var score = bounds.Height;
+                if (
+                    editorBounds is { } composer &&
+                    !composer.IsEmpty)
+                {
+                    var overlap = Math.Max(
+                        0,
+                        Math.Min(bounds.Right, composer.Right) -
+                        Math.Max(bounds.Left, composer.Left));
+                    var overlapRatio = overlap /
+                        Math.Max(1, Math.Min(bounds.Width, composer.Width));
+                    if (
+                        overlapRatio < 0.45 ||
+                        bounds.Top >= composer.Top)
+                    {
+                        continue;
+                    }
+
+                    score += overlapRatio * 1200;
+                    score -= Math.Abs(bounds.Bottom - composer.Top) * 0.08;
+                }
+
+                if (pattern.Current.VerticallyScrollable)
+                {
+                    score += 1600;
+                }
+
+                if (score <= bestScore)
+                {
+                    continue;
+                }
+
+                best = (candidate, pattern);
+                bestScore = score;
+            }
+            catch (ElementNotAvailableException)
+            {
+                // Continue with the remaining live accessibility elements.
+            }
+        }
+
+        return best;
     }
 
     public ComposerAutomationResult SubmitComposer(AppSettings settings)

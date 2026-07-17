@@ -118,6 +118,11 @@ public interface IComposerAutomation
         AppSettings settings,
         CancellationToken cancellationToken);
 
+    Task<ComposerAutomationResult> ScrollConversationAsync(
+        ConversationBoundary boundary,
+        AppSettings settings,
+        CancellationToken cancellationToken);
+
     string? TryReadComposerButtonName();
 
     string? TryReadDispatchButtonName();

@@ -142,6 +142,12 @@ public static class AgentCapabilityFallbacks
                 false,
                 Error: CapabilityUnavailable));
 
+        public Task<ComposerAutomationResult> ScrollConversationAsync(
+            ConversationBoundary boundary,
+            AppSettings settings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Failed());
+
         public string? TryReadComposerButtonName() => null;
 
         public string? TryReadDispatchButtonName() => null;

@@ -138,6 +138,9 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _rightStickPressCancellation;
     private CancellationTokenSource? _actionPanelConfirmationCancellation;
     private CancellationTokenSource? _cancelHoldCancellation;
+    private CancellationTokenSource?
+        _conversationBoundaryHoldCancellation;
+    private ConversationBoundary? _conversationBoundaryHoldTarget;
     private NavigationUndoState? _navigationUndo;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
@@ -571,6 +574,14 @@ public partial class MainWindow : Window
         if (conversationNavigation != ConversationTurnInputAction.None)
         {
             NavigateConversationTurn(conversationNavigation);
+            BeginConversationBoundaryHold(conversationNavigation);
+        }
+
+        if (
+            physicalUpEdges.HasFlag(ControllerButtons.DPadUp) ||
+            physicalUpEdges.HasFlag(ControllerButtons.DPadDown))
+        {
+            EndConversationBoundaryHold(physicalUpEdges);
         }
 
         HandleButtonEdge(
@@ -752,6 +763,7 @@ public partial class MainWindow : Window
 
     private void DrainControllerFrame(ControllerButtons pressed)
     {
+        CancelConversationBoundaryHold();
         _previousButtons = pressed;
         _previousPhysicalButtons = pressed;
         _axisRepeater.Reset();
@@ -2053,6 +2065,7 @@ public partial class MainWindow : Window
         ControllerState? state = null)
     {
         CancelBaseCancelHold(showFeedback: false);
+        CancelConversationBoundaryHold();
         if (_controllerSession.IsActive)
         {
             CancelPendingSidebarFocus();
@@ -2173,15 +2186,145 @@ public partial class MainWindow : Window
                     false,
                     AgentAutomationErrorCodes.InputInjectionFailed,
                     shortcut)));
-        ShowFeedback(
-            title,
-            executed
-                ? _localization.Strings.Get(
-                    StringKeys.MessageShortcutSent)
-                : ExecutionFailureLabel(
+        if (!executed)
+        {
+            ShowFeedback(
+                title,
+                ExecutionFailureLabel(
                     AgentAutomationErrorCodes.InputInjectionFailed,
                     shortcut));
+        }
+
         Pulse(strength: executed ? 0.16 : 0.1);
+    }
+
+    private void BeginConversationBoundaryHold(
+        ConversationTurnInputAction action)
+    {
+        CancelConversationBoundaryHold();
+        var boundary =
+            ConversationBoundaryHoldPolicy.ResolveBoundary(action);
+        var cancellation = new CancellationTokenSource();
+        _conversationBoundaryHoldTarget = boundary;
+        _conversationBoundaryHoldCancellation = cancellation;
+        _ = PromoteConversationBoundaryHoldAsync(
+            boundary,
+            cancellation);
+    }
+
+    private void EndConversationBoundaryHold(
+        ControllerButtons releasedButtons)
+    {
+        if (_conversationBoundaryHoldTarget is not { } boundary)
+        {
+            return;
+        }
+
+        var button =
+            ConversationBoundaryHoldPolicy.ResolveButton(boundary);
+        if (releasedButtons.HasFlag(button))
+        {
+            CancelConversationBoundaryHold();
+        }
+    }
+
+    private async Task PromoteConversationBoundaryHoldAsync(
+        ConversationBoundary boundary,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var holdMs =
+                ConversationBoundaryHoldPolicy.ResolveHoldMilliseconds(
+                    boundary,
+                    BridgeTimings.ConversationTopHoldMs,
+                    BridgeTimings.ConversationBottomHoldMs);
+            await Task.Delay(holdMs, cancellation.Token)
+                .ConfigureAwait(true);
+            if (!CanContinueConversationBoundaryHold(
+                    boundary,
+                    cancellation))
+            {
+                return;
+            }
+
+            _conversationBoundaryHoldCancellation = null;
+            _conversationBoundaryHoldTarget = null;
+            var result = await _composerAutomation
+                .ScrollConversationAsync(
+                    boundary,
+                    _settings,
+                    CancellationToken.None)
+                .ConfigureAwait(true);
+            var title = boundary == ConversationBoundary.Top
+                ? RadialText("已置顶", "Jumped to top")
+                : RadialText("已置底", "Jumped to bottom");
+            AddEvent(
+                title +
+                ExecutionSuffix(
+                    result.Succeeded,
+                    result.Error,
+                    result.ErrorDetail));
+            if (!result.Succeeded)
+            {
+                ShowFeedback(
+                    title,
+                    ExecutionFailureLabel(
+                        result.Error,
+                        result.ErrorDetail));
+            }
+
+            Pulse(strength: result.Succeeded ? 0.18 : 0.1);
+        }
+        catch (OperationCanceledException)
+        {
+            // Releasing the D-pad before the threshold keeps turn navigation.
+        }
+        finally
+        {
+            if (ReferenceEquals(
+                    _conversationBoundaryHoldCancellation,
+                    cancellation))
+            {
+                _conversationBoundaryHoldCancellation = null;
+                _conversationBoundaryHoldTarget = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private bool CanContinueConversationBoundaryHold(
+        ConversationBoundary boundary,
+        CancellationTokenSource cancellation)
+    {
+        var state = _xInputService.LastState;
+        var button =
+            ConversationBoundaryHoldPolicy.ResolveButton(boundary);
+        return
+            ReferenceEquals(
+                _conversationBoundaryHoldCancellation,
+                cancellation) &&
+            !cancellation.IsCancellationRequested &&
+            state.IsConnected &&
+            state.Buttons.HasFlag(button) &&
+            _settings.BridgeEnabled &&
+            _controllerSession.IsActive &&
+            _radialLayer is null &&
+            !IsVirtualDialContextActive &&
+            !_pushToTalkTrigger.BlocksBaseInput &&
+            (
+                !_settings.OnlyWhenCodexForeground ||
+                _activeAgent.Presence.IsForeground
+            );
+    }
+
+    private void CancelConversationBoundaryHold()
+    {
+        var cancellation = _conversationBoundaryHoldCancellation;
+        _conversationBoundaryHoldCancellation = null;
+        _conversationBoundaryHoldTarget = null;
+        cancellation?.Cancel();
     }
 
     private void CycleRootSidebarScope()
@@ -6185,6 +6328,7 @@ public partial class MainWindow : Window
         _dataTimer.Stop();
         _radialLearningTimer.Stop();
         CancelBaseCancelHold(showFeedback: false);
+        CancelConversationBoundaryHold();
         ResetRadialLayer(clearSuppression: true);
         ResetVirtualDialInput(closeMenu: true);
         CancelPendingSidebarFocus();

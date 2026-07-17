@@ -89,7 +89,7 @@ The controller will not control Codex. Re-enable it in Agent Controller.
 | X | 发送当前 composer 文本 | 已实现；实际结果依赖 Codex 当前发送按钮和 UI Automation |
 | B | 菜单、语音、待提交选择或导航撤回场景短按立即处理；其他 Base 场景长按 3 秒并显示倒计时后取消当前会话 | 已实现；松开即中止倒计时 |
 | Y | 打开动作面板；面板中再次按 Y 或 B 关闭 | 已实现 |
-| 十字键上/下 | 跳到上一条/下一条用户消息 | 已实现；按 Windows 扩展键格式注入 Codex 原生 `Alt+↑` / `Alt+↓` |
+| 十字键上/下 | 短按跳到上一条/下一条用户消息；按住上 4 秒置顶、按住下 3 秒置底 | 已实现；短按注入 Codex 原生 `Alt+↑` / `Alt+↓`，成功时不额外显示 popup；长按使用 UI Automation 滚动容器并验证位置 |
 | 右摇杆左/右 | 简易模式调整当前界面的 Power；高级模式切换 Model / Effort / Speed | 已实现；只使用当前账户实际提供的档位 |
 | 右摇杆上/下 | 简易模式按屏幕顺序上拨选择 Standard、下拨选择 Fast；高级模式调整当前控件 | 已实现；Fast 不存在时明确报告不可用 |
 | R3 单击 | 打开与当前简易 / 高级设置对应的原生模型菜单 | 已实现 |
@@ -109,13 +109,17 @@ The controller will not control Codex. Re-enable it in Agent Controller.
 
 | 输入 | 当前实际行为 | v0.4b 原规范 | 状态 |
 | --- | --- | --- | --- |
-| 上 | 跳到上一条用户消息 | 切换 Plan | 已实现；使用带 `KEYEVENTF_EXTENDEDKEY` 的 Codex 原生 `Alt+↑` |
-| 下 | 跳到下一条用户消息 | 切换侧边栏 | 已实现；使用带 `KEYEVENTF_EXTENDEDKEY` 的 Codex 原生 `Alt+↓` |
+| 上 | 短按跳到上一条用户消息；按住 4 秒置顶 | 切换 Plan | 已实现；短按使用带 `KEYEVENTF_EXTENDEDKEY` 的 Codex 原生 `Alt+↑`；长按只操作已验证的会话滚动容器 |
+| 下 | 短按跳到下一条用户消息；按住 3 秒置底 | 切换侧边栏 | 已实现；短按使用带 `KEYEVENTF_EXTENDEDKEY` 的 Codex 原生 `Alt+↓`；长按只操作已验证的会话滚动容器 |
 | 左 | 与左摇杆左相同：退出项目目录 | 历史后退 | 不一致 |
 | 右 | 与左摇杆右相同：进入项目目录 | 历史前进 | 不一致 |
 
 Plan、侧边栏和历史前进/后退保留在 Y 动作面板，避免与 Base 层的
 长对话浏览和项目目录导航冲突。
+
+置顶/置底不使用 `Ctrl+Home` / `Ctrl+End` 降级，避免误移动 composer 光标；找不到
+可验证的会话滚动容器时明确失败。上一条/下一条跳转成功时沿用 Codex 界面自身响应，
+不再额外显示成功 popup。
 
 ## 4. 上下文层
 

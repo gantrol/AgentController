@@ -45,6 +45,7 @@ Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controlle
 | Left stick ← | Return from project tasks; right has no Base action |
 | L3 | Cycle roots: pinned tasks → pinned projects → projects → projectless tasks |
 | Y | Open the action panel |
+| D-pad ↑ / ↓ | Previous / next user message; hold ↑ 4 seconds to jump to the top, or ↓ 3 seconds to jump to the bottom |
 | Right stick (Simple) | ←→ steps Codex's live Power control; ↑ selects Standard; ↓ selects Fast |
 | Right stick (Advanced) | ←→ chooses Model / Effort / Speed; ↑↓ changes an account-provided option |
 | R3 tap / hold | Open the matching Simple or Advanced picker / open controller settings |
