@@ -64,4 +64,31 @@ public sealed class ComposerSpeedSelectionPolicyTests
 
         Assert.False(result);
     }
+
+    [Theory]
+    [InlineData("5.1 High · Fast", true)]
+    [InlineData("5.1 High · Standard", false)]
+    [InlineData("5.6 Sol Max FAST", true)]
+    [InlineData("5.6 Sol Max·standard", false)]
+    public void ReadsSpeedSuffixFromComposerButtonName(
+        string buttonName,
+        bool fast)
+    {
+        Assert.Equal(
+            fast,
+            ComposerSpeedSelectionPolicy.TryParseSpeedSuffix(buttonName));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("5.6 Sol Max")]
+    [InlineData("5.1 High")]
+    [InlineData("Fast · 5.1 High")]
+    public void SpeedSuffixIsNullWithoutTrailingSpeedToken(
+        string? buttonName)
+    {
+        Assert.Null(
+            ComposerSpeedSelectionPolicy.TryParseSpeedSuffix(buttonName));
+    }
 }

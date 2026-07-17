@@ -2,7 +2,7 @@ namespace CodexController.Models;
 
 public sealed class AppSettings
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 3;
     public string Language { get; set; } = "auto";
     public string ActiveAgentId { get; set; } = "codex";
     public bool BridgeEnabled { get; set; } = true;
@@ -23,6 +23,7 @@ public sealed class AppSettings
     public string PlanToggleShortcut { get; set; } = "F19";
     public string ModelPickerShortcut { get; set; } = "Ctrl+Shift+M";
     public string FastToggleShortcut { get; set; } = "F20";
+    public string ForkShortcut { get; set; } = "F21";
     public string DictationShortcut { get; set; } = "Ctrl+Shift+D";
     public string SubmitShortcut { get; set; } = "F22";
     public string CancelShortcut { get; set; } = "Escape";

@@ -8,7 +8,7 @@ namespace CodexController.Services;
 
 public sealed class SettingsService
 {
-    private const int CurrentVersion = 1;
+    private const int CurrentVersion = 3;
     private const double MinimumDeadZone = 0.35;
     private const double MaximumDeadZone = 0.80;
     private const int MinimumRepeatDelayMs = 220;
@@ -113,6 +113,17 @@ public sealed class SettingsService
             return new AppSettings();
         }
 
+        if (settings.Version <= 2)
+        {
+            // v1 originally defaulted to Advanced. The first Simple-default
+            // migration shipped as v2, but an already-running older binary
+            // could immediately persist Advanced as v2 and bypass it. Reset
+            // both legacy versions once; v3+ then preserves an explicit user
+            // choice between Simple and Advanced.
+            settings.ComposerDialMode = ComposerDialModes.Simple;
+            settings.Version = CurrentVersion;
+        }
+
         NormalizeValues(settings);
         return settings;
     }
@@ -147,6 +158,7 @@ public sealed class SettingsService
                 settings.ModelPickerShortcut,
             FastToggleShortcut =
                 settings.FastToggleShortcut,
+            ForkShortcut = settings.ForkShortcut,
             DictationShortcut = settings.DictationShortcut,
             SubmitShortcut = settings.SubmitShortcut,
             CancelShortcut = settings.CancelShortcut,
@@ -196,6 +208,9 @@ public sealed class SettingsService
         settings.FastToggleShortcut = NormalizeShortcut(
             settings.FastToggleShortcut,
             defaults.FastToggleShortcut);
+        settings.ForkShortcut = NormalizeShortcut(
+            settings.ForkShortcut,
+            defaults.ForkShortcut);
         settings.DictationShortcut = NormalizeShortcut(
             settings.DictationShortcut,
             defaults.DictationShortcut);

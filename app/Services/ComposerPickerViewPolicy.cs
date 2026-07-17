@@ -12,7 +12,8 @@ internal static class ComposerPickerViewPolicy
         ["effort", "reasoning effort", "思考强度", "推理强度"];
 
     internal static ComposerPickerView Detect(
-        IEnumerable<string> names)
+        IEnumerable<string> names,
+        bool hasPowerRange = false)
     {
         ArgumentNullException.ThrowIfNull(names);
         var values = names
@@ -20,6 +21,7 @@ internal static class ComposerPickerViewPolicy
             .Select(value => value.Trim())
             .ToArray();
         var hasSimpleMarkers =
+            hasPowerRange ||
             values.Any(IsPowerItem) ||
             values.Any(IsShowAdvancedToggle);
         var hasAdvancedMarkers =
@@ -56,6 +58,7 @@ internal static class ComposerPickerViewPolicy
         StartsWithAny(name, EffortNames);
 
     internal static bool IsShowAdvancedToggle(string? name) =>
+        StartsWithAny(name, ["advanced", "高级"]) ||
         ContainsAny(
             name,
             "show advanced",
@@ -64,6 +67,16 @@ internal static class ComposerPickerViewPolicy
             "展开高级");
 
     internal static bool IsShowCompactToggle(string? name) =>
+        StartsWithAny(
+            name,
+            [
+                "simple",
+                "basic",
+                "compact",
+                "简易",
+                "基础",
+                "紧凑",
+            ]) ||
         ContainsAny(
             name,
             "show compact",
@@ -81,9 +94,31 @@ internal static class ComposerPickerViewPolicy
                 IsShowAdvancedToggle(name) ||
                 MatchesAny(name, ["advanced", "高级"]),
             ComposerPickerView.Simple =>
-                IsShowCompactToggle(name),
+                IsShowCompactToggle(name) ||
+                StartsWithAny(
+                    name,
+                    [
+                        "simple",
+                        "basic",
+                        "compact",
+                        "简易",
+                        "基础",
+                        "紧凑",
+                    ]),
             _ => false,
         };
+
+    internal static bool IsFastToggle(string? descriptor) =>
+        ContainsAny(
+            descriptor,
+            "fast mode",
+            "toggle fast",
+            "speed mode",
+            "priority mode",
+            "quick mode",
+            "快速模式",
+            "切换快速",
+            "速度模式");
 
     internal static bool IsEnableFastAction(string? name) =>
         ContainsAny(
@@ -98,6 +133,8 @@ internal static class ComposerPickerViewPolicy
             name,
             "enable standard",
             "turn off fast",
+            "turn fast mode off",
+            "disable fast",
             "启用标准",
             "关闭快速");
 

@@ -33,6 +33,28 @@ internal static class ComposerSpeedSelectionPolicy
             TargetLabel(fast));
     }
 
+    /// <summary>
+    /// Reads the current speed from a composer button name such as
+    /// "5.1 High · Fast". Returns null when the name carries no
+    /// recognizable trailing speed token, so callers fall back to the
+    /// live picker instead of guessing.
+    /// </summary>
+    internal static bool? TryParseSpeedSuffix(string? buttonName)
+    {
+        var normalized = Normalize(buttonName);
+        if (normalized.EndsWith("standard", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (normalized.EndsWith("fast", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return null;
+    }
+
     internal static bool OptionMatchesCurrentValue(
         string? optionName,
         string? currentValue)

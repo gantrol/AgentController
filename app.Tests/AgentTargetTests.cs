@@ -151,12 +151,14 @@ public sealed class AgentTargetTests
             .ComposerOrUnavailable()
             .StepSimplePowerAsync(
                 1,
+                allowShortcutFastPath: false,
                 new(),
                 CancellationToken.None);
         var speed = await target
             .ComposerOrUnavailable()
             .SetSimpleSpeedAsync(
                 true,
+                allowShortcutFastPath: false,
                 new(),
                 CancellationToken.None);
         var advanced = await target

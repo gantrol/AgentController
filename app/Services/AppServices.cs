@@ -3,6 +3,7 @@ using CodexController.Agents.Codex;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
+using CodexController.Services.Micro;
 
 namespace CodexController.Services;
 
@@ -26,6 +27,7 @@ public sealed class AppServices : IDisposable
         CodexDataService codexData,
         CodexCommandService codexCommand,
         CodexKeybindingService codexKeybindings,
+        MicroInputService microInput,
         CodexComposerService codexComposer,
         CodexSidebarService codexSidebar,
         XInputService controller,
@@ -43,6 +45,7 @@ public sealed class AppServices : IDisposable
         CodexData = codexData;
         CodexCommand = codexCommand;
         CodexKeybindings = codexKeybindings;
+        MicroInput = microInput;
         CodexComposer = codexComposer;
         CodexSidebar = codexSidebar;
         Controller = controller;
@@ -61,6 +64,7 @@ public sealed class AppServices : IDisposable
     public CodexDataService CodexData { get; }
     public CodexCommandService CodexCommand { get; }
     public CodexKeybindingService CodexKeybindings { get; }
+    public MicroInputService MicroInput { get; }
     public CodexComposerService CodexComposer { get; }
     public CodexSidebarService CodexSidebar { get; }
     public XInputService Controller { get; }
@@ -76,7 +80,9 @@ public sealed class AppServices : IDisposable
         var codexData = new CodexDataService(localization);
         var codexCommand = new CodexCommandService();
         var codexKeybindings = new CodexKeybindingService();
-        var codexComposer = new CodexComposerService();
+        var microInput = new MicroInputService(
+            new NamedPipeMicroReportTransport());
+        var codexComposer = new CodexComposerService(microInput);
         var codexSidebar = new CodexSidebarService();
         var controllerProfiles = ControllerProfileRegistry.BuiltIn;
         var codexAgent = new CodexAgentTarget(
@@ -101,6 +107,7 @@ public sealed class AppServices : IDisposable
             codexData,
             codexCommand,
             codexKeybindings,
+            microInput,
             codexComposer,
             codexSidebar,
             new XInputService(controllerProfiles),
@@ -117,6 +124,7 @@ public sealed class AppServices : IDisposable
         }
 
         Controller.Dispose();
+        MicroInput.Dispose();
         BridgeEvents.Dispose();
         _disposed = true;
     }

@@ -111,18 +111,21 @@ public static class AgentCapabilityFallbacks
             Task.FromResult(PickerFailed());
 
         public Task<ComposerPickerResult> StepSimplePowerAsync(
-            int direction,
+            int steps,
+            bool allowShortcutFastPath,
             AppSettings settings,
             CancellationToken cancellationToken) =>
             Task.FromResult(PickerFailed());
 
         public Task<ComposerPickerResult> SetSimpleSpeedAsync(
             bool fast,
+            bool allowShortcutFastPath,
             AppSettings settings,
             CancellationToken cancellationToken) =>
             Task.FromResult(PickerFailed());
 
         public Task<ComposerPickerResult> ToggleSpeedAsync(
+            bool allowShortcutFastPath,
             AppSettings settings,
             CancellationToken cancellationToken) =>
             Task.FromResult(PickerFailed());

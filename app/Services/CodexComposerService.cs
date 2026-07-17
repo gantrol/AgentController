@@ -7,6 +7,7 @@ using System.Windows.Automation;
 using CodexController.Agents;
 using CodexController.Models;
 using CodexController.Native;
+using CodexController.Services.Micro;
 
 [assembly: InternalsVisibleTo("AgentController.Tests")]
 
@@ -109,6 +110,9 @@ public sealed partial class CodexComposerService
 
     private readonly object _dialSync = new();
     private readonly ComposerDialCursor _dialCursor = new();
+    private readonly ComposerShortcutHealth _powerShortcutHealth = new();
+    private readonly ComposerShortcutHealth _speedShortcutHealth = new();
+    private readonly MicroInputService _microInput;
     private readonly Dictionary<string, OwnedDialSurface>
         _dialOwnedSurfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string>
@@ -122,6 +126,17 @@ public sealed partial class CodexComposerService
     private ComposerDialMenuContainerGeometry? _dialControlGeometry;
     private System.Windows.Rect? _dialComposerRegion;
     private long _dialSurfaceMountSequence;
+
+    public CodexComposerService()
+        : this(MicroInputService.Unavailable)
+    {
+    }
+
+    public CodexComposerService(MicroInputService microInput)
+    {
+        _microInput = microInput ??
+            throw new ArgumentNullException(nameof(microInput));
+    }
 
     /// <summary>
     /// Reads the currently mounted Codex composer popup without focusing the
@@ -461,6 +476,38 @@ public sealed partial class CodexComposerService
         if (gate is not null)
         {
             return gate;
+        }
+
+        lock (_dialSync)
+        {
+            if (_dialMenuOpen)
+            {
+                if (
+                    !ComposerDialNativeInputPolicy.TryGetNavigationKey(
+                        navigation,
+                        out var nativeKey) ||
+                    !Win32Input.SendKey(nativeKey))
+                {
+                    return new(
+                        false,
+                        _dialControlName,
+                        IsMenuOpen: true,
+                        Error:
+                            AgentAutomationErrorCodes.ElementUnsupported,
+                        ErrorDetail: "dial-native-input",
+                        MenuWasPresent: true);
+                }
+
+                // Native Codex menu navigation is the hot path. The old
+                // implementation rescanned the full UIA tree and waited up
+                // to 240 ms after every direction; ownership is established
+                // once when the menu opens, then keys are delivered directly.
+                return new(
+                    true,
+                    _dialControlName,
+                    IsMenuOpen: true,
+                    MenuWasPresent: true);
+            }
         }
 
         lock (_dialSync)
@@ -851,6 +898,38 @@ public sealed partial class CodexComposerService
 
     public ComposerDialResult DialSelect(AppSettings settings)
     {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        lock (_dialSync)
+        {
+            if (_dialMenuOpen)
+            {
+                if (!Win32Input.SendKey(0x0D))
+                {
+                    return new(
+                        false,
+                        _dialControlName,
+                        IsMenuOpen: true,
+                        Error:
+                            AgentAutomationErrorCodes.InputInjectionFailed,
+                        ErrorDetail: "Enter",
+                        MenuWasPresent: true);
+                }
+
+                var selected = _dialControlName;
+                ClearOwnedDialPopup();
+                return new(
+                    true,
+                    selected,
+                    IsMenuOpen: false,
+                    MenuWasPresent: true);
+            }
+        }
+
         return DialPressCore(
             settings,
             DialActivationIntent.SelectLeaf);
@@ -1460,6 +1539,35 @@ public sealed partial class CodexComposerService
 
         lock (_dialSync)
         {
+            if (_dialMenuOpen)
+            {
+                var selected = _dialControlName;
+                var sent =
+                    _microInput.TryDismissOpenMenu() ||
+                    Win32Input.SendKey(0x1B);
+                if (!sent)
+                {
+                    return new(
+                        false,
+                        selected,
+                        IsMenuOpen: true,
+                        Error:
+                            AgentAutomationErrorCodes.InputInjectionFailed,
+                        ErrorDetail: "Escape",
+                        MenuWasPresent: true);
+                }
+
+                ClearOwnedDialPopup();
+                return new(
+                    true,
+                    selected,
+                    IsMenuOpen: false,
+                    MenuWasPresent: true);
+            }
+        }
+
+        lock (_dialSync)
+        {
             try
             {
                 var context = FindCodexWindow();
@@ -1692,13 +1800,15 @@ public sealed partial class CodexComposerService
     }
 
     public Task<ComposerPickerResult> StepSimplePowerAsync(
-        int direction,
+        int steps,
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken)
     {
         return Task.Run(
             () => StepSimplePowerCore(
-                direction,
+                steps,
+                pickerMenuLikelyOpen: !allowShortcutFastPath,
                 settings,
                 cancellationToken),
             cancellationToken);
@@ -1706,23 +1816,27 @@ public sealed partial class CodexComposerService
 
     public Task<ComposerPickerResult> SetSimpleSpeedAsync(
         bool fast,
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken)
     {
         return Task.Run(
             () => SetSimpleSpeedCore(
                 fast,
+                allowShortcutFastPath,
                 settings,
                 cancellationToken),
             cancellationToken);
     }
 
     public Task<ComposerPickerResult> ToggleSpeedAsync(
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken)
     {
         return Task.Run(
             () => ToggleSpeedCore(
+                allowShortcutFastPath,
                 settings,
                 cancellationToken),
             cancellationToken);
@@ -2916,6 +3030,18 @@ public sealed partial class CodexComposerService
                 focusedOption.SurfaceKey,
                 focusedOption.Key,
                 focusedOption.Name);
+        }
+    }
+
+    private void MarkNativePickerOpen(string? controlName)
+    {
+        lock (_dialSync)
+        {
+            _dialMenuOpen = true;
+            if (!string.IsNullOrWhiteSpace(controlName))
+            {
+                _dialControlName = controlName;
+            }
         }
     }
 
@@ -5462,23 +5588,79 @@ public sealed partial class CodexComposerService
         AppSettings settings,
         CancellationToken cancellationToken)
     {
+        if (view == ComposerPickerView.Simple)
+        {
+            var gate = ValidateInteractiveBridge(settings);
+            if (gate is not null)
+            {
+                return new(
+                    false,
+                    Error: gate.Error,
+                    ErrorDetail: gate.ErrorDetail);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_microInput.TryOpenReasoningControl())
+            {
+                MarkNativePickerOpen("Power");
+                return new(
+                    true,
+                    "Power",
+                    IsMenuOpen: true);
+            }
+        }
+
         var failure = PreparePicker(
             view,
             settings,
             cancellationToken,
             out var context);
-        return failure ?? new(
+        if (failure is not null)
+        {
+            return failure;
+        }
+
+        if (view == ComposerPickerView.Advanced)
+        {
+            lock (_dialSync)
+            {
+                var probe = ProbeDialPopup(
+                    context!.Window,
+                    context.ProcessId);
+                if (!TryAdoptOpenDialPopup(
+                        context.Window,
+                        context.ProcessId,
+                        probe))
+                {
+                    return new(
+                        false,
+                        SafeName(context.ComposerButton),
+                        IsMenuOpen: probe.IsOpen,
+                        Error:
+                            AgentAutomationErrorCodes.ElementUnsupported,
+                        ErrorDetail: "dial-popup-not-owned");
+                }
+            }
+        }
+
+        if (view == ComposerPickerView.Simple)
+        {
+            MarkNativePickerOpen(SafeName(context!.ComposerButton));
+        }
+
+        return new(
             true,
             SafeName(context!.ComposerButton),
             IsMenuOpen: true);
     }
 
     private ComposerPickerResult StepSimplePowerCore(
-        int direction,
+        int steps,
+        bool pickerMenuLikelyOpen,
         AppSettings settings,
         CancellationToken cancellationToken)
     {
-        if (direction == 0)
+        if (steps == 0)
         {
             return new(
                 false,
@@ -5486,6 +5668,152 @@ public sealed partial class CodexComposerService
                 ErrorDetail: "composer-power-direction");
         }
 
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return new(
+                false,
+                Error: gate.Error,
+                ErrorDetail: gate.ErrorDetail);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_microInput.TryStepReasoning(
+                steps,
+                openFirst: !pickerMenuLikelyOpen))
+        {
+            MarkNativePickerOpen("Power");
+            return new(
+                true,
+                steps > 0 ? "Power +" : "Power -",
+                IsMenuOpen: true);
+        }
+
+        // Preferred transport: the provisioned Codex keybinding
+        // (composer.increase/decreaseReasoningEffort). A keystroke costs
+        // milliseconds where a menu pass costs hundreds, which is what
+        // makes held-stick acceleration real end to end. Readback against
+        // the composer button verifies every attempt; the menu path below
+        // stays as the fallback and as the boundary disambiguator.
+        var shortcutSawNoChange = false;
+        if (
+            !string.IsNullOrWhiteSpace(PowerShortcut(steps, settings)) &&
+            _powerShortcutHealth.ShouldAttempt())
+        {
+            var viaShortcut = StepPowerViaShortcut(
+                steps,
+                settings,
+                cancellationToken);
+            if (viaShortcut is not null)
+            {
+                if (viaShortcut.Succeeded)
+                {
+                    return viaShortcut;
+                }
+
+                if (!IsPowerNoChangeResult(viaShortcut))
+                {
+                    return viaShortcut;
+                }
+
+                if (_powerShortcutHealth.IsProven)
+                {
+                    // The binding is known to work, so an unchanged
+                    // readback means the value sits at a boundary. Running
+                    // menu automation here could apply the step twice when
+                    // the UI is merely slow.
+                    return viaShortcut;
+                }
+
+                shortcutSawNoChange = true;
+            }
+        }
+
+        var viaMenu = StepSimplePowerViaMenu(
+            steps,
+            settings,
+            cancellationToken);
+        if (viaMenu.Succeeded && shortcutSawNoChange)
+        {
+            _powerShortcutHealth.MarkSuspect();
+        }
+
+        return viaMenu;
+    }
+
+    private static string PowerShortcut(int steps, AppSettings settings) =>
+        steps > 0
+            ? settings.ReasoningUpShortcut
+            : settings.ReasoningDownShortcut;
+
+    private static bool IsPowerNoChangeResult(ComposerPickerResult result) =>
+        result.ErrorDetail
+            is "composer-power-no-change-right"
+            or "composer-power-no-change-left";
+
+    private ComposerPickerResult? StepPowerViaShortcut(
+        int steps,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return new(
+                false,
+                Error: gate.Error,
+                ErrorDetail: gate.ErrorDetail);
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var shortcut = PowerShortcut(steps, settings).Trim();
+            for (var index = 0; index < Math.Abs(steps); index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!Win32Input.SendShortcut(shortcut))
+                {
+                    // Injection failed; menu automation can still drive the
+                    // slider through RangeValue without keystrokes.
+                    return null;
+                }
+            }
+
+            // SendInput success is the acknowledgement for the managed
+            // shortcut fallback. Semantic UI readback is deliberately not
+            // on the input path: it previously added 550+ ms per batch and
+            // then opened the UIA picker when Chromium painted late.
+            return new(
+                true,
+                steps > 0 ? "Power +" : "Power -",
+                IsMenuOpen: false,
+                Error: null);
+        }
+        catch (OperationCanceledException)
+        {
+            return new(
+                false,
+                Error: AgentAutomationErrorCodes.OperationCanceled);
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return new(
+                false,
+                Error: AgentAutomationErrorCodes.Unexpected,
+                ErrorDetail: exception.Message);
+        }
+    }
+
+    private ComposerPickerResult StepSimplePowerViaMenu(
+        int steps,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
         var failure = PreparePicker(
             ComposerPickerView.Simple,
             settings,
@@ -5497,7 +5825,9 @@ public sealed partial class CodexComposerService
         }
 
         var powerItem = context!.Items.FirstOrDefault(item =>
-            ComposerPickerViewPolicy.IsPowerItem(SafeName(item)));
+                ComposerPickerViewPolicy.IsPowerItem(
+                    SafePickerDescriptor(item))) ??
+            context.Items.FirstOrDefault(HasWritableRangeValue);
         if (powerItem is null)
         {
             return new(
@@ -5511,7 +5841,7 @@ public sealed partial class CodexComposerService
         var previousValue = SafeName(context.ComposerButton);
         cancellationToken.ThrowIfCancellationRequested();
         var changedThroughRange =
-            TryStepPowerRangeValue(powerItem, direction);
+            TryStepPowerRangeValue(powerItem, steps);
         if (!changedThroughRange)
         {
             if (!TryFocusPickerItem(powerItem, context.ProcessId))
@@ -5524,19 +5854,25 @@ public sealed partial class CodexComposerService
                     ErrorDetail: "composer-power-focus");
             }
 
-            var key = direction > 0
+            var key = steps > 0
                 ? ComposerDialNativeInputPolicy.RightKey
                 : ComposerDialNativeInputPolicy.LeftKey;
-            if (
-                !Win32Input.IsProcessForeground(context.ProcessId) ||
-                !Win32Input.SendKey(key))
+            for (var index = 0; index < Math.Abs(steps); index++)
             {
-                return new(
-                    false,
-                    SafeName(context.ComposerButton),
-                    IsMenuOpen: true,
-                    Error: AgentAutomationErrorCodes.ElementUnsupported,
-                    ErrorDetail: "composer-power-input");
+                cancellationToken.ThrowIfCancellationRequested();
+                if (
+                    !Win32Input.IsProcessForeground(context.ProcessId) ||
+                    !Win32Input.SendKey(key))
+                {
+                    return new(
+                        false,
+                        SafeName(context.ComposerButton),
+                        IsMenuOpen: true,
+                        Error: AgentAutomationErrorCodes.ElementUnsupported,
+                        ErrorDetail: "composer-power-input");
+                }
+
+                Thread.Sleep(45);
             }
         }
 
@@ -5577,15 +5913,30 @@ public sealed partial class CodexComposerService
             previousValue,
             IsMenuOpen: true,
             Error: AgentAutomationErrorCodes.ElementUnsupported,
-            ErrorDetail: direction > 0
+            ErrorDetail: steps > 0
                 ? "composer-power-no-change-right"
                 : "composer-power-no-change-left");
     }
 
     private ComposerPickerResult ToggleSpeedCore(
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken)
     {
+        // The composer button name carries the live speed as a trailing
+        // token ("… Standard" / "… Fast"). When it is readable, decide the
+        // toggle target from it instead of walking picker menus, so the
+        // toggle keeps working even when the menu action wording changes.
+        var currentSpeed = TryReadComposerSpeed();
+        if (currentSpeed is not null)
+        {
+            return SetSimpleSpeedCore(
+                fast: !currentSpeed.Value,
+                allowShortcutFastPath,
+                settings,
+                cancellationToken);
+        }
+
         var simpleFailure = PreparePicker(
             ComposerPickerView.Simple,
             settings,
@@ -5595,16 +5946,76 @@ public sealed partial class CodexComposerService
         {
             var hasEnableFast = simpleContext!.Items.Any(item =>
                 ComposerPickerViewPolicy.IsEnableFastAction(
-                    SafeName(item)));
+                    SafePickerDescriptor(item)));
             var hasEnableStandard = simpleContext.Items.Any(item =>
                 ComposerPickerViewPolicy.IsEnableStandardAction(
-                    SafeName(item)));
+                    SafePickerDescriptor(item)));
             if (hasEnableFast != hasEnableStandard)
             {
                 return SetSimpleSpeedCore(
                     fast: hasEnableFast,
+                    allowShortcutFastPath: false,
                     settings,
                     cancellationToken);
+            }
+
+            var fastToggle = simpleContext.Items.FirstOrDefault(item =>
+                ComposerPickerViewPolicy.IsFastToggle(
+                    SafePickerDescriptor(item)));
+            var toggleState = TryReadToggleState(fastToggle);
+            if (toggleState is not null)
+            {
+                return SetSimpleSpeedCore(
+                    fast: !toggleState.Value,
+                    allowShortcutFastPath: false,
+                    settings,
+                    cancellationToken);
+            }
+
+            if (
+                fastToggle is not null &&
+                TryInvokePickerItem(
+                    fastToggle,
+                    simpleContext.ProcessId))
+            {
+                Thread.Sleep(80);
+                cancellationToken.ThrowIfCancellationRequested();
+                var after = TryReadComposerSpeed();
+                if (after is not null)
+                {
+                    return new(
+                        true,
+                        ComposerSpeedSelectionPolicy.TargetLabel(
+                            after.Value),
+                        IsMenuOpen: true);
+                }
+
+                var readbackFailure = PreparePicker(
+                    ComposerPickerView.Simple,
+                    settings,
+                    cancellationToken,
+                    out var refreshed);
+                var refreshedToggle = refreshed?.Items.FirstOrDefault(item =>
+                    ComposerPickerViewPolicy.IsFastToggle(
+                        SafePickerDescriptor(item)));
+                var refreshedState = TryReadToggleState(refreshedToggle);
+                if (
+                    readbackFailure is null &&
+                    refreshedState is not null)
+                {
+                    return new(
+                        true,
+                        ComposerSpeedSelectionPolicy.TargetLabel(
+                            refreshedState.Value),
+                        IsMenuOpen: true);
+                }
+
+                return new(
+                    false,
+                    IsMenuOpen: true,
+                    Error:
+                        AgentAutomationErrorCodes.ElementUnsupported,
+                    ErrorDetail: "composer-speed-readback");
             }
         }
         else if (
@@ -5656,15 +6067,87 @@ public sealed partial class CodexComposerService
                 fast: true);
         return SetSimpleSpeedCore(
             targetFast,
+            allowShortcutFastPath: false,
             settings,
             cancellationToken);
     }
 
+    private bool? TryReadComposerSpeed()
+    {
+        try
+        {
+            var codex = FindCodexWindow();
+            var button = codex is null
+                ? null
+                : FindComposerButton(codex.Value.Window);
+            return button is null
+                ? null
+                : ComposerSpeedSelectionPolicy.TryParseSpeedSuffix(
+                    SafeName(button));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private ComposerPickerResult SetSimpleSpeedCore(
         bool fast,
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken)
     {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return new(
+                false,
+                Error: gate.Error,
+                ErrorDetail: gate.ErrorDetail);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_microInput.TryToggleFast())
+        {
+            return new(
+                true,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: false);
+        }
+
+        // Preferred transport: the provisioned composer.toggleFastMode
+        // keybinding, verified against the composer button's trailing
+        // speed token. Setting a target (not toggling blindly) keeps the
+        // menu fallback idempotent even if the keystroke lands late.
+        var shortcutSawMiss = false;
+        if (
+            allowShortcutFastPath &&
+            !string.IsNullOrWhiteSpace(settings.FastToggleShortcut) &&
+            _speedShortcutHealth.ShouldAttempt())
+        {
+            var viaShortcut = SetSpeedViaShortcut(
+                fast,
+                settings,
+                cancellationToken);
+            if (viaShortcut is not null)
+            {
+                if (viaShortcut.Succeeded)
+                {
+                    return viaShortcut;
+                }
+
+                if (!string.Equals(
+                        viaShortcut.ErrorDetail,
+                        "composer-speed-readback",
+                        StringComparison.Ordinal))
+                {
+                    return viaShortcut;
+                }
+
+                shortcutSawMiss = true;
+            }
+        }
+
         var direct = SetSimpleSpeedDirectCore(
             fast,
             settings,
@@ -5678,13 +6161,74 @@ public sealed partial class CodexComposerService
                     "composer-speed-readback"
                 ))
         {
+            if (direct.Succeeded && shortcutSawMiss)
+            {
+                _speedShortcutHealth.MarkSuspect();
+            }
+
             return direct;
         }
 
-        return SetAdvancedSpeedCore(
+        var advanced = SetAdvancedSpeedCore(
             fast,
             settings,
             cancellationToken);
+        if (advanced.Succeeded && shortcutSawMiss)
+        {
+            _speedShortcutHealth.MarkSuspect();
+        }
+
+        return advanced;
+    }
+
+    private ComposerPickerResult? SetSpeedViaShortcut(
+        bool fast,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return new(
+                false,
+                Error: gate.Error,
+                ErrorDetail: gate.ErrorDetail);
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Win32Input.SendShortcut(
+                    settings.FastToggleShortcut.Trim()))
+            {
+                return null;
+            }
+
+            // The caller owns the target-state cache. Waiting for Chromium's
+            // accessible name previously turned an instant semantic command
+            // into a 700 ms operation and could trigger a second UI action.
+            return new(
+                true,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new(
+                false,
+                Error: AgentAutomationErrorCodes.OperationCanceled);
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return new(
+                false,
+                Error: AgentAutomationErrorCodes.Unexpected,
+                ErrorDetail: exception.Message);
+        }
     }
 
     private ComposerPickerResult SetSimpleSpeedDirectCore(
@@ -5703,10 +6247,29 @@ public sealed partial class CodexComposerService
         }
 
         var enableFast = context!.Items.FirstOrDefault(item =>
-            ComposerPickerViewPolicy.IsEnableFastAction(SafeName(item)));
+            ComposerPickerViewPolicy.IsEnableFastAction(
+                SafePickerDescriptor(item)));
         var enableStandard = context.Items.FirstOrDefault(item =>
             ComposerPickerViewPolicy.IsEnableStandardAction(
-                SafeName(item)));
+                SafePickerDescriptor(item)));
+        var fastToggle = context.Items.FirstOrDefault(item =>
+            ComposerPickerViewPolicy.IsFastToggle(
+                SafePickerDescriptor(item)));
+        var toggleState = TryReadToggleState(fastToggle);
+        var composerState = TryReadComposerSpeed();
+        if (
+            toggleState == fast ||
+            (
+                toggleState is null &&
+                composerState == fast
+            ))
+        {
+            return new(
+                true,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: true);
+        }
+
         var action = fast ? enableFast : enableStandard;
         var alreadySelected = fast
             ? enableStandard is not null
@@ -5719,6 +6282,7 @@ public sealed partial class CodexComposerService
                 IsMenuOpen: true);
         }
 
+        action ??= fastToggle;
         if (
             action is null ||
             !TryInvokePickerItem(action, context.ProcessId))
@@ -5733,6 +6297,14 @@ public sealed partial class CodexComposerService
 
         Thread.Sleep(80);
         cancellationToken.ThrowIfCancellationRequested();
+        if (TryReadComposerSpeed() == fast)
+        {
+            return new(
+                true,
+                ComposerSpeedSelectionPolicy.TargetLabel(fast),
+                IsMenuOpen: true);
+        }
+
         var readbackFailure = PreparePicker(
             ComposerPickerView.Simple,
             settings,
@@ -5747,11 +6319,19 @@ public sealed partial class CodexComposerService
         }
 
         var hasEnableFast = refreshed!.Items.Any(item =>
-            ComposerPickerViewPolicy.IsEnableFastAction(SafeName(item)));
+            ComposerPickerViewPolicy.IsEnableFastAction(
+                SafePickerDescriptor(item)));
         var hasEnableStandard = refreshed.Items.Any(item =>
             ComposerPickerViewPolicy.IsEnableStandardAction(
-                SafeName(item)));
-        var confirmed = fast ? hasEnableStandard : hasEnableFast;
+                SafePickerDescriptor(item)));
+        var refreshedToggle = refreshed.Items.FirstOrDefault(item =>
+            ComposerPickerViewPolicy.IsFastToggle(
+                SafePickerDescriptor(item)));
+        var refreshedToggleState = TryReadToggleState(refreshedToggle);
+        var confirmed =
+            refreshedToggleState == fast ||
+            (fast ? hasEnableStandard : hasEnableFast) ||
+            TryReadComposerSpeed() == fast;
         return confirmed
             ? new(
                 true,
@@ -6317,26 +6897,31 @@ public sealed partial class CodexComposerService
         for (var attempt = 0; attempt < 24; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var enabledItems = FindMenuItems(window, processId)
+            var enabledItems = FindPickerElements(window, processId)
                 .Where(IsEnabledMenuElement)
                 .ToArray();
             var visibleItems = enabledItems
                 .Where(IsUsableMenuElement)
                 .ToArray();
             var current = ComposerPickerViewPolicy.Detect(
-                visibleItems.Select(SafeName));
+                visibleItems.Select(SafePickerDescriptor),
+                hasPowerRange:
+                    visibleItems.Any(HasWritableRangeValue));
             if (current == desired)
             {
                 return desired == ComposerPickerView.Simple
                     ? enabledItems
                         .Where(item =>
                             IsUsableMenuElement(item) ||
+                            HasWritableRangeValue(item) ||
                             ComposerPickerViewPolicy.IsPowerItem(
-                                SafeName(item)) ||
+                                SafePickerDescriptor(item)) ||
+                            ComposerPickerViewPolicy.IsFastToggle(
+                                SafePickerDescriptor(item)) ||
                             ComposerPickerViewPolicy.IsEnableFastAction(
-                                SafeName(item)) ||
+                                SafePickerDescriptor(item)) ||
                             ComposerPickerViewPolicy.IsEnableStandardAction(
-                                SafeName(item)))
+                                SafePickerDescriptor(item)))
                         .ToArray()
                     : visibleItems;
             }
@@ -6345,7 +6930,7 @@ public sealed partial class CodexComposerService
             {
                 var toggle = visibleItems.FirstOrDefault(item =>
                     ComposerPickerViewPolicy.IsViewToggleToward(
-                        SafeName(item),
+                        SafePickerDescriptor(item),
                         desired));
                 if (
                     toggle is null ||
@@ -6417,7 +7002,7 @@ public sealed partial class CodexComposerService
 
     private static bool TryStepPowerRangeValue(
         AutomationElement powerItem,
-        int direction)
+        int steps)
     {
         try
         {
@@ -6451,7 +7036,7 @@ public sealed partial class CodexComposerService
                 }
 
                 var target = Math.Clamp(
-                    current + Math.Sign(direction) * step,
+                    current + steps * step,
                     range.Current.Minimum,
                     range.Current.Maximum);
                 if (Math.Abs(target - current) < double.Epsilon)
@@ -6923,6 +7508,108 @@ public sealed partial class CodexComposerService
         return null;
     }
 
+    private static IEnumerable<AutomationElement> FindPickerElements(
+        AutomationElement mainWindow,
+        int processId)
+    {
+        var elementCondition = new OrCondition(
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.MenuItem),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.ListItem),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.DataItem),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.Button),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.CheckBox),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.Slider),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.Custom));
+        var composerRegion =
+            TryGetComposerPopupRegion(mainWindow) ??
+            TryGetComposerButtonPopupRegion(mainWindow);
+        foreach (var root in FindDialPopupRoots(mainWindow, processId))
+        {
+            AutomationElementCollection collection;
+            try
+            {
+                collection = root.Element.FindAll(
+                    TreeScope.Descendants,
+                    elementCondition);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (AutomationElement element in collection)
+            {
+                if (IsInsideComposerPopupRegion(element, composerRegion))
+                {
+                    yield return element;
+                }
+            }
+        }
+    }
+
+    private static bool IsInsideComposerPopupRegion(
+        AutomationElement element,
+        System.Windows.Rect? composerRegion)
+    {
+        if (composerRegion is not { } region)
+        {
+            return false;
+        }
+
+        try
+        {
+            var bounds = element.Current.BoundingRectangle;
+            return
+                !bounds.IsEmpty &&
+                region.Contains(
+                    new System.Windows.Point(
+                        bounds.Left + bounds.Width / 2,
+                        bounds.Top + bounds.Height / 2));
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
+    }
+
+    private static System.Windows.Rect? TryGetComposerButtonPopupRegion(
+        AutomationElement mainWindow)
+    {
+        var composerButton = FindComposerButton(mainWindow);
+        if (composerButton is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var bounds = composerButton.Current.BoundingRectangle;
+            return new System.Windows.Rect(
+                bounds.Left - 260,
+                bounds.Top - 720,
+                bounds.Width + 520,
+                820);
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
+    }
+
     private static IEnumerable<AutomationElement> FindMenuItems(
         AutomationElement mainWindow,
         int processId)
@@ -7026,6 +7713,106 @@ public sealed partial class CodexComposerService
         catch
         {
             return string.Empty;
+        }
+    }
+
+    private static string SafePickerDescriptor(AutomationElement element)
+    {
+        try
+        {
+            var current = element.Current;
+            return string.Join(
+                " | ",
+                new[]
+                {
+                    current.Name,
+                    current.AutomationId,
+                    current.HelpText,
+                    current.ItemStatus,
+                }
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static bool HasWritableRangeValue(AutomationElement element)
+    {
+        try
+        {
+            if (
+                element.TryGetCurrentPattern(
+                    RangeValuePattern.Pattern,
+                    out var directObject) &&
+                directObject is RangeValuePattern directRange &&
+                !directRange.Current.IsReadOnly)
+            {
+                return true;
+            }
+
+            var descendants = element.FindAll(
+                TreeScope.Descendants,
+                new PropertyCondition(
+                    AutomationElement
+                        .IsRangeValuePatternAvailableProperty,
+                    true));
+            foreach (AutomationElement descendant in descendants)
+            {
+                if (
+                    descendant.TryGetCurrentPattern(
+                        RangeValuePattern.Pattern,
+                        out var patternObject) &&
+                    patternObject is RangeValuePattern range &&
+                    !range.Current.IsReadOnly)
+                {
+                    return true;
+                }
+            }
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool? TryReadToggleState(AutomationElement? element)
+    {
+        if (element is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (
+                !element.TryGetCurrentPattern(
+                    TogglePattern.Pattern,
+                    out var patternObject) ||
+                patternObject is not TogglePattern toggle)
+            {
+                return null;
+            }
+
+            return toggle.Current.ToggleState switch
+            {
+                ToggleState.On => true,
+                ToggleState.Off => false,
+                _ => null,
+            };
+        }
+        catch
+        {
+            return null;
         }
     }
 

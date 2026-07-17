@@ -11,6 +11,8 @@
   - [x] Require a three-second B hold with countdown to cancel an active turn
   - [x] Add short chat-turn navigation plus four-second Top / three-second Bottom holds without success popups
   - [ ] Run physical end-to-end validation of Power and Fast on a non-Max model; current Sol Max exposes no native Power control
+  - [ ] Physically verify the shortcut-first Power / Fast transport (F17 / F18 / F20 with composer-button readback), its menu fallback, and the 30 s suspect cooldown; see docs/power-simple-advanced-consultation-response.zh-CN.md
+  - [ ] Physically verify Simple-mode routing: the right stick keeps Power and Standard / Fast while the R3 picker stays visible, and RB+Y toggles Fast with the picker open
   - [ ] Validate the self-contained v0.7 package on a clean Windows account
 - v0.7 deferred / experimental work
   - [ ] Re-enable Plan mode only after the route can verify the visible Codex state before and after every change; v0.7 exposes no controller binding for it

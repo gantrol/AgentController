@@ -7,6 +7,14 @@ namespace CodexController.Tests;
 public sealed class SettingsServiceTests
 {
     [Fact]
+    public void NewSettingsDefaultToSimpleComposerMode()
+    {
+        Assert.Equal(
+            ComposerDialModes.Simple,
+            new AppSettings().ComposerDialMode);
+    }
+
+    [Fact]
     public void LoadNormalizesInvalidLanguageAndBlankAgentId()
     {
         using var store = new TemporarySettingsStore();
@@ -68,7 +76,7 @@ public sealed class SettingsServiceTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    [InlineData(2)]
+    [InlineData(4)]
     [InlineData(int.MaxValue)]
     public void LoadFallsBackToDefaultsForUnsupportedVersions(
         int version)
@@ -95,6 +103,28 @@ public sealed class SettingsServiceTests
         Assert.Equal(
             defaults.RepeatDelayMs,
             settings.RepeatDelayMs);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void LoadMigratesLegacyComposerModeToSimple(int version)
+    {
+        using var store = new TemporarySettingsStore();
+        store.Write(new AppSettings
+        {
+            Version = version,
+            ComposerDialMode = ComposerDialModes.Advanced,
+            DeadZone = 0.71,
+        });
+
+        var settings = store.Service.Load();
+
+        Assert.Equal(3, settings.Version);
+        Assert.Equal(
+            ComposerDialModes.Simple,
+            settings.ComposerDialMode);
+        Assert.Equal(0.71, settings.DeadZone);
     }
 
     [Theory]
@@ -161,6 +191,7 @@ public sealed class SettingsServiceTests
             PlanToggleShortcut = " ",
             ModelPickerShortcut = " ",
             FastToggleShortcut = "\t",
+            ForkShortcut = string.Empty,
             DictationShortcut = "\r\n",
             SubmitShortcut = null!,
             CancelShortcut = "  ",
@@ -184,6 +215,9 @@ public sealed class SettingsServiceTests
         Assert.Equal(
             defaults.FastToggleShortcut,
             settings.FastToggleShortcut);
+        Assert.Equal(
+            defaults.ForkShortcut,
+            settings.ForkShortcut);
         Assert.Equal(
             defaults.DictationShortcut,
             settings.DictationShortcut);
@@ -226,7 +260,7 @@ public sealed class SettingsServiceTests
         Assert.Equal(" ", source.ReasoningDownShortcut);
 
         var persisted = store.Service.Load();
-        Assert.Equal(1, persisted.Version);
+        Assert.Equal(3, persisted.Version);
         Assert.Equal("auto", persisted.Language);
         Assert.Equal("mixed-agent", persisted.ActiveAgentId);
         Assert.Equal("always", persisted.RadialMenuMode);

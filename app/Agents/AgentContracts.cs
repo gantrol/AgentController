@@ -94,16 +94,19 @@ public interface IComposerAutomation
         CancellationToken cancellationToken);
 
     Task<ComposerPickerResult> StepSimplePowerAsync(
-        int direction,
+        int steps,
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken);
 
     Task<ComposerPickerResult> SetSimpleSpeedAsync(
         bool fast,
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken);
 
     Task<ComposerPickerResult> ToggleSpeedAsync(
+        bool allowShortcutFastPath,
         AppSettings settings,
         CancellationToken cancellationToken);
 

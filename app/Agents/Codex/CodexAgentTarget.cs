@@ -265,32 +265,38 @@ public sealed class CodexAgentTarget : IAgentTarget
         }
 
         public Task<ComposerPickerResult> StepSimplePowerAsync(
-            int direction,
+            int steps,
+            bool allowShortcutFastPath,
             AppSettings settings,
             CancellationToken cancellationToken)
         {
             return _composer.StepSimplePowerAsync(
-                direction,
+                steps,
+                allowShortcutFastPath,
                 settings,
                 cancellationToken);
         }
 
         public Task<ComposerPickerResult> SetSimpleSpeedAsync(
             bool fast,
+            bool allowShortcutFastPath,
             AppSettings settings,
             CancellationToken cancellationToken)
         {
             return _composer.SetSimpleSpeedAsync(
                 fast,
+                allowShortcutFastPath,
                 settings,
                 cancellationToken);
         }
 
         public Task<ComposerPickerResult> ToggleSpeedAsync(
+            bool allowShortcutFastPath,
             AppSettings settings,
             CancellationToken cancellationToken)
         {
             return _composer.ToggleSpeedAsync(
+                allowShortcutFastPath,
                 settings,
                 cancellationToken);
         }
