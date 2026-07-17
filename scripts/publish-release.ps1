@@ -96,8 +96,15 @@ try {
     }
 
     $title = "Agent Controller v$releaseVersion"
-    & gh release view $Tag --repo $Repository *> $null
-    $releaseExists = $LASTEXITCODE -eq 0
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & gh release view $Tag --repo $Repository *> $null
+        $releaseExists = $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
 
     if ($releaseExists) {
         $editArguments = @(
