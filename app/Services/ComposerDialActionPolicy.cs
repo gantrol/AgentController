@@ -21,6 +21,8 @@ internal static class ComposerDialActionPolicy
         "stop",
         "submit",
         "transcribeandsend",
+        "undo",
+        "review",
         "添加文件",
         "取消",
         "听写",
@@ -28,6 +30,10 @@ internal static class ComposerDialActionPolicy
         "发送",
         "停止",
         "提交",
+        "撤销",
+        "撤回",
+        "审查",
+        "查看更改",
     ];
 
     private static readonly string[] ExplicitTurnPrefixes =

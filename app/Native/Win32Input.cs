@@ -98,6 +98,23 @@ internal static partial class Win32Input
         }
     }
 
+    public static bool IsProcessForeground(int expectedProcessId)
+    {
+        if (expectedProcessId <= 0)
+        {
+            return false;
+        }
+
+        var window = GetForegroundWindow();
+        if (window == nint.Zero)
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(window, out var processId);
+        return processId == (uint)expectedProcessId;
+    }
+
     public static bool FocusCodex()
     {
         nint target = nint.Zero;

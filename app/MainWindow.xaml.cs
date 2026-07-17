@@ -3023,7 +3023,7 @@ public partial class MainWindow : Window
                 RightControlMode.Dial,
                 failure);
             AddEvent(
-                $"{_localization.Strings.VirtualDial} · {failure}");
+                VirtualDialEventText(failure, result));
             if (ShouldShowVirtualDialFailure(result))
             {
                 ShowFeedback(
@@ -3047,8 +3047,19 @@ public partial class MainWindow : Window
             RightControlMode.Dial,
             value);
         AddEvent(
-            $"{_localization.Strings.VirtualDial} · {value}");
+            VirtualDialEventText(value, result));
         Pulse(strength: result.IsMenuOpen ? 0.18 : 0.12);
+    }
+
+    private string VirtualDialEventText(
+        string value,
+        ComposerDialResult result)
+    {
+        var text =
+            $"{_localization.Strings.VirtualDial} · {value}";
+        return result.ElapsedMilliseconds is { } elapsed
+            ? $"{text} · {elapsed} ms"
+            : text;
     }
 
     private static bool ShouldShowVirtualDialFailure(
@@ -3097,6 +3108,22 @@ public partial class MainWindow : Window
                 RadialText(
                     "菜单已打开，但选项未能高亮 · B 关闭后重试",
                     "The picker opened but no option was highlighted · close with B and retry"),
+            "dial-native-input" =>
+                RadialText(
+                    "Codex 未接收原生导航键，请确认窗口仍在前台",
+                    "Codex did not receive the native navigation key; keep it in the foreground"),
+            "dial-native-navigation-unverified" =>
+                RadialText(
+                    "导航键已发送，但未能读回高亮项",
+                    "The navigation key was sent, but the highlighted item could not be verified"),
+            "dial-native-navigation-closed" =>
+                RadialText(
+                    "导航时选择器意外关闭，请按 RS 重开",
+                    "The picker closed during navigation; press RS to reopen it"),
+            "dial-submenu-not-open" =>
+                RadialText(
+                    "右推后未检测到子菜单",
+                    "No submenu appeared after moving right"),
             "dial-popup-close" =>
                 RadialText(
                     "选择器没有完全关闭 · 再按一次 B 或在 Codex 中关闭",

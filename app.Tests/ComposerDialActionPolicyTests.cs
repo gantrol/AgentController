@@ -51,6 +51,20 @@ public sealed class ComposerDialActionPolicyTests
     }
 
     [Theory]
+    [InlineData("Undo")]
+    [InlineData("Review")]
+    [InlineData("撤销")]
+    [InlineData("查看更改")]
+    public void ComposerActionButtonsAreNotDialPickers(string name)
+    {
+        Assert.False(
+            ComposerDialActionPolicy.IsPickerControl(name));
+        Assert.Equal(
+            ComposerDialActionKind.BaseAction,
+            ComposerDialActionPolicy.Classify(name));
+    }
+
+    [Theory]
     [InlineData("Delete queued message")]
     [InlineData("Remove")]
     [InlineData("Discard changes")]
