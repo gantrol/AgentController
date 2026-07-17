@@ -7,7 +7,7 @@
 
 ---
 
-Drive AI coding agents with a game controller. Agent Controller is a Windows desktop app that maps an XInput gamepad (currently tested with the 8BitDo Ultimate 2) onto the Codex desktop app: navigate tasks with the sticks, hold LT to talk, and send with X — plus haptics and an on-screen overlay.
+Drive AI coding agents with a game controller. Agent Controller is a Windows desktop app that maps an XInput gamepad (tested with the 8BitDo Ultimate 2, Xbox Series controller, and Flydigi Vader 4 Pro) onto the Codex desktop app: navigate tasks with the sticks, hold LT to talk, and send with X — plus haptics and an on-screen overlay.
 
 Inspired by Codex Micro, the tiny dedicated keyboard for Codex — but controller control? Much better. Two sticks, a d-pad, rumble, and it already fits your hands.
 
@@ -27,7 +27,7 @@ Agent Controller is an independent experiment and is not affiliated with or endo
 
 - Windows 10 (build 19041+) or Windows 11
 - Codex desktop app installed
-- An XInput-compatible controller (8BitDo Ultimate 2 is the tested device; other XInput pads should largely work — Xbox and Flydigi are on the test roadmap)
+- An XInput-compatible controller (tested with 8BitDo Ultimate 2, Xbox Series, and Flydigi Vader 4 Pro; other XInput pads still need validation)
 
 ### Install from Releases
 

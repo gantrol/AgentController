@@ -1,5 +1,5 @@
 - Opensource to github: `gantrol/codex-controller`
-- Test in Xbox、Flydigi、8BitDo
+- [x] Test in Xbox Series, Flydigi Vader 4 Pro, and 8BitDo Ultimate 2
 - Support more than Codex, starting with a researched Claude Code adapter
 - Not only windows? Change `app` directory to `windows`
 - Copy? e.g. controller assets in https://github.com/univrsal/input-overlay ?

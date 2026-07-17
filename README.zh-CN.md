@@ -7,9 +7,30 @@
 
 ---
 
-用游戏手柄驱动 AI 编程 Agent。Agent Controller 是一款 Windows 桌面应用，把 XInput 手柄（当前以 8BitDo Ultimate 2 实测）映射到 Codex 桌面版：摇杆导航任务、按住 LT 说话、X 一键发送，外加震动反馈与屏幕浮层。
+Codex Micro很快就断货了，Codex 专用的迷你键盘。但你注意到没有：
 
-灵感来自 Codex Micro——那块为 Codex 打造的迷你专用键盘。但我觉得，用手柄控制（controller control）要好得多：双摇杆、十字键、震动，而且它本来就长在你手里。
+- Codex小键盘有一个旋钮、一只摇杆，手柄也有俩摇杆。
+- Codex小键盘有十二个键，没有背键的手柄也有十四个键。
+- Codex小键盘丑且不符合人体工学设计。
+- Codex小键盘价格加运费，可以买三只手柄。
+- Codex小键盘要等邮寄。
+- Codex小键盘不能用来玩游戏。
+
+手柄完胜，证毕。
+
+于是，研究对接方案，又注意到（注意力不够就用AI注意）：
+
+- Codex小键盘的SDK是随便接入的
+- Codex可以编程、建模
+- 很多手柄也可编程、建模
+
+那么，就可以有那么一个软件，让手柄去代替Codex小键盘。
+
+我指挥Codex，一下午就做出来了，咱们试试。
+
+可惜交互有一定问题，不过呢，经过一晚上。
+
+（当前以 8BitDo Ultimate 2 、Xbox Series、Flydig Vader 4 Pro 实测）
 
 > ⚠️ **安全提示——使用前请读**
 >
