@@ -131,6 +131,7 @@ public sealed class SettingsService
             HapticFeedback = settings.HapticFeedback,
             ShowOverlay = settings.ShowOverlay,
             RadialMenuMode = settings.RadialMenuMode,
+            ComposerDialMode = settings.ComposerDialMode,
             StartWithWindows = settings.StartWithWindows,
             MinimizeToTray = settings.MinimizeToTray,
             DeadZone = settings.DeadZone,
@@ -162,6 +163,8 @@ public sealed class SettingsService
             AppLanguageParser.Parse(settings.Language).ToSettingValue();
         settings.RadialMenuMode =
             RadialMenuModes.Normalize(settings.RadialMenuMode);
+        settings.ComposerDialMode =
+            ComposerDialModes.Normalize(settings.ComposerDialMode);
         settings.DeadZone =
             double.IsFinite(settings.DeadZone)
                 ? Math.Clamp(

@@ -94,6 +94,29 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="100" />
                                 <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Strings.SettingsComposerDialMode,
+                                                    ElementName=Root}"
+                                       VerticalAlignment="Center"
+                                       FontSize="{StaticResource Font.Size.Label}" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding ComposerDialModeOptions}"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding ComposerDialMode,
+                                                              Mode=TwoWay,
+                                                              UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                        <TextBlock Text="{Binding Strings.SettingsComposerDialModeDescription,
+                                                ElementName=Root}"
+                                   Margin="100,5,0,0"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontSize="{StaticResource Font.Size.Caption}"
+                                   TextWrapping="Wrap" />
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="45" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsDeadZone,

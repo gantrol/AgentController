@@ -71,7 +71,7 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "← / → Switch control · RS Open (model first) · hold RS Settings",
+            "Simple: ← / → changes model + effort · Advanced: ← / → changes control, ↑ / ↓ changes value · hold RS Settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -167,7 +167,7 @@ public sealed class DevicePageViewModelTests
             BuiltInControllerProfiles.Generic);
 
         Assert.Equal(RightControlMode.Dial, viewModel.RightMode);
-        Assert.Equal("虚拟旋钮", viewModel.RightModeLabel);
+        Assert.Equal("简易模式", viewModel.RightModeLabel);
 
         viewModel.UpdateRightMode(
             RightControlMode.Model,
@@ -211,7 +211,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Current control: model / reasoning effort / speed",
+            "Simple mode · combined model + effort presets",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -248,7 +248,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "当前控件：模型 / 思考强度 / 速度",
+            "简易模式 · 模型＋思考强度组合档位",
             viewModel.RightModeValue);
     }
 
@@ -266,13 +266,13 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: true);
 
         Assert.Equal(
-            "Gray row is current · ↑ / ↓ Move · → Enter · ← Back · A Select · B Close all",
+            "Model picker active · ↑ / ↓ Move · A Select · B Close",
             viewModel.RightStickHint);
 
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "← / → Switch control · RS Open (model first) · hold RS Settings",
+            "Simple: ← / → changes model + effort · Advanced: ← / → changes control, ↑ / ↓ changes value · hold RS Settings",
             viewModel.RightStickHint);
     }
 
@@ -292,7 +292,7 @@ public sealed class DevicePageViewModelTests
             requiresConfirmation: true);
 
         Assert.Equal(
-            "Full Access confirmation · A Confirm · B Cancel",
+            "Model selection confirmation · A Confirm · B Cancel",
             viewModel.RightStickHint);
     }
 

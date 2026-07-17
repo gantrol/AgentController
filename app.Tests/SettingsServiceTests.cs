@@ -45,6 +45,27 @@ public sealed class SettingsServiceTests
     }
 
     [Theory]
+    [InlineData(null, "simple")]
+    [InlineData("", "simple")]
+    [InlineData("unknown", "simple")]
+    [InlineData(" SIMPLE ", "simple")]
+    [InlineData("Advanced", "advanced")]
+    public void LoadNormalizesComposerDialMode(
+        string? mode,
+        string expected)
+    {
+        using var store = new TemporarySettingsStore();
+        store.Write(new AppSettings
+        {
+            ComposerDialMode = mode!,
+        });
+
+        var settings = store.Service.Load();
+
+        Assert.Equal(expected, settings.ComposerDialMode);
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(2)]
@@ -184,6 +205,7 @@ public sealed class SettingsServiceTests
             Language = "invalid-language",
             ActiveAgentId = " Mixed-Agent ",
             RadialMenuMode = " ALWAYS ",
+            ComposerDialMode = " ADVANCED ",
             StartWithWindows = true,
             DeadZone = double.NaN,
             RepeatDelayMs = 1,
@@ -197,6 +219,7 @@ public sealed class SettingsServiceTests
         Assert.Equal("invalid-language", source.Language);
         Assert.Equal(" Mixed-Agent ", source.ActiveAgentId);
         Assert.Equal(" ALWAYS ", source.RadialMenuMode);
+        Assert.Equal(" ADVANCED ", source.ComposerDialMode);
         Assert.True(double.IsNaN(source.DeadZone));
         Assert.Equal(1, source.RepeatDelayMs);
         Assert.Equal(999, source.RepeatIntervalMs);
@@ -207,6 +230,7 @@ public sealed class SettingsServiceTests
         Assert.Equal("auto", persisted.Language);
         Assert.Equal("mixed-agent", persisted.ActiveAgentId);
         Assert.Equal("always", persisted.RadialMenuMode);
+        Assert.Equal("advanced", persisted.ComposerDialMode);
         Assert.Equal(0.58, persisted.DeadZone);
         Assert.Equal(220, persisted.RepeatDelayMs);
         Assert.Equal(300, persisted.RepeatIntervalMs);

@@ -176,6 +176,14 @@ public static class StringKeys
         "settings.radial-menu.learning";
     public const string SettingsRadialMenuOff =
         "settings.radial-menu.off";
+    public const string SettingsComposerDialMode =
+        "settings.composer-dial-mode";
+    public const string SettingsComposerDialModeDescription =
+        "settings.composer-dial-mode-description";
+    public const string SettingsComposerDialModeSimple =
+        "settings.composer-dial-mode.simple";
+    public const string SettingsComposerDialModeAdvanced =
+        "settings.composer-dial-mode.advanced";
     public const string SettingsStick = "settings.stick";
     public const string SettingsStickDescription =
         "settings.stick-description";
@@ -625,6 +633,10 @@ public static class StringKeys
         SettingsRadialMenuAlways,
         SettingsRadialMenuLearning,
         SettingsRadialMenuOff,
+        SettingsComposerDialMode,
+        SettingsComposerDialModeDescription,
+        SettingsComposerDialModeSimple,
+        SettingsComposerDialModeAdvanced,
         SettingsStick,
         SettingsStickDescription,
         SettingsDeadZone,

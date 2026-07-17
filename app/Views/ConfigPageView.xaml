@@ -78,7 +78,7 @@
                                                 ElementName=Root}"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <TextBlock Text="←→"
+                        <TextBlock Text="←→ / ↑↓"
                                    Margin="0,20,0,0"
                                    Foreground="{StaticResource SageBrush}"
                                    FontSize="{StaticResource Font.Size.TitleLg}"

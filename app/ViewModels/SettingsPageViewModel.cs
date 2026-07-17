@@ -12,6 +12,9 @@ public sealed class SettingsPageViewModel : ObservableObject
     private string _radialMenuMode = RadialMenuModes.Learning;
     private IReadOnlyList<LocalizedRadialMenuOption>
         _radialMenuOptions = [];
+    private string _composerDialMode = ComposerDialModes.Simple;
+    private IReadOnlyList<LocalizedComposerDialModeOption>
+        _composerDialModeOptions = [];
     private bool _startWithWindows;
     private bool _minimizeToTray = true;
     private double _deadZone = 0.58;
@@ -138,6 +141,23 @@ public sealed class SettingsPageViewModel : ObservableObject
             value);
     }
 
+    public string ComposerDialMode
+    {
+        get => _composerDialMode;
+        set => SetProperty(
+            ref _composerDialMode,
+            ComposerDialModes.Normalize(value));
+    }
+
+    public IReadOnlyList<LocalizedComposerDialModeOption>
+        ComposerDialModeOptions
+    {
+        get => _composerDialModeOptions;
+        private set => SetProperty(
+            ref _composerDialModeOptions,
+            value);
+    }
+
     public bool StartWithWindows
     {
         get => _startWithWindows;
@@ -242,6 +262,15 @@ public sealed class SettingsPageViewModel : ObservableObject
                 RadialMenuModes.Off,
                 strings.SettingsRadialMenuOff),
         ];
+        ComposerDialModeOptions =
+        [
+            new(
+                ComposerDialModes.Simple,
+                strings.SettingsComposerDialModeSimple),
+            new(
+                ComposerDialModes.Advanced,
+                strings.SettingsComposerDialModeAdvanced),
+        ];
         CanOpenVendorTool = canOpenVendorTool;
         CanOpenAgentSettings = canOpenAgentSettings;
     }
@@ -253,6 +282,7 @@ public sealed class SettingsPageViewModel : ObservableObject
         HapticFeedback = settings.HapticFeedback;
         ShowOverlay = settings.ShowOverlay;
         RadialMenuMode = settings.RadialMenuMode;
+        ComposerDialMode = settings.ComposerDialMode;
         StartWithWindows = settings.StartWithWindows;
         MinimizeToTray = settings.MinimizeToTray;
         DeadZone = settings.DeadZone;
@@ -269,6 +299,8 @@ public sealed class SettingsPageViewModel : ObservableObject
         settings.ShowOverlay = ShowOverlay;
         settings.RadialMenuMode =
             RadialMenuModes.Normalize(RadialMenuMode);
+        settings.ComposerDialMode =
+            ComposerDialModes.Normalize(ComposerDialMode);
         settings.StartWithWindows = StartWithWindows;
         settings.MinimizeToTray = MinimizeToTray;
         settings.DeadZone = Math.Round(DeadZone, 2);
@@ -279,5 +311,9 @@ public sealed class SettingsPageViewModel : ObservableObject
 }
 
 public sealed record LocalizedRadialMenuOption(
+    string Value,
+    string DisplayName);
+
+public sealed record LocalizedComposerDialModeOption(
     string Value,
     string DisplayName);

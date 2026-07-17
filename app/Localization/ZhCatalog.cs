@@ -34,11 +34,11 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "← / → 切换控件 · {0} 打开（默认模型）· 长按 {0} 设置",
+                "简易：← / → 切模型＋思考档位 · 高级：← / → 切控件、↑ / ↓ 调值 · 长按 {0} 设置",
             [StringKeys.ControlRightStickHintOpen] =
-                "灰色行为当前项 · ↑ / ↓ 选择 · → 进入 · ← 返回 · {2} 确认 · {1} 全关",
+                "模型选择器已打开 · ↑ / ↓ 选择 · {2} 确认 · {1} 关闭",
             [StringKeys.ControlRightStickHintConfirmation] =
-                "Full access 二次确认 · {2} 确认 · {1} 取消",
+                "模型选择确认 · {2} 确认 · {1} 取消",
             [StringKeys.ControlPrimary] = "{0} · 打开任务",
             [StringKeys.ControlPrimaryDescription] =
                 "打开当前焦点任务；进入项目请按 →",
@@ -58,10 +58,10 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "将 {0} 置于前台并解锁手柄控制",
 
             [StringKeys.ComposerRightStickAdjustment] =
-                "右摇杆虚拟旋钮",
+                "右摇杆模型旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
             [StringKeys.ComposerDialReady] =
-                "当前控件：模型 / 思考强度 / 速度",
+                "简易模式 · 模型＋思考强度组合档位",
             [StringKeys.ComposerConnectController] =
                 "连接手柄后开始",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -116,15 +116,15 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ 遵循本程序的稳定滚轮目录，并同步 {0} 原生侧边栏焦点，但不会自动打开对话。任务活动时间不会重排滚轮；→ 进入项目，← 退出项目，A 只打开任务。置顶与项目折叠互相独立。",
             [StringKeys.ConfigRightStickComposer] =
-                "右摇杆 · 虚拟旋钮",
+                "右摇杆 · 模型旋钮",
             [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "上一个 / 下一个撰写栏控件；菜单打开后遍历选项",
+                "简易模式切换模型＋思考强度组合档位；高级模式用 ← / → 切换模型、思考强度或速度，用 ↑ / ↓ 调整当前值",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "单击打开或确认；长按 500 ms 打开手柄设置",
+                "单击显示当前简易档位，或循环高级模式控件；长按 500 ms 打开手柄设置",
             [StringKeys.ConfigSelectionBehavior] =
-                "模型、思考强度、速度和新任务 Project 选择器共用同一旋钮路径。B 优先关闭打开的选择器；选择器外会取消当前操作或录音，也可撤回最近一次任务跳转。",
+                "旋钮只操作模型相关设置。简易模式合并模型与思考强度；高级模式拆分模型、思考强度和速度，绝不会进入 Full access 或 Project 选择器。",
             [StringKeys.ConfigAgentShortcuts] = "{0} 快捷键",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "程序会安全追加降级绑定；新绑定在 {0} 重启后生效。",
@@ -161,6 +161,14 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "学习期显示",
             [StringKeys.SettingsRadialMenuOff] =
                 "关闭",
+            [StringKeys.SettingsComposerDialMode] =
+                "模型旋钮模式",
+            [StringKeys.SettingsComposerDialModeDescription] =
+                "简易模式按组合档位切换模型与思考强度；高级模式分别提供模型、思考强度和速度三个控件。",
+            [StringKeys.SettingsComposerDialModeSimple] =
+                "简易模式",
+            [StringKeys.SettingsComposerDialModeAdvanced] =
+                "高级模式",
             [StringKeys.SettingsStick] = "摇杆",
             [StringKeys.SettingsStickDescription] =
                 "当前采用主方向锁定，斜推不会同时触发横纵动作。",

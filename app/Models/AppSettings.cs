@@ -11,6 +11,8 @@ public sealed class AppSettings
     public bool ShowOverlay { get; set; } = true;
     public string RadialMenuMode { get; set; } =
         RadialMenuModes.Learning;
+    public string ComposerDialMode { get; set; } =
+        ComposerDialModes.Simple;
     public bool StartWithWindows { get; set; }
     public bool MinimizeToTray { get; set; } = true;
     public double DeadZone { get; set; } = 0.58;

@@ -146,6 +146,14 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.SettingsRadialMenuLearning);
     public string SettingsRadialMenuOff =>
         Get(StringKeys.SettingsRadialMenuOff);
+    public string SettingsComposerDialMode =>
+        Get(StringKeys.SettingsComposerDialMode);
+    public string SettingsComposerDialModeDescription =>
+        Get(StringKeys.SettingsComposerDialModeDescription);
+    public string SettingsComposerDialModeSimple =>
+        Get(StringKeys.SettingsComposerDialModeSimple);
+    public string SettingsComposerDialModeAdvanced =>
+        Get(StringKeys.SettingsComposerDialModeAdvanced);
     public string SettingsStick =>
         Get(StringKeys.SettingsStick);
     public string SettingsStickDescription =>

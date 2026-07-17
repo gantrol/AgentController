@@ -35,11 +35,11 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "← / → Switch control · {0} Open (model first) · hold {0} Settings",
+                "Simple: ← / → changes model + effort · Advanced: ← / → changes control, ↑ / ↓ changes value · hold {0} Settings",
             [StringKeys.ControlRightStickHintOpen] =
-                "Gray row is current · ↑ / ↓ Move · → Enter · ← Back · {2} Select · {1} Close all",
+                "Model picker active · ↑ / ↓ Move · {2} Select · {1} Close",
             [StringKeys.ControlRightStickHintConfirmation] =
-                "Full Access confirmation · {2} Confirm · {1} Cancel",
+                "Model selection confirmation · {2} Confirm · {1} Cancel",
             [StringKeys.ControlPrimary] = "{0} · Open task",
             [StringKeys.ControlPrimaryDescription] =
                 "Open the focused task; use → to enter a project",
@@ -61,11 +61,11 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Bring {0} to front and unlock controller input",
 
             [StringKeys.ComposerRightStickAdjustment] =
-                "Right-stick virtual dial",
+                "Right-stick model dial",
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
             [StringKeys.ComposerDialReady] =
-                "Current control: model / reasoning effort / speed",
+                "Simple mode · combined model + effort presets",
             [StringKeys.ComposerConnectController] =
                 "Connect a controller to begin",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -122,15 +122,15 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ follows this app's stable wheel and syncs {0} sidebar focus without opening a conversation. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A opens tasks only. Pinning and project expansion remain independent.",
             [StringKeys.ConfigRightStickComposer] =
-                "Right stick · Virtual dial",
+                "Right stick · Model dial",
             [StringKeys.ConfigIncreaseDecrease] = "←→",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "Previous / next composer control; traverse options after opening a menu",
+                "Simple: change the combined model + effort preset. Advanced: ← / → changes Model, Effort, or Speed; ↑ / ↓ changes its value.",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "Click to open or select; hold for 500 ms to open controller settings",
+                "Click shows the current Simple preset or cycles the Advanced control; hold for 500 ms to open controller settings",
             [StringKeys.ConfigSelectionBehavior] =
-                "Model, reasoning, speed, and the new-task Project picker share one dial path. B closes an open picker first; outside a picker it cancels the current action or recording and can undo a recent task navigation.",
+                "The dial is restricted to model settings. Simple combines model and reasoning effort; Advanced separates Model, Effort, and Speed. It never enters Full access or Project selectors.",
             [StringKeys.ConfigAgentShortcuts] = "{0} shortcuts",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "The app safely appends fallback bindings; new bindings take effect after {0} restarts.",
@@ -170,6 +170,14 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Learning mode",
             [StringKeys.SettingsRadialMenuOff] =
                 "Off",
+            [StringKeys.SettingsComposerDialMode] =
+                "Composer dial mode",
+            [StringKeys.SettingsComposerDialModeDescription] =
+                "Simple steps through combined model and reasoning presets. Advanced exposes Model, Reasoning effort, and Speed as separate controls.",
+            [StringKeys.SettingsComposerDialModeSimple] =
+                "Simple",
+            [StringKeys.SettingsComposerDialModeAdvanced] =
+                "Advanced",
             [StringKeys.SettingsStick] = "Sticks",
             [StringKeys.SettingsStickDescription] =
                 "Primary-direction locking prevents diagonal movement from triggering horizontal and vertical actions together.",

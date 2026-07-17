@@ -120,6 +120,12 @@ public sealed class LocalizationTests
             "学习期显示",
             zh[StringKeys.SettingsRadialMenuLearning]);
         Assert.Equal(
+            "简易模式",
+            zh[StringKeys.SettingsComposerDialModeSimple]);
+        Assert.Equal(
+            "Advanced",
+            en[StringKeys.SettingsComposerDialModeAdvanced]);
+        Assert.Equal(
             "Default dispatch",
             en[StringKeys.DispatchDefault]);
     }

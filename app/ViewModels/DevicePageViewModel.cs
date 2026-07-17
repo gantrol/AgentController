@@ -553,7 +553,8 @@ public sealed class DevicePageViewModel : ObservableObject
 
         RightModeLabel = RightMode switch
         {
-            RightControlMode.Dial => _strings.VirtualDial,
+            RightControlMode.Dial =>
+                _strings.SettingsComposerDialModeSimple,
             RightControlMode.Reasoning =>
                 _strings.ReasoningEffort,
             RightControlMode.Model => _strings.Model,
