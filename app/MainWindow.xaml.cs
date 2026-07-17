@@ -1214,8 +1214,8 @@ public partial class MainWindow : Window
                     RadialText("停止当前运行", "Stop current turn"),
                     "Stop");
                 break;
-            case RadialInputAction.TogglePlan:
-                _ = TogglePlanModeAsync();
+            case RadialInputAction.NewTask:
+                ExecuteNewTaskAction();
                 break;
             case RadialInputAction.NavigateForward:
                 ExecuteActionPanelShortcut(
@@ -1240,67 +1240,6 @@ public partial class MainWindow : Window
                 JumpToProjectContext();
                 break;
         }
-    }
-
-    private async Task TogglePlanModeAsync()
-    {
-        EndRadialLayer(_latestControllerState.Buttons);
-        var title = RadialText(
-            "切换 Plan 模式",
-            "Toggle Plan mode");
-        var result = await _composerAutomation.TogglePlanModeAsync(
-                _settings.PlanToggleShortcut,
-                _settings,
-                CancellationToken.None)
-            .ConfigureAwait(true);
-        if (result.Succeeded)
-        {
-            var state = result.IsPlanMode == true
-                ? RadialText("Plan 模式已开启。", "Plan mode is on.")
-                : RadialText("Plan 模式已关闭。", "Plan mode is off.");
-            AddEvent($"{title} · {state}");
-            ShowFeedback(title, state);
-            Pulse(strength: 0.2);
-            return;
-        }
-
-        var failure = result.ErrorDetail switch
-        {
-            PlanModeAutomationPolicy.RunningUnavailableDetail =>
-                RadialText(
-                    "当前任务运行中，请在完成后切换 Plan 模式。",
-                    "Switch Plan mode after the current turn finishes."),
-            PlanModeAutomationPolicy.StateUnchangedDetail =>
-                RadialText(
-                    "Codex 未应用 Plan 模式切换。",
-                    "Codex did not apply the Plan mode change."),
-            PlanModeAutomationPolicy.StateUnavailableDetail =>
-                RadialText(
-                    "无法读取 Plan 状态，请确认 Codex 编辑器可用。",
-                    "Could not read Plan state; make sure the Codex composer is available."),
-            PlanModeAutomationPolicy.CommandUnavailableDetail =>
-                RadialText(
-                    "未找到 Codex 的 /plan 命令。",
-                    "Could not find Codex's /plan command."),
-            PlanModeAutomationPolicy.CommandInvokeDetail =>
-                RadialText(
-                    "Codex 未接受 /plan 命令。",
-                    "Codex did not accept the /plan command."),
-            PlanModeAutomationPolicy.DraftUnavailableDetail =>
-                RadialText(
-                    "无法安全读取当前草稿，Plan 模式未切换。",
-                    "Could not safely read the draft; Plan mode was not changed."),
-            PlanModeAutomationPolicy.DraftRestoreDetail =>
-                RadialText(
-                    "无法恢复切换前的草稿，请检查 Codex 编辑器。",
-                    "Could not restore the draft; check the Codex composer."),
-            _ => ExecutionFailureLabel(
-                result.Error,
-                result.ErrorDetail),
-        };
-        AddEvent($"{title} · {failure}");
-        ShowFeedback(title, failure);
-        Pulse(strength: 0.1);
     }
 
     private void ExecuteActionPanelShortcut(
@@ -1596,6 +1535,58 @@ public partial class MainWindow : Window
         Pulse(strength: result.Succeeded ? 0.22 : 0.1);
     }
 
+    private void ExecuteNewTaskAction()
+    {
+        var title = RadialText("新建任务", "New task");
+        var result = _composerAutomation.InvokeAction(
+            _settings,
+            "New task",
+            "New Task",
+            "New chat",
+            "New Chat",
+            "新建任务",
+            "新对话");
+        var usedShortcut = false;
+        if (
+            !result.Succeeded &&
+            string.Equals(
+                result.Error,
+                AgentAutomationErrorCodes.ElementNotFound,
+                StringComparison.Ordinal))
+        {
+            usedShortcut = true;
+            var shortcutSucceeded =
+                _agentShortcuts.Execute("Ctrl+N", _settings);
+            result = shortcutSucceeded
+                ? new ComposerAutomationResult(true)
+                : new ComposerAutomationResult(
+                    false,
+                    AgentAutomationErrorCodes.InputInjectionFailed,
+                    "Ctrl+N");
+        }
+
+        EndRadialLayer(_latestControllerState.Buttons);
+        if (result.Succeeded)
+        {
+            ClearNavigationUndo();
+        }
+
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                result.Succeeded,
+                result.Error,
+                usedShortcut ? "Ctrl+N" : result.ErrorDetail));
+        ShowFeedback(
+            title,
+            result.Succeeded
+                ? _localization.Strings.Get(StringKeys.MessageExecuted)
+                : ExecutionFailureLabel(
+                    result.Error,
+                    result.ErrorDetail));
+        Pulse(strength: result.Succeeded ? 0.22 : 0.1);
+    }
+
     private void RefreshRadialMenu()
     {
         if (
@@ -1778,10 +1769,10 @@ public partial class MainWindow : Window
         return
         [
             RadialItem(
-                "action-plan",
+                "action-new-task",
                 RadialMenuSlotPosition.Top,
                 LogicalInput.DPadUp,
-                RadialText("Plan 模式", "Plan mode")),
+                RadialText("新建任务", "New task")),
             RadialItem(
                 "action-forward",
                 RadialMenuSlotPosition.Right,
@@ -1907,7 +1898,7 @@ public partial class MainWindow : Window
             RadialInputAction.Steer => "turn-steer",
             RadialInputAction.Queue => "turn-queue",
             RadialInputAction.StopTurn => "turn-stop",
-            RadialInputAction.TogglePlan => "action-plan",
+            RadialInputAction.NewTask => "action-new-task",
             RadialInputAction.NavigateForward => "action-forward",
             RadialInputAction.ToggleSidebar => "action-sidebar",
             RadialInputAction.NavigateBack => "action-back",

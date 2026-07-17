@@ -6,7 +6,7 @@ namespace CodexController.Tests;
 public sealed class RadialInputMapTests
 {
     [Theory]
-    [InlineData(ControllerButtons.DPadUp, RadialInputAction.TogglePlan)]
+    [InlineData(ControllerButtons.DPadUp, RadialInputAction.NewTask)]
     [InlineData(
         ControllerButtons.DPadRight,
         RadialInputAction.NavigateForward)]

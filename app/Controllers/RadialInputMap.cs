@@ -21,7 +21,7 @@ public enum RadialInputAction
     Steer,
     Queue,
     StopTurn,
-    TogglePlan,
+    NewTask,
     NavigateForward,
     ToggleSidebar,
     NavigateBack,
@@ -164,7 +164,7 @@ public static class RadialInputMap
         }
 
         if (downEdges.HasFlag(ControllerButtons.DPadUp))
-            return RadialInputAction.TogglePlan;
+            return RadialInputAction.NewTask;
         if (downEdges.HasFlag(ControllerButtons.DPadRight))
             return RadialInputAction.NavigateForward;
         if (downEdges.HasFlag(ControllerButtons.DPadDown))

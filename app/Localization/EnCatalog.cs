@@ -56,7 +56,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ControlProjectContext] =
                 "{0} · Action panel",
             [StringKeys.ControlProjectContextDescription] =
-                "Plan, sidebar, history, clear input, and project context",
+                "New task, sidebar, history, and clear input",
             [StringKeys.ControlWakeAgent] = "{0} · Wake {1}",
             [StringKeys.ControlWakeAgentDescription] =
                 "Bring {0} to front; foreground control enables automatically",
@@ -246,7 +246,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.StatusAgentNotForeground] =
                 "{0} is not in the foreground · press {1} to wake",
             [StringKeys.StatusControllerHelp] =
-                "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · {2} project context · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} closes / undoes; hold 3s to cancel turn",
+                "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} closes / undoes; hold 3s to cancel turn",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
             [StringKeys.TrayOpenAgent] = "Open {0}",

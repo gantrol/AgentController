@@ -4,6 +4,11 @@
 - Not only windows? Change `app` directory to `windows`
 - Copy? e.g. controller assets in https://github.com/univrsal/input-overlay ?
 - Fast switch error
+- v0.7 deferred / experimental work
+  - [ ] Re-enable Plan mode only after the route can verify the visible Codex state before and after every change; v0.7 exposes no controller binding for it
+  - [ ] Prototype a virtual HID identity compatible with `v.oai.rad` only in an isolated experimental build; follow `public/docs/codex-micro-virtual-hid-bridge-plan.md`
+  - [ ] Require Center → Direction → Center reports, device-fingerprint/version guards, explicit opt-in, and result verification before any virtual-HID action can report success
+  - [ ] Do not ship or install a virtual HID driver in v0.7
 - v0.4b current trial
   - [x] Stable controller-owned sidebar directory; running-task recency
         updates no longer reorder the active navigation session
