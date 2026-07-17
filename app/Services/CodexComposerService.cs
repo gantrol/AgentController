@@ -5342,7 +5342,7 @@ public sealed partial class CodexComposerService
         CancellationToken cancellationToken)
     {
         var failure = PreparePicker(
-            ComposerPickerView.Simple,
+            ComposerPickerView.Advanced,
             settings,
             cancellationToken,
             out var context);
@@ -5351,69 +5351,124 @@ public sealed partial class CodexComposerService
             return failure;
         }
 
-        var enableFast = context!.Items.FirstOrDefault(item =>
-            ComposerPickerViewPolicy.IsEnableFastAction(SafeName(item)));
-        var enableStandard = context.Items.FirstOrDefault(item =>
-            ComposerPickerViewPolicy.IsEnableStandardAction(SafeName(item)));
-        var action = fast ? enableFast : enableStandard;
-        var alreadySelected = fast
-            ? enableStandard is not null
-            : enableFast is not null;
-        if (action is null && alreadySelected)
+        const string category = "Speed";
+        var targetName =
+            ComposerSpeedSelectionPolicy.TargetLabel(fast);
+        var categoryItem = context!.Items.FirstOrDefault(item =>
+            IsAdvancedCategoryItem(SafeName(item), category));
+        var categoryName = categoryItem is null
+            ? string.Empty
+            : SafeName(categoryItem);
+        if (
+            categoryItem is not null &&
+            ComposerSpeedSelectionPolicy.MatchesCategory(
+                categoryName,
+                fast))
         {
             return new(
                 true,
-                fast ? "Fast" : "Standard",
+                targetName,
                 IsMenuOpen: true);
         }
 
         if (
-            action is null ||
-            !TryInvokePickerItem(action, context.ProcessId))
+            categoryItem is null ||
+            !TryGetDialPopupContainer(
+                categoryItem,
+                context.Window,
+                out var rootContainerKey,
+                out _) ||
+            !TryExpand(categoryItem))
         {
             return new(
                 false,
-                fast ? "Fast" : "Standard",
+                targetName,
                 IsMenuOpen: true,
                 Error: AgentAutomationErrorCodes.ElementNotFound,
                 ErrorDetail: "composer-speed-option");
         }
 
-        Thread.Sleep(80);
-        cancellationToken.ThrowIfCancellationRequested();
-        var readbackFailure = PreparePicker(
-            ComposerPickerView.Simple,
-            settings,
-            cancellationToken,
-            out var refreshed);
-        if (readbackFailure is not null)
-        {
-            return readbackFailure with
-            {
-                Value = fast ? "Fast" : "Standard",
-            };
-        }
-
-        var hasEnableFast = refreshed!.Items.Any(item =>
-            ComposerPickerViewPolicy.IsEnableFastAction(SafeName(item)));
-        var hasEnableStandard = refreshed.Items.Any(item =>
-            ComposerPickerViewPolicy.IsEnableStandardAction(
-                SafeName(item)));
-        var confirmed = fast ? hasEnableStandard : hasEnableFast;
-        if (!confirmed)
+        var currentValue = AdvancedCategoryValue(
+            categoryName,
+            category);
+        var options = WaitForAdvancedOptions(
+            context.Window,
+            context.ProcessId,
+            rootContainerKey,
+            currentValue,
+            cancellationToken);
+        var target = options?.FirstOrDefault(option =>
+            ComposerSpeedSelectionPolicy.MatchesOption(
+                option.Name,
+                fast));
+        if (
+            target is null ||
+            !TryInvokePickerItem(target.Element, context.ProcessId))
         {
             return new(
                 false,
-                fast ? "Fast" : "Standard",
+                targetName,
                 IsMenuOpen: true,
-                Error: AgentAutomationErrorCodes.ElementUnsupported,
-                ErrorDetail: "composer-speed-readback");
+                Error: AgentAutomationErrorCodes.ElementNotFound,
+                ErrorDetail: "composer-speed-option");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var readbackDeadline = Environment.TickCount64 + 900;
+        ComposerPickerResult? lastReadbackFailure = null;
+        do
+        {
+            Thread.Sleep(80);
+            cancellationToken.ThrowIfCancellationRequested();
+            var readbackFailure = PreparePicker(
+                ComposerPickerView.Advanced,
+                settings,
+                cancellationToken,
+                out var refreshed);
+            if (readbackFailure is not null)
+            {
+                lastReadbackFailure = readbackFailure;
+                if (
+                    readbackFailure.Error ==
+                        AgentAutomationErrorCodes.OperationCanceled ||
+                    readbackFailure.Error ==
+                        AgentAutomationErrorCodes.AgentNotForeground ||
+                    readbackFailure.Error ==
+                        AgentAutomationErrorCodes.BridgeSafePreview)
+                {
+                    return readbackFailure with { Value = targetName };
+                }
+
+                continue;
+            }
+
+            var refreshedCategory = refreshed!.Items.FirstOrDefault(item =>
+                IsAdvancedCategoryItem(SafeName(item), category));
+            if (
+                refreshedCategory is not null &&
+                ComposerSpeedSelectionPolicy.MatchesCategory(
+                    SafeName(refreshedCategory),
+                    fast))
+            {
+                return new(
+                    true,
+                    targetName,
+                    IsMenuOpen: true);
+            }
+        }
+        while (Environment.TickCount64 < readbackDeadline);
+
+        if (lastReadbackFailure is not null)
+        {
+            return lastReadbackFailure with { Value = targetName };
         }
 
         return new(
-            true,
-            fast ? "Fast" : "Standard",
-            IsMenuOpen: true);
+            false,
+            targetName,
+            IsMenuOpen: true,
+            Error: AgentAutomationErrorCodes.ElementUnsupported,
+            ErrorDetail: "composer-speed-readback");
     }
 
     private ComposerPickerResult StepAdvancedCore(
@@ -5493,9 +5548,11 @@ public sealed partial class CodexComposerService
             .FirstOrDefault(item => item.option.IsSelected)?.index ??
             options
                 .Select((option, index) => new { option, index })
-                .FirstOrDefault(item => PickerValuesEqual(
-                    item.option.Name,
-                    currentValue))?.index ??
+                .FirstOrDefault(item =>
+                    ComposerSpeedSelectionPolicy
+                        .OptionMatchesCurrentValue(
+                            item.option.Name,
+                            currentValue))?.index ??
             -1;
         if (currentIndex < 0)
         {
@@ -5571,7 +5628,11 @@ public sealed partial class CodexComposerService
                 : AdvancedCategoryValue(
                     SafeName(refreshedCategory),
                     category);
-            if (PickerValuesEqual(actualValue, target.Name))
+            if (
+                ComposerSpeedSelectionPolicy
+                    .OptionMatchesCurrentValue(
+                        target.Name,
+                        actualValue))
             {
                 return new(
                     true,
@@ -5654,7 +5715,10 @@ public sealed partial class CodexComposerService
                     Options = options.ToArray(),
                     HasSelected = options.Any(option => option.IsSelected),
                     HasCurrent = options.Any(option =>
-                        PickerValuesEqual(option.Name, currentValue)),
+                        ComposerSpeedSelectionPolicy
+                            .OptionMatchesCurrentValue(
+                                option.Name,
+                                currentValue)),
                     Bounds = options.First().ContainerBounds,
                 })
                 .Where(item => item.HasSelected || item.HasCurrent)
@@ -5698,16 +5762,6 @@ public sealed partial class CodexComposerService
                 .Trim(' ', ':', '-', '·')
             : string.Empty;
     }
-
-    private static bool PickerValuesEqual(
-        string? left,
-        string? right) =>
-        !string.IsNullOrWhiteSpace(left) &&
-        !string.IsNullOrWhiteSpace(right) &&
-        string.Equals(
-            NormalizeChoice(left),
-            NormalizeChoice(right),
-            StringComparison.Ordinal);
 
     private ComposerPickerResult? PreparePicker(
         ComposerPickerView view,
