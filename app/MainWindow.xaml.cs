@@ -3801,7 +3801,10 @@ public partial class MainWindow : Window
             var failure = SimplePickerFailureLabel(result);
             _devicePageViewModel.UpdateRightModeValue(failure);
             AddEvent($"{title} · {failure}");
-            ShowFeedback(title, failure);
+            ShowComposerPickerOverlayIfNeeded(
+                title,
+                failure,
+                result);
             Pulse(strength: 0.1);
             return;
         }
@@ -3811,8 +3814,19 @@ public partial class MainWindow : Window
             : result.Value;
         _devicePageViewModel.UpdateRightModeValue(value);
         AddEvent($"{title} · {value}");
-        ShowFeedback(title, value);
+        ShowComposerPickerOverlayIfNeeded(title, value, result);
         Pulse(strength: 0.18);
+    }
+
+    private void ShowComposerPickerOverlayIfNeeded(
+        string title,
+        string value,
+        ComposerPickerResult result)
+    {
+        if (ComposerPickerOverlayPolicy.ShouldShow(result))
+        {
+            ShowFeedback(title, value);
+        }
     }
 
     private string SimplePickerFailureLabel(ComposerPickerResult result)
@@ -3985,7 +3999,10 @@ public partial class MainWindow : Window
             };
             _devicePageViewModel.UpdateRightModeValue(failure);
             AddEvent($"{title} · {failure}");
-            ShowFeedback(title, failure);
+            ShowComposerPickerOverlayIfNeeded(
+                title,
+                failure,
+                result);
             Pulse(strength: 0.1);
             return;
         }
@@ -3995,7 +4012,7 @@ public partial class MainWindow : Window
             result.Value ?? string.Empty);
         _devicePageViewModel.UpdateRightModeValue(value);
         AddEvent($"{title} · {value}");
-        ShowFeedback(title, value);
+        ShowComposerPickerOverlayIfNeeded(title, value, result);
         Pulse(strength: 0.18);
     }
 
