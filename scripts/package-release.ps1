@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.7.0",
+    [string]$Version = "0.7.0-hotfix",
     [string]$Runtime = "win-x64"
 )
 
@@ -66,10 +66,20 @@ Get-ChildItem -LiteralPath $publishRoot | Copy-Item `
 
 $docsRoot = Join-Path $packageRoot "DOCS"
 New-Item -ItemType Directory -Path $docsRoot -Force | Out-Null
+$docsImageRoot = Join-Path $docsRoot "public\images"
+New-Item -ItemType Directory -Path $docsImageRoot -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") `
     -Destination $docsRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.zh-CN.md") `
     -Destination $docsRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "public\images\agent-controller-gamepad-guide-en.png") `
+    -Destination $docsImageRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "public\images\agent-controller-gamepad-guide-zh-CN-v2.png") `
+    -Destination $docsImageRoot
+Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") `
+    -Destination $packageRoot
 Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\controller-command-reference-v0.7.md") `
     -Destination $docsRoot

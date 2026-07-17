@@ -2,6 +2,7 @@
 # root project documents, and design specifications.
 /*
 !/.gitignore
+!/LICENSE
 !/README.md
 !/README.zh-CN.md
 !/todo.md

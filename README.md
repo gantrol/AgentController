@@ -3,9 +3,11 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-0.7-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![version](https://img.shields.io/badge/version-0.7.0--hotfix-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
 > Turn an XInput gamepad into a handheld control surface for the Codex desktop app: browse tasks, dictate and send prompts, adjust model settings, and act on running turns without reaching for the keyboard.
+
+![Agent Controller gamepad controls](public/images/agent-controller-gamepad-guide-en.png)
 
 ---
 
@@ -41,7 +43,7 @@ I directed Codex to build a prototype. Two hours later it worked; another day we
 - Press **X** to send.
 - To clear the composer, press **Y**, then **A** twice to confirm.
 - To cancel an active turn, hold **B** for three seconds and wait for the on-screen countdown. A short press closes menus or undoes recent navigation when applicable.
-- Press D-pad up/down to move to the previous/next user message. Hold up for four seconds to jump to the top, or down for three seconds to jump to the bottom.
+- Press D-pad up/down to move to the previous/next Q&A turn. Hold up for four seconds to jump to the top, or down for three seconds to jump to the bottom.
 - To start a new task, press **Y**, then D-pad up.
 
 That is enough for controller-first vibe coding.
@@ -77,8 +79,9 @@ The tested controllers are the 8BitDo Ultimate 2, Xbox Series controller, and Fl
 2. Extract it anywhere and run `AgentController.exe`.
 3. Because the binary is unsigned, Windows SmartScreen may warn you. Choose **More info → Run anyway** only after reviewing the security notice above; alternatively, build from source.
 4. Connect the controller in XInput mode, launch Codex, and make sure the Bridge is enabled. When connected, the Device page shows the controller name and a localized **Live input** / **实时输入** badge.
+5. Some features may require restarting the Codex desktop app (**ChatGPT**), especially after Agent Controller first provisions or updates Codex keybindings.
 
-The v0.7 Windows package is self-contained and does not require a separate .NET runtime.
+The v0.7.0-hotfix Windows package is self-contained and does not require a separate .NET runtime.
 
 ### Control reference
 
@@ -94,7 +97,7 @@ The v0.7 Windows package is self-contained and does not require a separate .NET 
 | X | Send the current composer text. The fallback uses the configured submit binding, never Enter. |
 | B | Close a menu or undo recent navigation when applicable; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
 | Y | Open the action panel. |
-| D-pad ↑ / ↓ | Previous / next user message; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
+| D-pad ↑ / ↓ | Previous / next Q&A turn; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
 | Right stick (Simple) | ← / → steps the live Power control; ↑ selects Standard; ↓ selects Fast. |
 | Right stick (Advanced) | ← / → selects Model, Effort, or Speed; ↑ / ↓ chooses an option actually exposed by the current account and model. |
 | R3 tap / hold | In Simple mode, tap to open the official model list, use directions to select, A to confirm, and B/R3 to close. Advanced mode opens the full settings menu. Hold for 500 ms to open Agent Controller settings. |
@@ -149,7 +152,7 @@ Install the .NET 9 SDK, then run:
 ```powershell
 dotnet build app/AgentController.csproj -c Release
 dotnet test app.Tests/AgentController.Tests.csproj -c Release
-./scripts/package-release.ps1
+./scripts/package-release.ps1 -Version 0.7.0-hotfix
 ```
 
 Build output is written to `app/bin/Release/net9.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
@@ -174,3 +177,7 @@ Key paths in the repository are:
 ### Credits
 
 Controller artwork is derived from CREATRBOI's "White XBOX Controller" model. License and attribution files ship with the app under `THIRD-PARTY/`.
+
+### License
+
+This project is available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Personal, research, and other noncommercial use, modification, and distribution are permitted; commercial use requires separate permission. Because the license restricts commercial use, this project is source-available rather than open source under the OSI definition.
