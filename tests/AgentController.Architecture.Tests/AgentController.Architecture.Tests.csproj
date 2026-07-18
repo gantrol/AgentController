@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -16,7 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\app\AgentController.csproj" />
+    <ProjectReference Include="..\..\src\AgentController.Application\AgentController.Application.csproj" />
+    <ProjectReference Include="..\..\src\AgentController.Domain\AgentController.Domain.csproj" />
+    <ProjectReference Include="..\..\src\AgentController.Platform.Abstractions\AgentController.Platform.Abstractions.csproj" />
   </ItemGroup>
-
 </Project>

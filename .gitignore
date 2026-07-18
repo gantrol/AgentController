@@ -6,8 +6,18 @@
 !/README.md
 !/README.zh-CN.md
 !/todo.md
+!/AgentController.sln
+!/Directory.Build.props
+!/Directory.Packages.props
+!/global.json
+!/todo/
+!/todo/**
 !/app/
 !/app.Tests/
+!/src/
+!/src/**
+!/tests/
+!/tests/**
 !/docs/
 !/docs/**
 !/public/
@@ -15,6 +25,8 @@
 !/public/docs/**
 !/scripts/
 !/scripts/**
+!/virtual-micro/
+!/virtual-micro/**
 
 # Build and IDE output
 **/bin/

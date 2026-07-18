@@ -143,15 +143,15 @@ That work would require a dedicated adapter with its own task discovery, command
 
 ### Build from source
 
-Install the .NET 9 SDK, then run:
+Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 18 or newer; Visual Studio 2022 cannot load the SDK selected by `global.json`. Then run:
 
 ```powershell
-dotnet build app/AgentController.csproj -c Release
-dotnet test app.Tests/AgentController.Tests.csproj -c Release
+dotnet build AgentController.sln -c Release
+dotnet test AgentController.sln -c Release
 ./scripts/package-release.ps1 -Version 0.7.0-hotfix
 ```
 
-Build output is written to `app/bin/Release/net9.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
+Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
 
 To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
 
@@ -176,7 +176,7 @@ Key paths in the repository are:
 - `scripts/` — reproducible Release packaging;
 - `docs/` — interaction specifications and active design/consultation notes;
 - `public/docs/` — user-facing command references, release notes, and experimental plans;
-- `todo.md` — roadmap and validation notes.
+- `todo/` — roadmap organized by major workstream; start with [`todo/README.md`](todo/README.md).
 
 ### Credits
 

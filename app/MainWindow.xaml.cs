@@ -52,9 +52,7 @@ public partial class MainWindow : Window
     private readonly IAgentShortcuts _agentShortcuts;
     private readonly IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
-    private readonly AxisRepeater _axisRepeater;
-    private readonly StickGestureRouter _leftStickRouter;
-    private readonly StickGestureRouter _rightStickRouter;
+    private readonly ControllerInteractionCoordinator _controllerInteraction;
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
@@ -71,16 +69,12 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
     private readonly DispatcherTimer _radialLearningTimer;
-    private readonly ControllerStateBuffer _controllerStateBuffer = new();
     private readonly RadialMenuInteractionState _radialInteraction = new();
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
     private readonly SidebarNavigationDirectory _sidebarNavigationDirectory =
         new();
-    private readonly AnalogTriggerLatch _pushToTalkTrigger = new(
-        BridgeTimings.PushToTalkEngageThreshold,
-        BridgeTimings.PushToTalkReleaseThreshold);
     private readonly PushToTalkAutomationState _pushToTalkAutomation =
         new();
 
@@ -88,8 +82,6 @@ public partial class MainWindow : Window
     private CodexSnapshot _snapshot = new();
     private SidebarScope _scope = SidebarScope.Projects;
     private RightControlMode _rightMode = RightControlMode.Dial;
-    private ControllerButtons _previousButtons;
-    private ControllerButtons _previousPhysicalButtons;
     private ControllerButtons _radialSuppressedButtons;
     private ControllerButtons _pushToTalkSuppressedButtons;
     private string? _selectedProjectPath;
@@ -186,9 +178,7 @@ public partial class MainWindow : Window
         _agentShortcuts = _activeAgent.Shortcuts;
         _keybindingProvisioner = _activeAgent.Keybindings;
         _xInputService = services.Controller;
-        _axisRepeater = services.AxisRepeater;
-        _leftStickRouter = services.LeftStickRouter;
-        _rightStickRouter = services.RightStickRouter;
+        _controllerInteraction = services.ControllerInteraction;
         _bridgeEvents = services.BridgeEvents;
         _localization = services.Localization;
         _microInput = services.MicroInput;
@@ -292,7 +282,7 @@ public partial class MainWindow : Window
         object? sender,
         ControllerState state)
     {
-        if (_controllerStateBuffer.Enqueue(state))
+        if (_controllerInteraction.EnqueueState(state))
         {
             _ = Dispatcher.BeginInvoke(
                 ProcessBufferedControllerStates);
@@ -301,7 +291,7 @@ public partial class MainWindow : Window
 
     private void ProcessBufferedControllerStates()
     {
-        foreach (var state in _controllerStateBuffer.Drain())
+        foreach (var state in _controllerInteraction.DrainStates())
         {
             ProcessControllerState(state);
         }
@@ -375,8 +365,7 @@ public partial class MainWindow : Window
             }
 
             PauseControllerInput();
-            _previousButtons = ControllerButtons.None;
-            _previousPhysicalButtons = ControllerButtons.None;
+            _controllerInteraction.ClearButtonHistory();
             return;
         }
 
@@ -454,8 +443,7 @@ public partial class MainWindow : Window
                 PauseControllerInput(state);
             }
 
-            _previousButtons = pressed;
-            _previousPhysicalButtons = pressed;
+            _controllerInteraction.CommitButtonHistory(pressed, pressed);
             return;
         }
 
@@ -465,8 +453,7 @@ public partial class MainWindow : Window
                 state,
                 foreground,
                 waitingForNeutral: true);
-            _previousButtons = pressed;
-            _previousPhysicalButtons = pressed;
+            _controllerInteraction.CommitButtonHistory(pressed, pressed);
             return;
         }
 
@@ -479,11 +466,8 @@ public partial class MainWindow : Window
                 _dialInputReleasePending = false;
                 // Preserve held-button history. Clearing it here turns a
                 // still-held B into a fresh edge that immediately cancels LT.
-                _previousButtons = pressed;
-                _previousPhysicalButtons = pressed;
-                _axisRepeater.Reset();
-                _leftStickRouter.Reset();
-                _rightStickRouter.Reset();
+                _controllerInteraction.CommitButtonHistory(pressed, pressed);
+                _controllerInteraction.ResetRouting();
             }
             else if (!IsControllerNeutral(state))
             {
@@ -493,11 +477,8 @@ public partial class MainWindow : Window
             else
             {
                 _dialInputReleasePending = false;
-                _previousButtons = ControllerButtons.None;
-                _previousPhysicalButtons = ControllerButtons.None;
-                _axisRepeater.Reset();
-                _leftStickRouter.Reset();
-                _rightStickRouter.Reset();
+                _controllerInteraction.ClearButtonHistory();
+                _controllerInteraction.ResetRouting();
             }
         }
 
@@ -506,10 +487,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var physicalDownEdges =
-            pressed & ~_previousPhysicalButtons;
-        var physicalUpEdges =
-            _previousPhysicalButtons & ~pressed;
+        var physicalEdges =
+            _controllerInteraction.PhysicalEdges(pressed);
+        var physicalDownEdges = physicalEdges.Down;
+        var physicalUpEdges = physicalEdges.Up;
         // Dial automation owns the native picker state. Controller polling
         // must never synchronously walk the UIA tree.
         var dialContextActive = IsVirtualDialContextActive;
@@ -519,13 +500,13 @@ public partial class MainWindow : Window
             blocked: PushToTalkInputPolicy.ShouldBlockTrigger(
                 radialLayerActive: _radialLayer is not null));
         var pushToTalkFrameActive =
-            _pushToTalkTrigger.BlocksBaseInput ||
+            _controllerInteraction.PushToTalkBlocksBaseInput ||
             pushToTalkTransition != AnalogTriggerTransition.None;
         if (pushToTalkTransition == AnalogTriggerTransition.Released)
         {
             _pushToTalkSuppressedButtons |= pressed;
         }
-        else if (_pushToTalkTrigger.BlocksBaseInput)
+        else if (_controllerInteraction.PushToTalkBlocksBaseInput)
         {
             _pushToTalkSuppressedButtons |=
                 PushToTalkInputPolicy.ButtonsToSuppress(pressed);
@@ -582,7 +563,7 @@ public partial class MainWindow : Window
         }
 
         var conversationNavigation = ConversationTurnInputMap.Resolve(
-            basePressed & ~_previousButtons);
+            _controllerInteraction.BaseDownEdges(basePressed));
         if (conversationNavigation != ConversationTurnInputAction.None)
         {
             NavigateConversationTurn(conversationNavigation);
@@ -601,7 +582,7 @@ public partial class MainWindow : Window
             ControllerButtons.DPadLeft,
             onDown: () =>
             {
-                _leftStickRouter.RequireNeutral();
+                _controllerInteraction.RequireLeftStickNeutral();
                 NavigateSidebarHorizontal(-1);
             });
         HandleButtonEdge(
@@ -609,7 +590,7 @@ public partial class MainWindow : Window
             ControllerButtons.DPadRight,
             onDown: () =>
             {
-                _leftStickRouter.RequireNeutral();
+                _controllerInteraction.RequireLeftStickNeutral();
                 NavigateSidebarHorizontal(1);
             });
         HandleButtonEdge(
@@ -631,37 +612,36 @@ public partial class MainWindow : Window
             ControllerButtons.B,
             onDown: BeginBaseCancelPress,
             onUp: EndBaseCancelPress);
-        _previousButtons = basePressed;
-        _previousPhysicalButtons = pressed;
+        _controllerInteraction.CommitButtonHistory(
+            basePressed,
+            pressed);
 
         var deadZone = _settings.DeadZone;
         var virtualDialDeadZone =
             VirtualDialInputPolicy.ResolveDeadZone(
                 deadZone,
                 _activeControllerProfile.Tuning?.StickDeadZone);
-        var leftGesture = _leftStickRouter.Update(
+        var leftGesture = _controllerInteraction.UpdateLeftStick(
             state.LeftX,
             state.LeftY,
             deadZone,
-            invertVertical: true,
             blocked:
                 radialInputActive ||
                 dialContextActive ||
                 pushToTalkFrameActive ||
                 basePressed.HasFlag(ControllerButtons.LeftThumb) ||
                 Environment.TickCount64 < _leftNavigationBlockedUntil);
-        var rightGesture = _rightStickRouter.Update(
+        var rightGesture = _controllerInteraction.UpdateRightStick(
             state.RightX,
             state.RightY,
             virtualDialDeadZone,
-            invertVertical: false,
             blocked:
                 radialInputActive ||
                 pushToTalkFrameActive ||
                 basePressed.HasFlag(ControllerButtons.RightThumb) ||
                 Environment.TickCount64 < _rightAdjustmentBlockedUntil);
 
-        _axisRepeater.Update(
+        _controllerInteraction.RepeatAxis(
             "left-y",
             leftGesture.VerticalDirection,
             _settings.RepeatDelayMs,
@@ -695,7 +675,7 @@ public partial class MainWindow : Window
             }
         }
 
-        _axisRepeater.UpdateAnalog(
+        _controllerInteraction.RepeatAnalogAxis(
             "right-y",
             rightGesture.VerticalDirection,
             rightGesture.VerticalMagnitude,
@@ -726,7 +706,7 @@ public partial class MainWindow : Window
                     }
                 }
             });
-        _axisRepeater.UpdateAnalog(
+        _controllerInteraction.RepeatAnalogAxis(
             "right-x",
             !dialContextActive && !advancedComposerDial
                 ? rightGesture.HorizontalDirection
@@ -786,11 +766,8 @@ public partial class MainWindow : Window
     private void DrainControllerFrame(ControllerButtons pressed)
     {
         CancelConversationBoundaryHold();
-        _previousButtons = pressed;
-        _previousPhysicalButtons = pressed;
-        _axisRepeater.Reset();
-        _leftStickRouter.RequireNeutral();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.CommitButtonHistory(pressed, pressed);
+        _controllerInteraction.RequireNeutralRouting();
     }
 
     private void BeginVirtualDialReleaseDrain()
@@ -803,16 +780,15 @@ public partial class MainWindow : Window
             0);
         CancelVirtualDialPressHold();
         ResetRadialLayer(clearSuppression: false);
-        _axisRepeater.Reset();
-        _leftStickRouter.RequireNeutral();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireNeutralRouting();
     }
 
     private ControllerButtons ProcessRadialInput(ControllerState state)
     {
         var pressed = state.Buttons;
-        var downEdges = pressed & ~_previousPhysicalButtons;
-        var upEdges = _previousPhysicalButtons & ~pressed;
+        var edges = _controllerInteraction.PhysicalEdges(pressed);
+        var downEdges = edges.Down;
+        var upEdges = edges.Up;
 
         if (_radialLayer is null)
         {
@@ -2017,13 +1993,13 @@ public partial class MainWindow : Window
         Action onDown,
         Action? onUp = null)
     {
-        var isPressed = current.HasFlag(button);
-        var wasPressed = _previousButtons.HasFlag(button);
-        if (isPressed && !wasPressed)
+        var transition =
+            _controllerInteraction.BaseButtonTransition(current, button);
+        if (transition == ControllerButtonTransition.Pressed)
         {
             onDown();
         }
-        else if (!isPressed && wasPressed)
+        else if (transition == ControllerButtonTransition.Released)
         {
             onUp?.Invoke();
         }
@@ -2069,9 +2045,7 @@ public partial class MainWindow : Window
             }
 
             _controllerSession.Arm();
-            _axisRepeater.Reset();
-            _leftStickRouter.RequireNeutral();
-            _rightStickRouter.RequireNeutral();
+            _controllerInteraction.RequireNeutralRouting();
             _leftNavigationBlockedUntil =
                 Environment.TickCount64 + BridgeTimings.WakeInputGuardMs;
             _rightAdjustmentBlockedUntil =
@@ -2132,9 +2106,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        _axisRepeater.Reset();
-        _leftStickRouter.RequireNeutral();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireNeutralRouting();
         _bridgeEvents.Publish(
             BridgeEventKeys.ControllerArmed,
             parameters: new Dictionary<string, string>
@@ -2168,9 +2140,7 @@ public partial class MainWindow : Window
                 state is null ||
                 !IsControllerNeutral(state.Value));
 
-        _axisRepeater.Reset();
-        _leftStickRouter.Reset();
-        _rightStickRouter.Reset();
+        _controllerInteraction.ResetRouting();
     }
 
     private bool TryResumeControllerInput(ControllerState state)
@@ -2183,11 +2153,8 @@ public partial class MainWindow : Window
 
         if (!wasActive)
         {
-            _previousButtons = ControllerButtons.None;
-            _previousPhysicalButtons = ControllerButtons.None;
-            _axisRepeater.Reset();
-            _leftStickRouter.Reset();
-            _rightStickRouter.Reset();
+            _controllerInteraction.ClearButtonHistory();
+            _controllerInteraction.ResetRouting();
             ResetVirtualDialInput(closeMenu: false);
             ResetPushToTalk(stopDictation: true);
         }
@@ -2214,7 +2181,7 @@ public partial class MainWindow : Window
 
     private void NavigateSidebarHorizontal(int direction)
     {
-        _leftStickRouter.RequireNeutral();
+        _controllerInteraction.RequireLeftStickNeutral();
         _leftNavigationBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
         var entry = DevicePage.SelectedEntry;
@@ -2399,7 +2366,7 @@ public partial class MainWindow : Window
             _controllerSession.IsActive &&
             _radialLayer is null &&
             !IsVirtualDialContextActive &&
-            !_pushToTalkTrigger.BlocksBaseInput &&
+            !_controllerInteraction.PushToTalkBlocksBaseInput &&
             (
                 !_settings.OnlyWhenCodexForeground ||
                 _activeAgent.Presence.IsForeground
@@ -2416,7 +2383,7 @@ public partial class MainWindow : Window
 
     private void CycleRootSidebarScope()
     {
-        _leftStickRouter.RequireNeutral();
+        _controllerInteraction.RequireLeftStickNeutral();
         _leftNavigationBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
         var rootScope = _scope == SidebarScope.ProjectTasks
@@ -3199,7 +3166,7 @@ public partial class MainWindow : Window
         }
 
         CancelPendingComposerSelection();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireRightStickNeutral();
         _rightStickPressHeld = true;
         _rightStickHoldTriggered = false;
         _rightStickPressCancellation?.Cancel();
@@ -3283,7 +3250,7 @@ public partial class MainWindow : Window
 
     private void HandleComposerDialShortPress()
     {
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireRightStickNeutral();
         if (IsVirtualDialContextActive)
         {
             _ = CloseVirtualDialMenuAsync(showFeedback: false);
@@ -3534,7 +3501,7 @@ public partial class MainWindow : Window
         if (
             _dictationInjected ||
             _pushToTalkAutomation.WantsDictation ||
-            _pushToTalkTrigger.BlocksBaseInput)
+            _controllerInteraction.PushToTalkBlocksBaseInput)
         {
             CancelAction();
             return;
@@ -3720,7 +3687,9 @@ public partial class MainWindow : Window
 
     private void CancelActionOrDialMenu()
     {
-        if (_dictationInjected || _pushToTalkTrigger.BlocksBaseInput)
+        if (
+            _dictationInjected ||
+            _controllerInteraction.PushToTalkBlocksBaseInput)
         {
             CancelAction();
             return;
@@ -4101,7 +4070,7 @@ public partial class MainWindow : Window
         {
             CancelPendingComposerSelection();
             ResetVirtualDialInput(closeMenu: true);
-            _rightStickRouter.RequireNeutral();
+            _controllerInteraction.RequireRightStickNeutral();
             _rightMode = useAdvanced
                 ? RightControlMode.Model
                 : RightControlMode.Dial;
@@ -4528,8 +4497,8 @@ public partial class MainWindow : Window
             (long)SimpleModeUpgradePromptDuration.TotalMilliseconds;
         Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
         _simpleSpeedHeldDirection = 0;
-        _axisRepeater.Reset();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.ResetRepeats();
+        _controllerInteraction.RequireRightStickNeutral();
 
         var modelLabel = string.IsNullOrWhiteSpace(modelValue)
             ? RadialText("当前模型", "The current model")
@@ -4557,7 +4526,8 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var downEdges = pressed & ~_previousPhysicalButtons;
+        var downEdges =
+            _controllerInteraction.PhysicalEdges(pressed).Down;
         var choice =
             SimpleModeCompatibilityPrompt.ResolveChoice(downEdges);
         if (
@@ -4637,8 +4607,8 @@ public partial class MainWindow : Window
         _simpleSpeedHeldDirection = 0;
         _rightAdjustmentBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        _axisRepeater.Reset();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.ResetRepeats();
+        _controllerInteraction.RequireRightStickNeutral();
     }
 
     private void PresentSimplePickerResult(
@@ -4935,7 +4905,8 @@ public partial class MainWindow : Window
         double value,
         bool blocked)
     {
-        var transition = _pushToTalkTrigger.Update(value, blocked);
+        var transition =
+            _controllerInteraction.UpdatePushToTalk(value, blocked);
         if (transition == AnalogTriggerTransition.Pressed)
         {
             StartDictation(Glyph(LogicalInput.LeftTrigger));
@@ -5015,7 +4986,8 @@ public partial class MainWindow : Window
 
     private void ResetPushToTalk(bool stopDictation)
     {
-        var wasPressed = _pushToTalkTrigger.CancelUntilReleased();
+        var wasPressed =
+            _controllerInteraction.CancelPushToTalkUntilReleased();
         _pushToTalkSuppressedButtons = ControllerButtons.None;
         if (
             stopDictation &&
@@ -5194,8 +5166,8 @@ public partial class MainWindow : Window
         _virtualDialCancelRequested = false;
         _virtualDialCleanupPending = false;
         SetVirtualDialMenuOpen(false);
-        _axisRepeater.Reset();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.ResetRepeats();
+        _controllerInteraction.RequireRightStickNeutral();
 
         var closeTask = RunVirtualDialAutomationAsync(
             () => _composerAutomation.DialCancel(_settings));
@@ -5409,9 +5381,9 @@ public partial class MainWindow : Window
         if (
             _dictationInjected ||
             _pushToTalkAutomation.WantsDictation ||
-            _pushToTalkTrigger.BlocksBaseInput)
+            _controllerInteraction.PushToTalkBlocksBaseInput)
         {
-            _pushToTalkTrigger.CancelUntilReleased();
+            _controllerInteraction.CancelPushToTalkUntilReleased();
             _pushToTalkSuppressedButtons |=
                 _latestControllerState.Buttons &
                 ~ControllerButtons.B;
@@ -6498,8 +6470,9 @@ public partial class MainWindow : Window
         if (!enabled)
         {
             PauseControllerInput(_xInputService.LastState);
-            _previousButtons = _xInputService.LastState.Buttons;
-            _previousPhysicalButtons = _xInputService.LastState.Buttons;
+            _controllerInteraction.CommitButtonHistory(
+                _xInputService.LastState.Buttons,
+                _xInputService.LastState.Buttons);
             _bridgeDisabledHintShown = true;
         }
         else

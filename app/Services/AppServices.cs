@@ -31,9 +31,7 @@ public sealed class AppServices : IDisposable
         CodexComposerService codexComposer,
         CodexSidebarService codexSidebar,
         XInputService controller,
-        AxisRepeater axisRepeater,
-        StickGestureRouter leftStickRouter,
-        StickGestureRouter rightStickRouter)
+        ControllerInteractionCoordinator controllerInteraction)
     {
         BridgeEvents = bridgeEvents;
         Localization = localization;
@@ -49,9 +47,7 @@ public sealed class AppServices : IDisposable
         CodexComposer = codexComposer;
         CodexSidebar = codexSidebar;
         Controller = controller;
-        AxisRepeater = axisRepeater;
-        LeftStickRouter = leftStickRouter;
-        RightStickRouter = rightStickRouter;
+        ControllerInteraction = controllerInteraction;
     }
 
     public BridgeEventHub BridgeEvents { get; }
@@ -68,9 +64,7 @@ public sealed class AppServices : IDisposable
     public CodexComposerService CodexComposer { get; }
     public CodexSidebarService CodexSidebar { get; }
     public XInputService Controller { get; }
-    public AxisRepeater AxisRepeater { get; }
-    public StickGestureRouter LeftStickRouter { get; }
-    public StickGestureRouter RightStickRouter { get; }
+    public ControllerInteractionCoordinator ControllerInteraction { get; }
 
     public static AppServices CreateDefault()
     {
@@ -111,9 +105,7 @@ public sealed class AppServices : IDisposable
             codexComposer,
             codexSidebar,
             new XInputService(controllerProfiles),
-            new AxisRepeater(),
-            new StickGestureRouter(),
-            new StickGestureRouter());
+            new ControllerInteractionCoordinator());
     }
 
     public void Dispose()

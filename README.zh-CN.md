@@ -143,15 +143,15 @@ v0.7.0-hotfix Windows 包为自包含版本，不需要另行安装 .NET Runtime
 
 ### 从源码构建
 
-先安装 .NET 9 SDK，然后运行：
+先安装 .NET SDK 10.0.302。使用 IDE 构建时需要 Visual Studio 2026 与 MSBuild 18 或更新版本；Visual Studio 2022 无法加载 `global.json` 选择的 SDK。然后运行：
 
 ```powershell
-dotnet build app/AgentController.csproj -c Release
-dotnet test app.Tests/AgentController.Tests.csproj -c Release
+dotnet build AgentController.sln -c Release
+dotnet test AgentController.sln -c Release
 ./scripts/package-release.ps1 -Version 0.7.0-hotfix
 ```
 
-编译产物位于 `app/bin/Release/net9.0-windows10.0.19041.0/`。封包脚本会在 `dist/` 生成自包含的 Windows x64 zip 与 SHA-256 校验文件。
+编译产物位于 `app/bin/Release/net10.0-windows10.0.19041.0/`。封包脚本会在 `dist/` 生成自包含的 Windows x64 zip 与 SHA-256 校验文件。
 
 如需创建或更新 GitHub Release 并上传两个产物，请先安装并登录 GitHub CLI、推送对应标签，然后运行：
 
@@ -176,7 +176,7 @@ dotnet test app.Tests/AgentController.Tests.csproj -c Release
 - `scripts/` —— 可复现的 Release 封包脚本；
 - `docs/` —— 交互规范，以及进行中的设计和咨询记录；
 - `public/docs/` —— 面向使用者的指令清单、版本说明和实验计划；
-- `todo.md` —— 路线图和验证备忘。
+- `todo/` —— 按大型工作流拆分的路线图；从 [`todo/README.md`](todo/README.md) 开始阅读。
 
 ### 致谢
 
