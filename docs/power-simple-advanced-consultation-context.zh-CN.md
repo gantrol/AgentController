@@ -237,7 +237,7 @@ README 声称：
 ### 可复用 Overlay 基础
 
 - `app/Views/RadialMenuOverlayWindow.xaml.cs:18-65`：非激活 Overlay、线程切换、底部居中定位模式可复用。
-- `app/Views/SidebarNavigationWheelOverlayWindow.xaml.cs:21-90`：本地 previous/current/next 状态和短时展示模式可参考。
+- `app/Views/SidebarNavigationMenuOverlayWindow.xaml.cs`：本地 previous/current/next 状态和短时展示模式可参考。
 - `app/ViewModels/RadialMenuViewModel.cs:17-31,105-125`：固定方向槽位和一次性状态更新模式可参考。
 - `app/Models/RadialMenuState.cs:11-59`：现有 radial state 最多六个固定物理槽，不适合直接承载任意长度模型树；建议新建专用 tree/bubble state，而不是硬塞进 `RadialMenuState`。
 

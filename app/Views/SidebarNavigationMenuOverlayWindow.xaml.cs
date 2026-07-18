@@ -8,21 +8,21 @@ using CodexController.ViewModels;
 
 namespace CodexController.Views;
 
-public partial class SidebarNavigationWheelOverlayWindow : Window
+public partial class SidebarNavigationMenuOverlayWindow : Window
 {
     private static readonly TimeSpan VisibleDuration =
         TimeSpan.FromMilliseconds(1350);
-    private const double BottomMargin = 38;
+    private const double BottomMargin = 220;
 
     private readonly DispatcherTimer _hideTimer;
     private int _animationVersion;
     private int _isClosed;
 
-    public SidebarNavigationWheelOverlayWindow(
-        SidebarNavigationWheelViewModel? viewModel = null)
+    public SidebarNavigationMenuOverlayWindow(
+        SidebarNavigationMenuViewModel? viewModel = null)
     {
         InitializeComponent();
-        ViewModel = viewModel ?? new SidebarNavigationWheelViewModel();
+        ViewModel = viewModel ?? new SidebarNavigationMenuViewModel();
         DataContext = ViewModel;
         Opacity = 0;
         _hideTimer = new DispatcherTimer
@@ -36,9 +36,9 @@ public partial class SidebarNavigationWheelOverlayWindow : Window
         };
     }
 
-    public SidebarNavigationWheelViewModel ViewModel { get; }
+    public SidebarNavigationMenuViewModel ViewModel { get; }
 
-    public void ShowState(SidebarNavigationWheelState state)
+    public void ShowState(SidebarNavigationMenuState state)
     {
         ArgumentNullException.ThrowIfNull(state);
         if (Volatile.Read(ref _isClosed) != 0)
@@ -90,7 +90,7 @@ public partial class SidebarNavigationWheelOverlayWindow : Window
         _hideTimer.Start();
     }
 
-    public void HideWheel()
+    public void HideMenu()
     {
         if (Volatile.Read(ref _isClosed) != 0)
         {
@@ -106,7 +106,7 @@ public partial class SidebarNavigationWheelOverlayWindow : Window
                 return;
             }
 
-            _ = Dispatcher.BeginInvoke(HideWheel);
+            _ = Dispatcher.BeginInvoke(HideMenu);
             return;
         }
 

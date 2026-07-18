@@ -109,6 +109,6 @@
 可行性评估(供下一步):
 
 - **数据源已齐**:`models_cache.json`(模型 + `supported_reasoning_levels` + 优先级)、`config.toml`(当前 model/effort/service tier)、composer 按钮名(当前展示值),以及 `SelectAsync(kind, target)` 的一次性精确提交。缺的只是 Overlay 与状态机。
-- **Overlay 骨架可复用**:`SidebarNavigationWheelOverlayWindow` 的 previous/current/next 短时展示模式最接近;不要硬塞 `RadialMenuState`(六槽位假设),新建专用 tree state。
+- **Overlay 骨架可复用**：`SidebarNavigationMenuOverlayWindow` 的 previous/current/next 短时展示模式最接近；不要硬塞 `RadialMenuState`（六槽位假设），新建专用 tree state。
 - **状态机采纳问题文件的建议**:浏览只动本地 optimistic cursor(立即渲染 + 震动);回中稳定或 A/R3 确认时只提交最后目标;generation/last-write-wins,旧目标取消;成功回读才提交本地 selected,失败回滚 last confirmed 并在 Overlay 显示原因;catalog 启动加载 + Codex 前台/账户变化重载 + 选择失败强制重扫。
 - **消除不了的依赖**:最终应用仍需 UIA 或官方快捷命令;若 Codex 语义层未来暴露模型切换命令,提交环节也可改为纯键路径,UIA 退居回读。

@@ -6,7 +6,7 @@ namespace CodexController.Tests;
 public sealed class SidebarNavigationDirectoryTests
 {
     [Fact]
-    public void RootAndProjectWheelsKeepIndependentFrozenOrders()
+    public void RootAndProjectMenusKeepIndependentFrozenOrders()
     {
         var directory = new SidebarNavigationDirectory();
         var root = directory.Resolve(
@@ -57,7 +57,7 @@ public sealed class SidebarNavigationDirectoryTests
     }
 
     [Fact]
-    public void EachProjectAndPinnedFilterOwnsASeparateWheel()
+    public void EachProjectAndPinnedFilterOwnsASeparateMenu()
     {
         var directory = new SidebarNavigationDirectory();
         var allOne = directory.Resolve(

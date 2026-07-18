@@ -148,8 +148,8 @@ public partial class MainWindow : Window
     private System.Drawing.Icon? _trayIconImage;
     private OverlayWindow? _overlayWindow;
     private RadialMenuOverlayWindow? _radialMenuOverlayWindow;
-    private SidebarNavigationWheelOverlayWindow?
-        _sidebarNavigationWheelOverlayWindow;
+    private SidebarNavigationMenuOverlayWindow?
+        _sidebarNavigationMenuOverlayWindow;
     private ControllerProfile _activeControllerProfile =
         BuiltInControllerProfiles.Generic;
 
@@ -256,8 +256,8 @@ public partial class MainWindow : Window
         SetupTrayIcon();
         _overlayWindow = new OverlayWindow();
         _radialMenuOverlayWindow = new RadialMenuOverlayWindow();
-        _sidebarNavigationWheelOverlayWindow =
-            new SidebarNavigationWheelOverlayWindow();
+        _sidebarNavigationMenuOverlayWindow =
+            new SidebarNavigationMenuOverlayWindow();
 
         _bridgeEvents.Publish(BridgeEventKeys.AppReady);
         ConfigureCodexKeybindings();
@@ -2499,7 +2499,7 @@ public partial class MainWindow : Window
                 out var entry) ||
             entry is null)
         {
-            ShowSidebarNavigationWheel();
+            ShowSidebarNavigationMenu();
             return;
         }
 
@@ -2508,7 +2508,7 @@ public partial class MainWindow : Window
             entry,
             deferFocus: true,
             showToast: false);
-        ShowSidebarNavigationWheel();
+        ShowSidebarNavigationMenu();
     }
 
     private void SelectSidebarIndex(int index)
@@ -2550,19 +2550,28 @@ public partial class MainWindow : Window
         Pulse();
     }
 
-    private void ShowSidebarNavigationWheel()
+    private void ShowSidebarNavigationMenu()
     {
         if (!_settings.ShowOverlay)
         {
             return;
         }
 
-        var wheel = ActiveSidebarNavigation.BuildWheelState(
+        var menu = ActiveSidebarNavigation.BuildMenuState(
             _sidebarEntries,
-            SidebarWheelScopeLabel);
-        if (wheel is not null)
+            SidebarMenuScopeLabel);
+        if (menu is not null)
         {
-            _sidebarNavigationWheelOverlayWindow?.ShowState(wheel);
+            _sidebarNavigationMenuOverlayWindow?.ShowState(menu with
+            {
+                Title = RadialText("侧边栏", "Sidebar"),
+                NavigateGlyph = Glyph(LogicalInput.LeftStick),
+                NavigateHint = RadialText("移动", "Move"),
+                CycleScopeGlyph = Glyph(LogicalInput.LeftStickPress),
+                CycleScopeHint = RadialText("区域", "Region"),
+                OpenGlyph = Glyph(LogicalInput.FaceSouth),
+                OpenHint = RadialText("打开", "Open"),
+            });
         }
     }
 
@@ -5852,7 +5861,7 @@ public partial class MainWindow : Window
                     StringComparison.OrdinalIgnoreCase))?.Name;
     }
 
-    private string SidebarWheelScopeLabel(SidebarScope scope)
+    private string SidebarMenuScopeLabel(SidebarScope scope)
     {
         if (
             scope != SidebarScope.ProjectTasks ||
@@ -6292,7 +6301,7 @@ public partial class MainWindow : Window
         _feedbackPresenter.Dispose();
         _overlayWindow?.Close();
         _radialMenuOverlayWindow?.Close();
-        _sidebarNavigationWheelOverlayWindow?.Close();
+        _sidebarNavigationMenuOverlayWindow?.Close();
 
         if (!_exitRequested)
         {

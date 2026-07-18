@@ -221,7 +221,7 @@ public sealed class SidebarNavigationState
         SelectedIndex = -1;
     }
 
-    public SidebarNavigationWheelState? BuildWheelState(
+    public SidebarNavigationMenuState? BuildMenuState(
         IReadOnlyList<SidebarEntry> entries,
         Func<SidebarScope, string> scopeLabel)
     {
@@ -233,7 +233,7 @@ public sealed class SidebarNavigationState
             return null;
         }
 
-        SidebarNavigationWheelItem CreateItem(
+        SidebarNavigationMenuItem CreateItem(
             SidebarEntry entry,
             bool crossesBoundary) =>
             new(

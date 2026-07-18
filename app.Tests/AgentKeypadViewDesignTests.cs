@@ -49,6 +49,7 @@ public sealed class AgentKeypadViewDesignTests
         {
             RenderAndAssertAgentLayout();
             RenderAndAssertActionLayouts();
+            RenderAndAssertSidebarLayout();
         }
         finally
         {
@@ -178,6 +179,66 @@ public sealed class AgentKeypadViewDesignTests
         view.Arrange(new Rect(0, 0, 820, height));
         view.UpdateLayout();
         return new Size(view.ActualWidth, view.ActualHeight);
+    }
+
+    private static void RenderAndAssertSidebarLayout()
+    {
+        var viewModel = new SidebarNavigationMenuViewModel();
+        viewModel.Update(new SidebarNavigationMenuState(
+            new SidebarNavigationMenuItem(
+                "分析大模型产业链趋势",
+                SidebarScope.PinnedTasks,
+                "置顶任务",
+                CrossesSectionBoundary: true),
+            new SidebarNavigationMenuItem(
+                "规划项目未来架构",
+                SidebarScope.Projects,
+                "项目",
+                CrossesSectionBoundary: false),
+            new SidebarNavigationMenuItem(
+                "更新 README 文档",
+                SidebarScope.ProjectlessTasks,
+                "未归项目任务",
+                CrossesSectionBoundary: true),
+            Position: 5,
+            Count: 12)
+        {
+            Title = "侧边栏",
+            NavigateGlyph = "LS",
+            NavigateHint = "移动",
+            CycleScopeGlyph = "L3",
+            CycleScopeHint = "区域",
+            OpenGlyph = "A",
+            OpenHint = "打开",
+        });
+        var view = new SidebarNavigationMenuView
+        {
+            DataContext = viewModel,
+        };
+
+        view.Measure(new Size(560, 314));
+        view.Arrange(new Rect(0, 0, 560, 314));
+        view.UpdateLayout();
+
+        Assert.Equal(560, view.ActualWidth);
+        Assert.Equal(314, view.ActualHeight);
+        Assert.InRange(view.PreviousRow.ActualHeight, 51.5, 52.5);
+        Assert.InRange(view.CurrentRow.ActualHeight, 63.5, 64.5);
+        Assert.InRange(view.NextRow.ActualHeight, 51.5, 52.5);
+        Assert.Equal("LS", ChildText(view.NavigationGlyph));
+        Assert.Equal("L3", ChildText(view.ScopeGlyph));
+        Assert.Equal("A", ChildText(view.OpenGlyph));
+
+        WritePreviewFromEnvironment(
+            view,
+            "AGENT_CONTROLLER_SIDEBAR_PREVIEW_PATH");
+    }
+
+    private static string ChildText(DependencyObject parent)
+    {
+        return FindVisualChildren<TextBlock>(parent)
+            .Select(textBlock => textBlock.Text)
+            .Single();
     }
 
     private static RadialMenuState CreatePreviewState()
