@@ -24,7 +24,9 @@ src/
 
   AgentController.Adapters.Codex.AppServer/
   AgentController.Adapters.Codex.Automation.Windows/
+  AgentController.Protocols.Micro/         # 纯 framing/RPC，不依赖 OS 或 Codex 进程
   AgentController.Adapters.Micro/
+  AgentController.MicroBroker/             # Windows 当前用户低权限进程
 
   AgentController.Platform.Windows/
   AgentController.Platform.MacOS/
@@ -37,18 +39,26 @@ tests/
   AgentController.Application.Tests/
   AgentController.Architecture.Tests/
   AgentController.Adapters.Codex.Tests/
+  AgentController.Protocols.Micro.Tests/
   AgentController.Adapters.Micro.Tests/
+  AgentController.MicroBroker.Tests/
   AgentController.Platform.Windows.Tests/
   AgentController.Desktop.Tests/
   AgentController.E2E.Tests/
 
 native/
-  windows/                           # 仅在必须隔离驱动/进程位数时建立 helper
-  macos/                             # 权限、IOKit/DriverKit 边界 helper
+  windows/
+    AgentController.MicroVhf/        # 唯一正式候选 KMDF/VHF driver
+    AgentController.DeviceSupport/   # 固定命令的提权安装/修复/卸载器
+  macos/                             # 权限、CoreHID/DriverKit 边界 helper
 
 packaging/
   windows/
+    device-support/                  # 签名 manifest、x64/ARM64 driver packages
   macos/
+
+compat/
+  codex-desktop/<build>/             # 私有 Micro ABI/layout 的 fail-closed 指纹
 
 docs/
   adr/
@@ -71,8 +81,11 @@ app.Tests/                          # 迁移期保留的当前回归测试
 | `Domain` | 输入、手势、Action、风险、结果、证据、状态观察和 Agent 无关实体 | BCL |
 | `Application` | 用例、路由、协调、状态聚合和业务端口 | Domain、Platform.Abstractions |
 | `Platform.Abstractions` | 窗口、前台、输入设备、权限、生命周期等 OS 能力合同 | Domain |
-| `Adapters.*` | Codex App Server、Windows UIA、Micro codec/transport 等外部系统实现 | Application/Domain 中拥有的端口、必要的平台抽象 |
-| `Platform.Windows/macOS` | XInput/Raw HID、Win32、IOKit、权限和本地 IPC | Platform.Abstractions、Domain |
+| `Protocols.Micro` | 纯 HID framing、RPC codec、DTO 和 golden vectors；不做设备枚举或 Action 路由 | BCL |
+| `Adapters.*` | Codex App Server、Windows UIA、Micro 指纹/layout/transport 等外部系统实现 | Application/Domain 中拥有的端口、必要的平台抽象、Protocols.Micro |
+| `MicroBroker` | 当前用户会话中的 Micro RPC、兼容指纹、held/neutral 生命周期和私有驱动 IPC；无桌面 UI | Protocols.Micro、最小 Windows interop/IPC contract；不引用 Desktop |
+| `Platform.Windows/macOS` | XInput/Raw HID、Win32、CoreHID/IOKit、权限和本地 IPC | Platform.Abstractions、Domain |
+| `native/windows` | 极小 VHF driver 与只处理固定产品包的提权 Device Support 生命周期 | WDK/SetupAPI；不引用托管业务项目 |
 | `Desktop` | Avalonia View、ViewModel、presentation state 和 composition root | Application、Platform.Abstractions |
 | `Desktop.Wpf` | 迁移期 WPF presentation 与 composition root | Application、Windows adapter |
 
@@ -120,7 +133,7 @@ AgentController.Application/
 | `app/Controllers` 中纯手势和映射策略 | Domain 或 Application | 先补纯单元测试，再消除 WPF/Win32 引用 |
 | `app/Core/Bridge` | Application/ControlSurface | 保留 event epoch、drain 与 foreground 语义 |
 | `app/Services/Codex*` | Codex App Server 或 Automation adapter | 按 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier 拆分 |
-| `app/Services/Micro` | Adapters.Micro | codec、transport、设备指纹和 ABI 版本彼此分离 |
+| `app/Services/Micro` | Protocols.Micro + Adapters.Micro + MicroBroker | codec、transport、设备指纹、布局和 ABI 版本彼此分离；旧 bool/named-pipe seam 随调用方删除 |
 | `app/Native`、`XInputService` | Platform.Windows | 只向上暴露平台抽象和逻辑输入快照 |
 | `app/Views`、`ViewModels` | Desktop.Wpf；未来替换为 Desktop | ViewModel 只调用 Application facade |
 | `MainWindow.xaml.cs` | composition root + 待抽离职责 | 不按文件整体搬迁，按可回滚垂直切片缩小 |
@@ -128,6 +141,8 @@ AgentController.Application/
 ## 测试组织
 
 - `Domain.Tests` 不需要 Windows TFM，也不访问文件系统、网络或 UI。
+- `Protocols.Micro.Tests` 用 golden vectors 覆盖 framing、UTF-8 边界、RPC 与状态机，不需要 driver、硬件或 Codex 进程。
+- `MicroBroker.Tests` 使用内存/假 driver transport 验证 IPC、背压、exactly-once response、held release 和 analog neutral。
 - `Architecture.Tests` 读取程序集依赖，禁止 Domain/Application 反向引用桌面、平台实现和 adapter。
 - Adapter contract tests 使用固定版本 fixture；真实 Codex/UIA 观察进入 Integration/E2E，而不是伪装成单元测试。
 - `E2E.Tests` 对应 README 实机验收步骤，记录控制器、Codex build、OS、结果 readback 和证据。
@@ -139,7 +154,7 @@ AgentController.Application/
 2. 单独升级到 .NET 10 LTS并锁定 SDK；该提交只允许构建/包兼容修复。
 3. 创建 Domain、Application、Platform.Abstractions 与 Architecture.Tests 空骨架。
 4. 选择一条可验证动作路径，先定义合同，再从 WPF 中抽离协调器并由旧 UI 调用。
-5. 将 Codex App Server、UIA 和 Micro 作为可替换执行器接到同一 Action/Result/Evidence 契约。
+5. 将 Codex App Server、UIA 和 Micro 作为可组合执行平面接到同一 Action/Result/Evidence 契约；Micro 可表达动作原生优先，App Server 持有 Thread/Turn 语义，二者不是互斥的全局 executor。
 6. 自定义绑定和新 UI 只消费稳定 Application facade；达到功能等价后再移动/删除旧 `app/`。
 
 任何阶段都必须保持当前发布路径可构建、基础实机验收可执行并能回滚到上一个结构。

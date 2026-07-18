@@ -19,7 +19,7 @@
 | 00 | [产品方向与商业验证](00-product-direction-and-business.md) | In Progress | 无 |
 | 01 | [核心架构拆分](01-core-architecture.md) | In Progress | 00 的定位结论 |
 | 02 | [Codex App Server 集成](02-codex-app-server.md) | Planned | 01 的 Action/State 契约 |
-| 03 | [Codex Micro 兼容层](03-codex-micro-compatibility.md) | Research / Partial | 01 的执行器契约 |
+| 03 | [Codex Micro 兼容层](03-codex-micro-compatibility.md) | Accepted / Planned | 01、02；身份与驱动发行 Gate |
 | 04 | [自定义按键与设备 Profile](04-custom-bindings-and-device-profiles.md) | Planned | 01 的输入和 Action 契约 |
 | 05 | [桌面 UI/UX 与 Avalonia](05-desktop-ui-ux-and-avalonia.md) | Planned | 01、04 |
 | 06 | [macOS 平台](06-macos-platform.md) | Planned | 01、02、05 |

@@ -1,9 +1,9 @@
 # 轮盘弹窗（LB / RB / RT / Y）美化与重构方案
 
-> 状态：配色与 LB 键盘已实施；本地状态降级源已绑定；VHF 权威源待 M4 PoC
+> 状态：配色与 LB 键盘已实施；本地状态降级源已绑定；原生 Micro 状态源转入 todo/03 与 ADR-0002
 > 编写日期：2026-07-16
 > 适用范围：`RadialMenuView` 及四个轮盘层（LB Agent / RB Command / RT Turn / Y Action）
-> 事实基线：[Codex Micro 使用说明](https://learn.chatgpt.com/docs/features/codex-micro.md)、`public/docs/codex-micro-virtual-hid-bridge-plan.md`、`docs/codex-26.707.12708-vhf-status-input.zh-CN.md`
+> 事实基线：[Codex Micro 使用说明](https://learn.chatgpt.com/docs/features/codex-micro)、[ADR-0002](adr/0002-codex-micro-native-compatibility.zh-CN.md)、`docs/codex-26.707.12708-vhf-status-input.zh-CN.md`
 
 ## 1. 问题诊断
 

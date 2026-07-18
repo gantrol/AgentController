@@ -4,9 +4,9 @@
 > Priority: P1
 > Depends on: 01-core-architecture, 02-codex-app-server, 05-desktop-ui-ux-and-avalonia
 
-## MVP 范围
+## Foundation Preview 范围
 
-Mac 首版不以虚拟 Micro 为前置条件。目标是完成：控制器连接、任务列表、切换、语音、Submit、Steer/Queue/Stop、状态反馈和安全权限引导。
+Mac 可以先交付不含虚拟 Micro 的 Foundation Preview，用于验证控制器、任务列表、App Server、语音、Submit、Steer/Queue/Stop、状态反馈和权限引导。它不算与 Windows Full Micro mode 等价的正式完整体验，也不能把 UIA/Accessibility 路径继续扩建成长期替代品。
 
 ## 待办
 
@@ -38,16 +38,20 @@ Mac 首版不以虚拟 Micro 为前置条件。目标是完成：控制器连接
 - [ ] 完成 Developer ID 签名、公证、DMG/PKG 和自动更新验证。
 - [ ] 在干净用户账户验证 Gatekeeper、权限提示和卸载。
 
-### 虚拟 Micro 研究（MVP 之后）
+### 原生 Micro 完整模式
 
-- [ ] 评估 CoreHID `HIDVirtualDevice` 的最低系统版本和 entitlement。
-- [ ] 评估 HIDDriverKit/System Extension 的 entitlement、安装和分发成本。
-- [ ] 不假设 Windows VHF descriptor 可以直接复用。
-- [ ] entitlement、设备身份和 Codex 检测均验证后再做 Go/No-Go。
+- [ ] 以 [ADR-0002](../docs/adr/0002-codex-micro-native-compatibility.zh-CN.md) 的协议与设备身份 Gate 为共同前置条件，Mac 不建立第二份 Micro codec。
+- [ ] 首选评估 CoreHID `HIDVirtualDevice` 的最低系统版本、双向 output、vendor-defined descriptor 和 `com.apple.developer.hid.virtual.device` entitlement。
+- [ ] CoreHID 不满足时再评估 HIDDriverKit/System Extension；记录 entitlement 申请、用户批准、签名、公证、更新和卸载成本。
+- [ ] 分别验证 Input Monitoring、Accessibility、Microphone 与 virtual HID entitlement 的真实用途，不合并或提前请求权限。
+- [ ] 不假设 Windows VHF descriptor/安装状态可以直接复用；只共享纯协议、布局和 ActionResult 合同。
+- [ ] entitlement、设备身份、Codex detection、睡眠/唤醒和签名公证均通过后，Mac 才进入 Full parity/GA。
+- [ ] 若 Apple entitlement 或软件身份路线不可发行，评估与 Windows 共用的预刷写 USB/BLE bridge 作为完整免驱 SKU。
 
 ## 完成门槛
 
-- Mac MVP 不安装虚拟 HID 也能完成核心工作流。
+- Mac Foundation Preview 不安装虚拟 HID 也能完成语义核心工作流，但下载页和应用内明确标为 Limited/Preview。
 - 所有权限均按需请求，并能解释为什么需要。
 - 睡眠、断连、Codex 重启和权限撤销不会留下按键、录音或危险状态。
 - 已签名公证包可在干净 Mac 上安装、升级和卸载。
+- Mac Full parity 必须有 CoreHID 或物理桥的原生 Micro 全链路证据，不能只靠 Accessibility/UIA 类路径宣布完成。

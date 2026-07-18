@@ -39,6 +39,14 @@ Device control -> Gesture -> Context/Layer -> Semantic Action -> Safety policy
 - [ ] Codex 命令、Skill 和未来其他 Agent 通过适配器注册能力。
 - [ ] 首版不允许用户从 UI 输入任意 HID byte、RPC method 或 shell command。
 
+### Codex Micro 投影
+
+- [ ] 按 [ADR-0002](../docs/adr/0002-codex-micro-native-compatibility.zh-CN.md) 区分 `Micro control binding` 与 `Semantic action binding`，不能用同一个下拉项混淆物理 slot 和业务动作。
+- [ ] Micro control 可绑定 ACT06..ACT12、AG00..AG05、Encoder 和 Analog；Codex 设置拥有这些 control 的最终动作。
+- [ ] Semantic action 只有在 build/layout 已验证可表达时才投影 Micro，否则使用 App Server 或报告 Unsupported，不猜默认 slot。
+- [ ] Mapping Studio 显示 Codex 当前只读 layout、指纹和 `MappingVerified/MappingUnverified`，不写回私有 `desktop.codex-micro-layout`。
+- [ ] 右摇杆默认 Profile 使用 Composer Dial；修饰层提供 Analog，PTT 保留 down/up，所有断连路径发送 neutral/release。
+
 ### Mapping Studio
 
 - [ ] 提供“按下要配置的键”捕获模式。
