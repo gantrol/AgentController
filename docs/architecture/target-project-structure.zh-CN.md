@@ -268,3 +268,10 @@ AgentController.Application/
 - WPF 只调用 `MarkConfirmed` 与 `RequestUndo`，不再直接组合 `Confirmed` / `ExpiresAt` / `UndoRequested` 字段；Queue、Execute、Expire 三态现在具有独立合同测试。
 - session 暂留旧 `app/Controllers`，因为当前 title observation 仍依赖 Codex UIA 且反馈仍是 WPF 本地化逻辑；等 observer port 稳定后再整体移入 Application navigation use case。
 - 自动化证据为旧客户端 680 tests、Application 8 tests、Domain 15 tests、Architecture 7 tests，共 710 项；采用 709 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Composer catalog/config 边界
+
+- `CodexComposerService` 的第一条拆分边界选择无副作用的 catalog/config 读取：新增 `CodexComposerCatalogService`，持有模型缓存、TOML 偏好、标签格式化与初始选项解析。
+- UIA 自动化服务不再直接访问 `CODEX_HOME` 或解析 JSON/TOML；其 `LoadCatalog` 暂为迁移转发，后续 composition root 可把目录端口直接提供给 UI/Application。
+- 公共选择值规范化收敛到 `ComposerChoiceNormalizer`，保证目录解析与尚未迁出的 dial/picker 路径使用同一匹配规则。
+- 真实临时目录夹具覆盖过滤、排序及选择优先级；最新 711 项基线采用 710 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。

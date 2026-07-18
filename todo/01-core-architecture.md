@@ -51,6 +51,8 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [ ] 分离 radial/virtual-dial 组合层、长按识别与 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
 - [x] 将 navigation undo 的确认窗口、提前请求和到期转换收敛为 `NavigationUndoSession`；WPF 仍持有 UIA 标题轮询和反馈，等待完整 use case 迁移。
 - [ ] 把 `CodexComposerService` 拆成 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier。
+  - [x] 先移出模型目录、`models_cache.json` / `config.toml` 读取与当前选项解析；目录服务可用临时 Codex home 独立测试，不再依赖 UIA 执行器内部状态。
+  - [ ] 继续拆分 WindowLocator、PopupProbe、CommandExecutor 与 ResultVerifier，并删除原服务中的兼容转发壳。
 - [ ] 将 Sidebar、Composer、Thread 类型从 Codex 专用类型收敛为 Domain 契约。
 - [ ] 将 `AppServices` 改为纯 composition root，业务对象不自行构造基础设施。
 - [ ] UI 只订阅 Application state 和 command，不直接调用 Win32/UIA/Micro 服务。
@@ -196,3 +198,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - session 的 `RequestUndo` 明确返回 Queue、Execute 或 ExpireAndBeginStopHold；确认前多次短按仍只排队，确认到达后由原 UIA 标题轮询立即执行，过期后仍回落到三秒 Stop hold。
 - 未使用的 `PreviousTitle` session 字段已删除；`previousTitle` 参数只保留在注册前的“不得撤回到同一任务”校验中。
 - 运行时代码净减少，测试从旧 policy 的离散布尔组合改为 6 个完整 session transition 案例；最新 710 项基线采用 709 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Composer catalog/config 边界
+
+- 新增 `CodexComposerCatalogService`，集中读取 `models_cache.json`、`config.toml` 和模型按钮文本，并负责可见模型排序、Model/Effort/Speed 初始选择；`CodexComposerService.LoadCatalog` 只保留一行迁移转发。
+- 共享 `ComposerChoiceNormalizer` 保留旧的大小写、空格与连字符匹配语义；目录解析通过注入 Codex home 和按钮文本，可在没有 Codex 进程与 UIA 窗口时独立验证。
+- 新增真实临时目录夹具，覆盖隐藏模型过滤、priority 排序、按钮文本优先级以及配置中的 Fast fallback；本切片未改动语音键、右摇杆或模型选择器操作路径。
+- 自动化证据更新为旧客户端 681 tests、Application 8 tests、Domain 15 tests、Architecture 7 tests，共 711 项；采用 710 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
