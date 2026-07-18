@@ -117,6 +117,9 @@ public sealed class AppServices : IDisposable
                 actionNames => codexComposer.InvokeComposerAction(
                     currentSettings,
                     actionNames)),
+            new CodexNavigationUndoActionExecutor(
+                codexActionBlockReason,
+                () => codexSidebar.GoBack(currentSettings)),
             new CodexShellActionExecutor(
                 codexActionBlockReason,
                 shortcut => codexCommand.ExecuteShortcut(

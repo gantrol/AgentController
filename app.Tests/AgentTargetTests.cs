@@ -119,7 +119,8 @@ public sealed class AgentTargetTests
     {
         var target = new TestAgentTarget("shortcut-agent", "Shortcut");
         var snapshot = target.WorkspaceOrEmpty().LoadSnapshot();
-        var sidebar = target.SidebarOrUnavailable().GoBack(new());
+        var sidebar = target.SidebarOrUnavailable().RestoreDisclosure(
+            new ProjectDisclosureLease("Project", projectIsPinned: false));
         var composer = await target
             .ComposerOrUnavailable()
             .SelectAsync(

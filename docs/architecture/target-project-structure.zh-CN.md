@@ -245,3 +245,11 @@ AgentController.Application/
 - 成功 Invoke 只生成 `AcceptedUnverified` 和 `UiObservation/approval.accept.control-invoked`。真正的批准状态、选中任务和 approval context 仍须由后续 App Server/ContextResolver 提供权威观察。
 - `MainWindow.ExecuteApproveAction` 及最后一条 named UIA 同步直连路径已删除；当前剩余的语音与模型选择自动化属于已记录的独立兼容问题，本切片没有改动。
 - 自动化证据为旧客户端 670 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 697 项；采用 696 项排除已知竞态后全绿 + 该项隔离 1/1 的可审计拆分，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：navigation undo 语义执行边界
+
+- `navigation.undo` 表达“撤回刚刚确认到达的任务跳转”，与动作面板的通用 `navigation.back` 分开：前者保留语义 Back 控件 UIA，后者仍使用官方快捷键 `Ctrl+[`。
+- WPF 继续负责当前标题与目标标题一致性校验、确认轮询、有效期和反馈，但通过 Application action 网关执行撤回；后续可在不改 executor 的前提下把这些状态移入 navigation use case。
+- Codex adapter 成功只产生 `UiObservation/navigation.undo.control-invoked` 和 `AcceptedUnverified`，不把按钮调用当作已返回上一任务；失败继续保留 Blocked、NotSent、Unsupported 与 Failed 的终态区分。
+- 旧 `ISidebarAutomation.GoBack` 展示层端口及两套 adapter 样板已删除；UIA 服务由 composition root 直接注入 action executor。
+- 自动化证据为旧客户端 678 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 705 项；采用 704 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。

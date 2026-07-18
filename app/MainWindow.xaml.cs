@@ -3233,7 +3233,8 @@ public partial class MainWindow : Window
 
                         if (state.UndoRequested)
                         {
-                            ExecuteNavigationUndo(state);
+                            await ExecuteNavigationUndoAsync(state)
+                                .ConfigureAwait(true);
                             return;
                         }
 
@@ -5669,7 +5670,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        ExecuteNavigationUndo(undo);
+        _ = ExecuteNavigationUndoAsync(undo);
         return true;
     }
 
@@ -5723,7 +5724,8 @@ public partial class MainWindow : Window
         Pulse(strength: 0.18);
     }
 
-    private void ExecuteNavigationUndo(NavigationUndoState undo)
+    private async Task ExecuteNavigationUndoAsync(
+        NavigationUndoState undo)
     {
         if (!ReferenceEquals(_navigationUndo, undo))
         {
@@ -5753,9 +5755,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        var navigation =
-            _sidebarAutomation.GoBack(_settings);
-        if (navigation.Succeeded)
+        var result = await TryExecuteActionAsync(
+            NavigationActionContract.UndoId,
+            "controller.active",
+            "controller.face.east",
+            "navigation.undo",
+            "navigation.undo",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        if (result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified)
         {
             var target = undo.TargetDisplayTitle;
             ClearNavigationUndo();
@@ -5779,15 +5789,12 @@ public partial class MainWindow : Window
         AddEvent(_localization.Strings.Format(
             StringKeys.MessageUndoFailed,
             undoGlyph,
-            _localization.Strings.ErrorLabel(
-                navigation.Error,
-                navigation.ErrorDetail)));
+            ExecutionFailureLabel(result?.ErrorCode)));
         ShowFeedback(
             _localization.Strings.Format(
                 StringKeys.MessageButtonUndo,
                 undoGlyph),
-            ExecutionFailureLabel(
-                navigation.Error));
+            ExecutionFailureLabel(result?.ErrorCode));
         Pulse(strength: 0.12);
     }
 

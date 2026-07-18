@@ -69,9 +69,6 @@ public static class AgentCapabilityFallbacks
 
         public string? TryGetCurrentThreadTitle() => null;
 
-        public SidebarAutomationResult GoBack(AppSettings settings) =>
-            Failed();
-
         public SidebarAutomationResult RestoreDisclosure(
             ProjectDisclosureLease lease) =>
             Failed();

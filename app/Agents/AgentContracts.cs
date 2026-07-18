@@ -70,8 +70,6 @@ public interface ISidebarAutomation
 
     string? TryGetCurrentThreadTitle();
 
-    SidebarAutomationResult GoBack(AppSettings settings);
-
     SidebarAutomationResult RestoreDisclosure(
         ProjectDisclosureLease lease);
 

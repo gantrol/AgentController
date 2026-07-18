@@ -62,6 +62,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 十字键短按的上一条/下一条用户消息已改为 `conversation.previous-user-message` / `conversation.next-user-message`；4 秒回顶与 3 秒到底的长按状态机保持独立。
   - [x] 十字键长按阈值后的回顶/到底已改为 `conversation.scroll-top` / `conversation.scroll-bottom`；异步 executor 只有在 UIA 滚动位置 readback 后才返回 `Succeeded`。
   - [x] Command/Turn 面板的 Approve、Decline、Steer、Queue 已改为 `approval.accept`、`approval.decline`、`turn.steer`、`turn.queue`；Approve 先经过可复用双确认状态，再由 executor 强制复核 `HighRisk`。
+  - [x] 已确认任务跳转后的短按 B 撤回改为 `navigation.undo`；语义 Back 控件调用移入 Codex executor，目标标题确认、10 秒窗口和反馈暂留 WPF。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -172,3 +173,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `CodexUiCommandActionExecutor` 接管原 `MainWindow.ExecuteApproveAction` 中的多语言 UIA control names，并在触碰 UIA 前拒绝低于 `HighRisk` 的请求；公共 `RouteCapability` 同时承接 Composer 与 UI command 的安全级别门禁。
 - UIA Invoke 仍只返回 `AcceptedUnverified` 与 `UiObservation/approval.accept.control-invoked`，不宣称审批业务状态已改变；verified approval context 仍待 `ContextResolver` 切片完成。
 - 新增 9 个测试案例；最新 697 项基线采用 696 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。README/实机仍需验证双按、超时、松开 RB 和控件缺失路径。
+
+### 2026-07-18：已确认任务跳转的撤回执行切片
+
+- 短按 B 的 `NavigationUndoPressPolicy`、目标标题二次确认与 10 秒有效窗口保持不变；真正执行撤回时改为发射独立的 `navigation.undo` routine 请求，不与通用 `navigation.back` 快捷键混为同一策略。
+- 新 `CodexNavigationUndoActionExecutor` 保留原语义 Back 按钮 UIA 路径，成功只报告 `AcceptedUnverified` 与 `UiObservation/navigation.undo.control-invoked`；目标页面是否已返回仍需后续状态观察器确认。
+- `ISidebarAutomation.GoBack`、Codex adapter 转发和 unavailable fallback 已删除；`CodexSidebarService.GoBack` 只由 composition root 注入 executor，WPF 不再直接选择这条执行通道。
+- 新增 8 个 executor 合同案例；最新 705 项基线采用 704 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。README 的“打开任务后短按 B 撤回”仍需实机复验。

@@ -212,11 +212,6 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _sidebar.TryGetCurrentThreadTitle();
         }
 
-        public SidebarAutomationResult GoBack(AppSettings settings)
-        {
-            return _sidebar.GoBack(settings);
-        }
-
         public SidebarAutomationResult RestoreDisclosure(
             ProjectDisclosureLease lease)
         {
