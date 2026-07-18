@@ -48,6 +48,10 @@ The first public version was tested with an 8BitDo Ultimate 2, an Xbox Series co
 
 And the six Agent keys from Codex Micro? Hold **LB**, then use the four D-pad directions, View (⧉), or Menu (☰) to choose one of the six visible Agent slots.
 
+### Codex Micro desktop simulator
+
+This repository also contains an independent, source-only [Codex Micro desktop simulator](virtual-micro/README.md). It renders a resizable transparent keypad and connects directly to Codex through a Microsoft VHF/UMDF2 virtual HID, without using Agent Controller. Prebuilt driver binaries are not included: compile and install the driver locally by following the instructions under `virtual-micro`.
+
 > ⚠️ **Security notice — read before use**
 >
 > This experimental v0.7 prototype was produced in one day with **Codex using GPT-5.6 Sol** and has not received an independent human code or security audit. A Codex update can change shortcuts or the accessibility tree, causing UI Automation to fail or perform the wrong action. The binary is unsigned. Review the source, test only with non-critical tasks, and use it entirely at your own risk. What the app does on your machine:

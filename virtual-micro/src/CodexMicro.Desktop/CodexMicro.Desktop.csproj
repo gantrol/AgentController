@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>CodexMicroSimulator</AssemblyName>
+    <RootNamespace>CodexMicro.Desktop</RootNamespace>
+    <AssemblyTitle>Codex Micro Simulator</AssemblyTitle>
+    <Product>Codex Micro Simulator</Product>
+    <Description>Independent desktop Codex Micro simulator with a virtual HID device.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Keep WinForms available only for NotifyIcon. Do not leak its UI types
+         into the WPF compilation unit through SDK-generated global usings. -->
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CodexMicro.Protocol\CodexMicro.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CodexMicro.Desktop.Tests" />
+  </ItemGroup>
+
+</Project>

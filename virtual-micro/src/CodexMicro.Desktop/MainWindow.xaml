@@ -1,0 +1,409 @@
+<Window x:Class="CodexMicro.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:CodexMicro.Desktop.Controls"
+        Title="Codex Micro Simulator"
+        Width="442.5"
+        Height="457.5"
+        MinWidth="354"
+        MinHeight="366"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="CanResize"
+        ShowActivated="False"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        SourceInitialized="Window_SourceInitialized"
+        Loaded="Window_Loaded"
+        Closed="Window_Closed"
+        Deactivated="Window_Deactivated">
+    <Grid Background="Transparent">
+        <Viewbox x:Name="DeviceViewbox"
+                 Stretch="Uniform"
+                 StretchDirection="Both"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Stretch">
+            <Grid x:Name="DesignSurface"
+                  Width="590"
+                   Height="610"
+                   Background="Transparent"
+                   ToolTipService.InitialShowDelay="320"
+                   ToolTipService.BetweenShowDelay="100"
+                   ToolTipService.ShowDuration="16000">
+                <Border Margin="47"
+                        Background="#7A9CFFF8"
+                        CornerRadius="64"
+                        Opacity="0.65">
+                    <Border.Effect>
+                        <BlurEffect Radius="27" />
+                    </Border.Effect>
+                </Border>
+
+                <Border x:Name="DeviceFrame"
+                        Margin="23"
+                        CornerRadius="66"
+                        BorderBrush="#D9FFFFFF"
+                        BorderThickness="3"
+                        ContextMenuOpening="DeviceFrame_ContextMenuOpening"
+                        MouseLeftButtonDown="DeviceFrame_MouseLeftButtonDown">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#F7FFFFFF" Offset="0" />
+                            <GradientStop Color="#EFEFF3F4" Offset="0.56" />
+                            <GradientStop Color="#E1C9D0D3" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.ContextMenu>
+                        <ContextMenu x:Name="DeviceContextMenu"
+                                     Opened="DeviceContextMenu_Opened">
+                            <MenuItem x:Name="TopmostMenuItem"
+                                      Header="窗口置顶"
+                                      IsCheckable="True"
+                                      Click="TopmostMenuItem_Click" />
+                            <Separator />
+                            <MenuItem Header="重新连接虚拟 HID"
+                                      Click="ReconnectMenuItem_Click" />
+                            <MenuItem Header="退出"
+                                      Click="ExitMenuItem_Click" />
+                        </ContextMenu>
+                    </Border.ContextMenu>
+                    <Border.Effect>
+                        <DropShadowEffect Color="#5C6670"
+                                          BlurRadius="28"
+                                          ShadowDepth="9"
+                                          Direction="270"
+                                          Opacity="0.38" />
+                    </Border.Effect>
+
+                    <Grid>
+                        <Border Margin="19"
+                                CornerRadius="47"
+                                Background="#BDECF1F2"
+                                BorderBrush="#8A7D8A91"
+                                BorderThickness="1.5" />
+                        <Border Margin="29"
+                                CornerRadius="39"
+                                Background="#5CFFFFFF"
+                                BorderBrush="#C8FFFFFF"
+                                BorderThickness="1" />
+
+                        <TextBlock x:Name="LeftSilkScreen"
+                                   Text="CODEX  /  MICRO  /  VIRTUAL HID"
+                                   FontSize="8"
+                                   FontWeight="Bold"
+                                   Foreground="#6A5A6368"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Center"
+                                   Margin="39,0,0,0"
+                                   IsHitTestVisible="False"
+                                   Panel.ZIndex="2">
+                            <TextBlock.LayoutTransform>
+                                <RotateTransform Angle="-90" />
+                            </TextBlock.LayoutTransform>
+                        </TextBlock>
+                        <TextBlock x:Name="RightSilkScreen"
+                                   Text="303A : 8360  /  PROJECT 2077"
+                                   FontSize="8"
+                                   FontWeight="SemiBold"
+                                   Foreground="#6A5A6368"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,39,0"
+                                   IsHitTestVisible="False"
+                                   Panel.ZIndex="2">
+                            <TextBlock.LayoutTransform>
+                                <RotateTransform Angle="90" />
+                            </TextBlock.LayoutTransform>
+                        </TextBlock>
+
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Margin="0,0,0,25"
+                                    IsHitTestVisible="False"
+                                    Panel.ZIndex="2">
+                            <controls:KeycapIcon x:Name="BrandCodexIcon"
+                                                 Width="13"
+                                                 Height="13"
+                                                 Margin="0,0,6,0"
+                                                 KeycapId="CODEX"
+                                                 IconBrush="#80606A70" />
+                            <TextBlock Text="OPENAI  CODEX"
+                                       FontSize="8"
+                                       FontWeight="Bold"
+                                       Foreground="#80606A70"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <Grid x:Name="ControlGrid"
+                              Width="424"
+                              Height="424"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="106" />
+                                <ColumnDefinition Width="106" />
+                                <ColumnDefinition Width="106" />
+                                <ColumnDefinition Width="106" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="106" />
+                                <RowDefinition Height="106" />
+                                <RowDefinition Height="106" />
+                                <RowDefinition Height="106" />
+                            </Grid.RowDefinitions>
+
+                            <Button x:Name="DialButton"
+                                    Grid.Row="0"
+                                    Grid.Column="0"
+                                    Width="88"
+                                    Height="88"
+                                    Margin="4"
+                                    Style="{StaticResource DialButton}"
+                                    ToolTip="滚轮/上下拖动：选择 · 左键：打开或确认"
+                                    PreviewMouseLeftButtonDown="Dial_PreviewMouseLeftButtonDown"
+                                    PreviewMouseLeftButtonUp="Dial_PreviewMouseLeftButtonUp"
+                                    MouseMove="Dial_MouseMove"
+                                    LostMouseCapture="Dial_LostMouseCapture"
+                                    MouseWheel="Dial_MouseWheel" />
+
+                            <Border x:Name="DialSelectionHud"
+                                    Grid.Row="0"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="4"
+                                    Width="250"
+                                    Height="30"
+                                    Margin="96,-36,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Top"
+                                    Background="#F2FBFCFA"
+                                    BorderBrush="#D9FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="15"
+                                    IsHitTestVisible="False"
+                                    Opacity="0"
+                                    Visibility="Collapsed"
+                                    Panel.ZIndex="20">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#625B54"
+                                                      BlurRadius="9"
+                                                      ShadowDepth="2"
+                                                      Direction="270"
+                                                      Opacity="0.22" />
+                                </Border.Effect>
+                                <Grid Margin="10,0,11,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="7"
+                                             Height="7"
+                                             Margin="0,0,8,0"
+                                             VerticalAlignment="Center"
+                                             Fill="#756BC1" />
+                                    <TextBlock x:Name="DialSelectionText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#403B37"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </Border>
+
+                            <Button x:Name="AgentKey0" Grid.Row="0" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG00" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 1 · AG00" />
+                            <Button x:Name="AgentKey1" Grid.Row="0" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG01" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 2 · AG01" />
+
+                            <Grid x:Name="JoystickSurface"
+                                  Grid.Row="0"
+                                  Grid.Column="3"
+                                  Width="96"
+                                  Height="96"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  ToolTip="拖动黑色圆帽模拟摇杆，或单击四周方向键">
+                                <Border x:Name="JoystickSeat"
+                                        Margin="4"
+                                        Background="#FFDAD4CA"
+                                        BorderBrush="#D6FFFFFF"
+                                        BorderThickness="1"
+                                        CornerRadius="18">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="4"
+                                                          Direction="270"
+                                                          ShadowDepth="1"
+                                                          Opacity="0.18"
+                                                          Color="#594F43" />
+                                    </Border.Effect>
+                                    <Grid>
+                                        <Border Margin="1"
+                                                BorderBrush="#85FFFFFF"
+                                                BorderThickness="1"
+                                                CornerRadius="17" />
+                                        <Ellipse x:Name="JoystickCap"
+                                                 Width="54"
+                                                 Height="54"
+                                                 Fill="#FF111111"
+                                                 Cursor="SizeAll"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 MouseLeftButtonDown="JoystickCap_MouseLeftButtonDown"
+                                                 MouseMove="JoystickCap_MouseMove"
+                                                 MouseLeftButtonUp="JoystickCap_MouseLeftButtonUp"
+                                                 LostMouseCapture="JoystickCap_LostMouseCapture"
+                                                 ToolTip="按住并向任意方向拖动">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect BlurRadius="4"
+                                                                  Direction="270"
+                                                                  ShadowDepth="1"
+                                                                  Opacity="0.28"
+                                                                  Color="#2C2823" />
+                                            </Ellipse.Effect>
+                                            <Ellipse.RenderTransform>
+                                                <TransformGroup>
+                                                    <ScaleTransform x:Name="JoystickScale"
+                                                                    CenterX="27"
+                                                                    CenterY="27" />
+                                                    <TranslateTransform x:Name="JoystickTranslate" />
+                                                </TransformGroup>
+                                            </Ellipse.RenderTransform>
+                                        </Ellipse>
+                                        <Ellipse Width="50"
+                                                 Height="50"
+                                                 Fill="Transparent"
+                                                 Stroke="#1FFFFFFF"
+                                                 StrokeThickness="1"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 IsHitTestVisible="False" />
+                                    </Grid>
+                                </Border>
+
+                                <Button x:Name="JoystickUp"
+                                        Width="24"
+                                        Height="24"
+                                        Margin="0,1,0,0"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Top"
+                                        Panel.ZIndex="3"
+                                        Style="{StaticResource JoystickDirectionButton}"
+                                        Tag="0.75|up"
+                                        Click="Joystick_Click" />
+                                <Button x:Name="JoystickLeft"
+                                        Width="24"
+                                        Height="24"
+                                        Margin="1,0,0,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        Panel.ZIndex="3"
+                                        Style="{StaticResource JoystickDirectionButton}"
+                                        Tag="0.50|left"
+                                        Click="Joystick_Click"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Button.RenderTransform>
+                                        <RotateTransform Angle="-90" />
+                                    </Button.RenderTransform>
+                                </Button>
+                                <Button x:Name="JoystickRight"
+                                        Width="24"
+                                        Height="24"
+                                        Margin="0,0,1,0"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Panel.ZIndex="3"
+                                        Style="{StaticResource JoystickDirectionButton}"
+                                        Tag="0.00|right"
+                                        Click="Joystick_Click"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Button.RenderTransform>
+                                        <RotateTransform Angle="90" />
+                                    </Button.RenderTransform>
+                                </Button>
+                                <Button x:Name="JoystickDown"
+                                        Width="24"
+                                        Height="24"
+                                        Margin="0,0,0,1"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Bottom"
+                                        Panel.ZIndex="3"
+                                        Style="{StaticResource JoystickDirectionButton}"
+                                        Tag="0.25|down"
+                                        Click="Joystick_Click"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Button.RenderTransform>
+                                        <RotateTransform Angle="180" />
+                                    </Button.RenderTransform>
+                                </Button>
+                            </Grid>
+
+                            <Button x:Name="AgentKey2" Grid.Row="1" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="AG02" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 3 · AG02" />
+                            <Button x:Name="AgentKey3" Grid.Row="1" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG03" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 4 · AG03" />
+                            <Button x:Name="AgentKey4" Grid.Row="1" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG04" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 5 · AG04" />
+                            <Button x:Name="AgentKey5" Grid.Row="1" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="AG05" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 6 · AG05" />
+
+                            <Button x:Name="ActionKey06" Grid.Row="2" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="ACT06" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Fast · ACT06">
+                                <controls:KeycapIcon x:Name="ActionIcon06" Width="35" Height="35" KeycapId="FAST" IconBrush="#171717" />
+                            </Button>
+                            <Button x:Name="ActionKey07" Grid.Row="2" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="ACT07" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Approve · ACT07">
+                                <controls:KeycapIcon x:Name="ActionIcon07" Width="35" Height="35" KeycapId="APPR" IconBrush="#171717" />
+                            </Button>
+                            <Button x:Name="ActionKey08" Grid.Row="2" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="ACT08" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Decline · ACT08">
+                                <controls:KeycapIcon x:Name="ActionIcon08" Width="35" Height="35" KeycapId="REJ" IconBrush="#171717" />
+                            </Button>
+                            <Button x:Name="ActionKey09" Grid.Row="2" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT09" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Fork · ACT09">
+                                <controls:KeycapIcon x:Name="ActionIcon09" Width="35" Height="35" KeycapId="SPLIT" IconBrush="#171717" />
+                            </Button>
+
+                            <Grid Grid.Row="3"
+                                  Grid.Column="0"
+                                  Width="96"
+                                  Height="96"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center">
+                                <StackPanel Orientation="Vertical"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="10,0,0,0"
+                                            Panel.ZIndex="2">
+                                    <Ellipse x:Name="CompatibilityLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#9EBDFF" ToolTip="Codex 兼容性" />
+                                    <Ellipse x:Name="DriverLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#B8B98B" ToolTip="虚拟 HID 驱动" />
+                                    <Ellipse x:Name="ActivityLed" Width="7" Height="7" Fill="#B8B98B" ToolTip="事件状态" />
+                                </StackPanel>
+                                <Button x:Name="SettingsKey"
+                                        Width="96"
+                                        Height="96"
+                                        Style="{StaticResource DarkKnobButton}"
+                                        Click="Settings_Click"
+                                        PreviewMouseRightButtonUp="Settings_PreviewMouseRightButtonUp"
+                                        ToolTip="打开 Codex Micro 设置 · 右键重新连接虚拟 HID&#x0a;三灯：Codex 兼容性 / HID 连接 / 最近事件" />
+                            </Grid>
+                            <Button x:Name="ActionKey10"
+                                    Grid.Row="3"
+                                    Grid.Column="1"
+                                    Grid.ColumnSpan="2"
+                                    Width="202"
+                                    Height="96"
+                                    Margin="5"
+                                    Tag="ACT10_ACT11"
+                                    Style="{StaticResource CommandKey}"
+                                    PreviewMouseLeftButtonDown="Voice_PreviewMouseLeftButtonDown"
+                                    PreviewMouseLeftButtonUp="Voice_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="Voice_LostMouseCapture"
+                                    PreviewKeyDown="Voice_PreviewKeyDown"
+                                    PreviewKeyUp="Voice_PreviewKeyUp"
+                                    ToolTip="Push to talk · 按住说话 · ACT10">
+                                <controls:KeycapIcon x:Name="ActionIcon10" Width="38" Height="38" KeycapId="MIC" IconBrush="#171717" />
+                            </Button>
+                            <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">
+                                <controls:KeycapIcon x:Name="ActionIcon12" Width="37" Height="37" KeycapId="CODEX" IconBrush="#171717" />
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Viewbox>
+    </Grid>
+</Window>
