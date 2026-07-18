@@ -261,3 +261,10 @@ AgentController.Application/
 - `MainWindow` 不再引用 `ActionSource`、`ControlId`、`InputContext`，也不再自行拼接 `{scope}:{requestId}`。当前保留的 `TryExecuteActionAsync` 仅把 Application 异常收敛为本地失败反馈。
 - 这一层是未来自定义按钮、Avalonia 与 macOS UI 的稳定发射入口；平台 UI 无需知道 Codex executor registry 或 request metadata 生成规则。
 - 自动化证据为旧客户端 678 tests、Application 8 tests、Domain 15 tests、Architecture 7 tests，共 708 项；采用 707 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：navigation undo session
+
+- 旧窗口内嵌 mutable state 与静态 press policy 已收敛为 `NavigationUndoSession`，由单一对象维护目标 identity、arrival confirmation、expiry 和 queued undo request。
+- WPF 只调用 `MarkConfirmed` 与 `RequestUndo`，不再直接组合 `Confirmed` / `ExpiresAt` / `UndoRequested` 字段；Queue、Execute、Expire 三态现在具有独立合同测试。
+- session 暂留旧 `app/Controllers`，因为当前 title observation 仍依赖 Codex UIA 且反馈仍是 WPF 本地化逻辑；等 observer port 稳定后再整体移入 Application navigation use case。
+- 自动化证据为旧客户端 680 tests、Application 8 tests、Domain 15 tests、Architecture 7 tests，共 710 项；采用 709 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。

@@ -143,7 +143,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource?
         _conversationBoundaryHoldCancellation;
     private ConversationBoundary? _conversationBoundaryHoldTarget;
-    private NavigationUndoState? _navigationUndo;
+    private NavigationUndoSession? _navigationUndo;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
     private int _pendingSimplePowerSteps;
@@ -3178,10 +3178,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var state = new NavigationUndoState(
+        var state = new NavigationUndoSession(
             threadTitle,
-            nativeThreadTitle,
-            previousTitle);
+            nativeThreadTitle);
         _navigationUndo = state;
         var cancellation = new CancellationTokenSource();
         _navigationConfirmCancellation = cancellation;
@@ -3189,7 +3188,7 @@ public partial class MainWindow : Window
     }
 
     private async Task ConfirmNavigationUndoAsync(
-        NavigationUndoState state,
+        NavigationUndoSession state,
         CancellationTokenSource cancellation)
     {
         var consecutiveMatches = 0;
@@ -3219,10 +3218,9 @@ public partial class MainWindow : Window
                             return;
                         }
 
-                        state.Confirmed = true;
-                        state.ExpiresAt =
-                            DateTimeOffset.UtcNow +
-                            BridgeTimings.NavigationUndoWindow;
+                        state.MarkConfirmed(
+                            DateTimeOffset.UtcNow,
+                            BridgeTimings.NavigationUndoWindow);
                         if (_scope == SidebarScope.ProjectlessTasks)
                         {
                             RefreshCodexData(preserveSelection: true);
@@ -5636,15 +5634,11 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var action = NavigationUndoPressPolicy.Resolve(
-            undo.Confirmed,
-            undo.ExpiresAt,
-            DateTimeOffset.UtcNow);
+        var action = undo.RequestUndo(DateTimeOffset.UtcNow);
         if (
             action ==
                 NavigationUndoPressAction.QueueUntilNavigationConfirms)
         {
-            undo.UndoRequested = true;
             var cancelGlyph = Glyph(LogicalInput.FaceEast);
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageUndoQueued,
@@ -5722,7 +5716,7 @@ public partial class MainWindow : Window
     }
 
     private async Task ExecuteNavigationUndoAsync(
-        NavigationUndoState undo)
+        NavigationUndoSession undo)
     {
         if (!ReferenceEquals(_navigationUndo, undo))
         {
@@ -6904,26 +6898,6 @@ public partial class MainWindow : Window
             _ = Dispatcher.BeginInvoke(
                 System.Windows.Application.Current.Shutdown);
         }
-    }
-
-    private sealed class NavigationUndoState
-    {
-        public NavigationUndoState(
-            string targetDisplayTitle,
-            string targetNativeTitle,
-            string? previousTitle)
-        {
-            TargetDisplayTitle = targetDisplayTitle;
-            TargetNativeTitle = targetNativeTitle;
-            PreviousTitle = previousTitle;
-        }
-
-        public string TargetDisplayTitle { get; }
-        public string TargetNativeTitle { get; }
-        public string? PreviousTitle { get; }
-        public bool Confirmed { get; set; }
-        public bool UndoRequested { get; set; }
-        public DateTimeOffset? ExpiresAt { get; set; }
     }
 
     private sealed record SidebarReturnFrame(

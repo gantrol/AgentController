@@ -49,6 +49,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 已将 XInput 事件后的状态缓冲、按钮边沿、模拟扳机滞回、摇杆手势和 repeat timing 收敛到可独立测试的协调器阶段。
   - [x] 基础层的 L3/R3、D-pad、ABXY 与 B release 已从 WPF 回调解析中分离为可测试的有序意图；中性轮询帧不分配意图集合。
   - [ ] 分离 radial/virtual-dial 组合层、长按识别与 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
+- [x] 将 navigation undo 的确认窗口、提前请求和到期转换收敛为 `NavigationUndoSession`；WPF 仍持有 UIA 标题轮询和反馈，等待完整 use case 迁移。
 - [ ] 把 `CodexComposerService` 拆成 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier。
 - [ ] 将 Sidebar、Composer、Thread 类型从 Codex 专用类型收敛为 Domain 契约。
 - [ ] 将 `AppServices` 改为纯 composition root，业务对象不自行构造基础设施。
@@ -188,3 +189,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `ActionRouter` 继续只负责 capability probe 与 executor 选择，且不再由 `AppServices` 暴露给 `MainWindow`；WPF 的 `TryExecuteActionAsync` 只保留 presentation exception boundary。
 - 所有已迁移动作保持原 action id、来源字符串、上下文、安全级别、参数和每次调用唯一的幂等键，没有改动 LT、右摇杆、radial 手势或任何 Codex executor。
 - 新增 3 个 Application 合同案例，覆盖确定性 request metadata、scope 规范化、参数透传和取消短路；最新 708 项基线采用 707 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：navigation undo session 状态收敛
+
+- 原 `MainWindow.NavigationUndoState` 与独立 `NavigationUndoPressPolicy` 合并为可测试的 `NavigationUndoSession`；目标 identity、确认状态、10 秒到期时间和提前撤回请求不再由窗口直接写字段。
+- session 的 `RequestUndo` 明确返回 Queue、Execute 或 ExpireAndBeginStopHold；确认前多次短按仍只排队，确认到达后由原 UIA 标题轮询立即执行，过期后仍回落到三秒 Stop hold。
+- 未使用的 `PreviousTitle` session 字段已删除；`previousTitle` 参数只保留在注册前的“不得撤回到同一任务”校验中。
+- 运行时代码净减少，测试从旧 policy 的离散布尔组合改为 6 个完整 session transition 案例；最新 710 项基线采用 709 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。

@@ -38,43 +38,4 @@ public sealed class CancelHoldCountdownPolicyTests
                 elapsedMilliseconds,
                 holdMs: 3000));
     }
-
-    [Theory]
-    [InlineData(
-        false,
-        false,
-        (int)NavigationUndoPressAction.QueueUntilNavigationConfirms)]
-    [InlineData(
-        true,
-        false,
-        (int)NavigationUndoPressAction.QueueUntilNavigationConfirms)]
-    [InlineData(
-        true,
-        true,
-        (int)NavigationUndoPressAction.ExecuteUndo)]
-    public void NavigationUndoShortPressNeverStopsAnActiveTurn(
-        bool confirmed,
-        bool hasExpiry,
-        int expected)
-    {
-        var now = DateTimeOffset.UtcNow;
-        Assert.Equal(
-            (NavigationUndoPressAction)expected,
-            NavigationUndoPressPolicy.Resolve(
-                confirmed,
-                hasExpiry ? now.AddSeconds(1) : null,
-                now));
-    }
-
-    [Fact]
-    public void ExpiredNavigationUndoFallsIntoStopHold()
-    {
-        var now = DateTimeOffset.UtcNow;
-        Assert.Equal(
-            NavigationUndoPressAction.ExpireAndBeginStopHold,
-            NavigationUndoPressPolicy.Resolve(
-                confirmed: true,
-                expiresAt: now.AddTicks(-1),
-                now));
-    }
 }
