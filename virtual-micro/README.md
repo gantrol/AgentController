@@ -41,6 +41,14 @@ An independent Windows desktop simulator for Codex Micro:
 The complete visual, driver, interaction, and acceptance specification is in
 [`DESIGN.zh-CN.md`](./DESIGN.zh-CN.md).
 
+## Portable desktop app
+
+The [`v0.1.0` prerelease](../../../releases/tag/codex-micro-v0.1.0) includes a
+self-contained Windows x64 portable archive. It does not require a separate
+.NET runtime and does not import a self-signed root certificate. The archive
+contains the desktop application only: build and install the VHF driver below
+before launching `CodexMicroSimulator.exe`.
+
 ## Build locally
 
 This repository intentionally ships driver source only. Generated `.dll`,

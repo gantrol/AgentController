@@ -35,6 +35,13 @@
 完整界面尺寸、驱动身份、交互和验收条件见
 [`DESIGN.zh-CN.md`](./DESIGN.zh-CN.md)。
 
+## 便携应用
+
+[`v0.1.0` 预发布版](../../../releases/tag/codex-micro-v0.1.0) 提供 self-contained
+Windows x64 便携包，不需要另外安装 .NET Runtime，也不会导入自签名根证书。
+便携包只包含桌面应用；运行 `CodexMicroSimulator.exe` 前，仍需按下文在本机编译
+并安装 VHF 驱动。
+
 ## 本地构建
 
 本仓库只提交驱动源码，不提供预编译的 `.dll`、`.sys`、`.cat`、`.cer` 或安装器

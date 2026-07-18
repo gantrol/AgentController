@@ -54,7 +54,7 @@ Alongside the gamepad route, this repository now explores and improves Codex Mic
 
 ![Codex Micro desktop simulator](public/images/codex-micro-simulator.png)
 
-The source-only [Codex Micro desktop simulator](virtual-micro/README.md) renders a resizable transparent keypad and connects directly to Codex without using Agent Controller. Prebuilt driver binaries are not included: compile and install the driver locally by following the instructions under `virtual-micro`.
+The [Codex Micro desktop simulator](virtual-micro/README.md) renders a resizable transparent keypad and connects directly to Codex without using Agent Controller. A self-contained Windows x64 portable app is available from the [v0.1.0 prerelease](../../releases/tag/codex-micro-v0.1.0) and does not require a separate .NET runtime. Prebuilt driver binaries are not included: compile and install the driver locally by following the instructions under `virtual-micro`.
 
 > ⚠️ **Security notice — read before use**
 >
