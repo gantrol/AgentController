@@ -71,37 +71,12 @@ public sealed class CodexConversationActionExecutor :
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
-    {
-        if (BoundaryFor(request.ActionId) is null)
-        {
-            return new ExecutorCapability(
-                Id,
-                request.ActionId,
-                ExecutorCapabilityStatus.Unsupported,
-                Priority: 100,
-                ReasonCode: "action.unsupported");
-        }
-
-        if (_scrollConversation is null)
-        {
-            return new ExecutorCapability(
-                Id,
-                request.ActionId,
-                ExecutorCapabilityStatus.Unsupported,
-                Priority: 100,
-                ReasonCode: "agent.conversation-automation.unavailable");
-        }
-
-        var blockReason = _blockReason?.Invoke();
-        return new ExecutorCapability(
-            Id,
-            request.ActionId,
-            blockReason is null
-                ? ExecutorCapabilityStatus.Available
-                : ExecutorCapabilityStatus.Blocked,
-            Priority: 100,
-            ReasonCode: blockReason);
-    }
+        => RouteCapability(
+            request,
+            BoundaryFor(request.ActionId) is not null,
+            _scrollConversation is not null,
+            "agent.conversation-automation.unavailable",
+            _blockReason);
 
     private static ConversationBoundary? BoundaryFor(ActionId actionId)
     {

@@ -43,6 +43,44 @@ public abstract class CodexActionExecutorBase : IActionExecutor
         ActionRequest request,
         CancellationToken cancellationToken);
 
+    protected ExecutorCapability RouteCapability(
+        ActionRequest request,
+        bool supportsAction,
+        bool executionAvailable,
+        string unavailableReasonCode,
+        Func<string?>? blockReason = null)
+    {
+        if (!supportsAction)
+        {
+            return new ExecutorCapability(
+                Id,
+                request.ActionId,
+                ExecutorCapabilityStatus.Unsupported,
+                Priority: 100,
+                ReasonCode: "action.unsupported");
+        }
+
+        if (!executionAvailable)
+        {
+            return new ExecutorCapability(
+                Id,
+                request.ActionId,
+                ExecutorCapabilityStatus.Unsupported,
+                Priority: 100,
+                ReasonCode: unavailableReasonCode);
+        }
+
+        var reason = blockReason?.Invoke();
+        return new ExecutorCapability(
+            Id,
+            request.ActionId,
+            reason is null
+                ? ExecutorCapabilityStatus.Available
+                : ExecutorCapabilityStatus.Blocked,
+            Priority: 100,
+            ReasonCode: reason);
+    }
+
     protected ActionResult Unavailable(
         ActionRequest request,
         ExecutorCapability capability) =>

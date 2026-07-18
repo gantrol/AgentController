@@ -61,6 +61,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 动作面板的前进、后退和切换侧边栏已改为 `navigation.forward`、`navigation.back`、`sidebar.toggle`；快捷键映射与执行门禁由同一个 Codex shell executor 持有。
   - [x] 十字键短按的上一条/下一条用户消息已改为 `conversation.previous-user-message` / `conversation.next-user-message`；4 秒回顶与 3 秒到底的长按状态机保持独立。
   - [x] 十字键长按阈值后的回顶/到底已改为 `conversation.scroll-top` / `conversation.scroll-bottom`；异步 executor 只有在 UIA 滚动位置 readback 后才返回 `Succeeded`。
+  - [x] Command/Turn 面板的 Decline、Steer、Queue 已改为 `approval.decline`、`turn.steer`、`turn.queue`；Approve 在高风险确认 UX 落地前显式保留为唯一 named UIA 直达路径。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -156,3 +157,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `CodexActionExecutorBase` 的核心执行模板改为 `ValueTask`，同步 executor 继续返回 completed result，新 `CodexConversationActionExecutor` 则等待真实 UIA Task 与取消令牌，没有同步阻塞 Dispatcher。
 - 滚动服务成功现在明确报告 `UiAutomation + StateVerified`；executor 只有同时得到这两项证据才返回 `Succeeded` 与 `UiObservation/*.verified`，否则以 `action.evidence.missing` 失败关闭。
 - 旧 `IComposerAutomation.ScrollConversationAsync`、Codex adapter 转发和 null fallback 已删除；新增 14 个测试案例后，完整 Release solution 测试 677/677（旧客户端 650、Application 5、Domain 15、Architecture 7）。README 的短按/长按组合仍需实机验收。
+
+### 2026-07-18：routine UI command action 切片
+
+- Decline、Steer、Queue 现在分别发射 `approval.decline`、`turn.steer`、`turn.queue`；Codex UI command executor 持有多语言 action names，并只把 `UiAutomation` 控件调用报告为 `AcceptedUnverified`。
+- 四个已有 adapter 重复的 supported/available/blocked capability 构造已收敛到 `RouteCapability`；具体 action 判定、执行通道和 unavailable code 仍由各 executor 提供，本切片的生产代码净增约 106 行。
+- Approve 没有伪装成 routine action：`MainWindow.ExecuteApproveAction` 是当前唯一 named UIA 直达路径，等待独立的二次确认或长按 UX 后再迁移。
+- 新增 11 个 UI command 合同案例。由于既有 `BridgeFeedbackPresenter` dispose/queue 竞态连续污染完整套件，最新 688 项基线采用可审计拆分验收：排除该项的 solution 687/687，加该项隔离运行 1/1；Release 构建 0 warnings、0 errors。

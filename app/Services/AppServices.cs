@@ -129,6 +129,11 @@ public sealed class AppServices : IDisposable
                         boundary,
                         currentSettings,
                         cancellationToken)),
+            new CodexUiCommandActionExecutor(
+                codexActionBlockReason,
+                actionNames => codexComposer.InvokeComposerAction(
+                    currentSettings,
+                    actionNames)),
             new CodexComposerActionExecutor(
                 () => codexComposer.SubmitComposer(currentSettings),
                 () => codexComposer.ClearComposer(currentSettings),

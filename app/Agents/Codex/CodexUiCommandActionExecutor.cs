@@ -4,37 +4,48 @@ using CodexController.Services;
 
 namespace CodexController.Agents.Codex;
 
-public sealed class CodexForkThreadActionExecutor : CodexActionExecutorBase
+public sealed class CodexUiCommandActionExecutor :
+    CodexActionExecutorBase
 {
-    public const string ExecutorId = "codex.thread-fork-fallback";
+    public const string ExecutorId = "codex.ui-command";
 
-    private static readonly string[] ActionNames =
+    private static readonly string[] DeclineActionNames =
     [
-        "Fork",
-        "Fork task",
-        "Fork thread",
-        "Branch",
-        "Branch task",
-        "Continue in new task",
+        "Decline",
+        "Reject",
+        "Reject changes",
+        "Deny",
+    ];
+
+    private static readonly string[] SteerActionNames =
+    [
+        "Steer",
+        "Steer current turn",
+        "Add to current turn",
+        "加入当前运行",
+        "加入当前轮次",
+    ];
+
+    private static readonly string[] QueueActionNames =
+    [
+        "Queue",
+        "Queue next turn",
+        "Send next",
+        "排到下一轮",
+        "排入下一轮",
     ];
 
     private readonly Func<string?>? _blockReason;
-    private readonly Func<bool>? _tryMicro;
-    private readonly Func<bool>? _tryShortcut;
     private readonly Func<string[], ComposerAutomationResult>?
         _invokeAutomation;
 
-    public CodexForkThreadActionExecutor(
+    public CodexUiCommandActionExecutor(
         Func<string?>? blockReason,
-        Func<bool>? tryMicro,
-        Func<bool>? tryShortcut,
         Func<string[], ComposerAutomationResult>? invokeAutomation,
         Func<DateTimeOffset>? clock = null)
         : base(ExecutorId, clock)
     {
         _blockReason = blockReason;
-        _tryMicro = tryMicro;
-        _tryShortcut = tryShortcut;
         _invokeAutomation = invokeAutomation;
     }
 
@@ -54,31 +65,8 @@ public sealed class CodexForkThreadActionExecutor : CodexActionExecutorBase
             return Unavailable(request, capability);
         }
 
-        if (_tryMicro?.Invoke() == true)
-        {
-            return AcceptedUnverified(
-                request,
-                ActionEvidenceKind.Transport,
-                "thread.fork.micro-requested");
-        }
-
-        if (_tryShortcut?.Invoke() == true)
-        {
-            return AcceptedUnverified(
-                request,
-                ActionEvidenceKind.Transport,
-                "thread.fork.shortcut-sent");
-        }
-
-        var automation = _invokeAutomation?.Invoke(ActionNames);
-        if (automation is null)
-        {
-            return Complete(
-                request,
-                ActionOutcome.NotSent,
-                "thread.fork.not-sent");
-        }
-
+        var automation = _invokeAutomation!(
+            ActionNamesFor(request.ActionId)!);
         if (!automation.Succeeded)
         {
             return Complete(
@@ -91,21 +79,35 @@ public sealed class CodexForkThreadActionExecutor : CodexActionExecutorBase
             ? AcceptedUnverified(
                 request,
                 ActionEvidenceKind.UiObservation,
-                "thread.fork.control-invoked")
+                $"{request.ActionId}.control-invoked")
             : Complete(
                 request,
                 ActionOutcome.Failed,
                 "action.evidence.missing");
     }
 
-    private ExecutorCapability CapabilityFor(ActionRequest request)
-        => RouteCapability(
+    private ExecutorCapability CapabilityFor(ActionRequest request) =>
+        RouteCapability(
             request,
-            request.ActionId == ForkThreadActionContract.Id,
-            _tryMicro is not null ||
-            _tryShortcut is not null ||
+            ActionNamesFor(request.ActionId) is not null,
             _invokeAutomation is not null,
-            "agent.thread-fork.unavailable",
+            "agent.ui-command.unavailable",
             _blockReason);
 
+    private static string[]? ActionNamesFor(ActionId actionId)
+    {
+        if (actionId == ApprovalActionContract.DeclineId)
+        {
+            return DeclineActionNames;
+        }
+
+        if (actionId == TurnActionContract.SteerId)
+        {
+            return SteerActionNames;
+        }
+
+        return actionId == TurnActionContract.QueueId
+            ? QueueActionNames
+            : null;
+    }
 }

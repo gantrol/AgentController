@@ -96,27 +96,10 @@ public sealed class CodexCreateThreadActionExecutor : CodexActionExecutorBase
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
-    {
-        if (request.ActionId != CreateThreadActionContract.Id)
-        {
-            return new ExecutorCapability(
-                Id,
-                request.ActionId,
-                ExecutorCapabilityStatus.Unsupported,
-                Priority: 100,
-                ReasonCode: "action.unsupported");
-        }
-
-        return new ExecutorCapability(
-            Id,
-            request.ActionId,
-            _invokeAutomation is null && _executeShortcut is null
-                ? ExecutorCapabilityStatus.Unsupported
-                : ExecutorCapabilityStatus.Available,
-            Priority: 100,
-            ReasonCode: _invokeAutomation is null && _executeShortcut is null
-                ? "agent.thread-create.unavailable"
-                : null);
-    }
+        => RouteCapability(
+            request,
+            request.ActionId == CreateThreadActionContract.Id,
+            _invokeAutomation is not null || _executeShortcut is not null,
+            "agent.thread-create.unavailable");
 
 }

@@ -50,37 +50,12 @@ public sealed class CodexShellActionExecutor : CodexActionExecutorBase
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
-    {
-        if (ShortcutFor(request.ActionId) is null)
-        {
-            return new ExecutorCapability(
-                Id,
-                request.ActionId,
-                ExecutorCapabilityStatus.Unsupported,
-                Priority: 100,
-                ReasonCode: "action.unsupported");
-        }
-
-        if (_executeShortcut is null)
-        {
-            return new ExecutorCapability(
-                Id,
-                request.ActionId,
-                ExecutorCapabilityStatus.Unsupported,
-                Priority: 100,
-                ReasonCode: "agent.shell-shortcut.unavailable");
-        }
-
-        var blockReason = _blockReason?.Invoke();
-        return new ExecutorCapability(
-            Id,
-            request.ActionId,
-            blockReason is null
-                ? ExecutorCapabilityStatus.Available
-                : ExecutorCapabilityStatus.Blocked,
-            Priority: 100,
-            ReasonCode: blockReason);
-    }
+        => RouteCapability(
+            request,
+            ShortcutFor(request.ActionId) is not null,
+            _executeShortcut is not null,
+            "agent.shell-shortcut.unavailable",
+            _blockReason);
 
     private static string? ShortcutFor(ActionId actionId)
     {

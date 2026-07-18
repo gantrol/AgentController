@@ -1114,22 +1114,14 @@ public partial class MainWindow : Window
                 ExecuteFastToggle();
                 break;
             case RadialInputAction.Approve:
-                ExecuteNamedRadialAction(
-                    RadialText("接受更改", "Approve changes"),
-                    "Approve",
-                    "Accept",
-                    "Accept changes",
-                    "Allow",
-                    "Allow once",
-                    "Continue");
+                ExecuteApproveAction();
                 break;
             case RadialInputAction.Decline:
-                ExecuteNamedRadialAction(
+                _ = ExecuteUiCommandActionAsync(
+                    ApprovalActionContract.DeclineId,
                     RadialText("拒绝更改", "Decline changes"),
-                    "Decline",
-                    "Reject",
-                    "Reject changes",
-                    "Deny");
+                    "controller.radial.command.decline",
+                    "radial.command");
                 break;
             case RadialInputAction.Fork:
                 ExecuteForkAction();
@@ -1147,22 +1139,18 @@ public partial class MainWindow : Window
                     "controller.radial.dispatch");
                 break;
             case RadialInputAction.Steer:
-                ExecuteNamedRadialAction(
+                _ = ExecuteUiCommandActionAsync(
+                    TurnActionContract.SteerId,
                     RadialText("加入当前运行", "Steer current turn"),
-                    "Steer",
-                    "Steer current turn",
-                    "Add to current turn",
-                    "加入当前运行",
-                    "加入当前轮次");
+                    "controller.radial.turn.steer",
+                    "radial.turn");
                 break;
             case RadialInputAction.Queue:
-                ExecuteNamedRadialAction(
+                _ = ExecuteUiCommandActionAsync(
+                    TurnActionContract.QueueId,
                     RadialText("排到下一轮", "Queue next turn"),
-                    "Queue",
-                    "Queue next turn",
-                    "Send next",
-                    "排到下一轮",
-                    "排入下一轮");
+                    "controller.radial.turn.queue",
+                    "radial.turn");
                 break;
             case RadialInputAction.BeginStopHold:
                 BeginCancelHold();
@@ -1448,13 +1436,17 @@ public partial class MainWindow : Window
             _localization.Strings.ConfigToggleFast);
     }
 
-    private void ExecuteNamedRadialAction(
-        string title,
-        params string[] actionNames)
+    private void ExecuteApproveAction()
     {
+        var title = RadialText("接受更改", "Approve changes");
         var result = _composerAutomation.InvokeAction(
             _settings,
-            actionNames);
+            "Approve",
+            "Accept",
+            "Accept changes",
+            "Allow",
+            "Allow once",
+            "Continue");
         if (result.Succeeded)
         {
             ClearNavigationUndo();
@@ -1472,6 +1464,41 @@ public partial class MainWindow : Window
                 ? RadialText("已执行。", "Executed.")
                 : ExecutionFailureLabel(result.Error));
         Pulse(strength: result.Succeeded ? 0.22 : 0.1);
+    }
+
+    private async Task ExecuteUiCommandActionAsync(
+        ActionId actionId,
+        string title,
+        string controlId,
+        string context)
+    {
+        var result = await TryExecuteActionAsync(
+            actionId,
+            "controller.active",
+            controlId,
+            context,
+            actionId.Value,
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
+        {
+            ClearNavigationUndo();
+        }
+
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                succeeded,
+                result?.ErrorCode));
+        ShowFeedback(
+            title,
+            succeeded
+                ? RadialText("已执行。", "Executed.")
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.22 : 0.1);
     }
 
     private void ExecuteForkAction()

@@ -228,3 +228,11 @@ AgentController.Application/
 - executor 公共模板支持异步 `ValueTask` 核心并透传 cancellation；同步 Open/Create/Fork/Composer/Shell executors 仍使用 completed result，不为异步能力复制第二套协议样板。
 - Conversation executor 等待 UIA 滚动百分比 readback，只有 `UiAutomation + StateVerified` 才产生 `Succeeded`；旧 `IComposerAutomation.ScrollConversationAsync` 迁移接口随唯一调用方删除。
 - 自动化证据更新为旧客户端 650 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 677 passed、0 failed、0 skipped。
+
+### 2026-07-18：routine UI command adapter
+
+- `approval.decline`、`turn.steer`、`turn.queue` 进入 Application action 链；多语言 UIA control names 从 WPF switch 移入 `CodexUiCommandActionExecutor`。
+- 三项调用只产生 `UiObservation/*.control-invoked` 与 `AcceptedUnverified`，不把按钮 Invoke 冒充业务状态已改变；缺失 UIA channel 时以 `action.evidence.missing` 失败关闭。
+- `RouteCapability` 统一 adapter 的 supported/route available/block gate 样板，Create、Fork、Shell、Conversation 与 UI command 仍各自声明真实通道和 fallback policy。
+- Approve 因产品安全规范要求二次确认或长按，暂不加入 routine executor；这是有意保留的单一 legacy seam。
+- 最新 688 项基线以 687 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1 通过；Release 构建 0 warnings、0 errors。
