@@ -90,8 +90,27 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
     public LogicalInput? LogicalInput
     {
         get => _logicalInput;
-        private set => SetProperty(ref _logicalInput, value);
+        private set
+        {
+            if (SetProperty(ref _logicalInput, value))
+            {
+                OnPropertyChanged(nameof(PhysicalPositionGlyph));
+                OnPropertyChanged(nameof(HasPhysicalPositionGlyph));
+            }
+        }
     }
+
+    public string PhysicalPositionGlyph => LogicalInput switch
+    {
+        CodexController.Controllers.LogicalInput.FaceNorth => "↑",
+        CodexController.Controllers.LogicalInput.FaceEast => "→",
+        CodexController.Controllers.LogicalInput.FaceSouth => "↓",
+        CodexController.Controllers.LogicalInput.FaceWest => "←",
+        _ => string.Empty,
+    };
+
+    public bool HasPhysicalPositionGlyph =>
+        !string.IsNullOrEmpty(PhysicalPositionGlyph);
 
     public ThreadStatus Status
     {

@@ -1,0 +1,285 @@
+<UserControl x:Class="CodexController.Views.ActionMenuView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="clr-namespace:CodexController.Models"
+             mc:Ignorable="d"
+             d:DesignHeight="350"
+             d:DesignWidth="820"
+             Width="820"
+             IsHitTestVisible="False"
+             SnapsToDevicePixels="True">
+    <UserControl.Resources>
+        <Style x:Key="ActionMenu.ItemContainer"
+               TargetType="ContentPresenter">
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsPresent}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <DataTemplate x:Key="ActionMenu.ItemTemplate">
+            <Border x:Name="RowRoot"
+                    Width="376"
+                    Height="78"
+                    Margin="3,0,3,10"
+                    Background="{StaticResource Brush.Agent.Row.Fill}"
+                    BorderBrush="{StaticResource Brush.Border.Subtle}"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    AutomationProperties.Name="{Binding AccessibleName}">
+                <Grid Margin="10,7,14,7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="72" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border x:Name="Keycap"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource Overlay.PhysicalKey}">
+                        <Grid>
+                            <TextBlock x:Name="PositionGlyph"
+                                       Margin="7,4,0,0"
+                                       Text="{Binding PhysicalPositionGlyph}"
+                                       HorizontalAlignment="Left"
+                                       VerticalAlignment="Top"
+                                       Foreground="{StaticResource Brush.Text.Tertiary}"
+                                       FontFamily="{StaticResource Font.Mono}"
+                                       FontSize="10">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasPhysicalPositionGlyph}"
+                                                         Value="False">
+                                                <Setter Property="Visibility"
+                                                        Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock x:Name="GlyphText"
+                                       Text="{Binding InputGlyph}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Text.Primary}"
+                                       FontFamily="{StaticResource Font.Mono}"
+                                       FontSize="14"
+                                       FontWeight="{StaticResource Font.Weight.Medium}" />
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="1"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="SlotTitle"
+                                   Text="{Binding Title}"
+                                   Foreground="{StaticResource Brush.Text.Primary}"
+                                   FontSize="15"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="SlotSubtitle"
+                                   Margin="0,4,0,0"
+                                   Text="{Binding Subtitle}"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontSize="11"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSubtitle}"
+                                                     Value="False">
+                                            <Setter Property="Visibility"
+                                                    Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <ProgressBar Grid.ColumnSpan="2"
+                                 Margin="3,0,3,-3"
+                                 VerticalAlignment="Bottom"
+                                 Minimum="0"
+                                 Maximum="1"
+                                 Foreground="{StaticResource Brush.Status.Warning}"
+                                 Value="{Binding ConfirmationProgress, Mode=OneWay}">
+                        <ProgressBar.Style>
+                            <Style TargetType="ProgressBar"
+                                   BasedOn="{StaticResource Overlay.Progress}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasConfirmationProgress}"
+                                                 Value="False">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ProgressBar.Style>
+                    </ProgressBar>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsActionEnabled}" Value="False">
+                    <Setter TargetName="RowRoot"
+                            Property="Opacity"
+                            Value="0.52" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                    <Setter TargetName="RowRoot"
+                            Property="Background"
+                            Value="{StaticResource Brush.Agent.Row.Selected}" />
+                    <Setter TargetName="RowRoot"
+                            Property="BorderBrush"
+                            Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
+                    <Setter TargetName="RowRoot"
+                            Property="BorderThickness"
+                            Value="2" />
+                    <Setter TargetName="Keycap"
+                            Property="BorderBrush"
+                            Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
+                    <Setter TargetName="GlyphText"
+                            Property="Foreground"
+                            Value="{StaticResource Brush.Agent.Glyph}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Width="820"
+          Background="Transparent">
+        <Border Width="804"
+                Margin="0,8"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Style="{StaticResource Overlay.MicroPanel}">
+            <Grid Margin="20,14,20,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="30" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Overlay.ModifierBadge}"
+                            Margin="0,0,10,0">
+                        <TextBlock Text="{Binding ModifierGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Agent.Glyph}"
+                                   FontFamily="{StaticResource Font.Mono}"
+                                   FontSize="12"
+                                   FontWeight="{StaticResource Font.Weight.Bold}" />
+                    </Border>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Title}"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="15"
+                               FontWeight="{StaticResource Font.Weight.Medium}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2"
+                               Margin="16,0,0,0"
+                               Text="{Binding Subtitle}"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Tertiary}"
+                               FontSize="11"
+                               TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasSubtitle}"
+                                                 Value="False">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+
+                <ItemsControl x:Name="ActionItems"
+                              Grid.Row="2"
+                              Width="764"
+                              ItemsSource="{Binding MenuSlots}"
+                              ItemTemplate="{StaticResource ActionMenu.ItemTemplate}"
+                              ItemContainerStyle="{StaticResource ActionMenu.ItemContainer}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel ItemWidth="382"
+                                       ItemHeight="88" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+
+                <Border x:Name="LearningPositionGuide"
+                        Grid.Row="3"
+                        Margin="3,0,3,10"
+                        Padding="10,6"
+                        Background="{StaticResource Brush.Bg.Sunken}"
+                        BorderBrush="{StaticResource Brush.Border.Subtle}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DisplayMode}"
+                                             Value="{x:Static models:RadialMenuDisplayMode.Learning}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel HorizontalAlignment="Center"
+                                Orientation="Horizontal">
+                        <TextBlock Text="↑"
+                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
+                        <TextBlock Margin="4,0,18,0"
+                                   Text="{Binding Top.InputGlyph}"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontFamily="{StaticResource Font.Mono}"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
+                        <TextBlock Text="→"
+                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
+                        <TextBlock Margin="4,0,18,0"
+                                   Text="{Binding Right.InputGlyph}"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontFamily="{StaticResource Font.Mono}"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
+                        <TextBlock Text="↓"
+                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
+                        <TextBlock Margin="4,0,18,0"
+                                   Text="{Binding Bottom.InputGlyph}"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontFamily="{StaticResource Font.Mono}"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
+                        <TextBlock Text="←"
+                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
+                        <TextBlock Margin="4,0,0,0"
+                                   Text="{Binding Left.InputGlyph}"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontFamily="{StaticResource Font.Mono}"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

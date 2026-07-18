@@ -30,11 +30,13 @@ Onboarding / Live Control / Bindings / Integrations / Diagnostics / Settings
 
 ![侧边栏与动作菜单原创概念稿](../docs/assets/ux-sidebar-action-menu-concept.png)
 
+![LB / RB / RT / Y / RS Micro 风格总览](../docs/ux/overlay-family-gpt-image-2.png)
+
 - [ ] 将当前 `SidebarNavigationWheelOverlayWindow` 的 previous/current/next “转盘”改成紧凑的圆角菜单卡片；使用纵向菜单项、右对齐当前值、层级箭头、柔和的悬停/选中底色和当前项勾选，不再把辐射线、扇区或大幅手柄图作为默认表现。
 - [ ] 导航信息架构必须完整覆盖置顶任务、置顶项目、项目和未归项目任务四个区域；L3 在区域间切换时保留每个区域最近的项目路径与任务焦点。
 - [ ] 未置顶任务不是降级状态：项目内普通任务通过清楚的 `Projects → Project → Task` 层级访问，未归项目任务有独立入口，任何流程都不得假设任务已置顶。
 - [ ] 支持“一级菜单卡片 + 相邻子菜单卡片”的分级浏览；一次只突出当前行和当前路径，返回、确认、不可用、加载中与执行失败都必须有一致且可读的状态。
-- [ ] LB Agent、RB Command、RT Turn、Y Action 等其他动作面板默认复用同一套菜单卡片、行状态、动效和手柄按键提示；只有确有二维状态总览需求时才设计专用组件，不把转盘继续当作通用容器。
+- [x] LB Agent 使用专用六灯面板；RB Command、RT Turn、Y Action 复用同一套菜单卡片、行状态和按键提示。面键同时显示实际 glyph 与物理方向，Learning 模式提供位置图例；转盘不再作为通用容器。
 - [ ] 为 Overlay 建立明确的锚点定位契约：以 Codex 目标 popup 的屏幕边界为输入，控制器菜单优先出现在 popup 上方，并保留至少一个 spacing token 的安全间距，任何情况下都不得覆盖或与目标 popup 重叠。
 - [ ] 上方空间不足时，先采用限高滚动、卡片重排或同侧位移；仍无法容纳才降级到 popup 侧边，并继续保证安全间距。定位必须限制在当前显示器 work area 内，正确处理多显示器、负坐标和 100%/125%/150%/200% DPI。
 - [ ] 区分“任务未置顶”和“Overlay 窗口未置顶”：前者由四区域导航解决；后者在 `TopMost=false`、被 Codex 遮挡或用户关闭悬浮反馈时，改在 Agent Controller 伴随窗口同步显示当前菜单、路径和执行结果，不抢夺 Codex 焦点，也不报告虚假的可见成功。

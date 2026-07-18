@@ -1,8 +1,8 @@
-# 轮盘弹窗（LB / RB / RT / Y）美化与重构方案
+# 控制器弹窗（LB / RB / RT / Y）Micro 风格重构方案
 
-> 状态：配色与 LB 键盘已实施；本地状态降级源已绑定；原生 Micro 状态源转入 todo/03 与 ADR-0002
+> 状态：LB 键盘与 RB / RT / Y 通用动作菜单已实施；原生 Micro 状态源转入 todo/03 与 ADR-0002
 > 编写日期：2026-07-16
-> 适用范围：`RadialMenuView` 及四个轮盘层（LB Agent / RB Command / RT Turn / Y Action）
+> 适用范围：`RadialMenuView` 承载的四个控制层（LB Agent / RB Command / RT Turn / Y Action）
 > 事实基线：[Codex Micro 使用说明](https://learn.chatgpt.com/docs/features/codex-micro)、[ADR-0002](adr/0002-codex-micro-native-compatibility.zh-CN.md)、`docs/codex-26.707.12708-vhf-status-input.zh-CN.md`
 
 ## 1. 问题诊断
@@ -29,25 +29,26 @@
 官方设备行为可直接照搬：六个 Agent 键各自跟随一个会话并用灯光显示
 状态；选中会话的键按其状态色脉冲。
 
-面板为 3×2 键位网格，布局镜像手柄物理位置（倒 T 方向簇的惯例）：
+面板为 2 列 × 3 行键位网格，按钮灯在左、任务标题在右：
 
 ```text
-[⧉ View·槽5]   [↑ 槽1]   [☰ Menu·槽6]
-[← 槽4]        [↓ 槽3]   [→ 槽2]
+[↑ LED · 槽1 标题]    [→ LED · 槽2 标题]
+[↓ LED · 槽3 标题]    [← LED · 槽4 标题]
+[View LED · 槽5 标题] [Menu LED · 槽6 标题]
 ```
 
-每个键 = 一张"Stream Deck 式"键帽卡片：
+每个槽位 = 一枚 Micro 风格实体键帽 + 标题行：
 
-- 左上：物理键 glyph 键帽章（沿用现有 `InputGlyph`）；
-- 右上：状态灯条（LED bar）；
-- 中部：任务标题（两行截断）；
-- 底部：`槽 N · 状态` 小字；`ConfirmationProgress` 复用为键底进度线。
+- 键帽左上：物理键 glyph（沿用现有 `InputGlyph`）；
+- 键帽中央：圆形状态灯及柔和 halo；
+- 键帽右侧：任务标题（单行截断）；
+- 底部：`ConfirmationProgress` 复用为细进度线，不再额外堆叠状态图例。
 
 收益：
 
 - Agent 层（最拥挤的一层）连线数量从 6 → 0，交叉问题从根上消失；
 - 与实体 Micro 用户共享同一套灯语和心智模型；
-- 面板约 560×340，比 980×560 轮盘遮挡更少的 Codex 界面。
+- 面板内容约 804×344，但只占据透明 Overlay 的上部，给下方 Codex popup 留出空间。
 
 ### 第二步：状态灯采用官方 Micro 灯语
 
@@ -73,50 +74,42 @@
   覆盖具体任务。当前版本没有该 proof，故命名任务仍使用已实施降级层。详见
   `docs/codex-26.707.12708-vhf-status-input.zh-CN.md`。
 
-### 第三步：RB / RT / Y 保留轮盘，但重绘 + 改连线逻辑
+### 第三步：RB / RT / Y 改为同族的实体键帽动作菜单
 
-面键 Y/B/A/X 的菱形与轮盘方位天然同构，轮盘隐喻对这三层是对的，
-问题只在皮肤和线：
+轮盘不再作为通用容器。三层统一使用 `ActionMenuView`：
 
-1. **扇区 → 卡片**。去掉填充扇区、逐扇区投影、模糊椭圆和玻璃内圈；
-   改为细虚线圆环作导轨 + 六张扁平卡片（`Brush.Bg.Surface`、
-   0.5–1px `Brush.Border.Subtle`、圆角 10）。高亮 = sage 填充
-   （`Color.Sage.*`）+ 深色文字，与应用内 Segments 一致。
-2. **连线新逻辑：默认 0 条，高亮时 1 条**。键帽章（每张卡片已有
-   glyph）承担"按哪个键"的说明职责；只有候选/高亮项绘制一条
-   120ms 画入的焦点线（2px，sage）。Learning 模式可在弹出后前
-   800ms 淡显全部线（15% 透明度）再淡出，作为一次性教学。
-3. **颜色的正确用法**：不做"每条线一个颜色"的彩虹（会与状态灯语
-   打架）。如必须常亮多条线，用"目标簇"分组着色（十字键一组、
-   View/Menu 一组、面键一组），上限 3 色。
-4. **中央手柄照片 → 单色线稿剪影**（Ink/Sand 描边，按下的控件以
-   sage 填充点亮）。todo 中已有 input-overlay 资产的引子。
-5. **标题栏瘦身**：左对齐紧凑条——[LB] 键帽章 + 标题。B 的提示按层
-   显示：LB/Y 是短按关闭，RB+B 是 Decline，只有会终止 turn 的 Base B 与
-   RT+B 才显示“长按 3 秒”。
-6. **动效**：入场 120ms 缩放淡入（0.96→1）、出场 80ms，节奏取
-   `Tokens.Motion.xaml`；高亮切换 150ms。
+1. **统一行结构**：58×58 实体键帽、右侧动作标题、可选短说明、可选细进度线。
+   六项菜单为 2 列 × 3 行；RT 只有四项时第三行真实折叠，面板随内容收缩。
+2. **保留物理空间线索**：Y/B/A/X 等面键的键帽左上显示 `↑/→/↓/←`，
+   Learning 模式底部额外显示 `↑Y →B ↓A ←X` 位置图例。字形来自当前
+   `ControllerProfile`，不把 Xbox 标签硬编码给其他手柄。
+3. **渐进式教学**：Learning 模式提供位置图例和按下高亮；Always 模式只保留
+   键帽与动作文字。新手能按位置寻找，熟手不会长期承受说明文字噪声。
+4. **选择与危险语义分离**：淡紫只表示当前焦点；确认进度使用琥珀；停止等
+   破坏性操作仍由标题、说明和长按进度共同表达，不把整张面板染红。
+5. **彻底删除旧轮盘资产**：不再创建扇区 Geometry、锚点、Bezier 连线、
+   写实手柄图片或光晕内圈。`RadialMenuView` 只负责在 Agent 与 Action 两种
+   专用组件之间切换。
+6. **标题栏瘦身**：左侧为修饰键键帽和层标题，右侧保留取消/释放提示；
+   面板固定出现在透明 Overlay 上部，避免占用下方 Codex popup 区域。
 
 ## 3. 实施拆分
 
 | 序 | 内容 | 触点 | 量级 |
 | --- | --- | --- | --- |
-| 1 | 抽 Overlay 配色 token（替换 RadialDial.* 硬编码） | `Tokens.Colors.xaml`、`RadialMenuView.xaml` | 0.5 天 |
-| 2 | 连线逻辑改"仅高亮一条"+ Learning 一次性淡显 | `RadialMenuView.xaml.cs`（`RefreshLeaderLines`/`AddLeaderPath`） | 0.5 天 |
-| 3 | 扇区→卡片 + 标题栏模板 + 动效 | `RadialMenuView.xaml`(.cs) | 1 天 |
-| 4 | `ThreadStatus` 枚举 + `RadialMenuItemState.Status` + LED 控件 | `Models`、`RadialMenuSlotViewModel` | 0.5 天 |
-| 5 | Agent 层键盘视图（`RadialMenuLayerKind.Agent` 分流到键盘模板） | 新 `AgentKeypadView` 或 View 内模板切换 | 1–1.5 天 |
-| 6 | 手柄线稿剪影资产 | `Assets/` | 0.5 天 |
-| 7 | P1 状态源探测（独立排期） | `CodexDataService` / App Server | 另计 |
-
-顺序建议 1→2 先行（一天内可见的"止丑"收益），3–6 为完整改版，
-7 与 v0.4b 状态研究合并推进。
+| 1 | 抽 Micro Panel / Physical Key / Progress 共用样式 | `Themes/Controls/Overlay.xaml` | 已完成 |
+| 2 | 删除轮盘 Geometry、连线、锚点和写实手柄 | `RadialMenuView.xaml`(.cs) | 已完成 |
+| 3 | RB / RT / Y 通用动作菜单 | `ActionMenuView.xaml` | 已完成 |
+| 4 | `ThreadStatus` + LB 状态灯控件 | `Models`、`AgentKeypadView.xaml` | 已完成 |
+| 5 | 手柄面键位置提示与 Learning 图例 | `RadialMenuSlotViewModel`、`ActionMenuView.xaml` | 已完成 |
+| 6 | P1 状态源探测（独立排期） | `CodexDataService` / App Server | 待办 |
 
 ## 4. 测试关注点
 
 - 键盘布局与 `AgentRadialSlotLayout.Bindings` 顺序的一致性
   （槽号 1–6 与物理键映射不因视图形态改变）；
 - `ThreadStatus.Unknown` 不得渲染为任何"确定"状态；
-- 高亮/取消/`ConfirmationProgress` 在键盘形态下的行为与轮盘等价；
+- 高亮/取消/`ConfirmationProgress` 在 Agent 与 Action 两种专用面板中行为等价；
 - Learning / Always / Off 三种显示模式在两种形态下语义不变；
+- 四项菜单必须折叠未使用行；面键位置提示必须随当前手柄 glyph 更新；
 - 深浅背景（Codex 深色主题）下 overlay 的可读性。

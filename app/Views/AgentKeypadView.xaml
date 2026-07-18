@@ -12,53 +12,6 @@
              IsHitTestVisible="False"
              SnapsToDevicePixels="True">
     <UserControl.Resources>
-        <LinearGradientBrush x:Key="AgentKeypad.PanelSurface"
-                             StartPoint="0,0"
-                             EndPoint="0,1">
-            <GradientStop Offset="0"
-                          Color="#FEFFFFFF" />
-            <GradientStop Offset="1"
-                          Color="#F8F1F1EC" />
-        </LinearGradientBrush>
-
-        <LinearGradientBrush x:Key="AgentKeypad.KeySurface"
-                             StartPoint="0,0"
-                             EndPoint="0,1">
-            <GradientStop Offset="0"
-                          Color="#FFFFFFFF" />
-            <GradientStop Offset="0.58"
-                          Color="#FFF8F8F5" />
-            <GradientStop Offset="1"
-                          Color="#FFEAEAE5" />
-        </LinearGradientBrush>
-
-        <Style x:Key="AgentKeypad.Progress"
-               TargetType="ProgressBar">
-            <Setter Property="Height" Value="3" />
-            <Setter Property="Foreground"
-                    Value="{StaticResource Brush.Agent.Glyph}" />
-            <Setter Property="Background"
-                    Value="{StaticResource Brush.Bg.Sunken}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ProgressBar">
-                        <Grid Height="{TemplateBinding Height}"
-                              ClipToBounds="True">
-                            <Rectangle Fill="{TemplateBinding Background}"
-                                       RadiusX="1.5"
-                                       RadiusY="1.5" />
-                            <Rectangle x:Name="PART_Indicator"
-                                       HorizontalAlignment="Left"
-                                       Fill="{TemplateBinding Foreground}"
-                                       RadiusX="1.5"
-                                       RadiusY="1.5" />
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="AgentKeypad.Key"
                TargetType="ContentControl">
             <Setter Property="Height" Value="78" />
@@ -81,15 +34,9 @@
                                 </Grid.ColumnDefinitions>
 
                                 <Border x:Name="Keycap"
-                                        Width="58"
-                                        Height="58"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
-                                        Background="{StaticResource AgentKeypad.KeySurface}"
-                                        BorderBrush="{StaticResource Brush.Border.Subtle}"
-                                        BorderThickness="1"
-                                        CornerRadius="13"
-                                        Effect="{StaticResource Shadow.AgentKey}">
+                                        Style="{StaticResource Overlay.PhysicalKey}">
                                     <Grid>
                                         <TextBlock x:Name="GlyphText"
                                                    Margin="8,5,0,0"
@@ -144,7 +91,7 @@
                                              Value="{Binding ConfirmationProgress, Mode=OneWay}">
                                     <ProgressBar.Style>
                                         <Style TargetType="ProgressBar"
-                                               BasedOn="{StaticResource AgentKeypad.Progress}">
+                                               BasedOn="{StaticResource Overlay.Progress}">
                                             <Setter Property="Visibility" Value="Visible" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding HasConfirmationProgress}"
@@ -293,11 +240,7 @@
                 Height="344"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Background="{StaticResource AgentKeypad.PanelSurface}"
-                BorderBrush="{StaticResource Brush.Overlay.Border.Frosted}"
-                BorderThickness="1"
-                CornerRadius="24"
-                Effect="{StaticResource Shadow.Overlay}">
+                Style="{StaticResource Overlay.MicroPanel}">
             <Grid Margin="20,14,20,14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="30" />
@@ -307,13 +250,8 @@
 
                 <StackPanel Orientation="Horizontal"
                             VerticalAlignment="Center">
-                    <Border Width="42"
-                            Height="26"
-                            Margin="0,0,10,0"
-                            Background="{StaticResource Brush.Bg.Surface}"
-                            BorderBrush="{StaticResource Brush.Border.Subtle}"
-                            BorderThickness="1"
-                            CornerRadius="8">
+                    <Border Style="{StaticResource Overlay.ModifierBadge}"
+                            Margin="0,0,10,0">
                         <TextBlock Text="{Binding ModifierGlyph}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"

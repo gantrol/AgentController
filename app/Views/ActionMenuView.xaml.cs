@@ -2,9 +2,9 @@ using UserControl = System.Windows.Controls.UserControl;
 
 namespace CodexController.Views;
 
-public partial class RadialMenuView : UserControl
+public partial class ActionMenuView : UserControl
 {
-    public RadialMenuView()
+    public ActionMenuView()
     {
         InitializeComponent();
     }

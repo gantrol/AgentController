@@ -4,6 +4,7 @@ namespace CodexController.ViewModels;
 
 public sealed class RadialMenuViewModel : ObservableObject
 {
+    private IReadOnlyList<RadialMenuSlotViewModel> _menuSlots = [];
     private RadialMenuLayerKind _layer;
     private string _title = string.Empty;
     private string _subtitle = string.Empty;
@@ -118,6 +119,12 @@ public sealed class RadialMenuViewModel : ObservableObject
 
     public RadialMenuSlotViewModel CenterRight { get; }
 
+    public IReadOnlyList<RadialMenuSlotViewModel> MenuSlots
+    {
+        get => _menuSlots;
+        private set => SetProperty(ref _menuSlots, value);
+    }
+
     public void Update(RadialMenuState state)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -139,6 +146,9 @@ public sealed class RadialMenuViewModel : ObservableObject
             state.GetItem(RadialMenuSlotPosition.CenterLeft));
         CenterRight.Update(
             state.GetItem(RadialMenuSlotPosition.CenterRight));
+        MenuSlots = AllSlots()
+            .Where(slot => slot.IsPresent)
+            .ToArray();
     }
 
     public bool TryAcceptInput(

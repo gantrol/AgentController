@@ -12,7 +12,7 @@
                       ShadowDepth="2"
                       Opacity="0.07"
                       Color="#161714" />
-    <DropShadowEffect x:Key="Shadow.AgentKey"
+    <DropShadowEffect x:Key="Shadow.OverlayKey"
                       BlurRadius="10"
                       ShadowDepth="3"
                       Opacity="0.12"
