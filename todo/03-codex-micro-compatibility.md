@@ -11,6 +11,20 @@
 
 这些文件记录的是指定 Codex 构建的兼容性观察，不是公开稳定 ABI。
 
+### `virtual-micro/` 参考审计（2026-07-18）
+
+`virtual-micro/` 是独立演进的小组件，只作为实现证据和协议参考；本项目不直接复制其构建产物，也不在本轮核心重构中修改它。
+
+- [x] 核对设备身份与 framing：VID `0x303A`、PID `0x8360`、Usage Page `0xFF00`、Report ID `0x06`、64-byte report、61-byte payload、64 KiB message 上限。
+- [x] 核对输入语义：key 的 `act=0/1/2`、dial 的 `a/d`、tap 的 down/up、编码器旋转，以及批量发送的 version/sequence/result。
+- [x] 核对当前默认布局：ACT06 Fast、ACT07 Approve、ACT08 Reject、ACT09 Split、ACT10/11 Mic、ACT12 Codex。
+- [x] 发现新增的 `composer-navigation` 编码器模式，可用于输入框工具遍历；它不能继续被主程序硬编码成 reasoning 调节。
+- [x] 发现实现/文档漂移：安装脚本当前选择 `CodexMicroVhfUm`（UMDF2），README/DESIGN 仍以 `CodexMicroVhf.sys`（KMDF）为正式路径。
+- [ ] 将稳定常量、codec 和 golden vectors 提取为唯一协议来源，避免主项目与 `virtual-micro/` 各自维护副本。
+- [ ] 将物理输入先映射成设备无关 intent，再由 layout/context 决定 `composer-navigation`、reasoning 或自定义动作。
+- [ ] 用含 NotSent、Accepted、OutcomeUnknown、Rejected 的结果替代当前 named-pipe `bool`，保留序号、计数与驱动状态。
+- [ ] 在选定 KMDF 或 UMDF2 路径前，用目标 Windows/WDK 版本完成安装、重启、HVCI、Secure Boot 和卸载矩阵；同步删除另一套误导性文档与产物。
+
 ## 目标
 
 把 Micro 的 Agent Key、Command Key、Analog 和 Dial 作为统一设备交互模型，同时将私有 HID 协议限制在可熔断、可替换、可独立测试的适配模块。
@@ -54,7 +68,7 @@
 - [ ] Driver、Broker 和桌面客户端保持三个独立组件。
 - [ ] 驱动只处理 HID report 与有界队列，不解析 JSON。
 - [ ] Broker 实现协议、指纹、ACL、背压、状态事件和诊断。
-- [ ] 用户手动安装、测试签名和卸载；正式应用不静默更改系统安全设置。
+- [ ] 开发者可手动安装、测试签名和卸载；正式应用不静默导入自签名根证书、不启用 TESTSIGNING，也不更改 Secure Boot/HVCI。
 - [ ] 完成 node-hid 64-byte 与 VHF `HID_XFER_PACKET` 长度回环验证。
 - [ ] 连续 100 次方向/Command 动作无丢失、重复或卡住后再做发行评审。
 

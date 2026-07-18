@@ -33,6 +33,21 @@
 - [ ] macOS 应用、helper、entitlement 和公证产物进入自动验证。
 - [ ] Updater 使用签名清单，失败时保留可回滚版本。
 
+### Windows 驱动发行
+
+正式用户不应安装 WDK、运行 Inf2Cat/SignTool 或自行编译驱动。源码构建与测试证书只属于开发/明确选择加入的测试通道。
+
+- [ ] 先统一 `virtual-micro/` 的 KMDF/UMDF2 实现、INF、硬件 ID、安装脚本和文档，再冻结待认证的唯一驱动包。
+- [ ] 建立可复现 CI：输出 INF、CAT、SYS/DLL、版本信息、SHA-256、SBOM 和安装清单；用户机器不参与编译或制包。
+- [ ] 取得 EV 代码签名证书并注册 Windows Hardware Developer Program；正式包经 Hardware Dev Center 签名。
+- [ ] 将 HLK/WHQL 作为面向普通用户和 Windows Update 分发的目标；attestation/test 包只用于受控验证，不作为默认零售通道。
+- [ ] 桌面应用与驱动分别签名；提供最小权限的提权安装器、显式授权、安装前兼容性检查、健康检查、精确卸载和失败回滚。
+- [ ] 在干净 Windows 10/11、Secure Boot 开/关、Memory Integrity/HVCI 开/关、升级/降级/重启矩阵中验证，无 WDK/Visual Studio 依赖。
+- [ ] 驱动未达到签名发行门槛时保持 Experimental/可选；无驱动时 App Server 和桌面自动化主路径仍完整可用。
+- [ ] 发布说明明确区分 Developer test package 与 Microsoft-signed release package，禁止引导普通用户信任项目自签名根证书或修改启动安全策略。
+
+依据：[微软 VHF 总览](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-)、[公开发行签名](https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/signing-a-driver-for-public-release)、[Partner Center for Windows Hardware](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/)。
+
 ### 法律与品牌
 
 - [ ] 明确 Agent Controller、Codex、Codex Micro、Work Louder 的品牌边界。
