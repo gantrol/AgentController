@@ -1132,34 +1132,7 @@ public partial class MainWindow : Window
                     "Deny");
                 break;
             case RadialInputAction.Fork:
-                if (TryExecuteMicroInput(
-                        _microInput.TryForkThread,
-                        RadialText("分支任务", "Fork task")))
-                {
-                    break;
-                }
-
-                if (_agentShortcuts.Execute(
-                        _settings.ForkShortcut,
-                        _settings))
-                {
-                    var forkTitle =
-                        RadialText("分支任务", "Fork task");
-                    ClearNavigationUndo();
-                    AddEvent(
-                        $"{forkTitle} · {_settings.ForkShortcut}");
-                    Pulse();
-                    break;
-                }
-
-                ExecuteNamedRadialAction(
-                    RadialText("分支任务", "Fork task"),
-                    "Fork",
-                    "Fork task",
-                    "Fork thread",
-                    "Branch",
-                    "Branch task",
-                    "Continue in new task");
+                ExecuteForkAction();
                 break;
             case RadialInputAction.PushToTalk:
                 if (!_radialPushToTalkActive)
@@ -1494,25 +1467,58 @@ public partial class MainWindow : Window
         Pulse(strength: result.Succeeded ? 0.22 : 0.1);
     }
 
-    private bool TryExecuteMicroInput(
-        Func<bool> execute,
-        string title)
+    private void ExecuteForkAction()
     {
-        if (
-            !_settings.BridgeEnabled ||
-            (
-                _settings.OnlyWhenCodexForeground &&
-                !_activeAgent.Presence.IsForeground
-            ) ||
-            !execute())
+        _ = ExecuteForkActionAsync();
+    }
+
+    private async Task ExecuteForkActionAsync()
+    {
+        var isTurnLayer = _radialLayer == RadialMenuLayerKind.Turn;
+        var result = await TryExecuteActionAsync(
+            ForkThreadActionContract.Id,
+            "controller.active",
+            isTurnLayer
+                ? "controller.radial.turn.fork"
+                : "controller.radial.command.fork",
+            isTurnLayer ? "radial.turn" : "radial.command",
+            "thread.fork",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var title = RadialText("分支任务", "Fork task");
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
-            return false;
+            ClearNavigationUndo();
         }
 
-        ClearNavigationUndo();
-        AddEvent($"{title} · Micro HID");
-        Pulse();
-        return true;
+        var evidenceCode = result?.Evidence.FirstOrDefault()?.Code;
+        var fastPath = evidenceCode switch
+        {
+            "thread.fork.micro-requested" => "Micro HID",
+            "thread.fork.shortcut-sent" => _settings.ForkShortcut,
+            _ => null,
+        };
+        if (succeeded && !string.IsNullOrWhiteSpace(fastPath))
+        {
+            AddEvent($"{title} · {fastPath}");
+            Pulse();
+            return;
+        }
+
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                succeeded,
+                result?.ErrorCode));
+        ShowFeedback(
+            title,
+            succeeded
+                ? RadialText("已执行。", "Executed.")
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.22 : 0.1);
     }
 
     private void ExecuteNewTaskAction()

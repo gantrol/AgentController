@@ -19,8 +19,8 @@
 ### M1：抽核心，不改行为
 
 - [x] 引入 Domain/Application/Platform.Abstractions。
-- [ ] 现有 WPF 引用新核心，用户可见行为保持一致；open/create/submit/clear/stop 自动化回归已通过，README 实机步骤待复验。
-- [x] 按可回滚动作链迁移并删除旧直接路径；Composer 同通道的 submit/clear/stop 复用一个 executor，且 clear/stop 分别强制 ConfirmationRequired/HighRisk。
+- [ ] 现有 WPF 引用新核心，用户可见行为保持一致；open/create/fork/submit/clear/stop 自动化回归已通过，README 实机步骤待复验。
+- [x] 按可回滚动作链迁移并删除旧直接路径；Composer 同通道动作复用 executor，Fork 的 Micro/快捷键/UIA 回退则封装为独立 adapter policy。
 
 ### M2：替换权威通道
 

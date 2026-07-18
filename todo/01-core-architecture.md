@@ -57,6 +57,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] `thread.create` 第二个垂直切片已删除 WPF 内的 UIA/快捷键回退策略；Codex executor 统一执行“查找 New task 控件，找不到时回退 Ctrl+N”，WPF 只消费 `ActionResult`。
   - [x] `composer.submit` 与 `composer.clear` 共用一个 Codex Composer executor；旧 `IComposerAutomation.Submit/Clear` 直达入口已删除，清空动作在 executor 边界强制要求 `ConfirmationRequired`。
   - [x] 三秒 B 长按后的 `turn.stop` 已接入同一 Composer executor，并在执行边界强制要求 `HighRisk`；短按 B 的菜单关闭、导航撤回和本地取消仍保持独立分流。
+  - [x] `thread.fork` 已将 Micro、配置快捷键和 UIA 的有序回退移出 WPF；窗口内仅供 Fork 使用的 `TryExecuteMicroInput` helper 已删除。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -125,3 +126,11 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `turn.stop` 在 executor 边界要求 `HighRisk`，UIA Stop/Cancel 按钮调用只返回 `AcceptedUnverified` 与 `UiObservation/turn.stop.control-invoked`，不宣称任务状态已经停止。
 - `StopCurrentTurn` 中直接调用 `IComposerAutomation.InvokeAction` 的旧执行路径已删除；短按所用 `CancelComposer` 暂留，因为其 UIA/Escape fallback 属于不同的本地取消语义。
 - 新增 3 项合同测试，并加强 Submit、Clear、Create 对通道证据的断言；完整 Release solution 测试 647/647（旧客户端 620、Application 5、Domain 15、Architecture 7）。README 的三秒长按停止仍需实机 readback 验收。
+
+### 2026-07-18：`thread.fork` 多通道回退切片
+
+- Command/Turn 面板的 Fork 现在统一发射 `thread.fork` routine 请求；Codex executor 保留原顺序 Micro → 用户配置快捷键 → 多语言 UIA 控件，并在 Bridge/前台门禁失败时不触碰任何执行通道。
+- Micro bool 同时覆盖 broker Accepted 与 OutcomeUnknown，因此只报告 `Transport/thread.fork.micro-requested`；快捷键报告 `Transport/thread.fork.shortcut-sent`，UIA 报告 `UiObservation/thread.fork.control-invoked`，三者均为 `AcceptedUnverified`。
+- `MainWindow` 内的三层选择逻辑和仅供 Fork 使用的 `TryExecuteMicroInput` 已删除；保留原有 Micro/快捷键快速路径日志与 UIA 反馈行为。
+- 四个 Codex executor 共享仅处理 adapter 协议样板的 `CodexActionExecutorBase`；具体 action capability、安全等级和 fallback 顺序不进入基类，避免用继承隐藏业务策略。
+- 新增 6 项 executor 合同测试，覆盖顺序短路、两级 fallback、UIA action names、门禁、NotSent 与 capability 缺失；完整 Release solution 测试 653/653（旧客户端 626、Application 5、Domain 15、Architecture 7）。Fork 仍需实机确认最终新任务 readback。

@@ -199,3 +199,12 @@ AgentController.Application/
 - Stop 的 UIA 调用是请求证据而非状态证据，因此结果为 `AcceptedUnverified`；后续应由 App Server 或独立状态观察器确认任务确已停止。
 - 短按 B 的本地取消状态机没有并入 `turn.stop`，避免菜单关闭、录音中止和导航撤回意外升级为高风险业务动作。
 - 自动化证据更新为旧客户端 620 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 647 passed、0 failed、0 skipped；README 的长按停止步骤尚待实机复验。
+
+### 2026-07-18：`thread.fork` fallback adapter
+
+- Fork 的 Micro HID、用户配置快捷键与 UIA action names 现在属于 Codex adapter policy；WPF 只提供来源/上下文并消费最终 `ActionResult`，不再决定 executor 顺序。
+- capability probe 在执行前应用 Bridge 和前台门禁；成功后只保留实际命中通道的一条 evidence，失败的前置尝试不被描述为已发送。
+- Micro transport 的旧 bool 无法区分 Accepted 和 OutcomeUnknown，所以 evidence 使用保守的 `micro-requested`，并保持 `AcceptedUnverified`；后续 Micro adapter 应直接暴露三态结果而非 bool。
+- `TryExecuteMicroInput` 随唯一调用方一起删除；新的 Fork executor 是具备真实三通道策略的 adapter，不是为单个 Action 建立的空壳层。
+- 四个真实 Codex executor 出现稳定重复后，公共的取消检查、结果/evidence 构造和自动化错误映射才下沉到 `CodexActionExecutorBase`；各动作的 capability 与 fallback policy 仍留在具体 adapter 中。
+- 自动化证据更新为旧客户端 626 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 653 passed、0 failed、0 skipped；Fork 最终状态仍需实机 readback。

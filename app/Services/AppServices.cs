@@ -101,6 +101,20 @@ public sealed class AppServices : IDisposable
             currentSettings.ActiveAgentId);
         var actionRouter = new ActionRouter(
         [
+            new CodexForkThreadActionExecutor(
+                () => !currentSettings.BridgeEnabled
+                    ? AgentAutomationErrorCodes.BridgeSafePreview
+                    : currentSettings.OnlyWhenCodexForeground &&
+                      !codexCommand.IsCodexForeground
+                        ? AgentAutomationErrorCodes.AgentNotForeground
+                        : null,
+                microInput.TryForkThread,
+                () => codexCommand.ExecuteShortcut(
+                    currentSettings.ForkShortcut,
+                    currentSettings),
+                actionNames => codexComposer.InvokeComposerAction(
+                    currentSettings,
+                    actionNames)),
             new CodexComposerActionExecutor(
                 () => codexComposer.SubmitComposer(currentSettings),
                 () => codexComposer.ClearComposer(currentSettings),

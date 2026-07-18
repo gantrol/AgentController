@@ -3,75 +3,42 @@ using AgentController.Domain.Actions;
 
 namespace CodexController.Agents.Codex;
 
-public sealed class CodexOpenThreadActionExecutor : IActionExecutor
+public sealed class CodexOpenThreadActionExecutor : CodexActionExecutorBase
 {
     public const string ExecutorId = "codex.deep-link";
 
     private readonly Func<string, bool>? _openThread;
-    private readonly Func<DateTimeOffset> _clock;
 
     public CodexOpenThreadActionExecutor(
         Func<string, bool>? openThread,
         Func<DateTimeOffset>? clock = null)
+        : base(ExecutorId, clock)
     {
         _openThread = openThread;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
-    public string Id => ExecutorId;
+    protected override ExecutorCapability ProbeCore(ActionRequest request) =>
+        CapabilityFor(request);
 
-    public ValueTask<ExecutorCapability> ProbeAsync(
-        ActionRequest request,
-        CancellationToken cancellationToken = default)
+    protected override ActionResult ExecuteCore(ActionRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(CapabilityFor(request));
-    }
-
-    public ValueTask<ActionResult> ExecuteAsync(
-        ActionRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
         var capability = CapabilityFor(request);
         if (capability.Status != ExecutorCapabilityStatus.Available)
         {
-            return ValueTask.FromResult(new ActionResult(
-                request.RequestId,
-                request.ActionId,
-                capability.Status == ExecutorCapabilityStatus.Blocked
-                    ? ActionOutcome.Blocked
-                    : ActionOutcome.Unsupported,
-                Id,
-                _clock(),
-                errorCode: capability.ReasonCode));
+            return Unavailable(request, capability);
         }
 
         var opened = _openThread!(
             request.Parameters[OpenThreadActionContract.ThreadIdParameter]);
-        var completedAt = _clock();
-        return ValueTask.FromResult(new ActionResult(
-            request.RequestId,
-            request.ActionId,
-            opened
-                ? ActionOutcome.AcceptedUnverified
-                : ActionOutcome.NotSent,
-            Id,
-            completedAt,
-            evidence: opened
-                ?
-                [
-                    new ActionEvidence(
-                        ActionEvidenceKind.Transport,
-                        Id,
-                        "thread.open.requested",
-                        completedAt,
-                        confidence: 1),
-                ]
-                : null,
-            errorCode: opened ? null : "thread.open.not-sent"));
+        return opened
+            ? AcceptedUnverified(
+                request,
+                ActionEvidenceKind.Transport,
+                "thread.open.requested")
+            : Complete(
+                request,
+                ActionOutcome.NotSent,
+                "thread.open.not-sent");
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)

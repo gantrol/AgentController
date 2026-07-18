@@ -4,67 +4,47 @@ using CodexController.Services;
 
 namespace CodexController.Agents.Codex;
 
-public sealed class CodexComposerActionExecutor : IActionExecutor
+public sealed class CodexComposerActionExecutor : CodexActionExecutorBase
 {
     public const string ExecutorId = "codex.composer-command";
 
     private readonly Func<ComposerAutomationResult>? _submit;
     private readonly Func<ComposerAutomationResult>? _clear;
     private readonly Func<ComposerAutomationResult>? _stop;
-    private readonly Func<DateTimeOffset> _clock;
 
     public CodexComposerActionExecutor(
         Func<ComposerAutomationResult>? submit,
         Func<ComposerAutomationResult>? clear,
         Func<ComposerAutomationResult>? stop = null,
         Func<DateTimeOffset>? clock = null)
+        : base(ExecutorId, clock)
     {
         _submit = submit;
         _clear = clear;
         _stop = stop;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
-    public string Id => ExecutorId;
+    protected override ExecutorCapability ProbeCore(ActionRequest request) =>
+        CapabilityFor(request);
 
-    public ValueTask<ExecutorCapability> ProbeAsync(
-        ActionRequest request,
-        CancellationToken cancellationToken = default)
+    protected override ActionResult ExecuteCore(ActionRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(CapabilityFor(request));
-    }
-
-    public ValueTask<ActionResult> ExecuteAsync(
-        ActionRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
         var capability = CapabilityFor(request);
         if (capability.Status != ExecutorCapabilityStatus.Available)
         {
-            return ValueTask.FromResult(Complete(
-                request,
-                capability.Status == ExecutorCapabilityStatus.Blocked
-                    ? ActionOutcome.Blocked
-                    : ActionOutcome.Unsupported,
-                capability.ReasonCode));
+            return Unavailable(request, capability);
         }
 
         var automation = OperationFor(request.ActionId)!();
         if (!automation.Succeeded)
         {
-            return ValueTask.FromResult(Complete(
+            return Complete(
                 request,
-                FailureOutcome(automation.Error),
-                automation.Error));
+                AutomationFailureOutcome(automation.Error),
+                automation.Error);
         }
 
-        return ValueTask.FromResult(CompleteSuccessful(
-            request,
-            automation));
+        return CompleteSuccessful(request, automation);
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
@@ -136,21 +116,11 @@ public sealed class CodexComposerActionExecutor : IActionExecutor
                 "action.evidence.missing");
         }
 
-        var completedAt = _clock();
-        return new ActionResult(
-            request.RequestId,
-            request.ActionId,
+        return CompleteWithEvidence(
+            request,
             descriptor.Value.Outcome,
-            Id,
-            completedAt,
-            [
-                new ActionEvidence(
-                    descriptor.Value.EvidenceKind,
-                    Id,
-                    descriptor.Value.EvidenceCode,
-                    completedAt,
-                    confidence: 1),
-            ]);
+            descriptor.Value.EvidenceKind,
+            descriptor.Value.EvidenceCode);
     }
 
     private static SuccessDescriptor? SuccessDescriptorFor(
@@ -187,35 +157,6 @@ public sealed class CodexComposerActionExecutor : IActionExecutor
 
         return null;
     }
-
-    private static ActionOutcome FailureOutcome(string? errorCode) =>
-        errorCode switch
-        {
-            AgentAutomationErrorCodes.BridgeSafePreview or
-            AgentAutomationErrorCodes.AgentNotForeground or
-            AgentAutomationErrorCodes.ComposerEmpty =>
-                ActionOutcome.Blocked,
-            AgentAutomationErrorCodes.CapabilityUnavailable =>
-                ActionOutcome.Unsupported,
-            AgentAutomationErrorCodes.AgentWindowNotFound or
-            AgentAutomationErrorCodes.ElementNotFound or
-            AgentAutomationErrorCodes.FocusRejected or
-            AgentAutomationErrorCodes.InputInjectionFailed =>
-                ActionOutcome.NotSent,
-            _ => ActionOutcome.Failed,
-        };
-
-    private ActionResult Complete(
-        ActionRequest request,
-        ActionOutcome outcome,
-        string? errorCode) =>
-        new(
-            request.RequestId,
-            request.ActionId,
-            outcome,
-            Id,
-            _clock(),
-            errorCode: errorCode);
 
     private readonly record struct SuccessDescriptor(
         ActionOutcome Outcome,

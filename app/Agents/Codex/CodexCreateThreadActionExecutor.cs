@@ -4,7 +4,7 @@ using CodexController.Services;
 
 namespace CodexController.Agents.Codex;
 
-public sealed class CodexCreateThreadActionExecutor : IActionExecutor
+public sealed class CodexCreateThreadActionExecutor : CodexActionExecutorBase
 {
     public const string ExecutorId = "codex.thread-create-fallback";
     public const string Shortcut = "Ctrl+N";
@@ -22,42 +22,26 @@ public sealed class CodexCreateThreadActionExecutor : IActionExecutor
     private readonly Func<string[], ComposerAutomationResult>?
         _invokeAutomation;
     private readonly Func<string, bool>? _executeShortcut;
-    private readonly Func<DateTimeOffset> _clock;
 
     public CodexCreateThreadActionExecutor(
         Func<string[], ComposerAutomationResult>? invokeAutomation,
         Func<string, bool>? executeShortcut,
         Func<DateTimeOffset>? clock = null)
+        : base(ExecutorId, clock)
     {
         _invokeAutomation = invokeAutomation;
         _executeShortcut = executeShortcut;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
-    public string Id => ExecutorId;
+    protected override ExecutorCapability ProbeCore(ActionRequest request) =>
+        CapabilityFor(request);
 
-    public ValueTask<ExecutorCapability> ProbeAsync(
-        ActionRequest request,
-        CancellationToken cancellationToken = default)
+    protected override ActionResult ExecuteCore(ActionRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(CapabilityFor(request));
-    }
-
-    public ValueTask<ActionResult> ExecuteAsync(
-        ActionRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
         var capability = CapabilityFor(request);
         if (capability.Status != ExecutorCapabilityStatus.Available)
         {
-            return ValueTask.FromResult(Result(
-                request,
-                ActionOutcome.Unsupported,
-                capability.ReasonCode));
+            return Unavailable(request, capability);
         }
 
         var automation = _invokeAutomation?.Invoke(ActionNames);
@@ -66,16 +50,16 @@ public sealed class CodexCreateThreadActionExecutor : IActionExecutor
             if (automation.Channel !=
                 ComposerAutomationChannel.UiAutomation)
             {
-                return ValueTask.FromResult(Result(
+                return Complete(
                     request,
                     ActionOutcome.Failed,
-                    "action.evidence.missing"));
+                    "action.evidence.missing");
             }
 
-            return ValueTask.FromResult(Accepted(
+            return AcceptedUnverified(
                 request,
                 ActionEvidenceKind.UiObservation,
-                "thread.create.control-invoked"));
+                "thread.create.control-invoked");
         }
 
         if (automation is null ||
@@ -86,24 +70,24 @@ public sealed class CodexCreateThreadActionExecutor : IActionExecutor
         {
             if (_executeShortcut?.Invoke(Shortcut) == true)
             {
-                return ValueTask.FromResult(Accepted(
+                return AcceptedUnverified(
                     request,
                     ActionEvidenceKind.Transport,
-                    "thread.create.shortcut-sent"));
+                    "thread.create.shortcut-sent");
             }
 
-            return ValueTask.FromResult(Result(
+            return Complete(
                 request,
                 ActionOutcome.NotSent,
                 _executeShortcut is null
                     ? automation?.Error ?? "thread.create.not-sent"
-                    : AgentAutomationErrorCodes.InputInjectionFailed));
+                    : AgentAutomationErrorCodes.InputInjectionFailed);
         }
 
-        return ValueTask.FromResult(Result(
+        return Complete(
             request,
             ActionOutcome.Failed,
-            automation.Error));
+            automation.Error);
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
@@ -130,37 +114,4 @@ public sealed class CodexCreateThreadActionExecutor : IActionExecutor
                 : null);
     }
 
-    private ActionResult Accepted(
-        ActionRequest request,
-        ActionEvidenceKind evidenceKind,
-        string evidenceCode)
-    {
-        var completedAt = _clock();
-        return new ActionResult(
-            request.RequestId,
-            request.ActionId,
-            ActionOutcome.AcceptedUnverified,
-            Id,
-            completedAt,
-            [
-                new ActionEvidence(
-                    evidenceKind,
-                    Id,
-                    evidenceCode,
-                    completedAt,
-                    confidence: 1),
-            ]);
-    }
-
-    private ActionResult Result(
-        ActionRequest request,
-        ActionOutcome outcome,
-        string? errorCode) =>
-        new(
-            request.RequestId,
-            request.ActionId,
-            outcome,
-            Id,
-            _clock(),
-            errorCode: errorCode);
 }
