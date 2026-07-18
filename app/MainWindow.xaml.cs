@@ -2319,31 +2319,36 @@ public partial class MainWindow : Window
 
             _conversationBoundaryHoldCancellation = null;
             _conversationBoundaryHoldTarget = null;
-            var result = await _composerAutomation
-                .ScrollConversationAsync(
-                    boundary,
-                    _settings,
-                    CancellationToken.None)
+            var actionId = boundary == ConversationBoundary.Top
+                ? ConversationActionContract.ScrollTopId
+                : ConversationActionContract.ScrollBottomId;
+            var result = await TryExecuteActionAsync(
+                    actionId,
+                    "controller.active",
+                    boundary == ConversationBoundary.Top
+                        ? "controller.dpad.up.hold"
+                        : "controller.dpad.down.hold",
+                    "conversation.navigation",
+                    actionId.Value,
+                    ActionSafetyLevel.Routine)
                 .ConfigureAwait(true);
+            var succeeded = result?.Outcome == ActionOutcome.Succeeded;
             var title = boundary == ConversationBoundary.Top
                 ? RadialText("已置顶", "Jumped to top")
                 : RadialText("已置底", "Jumped to bottom");
             AddEvent(
                 title +
                 ExecutionSuffix(
-                    result.Succeeded,
-                    result.Error,
-                    result.ErrorDetail));
-            if (!result.Succeeded)
+                    succeeded,
+                    result?.ErrorCode));
+            if (!succeeded)
             {
                 ShowFeedback(
                     title,
-                    ExecutionFailureLabel(
-                        result.Error,
-                        result.ErrorDetail));
+                    ExecutionFailureLabel(result?.ErrorCode));
             }
 
-            Pulse(strength: result.Succeeded ? 0.18 : 0.1);
+            Pulse(strength: succeeded ? 0.18 : 0.1);
         }
         catch (OperationCanceledException)
         {

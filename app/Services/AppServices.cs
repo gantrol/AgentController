@@ -122,6 +122,13 @@ public sealed class AppServices : IDisposable
                 shortcut => codexCommand.ExecuteShortcut(
                     shortcut,
                     currentSettings)),
+            new CodexConversationActionExecutor(
+                codexActionBlockReason,
+                (boundary, cancellationToken) =>
+                    codexComposer.ScrollConversationAsync(
+                        boundary,
+                        currentSettings,
+                        cancellationToken)),
             new CodexComposerActionExecutor(
                 () => codexComposer.SubmitComposer(currentSettings),
                 () => codexComposer.ClearComposer(currentSettings),

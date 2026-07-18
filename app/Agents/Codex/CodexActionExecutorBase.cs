@@ -34,12 +34,14 @@ public abstract class CodexActionExecutorBase : IActionExecutor
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ExecuteCore(request));
+        return ExecuteCoreAsync(request, cancellationToken);
     }
 
     protected abstract ExecutorCapability ProbeCore(ActionRequest request);
 
-    protected abstract ActionResult ExecuteCore(ActionRequest request);
+    protected abstract ValueTask<ActionResult> ExecuteCoreAsync(
+        ActionRequest request,
+        CancellationToken cancellationToken);
 
     protected ActionResult Unavailable(
         ActionRequest request,
@@ -113,7 +115,8 @@ public abstract class CodexActionExecutorBase : IActionExecutor
             AgentAutomationErrorCodes.AgentWindowNotFound or
             AgentAutomationErrorCodes.ElementNotFound or
             AgentAutomationErrorCodes.FocusRejected or
-            AgentAutomationErrorCodes.InputInjectionFailed =>
+            AgentAutomationErrorCodes.InputInjectionFailed or
+            AgentAutomationErrorCodes.OperationCanceled =>
                 ActionOutcome.NotSent,
             _ => ActionOutcome.Failed,
         };

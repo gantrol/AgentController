@@ -20,7 +20,12 @@ public sealed class CodexOpenThreadActionExecutor : CodexActionExecutorBase
     protected override ExecutorCapability ProbeCore(ActionRequest request) =>
         CapabilityFor(request);
 
-    protected override ActionResult ExecuteCore(ActionRequest request)
+    protected override ValueTask<ActionResult> ExecuteCoreAsync(
+        ActionRequest request,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(ExecuteCore(request));
+
+    private ActionResult ExecuteCore(ActionRequest request)
     {
         var capability = CapabilityFor(request);
         if (capability.Status != ExecutorCapabilityStatus.Available)

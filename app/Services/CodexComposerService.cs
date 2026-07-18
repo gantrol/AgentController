@@ -2113,7 +2113,7 @@ public sealed partial class CodexComposerService
                 }
 
                 pattern.Invoke();
-                return UiAutomationActionSucceeded();
+                return UiAutomationSucceeded();
             }
 
             return new(
@@ -2130,10 +2130,12 @@ public sealed partial class CodexComposerService
         }
     }
 
-    internal static ComposerAutomationResult UiAutomationActionSucceeded() =>
+    internal static ComposerAutomationResult UiAutomationSucceeded(
+        bool stateVerified = false) =>
         new(
             true,
-            Channel: ComposerAutomationChannel.UiAutomation);
+            Channel: ComposerAutomationChannel.UiAutomation,
+            StateVerified: stateVerified);
 
     public Task<ComposerAutomationResult> InvokeComposerActionAsync(
         AppSettings settings,
@@ -2217,7 +2219,7 @@ public sealed partial class CodexComposerService
                 !scroll.Value.Pattern.Current.VerticallyScrollable ||
                 scroll.Value.Pattern.Current.VerticalViewSize >= 99.5)
             {
-                return new(true);
+                return UiAutomationSucceeded(stateVerified: true);
             }
 
             var target = boundary == ConversationBoundary.Top
@@ -2237,7 +2239,7 @@ public sealed partial class CodexComposerService
                     current == ScrollPattern.NoScroll ||
                     Math.Abs(current - target) <= 1.5)
                 {
-                    return new(true);
+                    return UiAutomationSucceeded(stateVerified: true);
                 }
             }
             while (Environment.TickCount64 < deadline);
@@ -2505,10 +2507,7 @@ public sealed partial class CodexComposerService
             }
 
             return WaitForComposerTextToClear(editor, timeoutMs: 280)
-                ? new(
-                    true,
-                    Channel: ComposerAutomationChannel.UiAutomation,
-                    StateVerified: true)
+                ? UiAutomationSucceeded(stateVerified: true)
                 : new(
                     false,
                     AgentAutomationErrorCodes.ElementUnsupported,
@@ -2684,9 +2683,7 @@ public sealed partial class CodexComposerService
             try
             {
                 pattern.Invoke();
-                return new(
-                    true,
-                    Channel: ComposerAutomationChannel.UiAutomation);
+                return UiAutomationSucceeded();
             }
             catch (ElementNotAvailableException)
             {

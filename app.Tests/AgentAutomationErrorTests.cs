@@ -95,17 +95,20 @@ public sealed class AgentAutomationErrorTests
         Assert.Equal("Ctrl+Enter", result.ErrorDetail);
     }
 
-    [Fact]
-    public void ComposerUiAutomationActionReportsItsChannel()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComposerUiAutomationSuccessReportsItsEvidence(
+        bool stateVerified)
     {
         var result =
-            CodexComposerService.UiAutomationActionSucceeded();
+            CodexComposerService.UiAutomationSucceeded(stateVerified);
 
         Assert.True(result.Succeeded);
         Assert.Equal(
             ComposerAutomationChannel.UiAutomation,
             result.Channel);
-        Assert.False(result.StateVerified);
+        Assert.Equal(stateVerified, result.StateVerified);
     }
 
     [Fact]

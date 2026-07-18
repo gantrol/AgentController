@@ -221,3 +221,10 @@ AgentController.Application/
 - D-pad 上/下短按现在发射 `conversation.previous-user-message` / `conversation.next-user-message`，legacy input map 不再知道 `Alt+Up` / `Alt+Down`。
 - 两项意图复用 Codex shell adapter 与 transport evidence；对应的 4 秒回顶、3 秒到底仍是单独的 hold lifecycle，避免短按迁移改变长按边界。
 - 自动化证据更新为旧客户端 636 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 663 passed、0 failed、0 skipped。
+
+### 2026-07-18：异步会话边界 action adapter
+
+- `conversation.scroll-top` / `conversation.scroll-bottom` 进入 Application action 链；旧 UI 的 hold threshold 与 release cancellation 保持不变，阈值后的执行策略移入 Codex adapter。
+- executor 公共模板支持异步 `ValueTask` 核心并透传 cancellation；同步 Open/Create/Fork/Composer/Shell executors 仍使用 completed result，不为异步能力复制第二套协议样板。
+- Conversation executor 等待 UIA 滚动百分比 readback，只有 `UiAutomation + StateVerified` 才产生 `Succeeded`；旧 `IComposerAutomation.ScrollConversationAsync` 迁移接口随唯一调用方删除。
+- 自动化证据更新为旧客户端 650 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 677 passed、0 failed、0 skipped。

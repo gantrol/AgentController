@@ -60,6 +60,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] `thread.fork` 已将 Micro、配置快捷键和 UIA 的有序回退移出 WPF；窗口内仅供 Fork 使用的 `TryExecuteMicroInput` helper 已删除。
   - [x] 动作面板的前进、后退和切换侧边栏已改为 `navigation.forward`、`navigation.back`、`sidebar.toggle`；快捷键映射与执行门禁由同一个 Codex shell executor 持有。
   - [x] 十字键短按的上一条/下一条用户消息已改为 `conversation.previous-user-message` / `conversation.next-user-message`；4 秒回顶与 3 秒到底的长按状态机保持独立。
+  - [x] 十字键长按阈值后的回顶/到底已改为 `conversation.scroll-top` / `conversation.scroll-bottom`；异步 executor 只有在 UIA 滚动位置 readback 后才返回 `Succeeded`。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -148,3 +149,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `ConversationTurnInputMap` 不再暴露 `Alt+Up` / `Alt+Down`，而是把短按意图映射为 `conversation.previous-user-message` / `conversation.next-user-message`；具体快捷键由现有 `CodexShellActionExecutor` 追加映射。
 - D-pad down edge 仍同时启动原有 boundary hold 计时；只有持续 4 秒/3 秒才分别进入回顶/到底路径，本切片没有迁移或修改该长按自动化。
 - shell executor 新增 2 组映射合同数据，完整 Release solution 测试 663/663（旧客户端 636、Application 5、Domain 15、Architecture 7）。README 的短按与长按组合仍需实机验收。
+
+### 2026-07-18：会话边界长按 action 切片
+
+- 4 秒回顶与 3 秒到底的 hold lifecycle 仍由原协调阶段判断阈值和提前释放；阈值满足后分别发射 `conversation.scroll-top` / `conversation.scroll-bottom`，WPF 不再直接调用 Composer UIA port。
+- `CodexActionExecutorBase` 的核心执行模板改为 `ValueTask`，同步 executor 继续返回 completed result，新 `CodexConversationActionExecutor` 则等待真实 UIA Task 与取消令牌，没有同步阻塞 Dispatcher。
+- 滚动服务成功现在明确报告 `UiAutomation + StateVerified`；executor 只有同时得到这两项证据才返回 `Succeeded` 与 `UiObservation/*.verified`，否则以 `action.evidence.missing` 失败关闭。
+- 旧 `IComposerAutomation.ScrollConversationAsync`、Codex adapter 转发和 null fallback 已删除；新增 14 个测试案例后，完整 Release solution 测试 677/677（旧客户端 650、Application 5、Domain 15、Architecture 7）。README 的短按/长按组合仍需实机验收。
