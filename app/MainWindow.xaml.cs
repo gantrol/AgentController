@@ -74,6 +74,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _dataTimer;
     private readonly DispatcherTimer _radialLearningTimer;
     private readonly RadialMenuInteractionState _radialInteraction = new();
+    private readonly RadialActionConfirmationState _radialConfirmation =
+        new();
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
@@ -101,7 +103,6 @@ public partial class MainWindow : Window
     private bool _radialLayerCancelled;
     private bool _radialActionTriggered;
     private bool _radialPushToTalkActive;
-    private bool _actionPanelClearArmed;
     private bool _rightTriggerCandidate;
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
@@ -138,7 +139,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _composerPickerCancellation;
     private CancellationTokenSource? _navigationConfirmCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
-    private CancellationTokenSource? _actionPanelConfirmationCancellation;
+    private CancellationTokenSource? _radialConfirmationCancellation;
     private CancellationTokenSource? _cancelHoldCancellation;
     private CancellationTokenSource?
         _conversationBoundaryHoldCancellation;
@@ -864,6 +865,11 @@ public partial class MainWindow : Window
             return RadialInputMap.FrozenBaseButtons;
         }
 
+        if (_radialConfirmation.CancelUnless(action))
+        {
+            CancelRadialConfirmation();
+        }
+
         if (KeepsRadialOpenForFollowUp(action))
         {
             _radialActionTriggered = true;
@@ -906,10 +912,16 @@ public partial class MainWindow : Window
             action == RadialInputAction.PushToTalk ||
             action == RadialInputAction.BeginStopHold ||
             (
-                action == RadialInputAction.ClearComposer &&
-                !_actionPanelClearArmed
+                RequiresSecondPress(action) &&
+                !_radialConfirmation.IsPending(action)
             );
     }
+
+    private static bool RequiresSecondPress(
+        RadialInputAction action) =>
+        action is
+            RadialInputAction.Approve or
+            RadialInputAction.ClearComposer;
 
     private async Task ExecuteRadialActionAfterAcknowledgementAsync(
         RadialInputAction action)
@@ -1085,9 +1097,7 @@ public partial class MainWindow : Window
         _radialLayerStartedAt = 0;
         _radialHighlightedItemId = null;
         _radialInteraction.Reset();
-        _actionPanelClearArmed = false;
-        _actionPanelConfirmationCancellation?.Cancel();
-        _actionPanelConfirmationCancellation = null;
+        CancelRadialConfirmation();
         if (clearSuppression)
         {
             _radialSuppressedButtons = ControllerButtons.None;
@@ -1114,7 +1124,7 @@ public partial class MainWindow : Window
                 ExecuteFastToggle();
                 break;
             case RadialInputAction.Approve:
-                ExecuteApproveAction();
+                ConfirmOrApproveAction();
                 break;
             case RadialInputAction.Decline:
                 _ = ExecuteUiCommandActionAsync(
@@ -1219,24 +1229,65 @@ public partial class MainWindow : Window
 
     private void ConfirmOrClearComposer()
     {
-        if (!_actionPanelClearArmed)
-        {
-            _actionPanelClearArmed = true;
-            _radialHighlightedItemId = "action-clear";
-            RefreshRadialMenu();
-            ShowFeedback(
-                RadialText("清空当前输入", "Clear current input"),
+        var title = RadialText(
+            "清空当前输入",
+            "Clear current input");
+        if (!ConfirmRadialAction(
+                RadialInputAction.ClearComposer,
+                title,
                 RadialText(
-                    "再次按 A 确认 · B 取消",
-                    "Press A again to confirm · B cancels"));
-            Pulse(strength: 0.12);
-            ScheduleActionPanelClearDisarm();
+                    $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认 · " +
+                    $"{Glyph(LogicalInput.FaceEast)} 取消",
+                    $"Press {Glyph(LogicalInput.FaceSouth)} again " +
+                    $"to confirm · {Glyph(LogicalInput.FaceEast)} cancels")))
+        {
             return;
         }
 
-        _actionPanelConfirmationCancellation?.Cancel();
-        _actionPanelConfirmationCancellation = null;
         _ = ClearComposerAsync();
+    }
+
+    private void ConfirmOrApproveAction()
+    {
+        var title = RadialText("接受更改", "Approve changes");
+        if (!ConfirmRadialAction(
+                RadialInputAction.Approve,
+                title,
+                RadialText(
+                    $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认 · " +
+                    $"松开 {Glyph(LogicalInput.RightShoulder)} 取消",
+                    $"Press {Glyph(LogicalInput.FaceSouth)} again " +
+                    $"to confirm · release " +
+                    $"{Glyph(LogicalInput.RightShoulder)} to cancel")))
+        {
+            return;
+        }
+
+        _ = ExecuteUiCommandActionAsync(
+            ApprovalActionContract.AcceptId,
+            title,
+            "controller.radial.command.approve",
+            "radial.command",
+            ActionSafetyLevel.HighRisk);
+    }
+
+    private bool ConfirmRadialAction(
+        RadialInputAction action,
+        string title,
+        string confirmationPrompt)
+    {
+        if (_radialConfirmation.TryConfirm(action))
+        {
+            CancelRadialConfirmation();
+            return true;
+        }
+
+        _radialHighlightedItemId = RadialActionId(action);
+        RefreshRadialMenu();
+        ShowFeedback(title, confirmationPrompt);
+        Pulse(strength: 0.12);
+        ScheduleRadialConfirmationDisarm(action);
+        return false;
     }
 
     private async Task ClearComposerAsync()
@@ -1268,15 +1319,17 @@ public partial class MainWindow : Window
         Pulse(strength: succeeded ? 0.2 : 0.1);
     }
 
-    private void ScheduleActionPanelClearDisarm()
+    private void ScheduleRadialConfirmationDisarm(
+        RadialInputAction action)
     {
-        _actionPanelConfirmationCancellation?.Cancel();
+        _radialConfirmationCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
-        _actionPanelConfirmationCancellation = cancellation;
-        _ = DisarmActionPanelClearAsync(cancellation);
+        _radialConfirmationCancellation = cancellation;
+        _ = DisarmRadialConfirmationAsync(action, cancellation);
     }
 
-    private async Task DisarmActionPanelClearAsync(
+    private async Task DisarmRadialConfirmationAsync(
+        RadialInputAction action,
         CancellationTokenSource cancellation)
     {
         try
@@ -1287,15 +1340,19 @@ public partial class MainWindow : Window
             if (
                 cancellation.IsCancellationRequested ||
                 !ReferenceEquals(
-                    _actionPanelConfirmationCancellation,
+                    _radialConfirmationCancellation,
                     cancellation))
             {
                 return;
             }
 
-            _actionPanelClearArmed = false;
+            if (!_radialConfirmation.TryExpire(action))
+            {
+                return;
+            }
+
             _radialHighlightedItemId = null;
-            _actionPanelConfirmationCancellation = null;
+            _radialConfirmationCancellation = null;
             RefreshRadialMenu();
         }
         catch (OperationCanceledException)
@@ -1306,6 +1363,13 @@ public partial class MainWindow : Window
         {
             cancellation.Dispose();
         }
+    }
+
+    private void CancelRadialConfirmation()
+    {
+        _radialConfirmation.Reset();
+        _radialConfirmationCancellation?.Cancel();
+        _radialConfirmationCancellation = null;
     }
 
     private void OpenAgentSlot(int slotIndex)
@@ -1436,41 +1500,12 @@ public partial class MainWindow : Window
             _localization.Strings.ConfigToggleFast);
     }
 
-    private void ExecuteApproveAction()
-    {
-        var title = RadialText("接受更改", "Approve changes");
-        var result = _composerAutomation.InvokeAction(
-            _settings,
-            "Approve",
-            "Accept",
-            "Accept changes",
-            "Allow",
-            "Allow once",
-            "Continue");
-        if (result.Succeeded)
-        {
-            ClearNavigationUndo();
-        }
-
-        AddEvent(
-            title +
-            ExecutionSuffix(
-                result.Succeeded,
-                result.Error,
-                result.ErrorDetail));
-        ShowFeedback(
-            title,
-            result.Succeeded
-                ? RadialText("已执行。", "Executed.")
-                : ExecutionFailureLabel(result.Error));
-        Pulse(strength: result.Succeeded ? 0.22 : 0.1);
-    }
-
     private async Task ExecuteUiCommandActionAsync(
         ActionId actionId,
         string title,
         string controlId,
-        string context)
+        string context,
+        ActionSafetyLevel safetyLevel = ActionSafetyLevel.Routine)
     {
         var result = await TryExecuteActionAsync(
             actionId,
@@ -1478,7 +1513,7 @@ public partial class MainWindow : Window
             controlId,
             context,
             actionId.Value,
-            ActionSafetyLevel.Routine)
+            safetyLevel)
             .ConfigureAwait(true);
         var succeeded = result?.Outcome is
             ActionOutcome.Succeeded or
@@ -1726,7 +1761,16 @@ public partial class MainWindow : Window
                 "command-approve",
                 RadialMenuSlotPosition.Bottom,
                 LogicalInput.FaceSouth,
-                RadialText("接受更改", "Approve changes")),
+                RadialText("接受更改", "Approve changes"),
+                _radialConfirmation.IsPending(
+                    RadialInputAction.Approve)
+                    ? RadialText(
+                        $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认",
+                        $"Press {Glyph(LogicalInput.FaceSouth)} " +
+                        "again to confirm")
+                    : RadialText(
+                        "需要二次确认",
+                        "Requires confirmation")),
             RadialItem(
                 "command-fork",
                 RadialMenuSlotPosition.Left,
@@ -1811,10 +1855,12 @@ public partial class MainWindow : Window
                 RadialMenuSlotPosition.CenterLeft,
                 LogicalInput.FaceSouth,
                 RadialText("清空当前输入", "Clear current input"),
-                _actionPanelClearArmed
+                _radialConfirmation.IsPending(
+                    RadialInputAction.ClearComposer)
                     ? RadialText(
-                        "再次按 A 确认",
-                        "Press A again to confirm")
+                        $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认",
+                        $"Press {Glyph(LogicalInput.FaceSouth)} " +
+                        "again to confirm")
                     : RadialText(
                         "需要二次确认",
                         "Requires confirmation")),

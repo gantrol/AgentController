@@ -54,36 +54,15 @@ public sealed class CodexComposerActionExecutor : CodexActionExecutorBase
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
     {
-        var knownAction =
+        var operation = OperationFor(request.ActionId);
+        return RouteCapability(
+            request,
             request.ActionId == ComposerActionContract.SubmitId ||
             request.ActionId == ComposerActionContract.ClearId ||
-            request.ActionId == TurnActionContract.StopId;
-        var operation = OperationFor(request.ActionId);
-        var requiredSafety = RequiredSafetyFor(request.ActionId);
-        if (operation is not null && request.SafetyLevel < requiredSafety)
-        {
-            return new ExecutorCapability(
-                Id,
-                request.ActionId,
-                ExecutorCapabilityStatus.Blocked,
-                Priority: 100,
-                ReasonCode: requiredSafety == ActionSafetyLevel.HighRisk
-                    ? "action.high-risk-confirmation-required"
-                    : "action.confirmation-required");
-        }
-
-        return new ExecutorCapability(
-            Id,
-            request.ActionId,
-            operation is not null
-                ? ExecutorCapabilityStatus.Available
-                : ExecutorCapabilityStatus.Unsupported,
-            Priority: 100,
-            ReasonCode: operation is not null
-                ? null
-                : knownAction
-                    ? "agent.composer-command.unavailable"
-                    : "action.unsupported");
+            request.ActionId == TurnActionContract.StopId,
+            operation is not null,
+            "agent.composer-command.unavailable",
+            requiredSafety: RequiredSafetyFor(request.ActionId));
     }
 
     private Func<ComposerAutomationResult>? OperationFor(ActionId actionId)

@@ -61,7 +61,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 动作面板的前进、后退和切换侧边栏已改为 `navigation.forward`、`navigation.back`、`sidebar.toggle`；快捷键映射与执行门禁由同一个 Codex shell executor 持有。
   - [x] 十字键短按的上一条/下一条用户消息已改为 `conversation.previous-user-message` / `conversation.next-user-message`；4 秒回顶与 3 秒到底的长按状态机保持独立。
   - [x] 十字键长按阈值后的回顶/到底已改为 `conversation.scroll-top` / `conversation.scroll-bottom`；异步 executor 只有在 UIA 滚动位置 readback 后才返回 `Succeeded`。
-  - [x] Command/Turn 面板的 Decline、Steer、Queue 已改为 `approval.decline`、`turn.steer`、`turn.queue`；Approve 在高风险确认 UX 落地前显式保留为唯一 named UIA 直达路径。
+  - [x] Command/Turn 面板的 Approve、Decline、Steer、Queue 已改为 `approval.accept`、`approval.decline`、`turn.steer`、`turn.queue`；Approve 先经过可复用双确认状态，再由 executor 强制复核 `HighRisk`。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -162,5 +162,13 @@ Native helper <-> versioned local IPC <-> Platform adapter
 
 - Decline、Steer、Queue 现在分别发射 `approval.decline`、`turn.steer`、`turn.queue`；Codex UI command executor 持有多语言 action names，并只把 `UiAutomation` 控件调用报告为 `AcceptedUnverified`。
 - 四个已有 adapter 重复的 supported/available/blocked capability 构造已收敛到 `RouteCapability`；具体 action 判定、执行通道和 unavailable code 仍由各 executor 提供，本切片的生产代码净增约 106 行。
-- Approve 没有伪装成 routine action：`MainWindow.ExecuteApproveAction` 是当前唯一 named UIA 直达路径，等待独立的二次确认或长按 UX 后再迁移。
+- 该切片没有把 Approve 伪装成 routine action：当时的 `MainWindow.ExecuteApproveAction` 作为唯一 named UIA 直达路径保留，随后由下一个高风险确认切片迁移。
 - 新增 11 个 UI command 合同案例。由于既有 `BridgeFeedbackPresenter` dispose/queue 竞态连续污染完整套件，最新 688 项基线采用可审计拆分验收：排除该项的 solution 687/687，加该项隔离运行 1/1；Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Approve 高风险确认切片
+
+- Command 面板第一次按确认键只将 `approval.accept` 置为待确认；2.5 秒内再次按同一键才发射请求，松开 RB、关闭面板、超时或插入其他动作都会取消该序列。
+- 清空输入与 Approve 复用 `RadialActionConfirmationState`，不再由 WPF 各自维护确认布尔值；菜单提示使用当前手柄 profile 的 glyph，避免继续写死 A/RB 文案。
+- `CodexUiCommandActionExecutor` 接管原 `MainWindow.ExecuteApproveAction` 中的多语言 UIA control names，并在触碰 UIA 前拒绝低于 `HighRisk` 的请求；公共 `RouteCapability` 同时承接 Composer 与 UI command 的安全级别门禁。
+- UIA Invoke 仍只返回 `AcceptedUnverified` 与 `UiObservation/approval.accept.control-invoked`，不宣称审批业务状态已改变；verified approval context 仍待 `ContextResolver` 切片完成。
+- 新增 9 个测试案例；最新 697 项基线采用 696 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。README/实机仍需验证双按、超时、松开 RB 和控件缺失路径。

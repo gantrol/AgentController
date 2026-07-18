@@ -9,6 +9,16 @@ public sealed class CodexUiCommandActionExecutor :
 {
     public const string ExecutorId = "codex.ui-command";
 
+    private static readonly string[] AcceptActionNames =
+    [
+        "Approve",
+        "Accept",
+        "Accept changes",
+        "Allow",
+        "Allow once",
+        "Continue",
+    ];
+
     private static readonly string[] DeclineActionNames =
     [
         "Decline",
@@ -92,10 +102,22 @@ public sealed class CodexUiCommandActionExecutor :
             ActionNamesFor(request.ActionId) is not null,
             _invokeAutomation is not null,
             "agent.ui-command.unavailable",
-            _blockReason);
+            _blockReason,
+            RequiredSafetyFor(request.ActionId));
+
+    private static ActionSafetyLevel RequiredSafetyFor(
+        ActionId actionId) =>
+        actionId == ApprovalActionContract.AcceptId
+            ? ActionSafetyLevel.HighRisk
+            : ActionSafetyLevel.Routine;
 
     private static string[]? ActionNamesFor(ActionId actionId)
     {
+        if (actionId == ApprovalActionContract.AcceptId)
+        {
+            return AcceptActionNames;
+        }
+
         if (actionId == ApprovalActionContract.DeclineId)
         {
             return DeclineActionNames;

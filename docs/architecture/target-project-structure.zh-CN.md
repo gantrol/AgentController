@@ -234,5 +234,14 @@ AgentController.Application/
 - `approval.decline`、`turn.steer`、`turn.queue` 进入 Application action 链；多语言 UIA control names 从 WPF switch 移入 `CodexUiCommandActionExecutor`。
 - 三项调用只产生 `UiObservation/*.control-invoked` 与 `AcceptedUnverified`，不把按钮 Invoke 冒充业务状态已改变；缺失 UIA channel 时以 `action.evidence.missing` 失败关闭。
 - `RouteCapability` 统一 adapter 的 supported/route available/block gate 样板，Create、Fork、Shell、Conversation 与 UI command 仍各自声明真实通道和 fallback policy。
-- Approve 因产品安全规范要求二次确认或长按，暂不加入 routine executor；这是有意保留的单一 legacy seam。
+- 该切片暂未迁移 Approve：产品安全规范要求先具备二次确认或长按，因此当时有意保留单一 legacy seam，随后由下一个高风险切片收口。
 - 最新 688 项基线以 687 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1 通过；Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Approve 双确认与高风险 action 边界
+
+- `approval.accept` 已进入现有 Application action 链；旧 WPF 第一次按确认键只进入 2.5 秒待确认态，第二次同动作才构造 `HighRisk` 请求，任何中间动作、超时或 radial layer reset 都会清除确认权。
+- `RadialActionConfirmationState` 同时服务 Approve 与清空输入，窗口只管理展示和 timer lifetime；后续迁出 radial coordinator 时无需再拆两套确认标志。
+- `CodexUiCommandActionExecutor` 持有 Approve/Accept/Allow 等 UIA action names，并复用 `RouteCapability` 的安全等级检查；低安全级别在自动化前返回 `action.high-risk-confirmation-required`。
+- 成功 Invoke 只生成 `AcceptedUnverified` 和 `UiObservation/approval.accept.control-invoked`。真正的批准状态、选中任务和 approval context 仍须由后续 App Server/ContextResolver 提供权威观察。
+- `MainWindow.ExecuteApproveAction` 及最后一条 named UIA 同步直连路径已删除；当前剩余的语音与模型选择自动化属于已记录的独立兼容问题，本切片没有改动。
+- 自动化证据为旧客户端 670 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 697 项；采用 696 项排除已知竞态后全绿 + 该项隔离 1/1 的可审计拆分，Release 构建 0 warnings、0 errors。

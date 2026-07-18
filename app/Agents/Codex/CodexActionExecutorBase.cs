@@ -48,7 +48,9 @@ public abstract class CodexActionExecutorBase : IActionExecutor
         bool supportsAction,
         bool executionAvailable,
         string unavailableReasonCode,
-        Func<string?>? blockReason = null)
+        Func<string?>? blockReason = null,
+        ActionSafetyLevel requiredSafety =
+            ActionSafetyLevel.Routine)
     {
         if (!supportsAction)
         {
@@ -68,6 +70,19 @@ public abstract class CodexActionExecutorBase : IActionExecutor
                 ExecutorCapabilityStatus.Unsupported,
                 Priority: 100,
                 ReasonCode: unavailableReasonCode);
+        }
+
+        if (request.SafetyLevel < requiredSafety)
+        {
+            return new ExecutorCapability(
+                Id,
+                request.ActionId,
+                ExecutorCapabilityStatus.Blocked,
+                Priority: 100,
+                ReasonCode:
+                    requiredSafety == ActionSafetyLevel.HighRisk
+                        ? "action.high-risk-confirmation-required"
+                        : "action.confirmation-required");
         }
 
         var reason = blockReason?.Invoke();

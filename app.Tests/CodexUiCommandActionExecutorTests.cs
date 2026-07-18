@@ -10,12 +10,20 @@ namespace CodexController.Tests;
 public sealed class CodexUiCommandActionExecutorTests
 {
     [Theory]
-    [InlineData("approval.decline", "Decline")]
-    [InlineData("turn.steer", "Steer")]
-    [InlineData("turn.queue", "Queue")]
+    [InlineData(
+        "approval.accept",
+        "Approve",
+        ActionSafetyLevel.HighRisk)]
+    [InlineData(
+        "approval.decline",
+        "Decline",
+        ActionSafetyLevel.Routine)]
+    [InlineData("turn.steer", "Steer", ActionSafetyLevel.Routine)]
+    [InlineData("turn.queue", "Queue", ActionSafetyLevel.Routine)]
     public async Task KnownActionInvokesMappedUiControl(
         string actionIdValue,
-        string expectedActionName)
+        string expectedActionName,
+        ActionSafetyLevel safetyLevel)
     {
         string[]? receivedNames = null;
         var executor = new CodexUiCommandActionExecutor(
@@ -27,7 +35,8 @@ public sealed class CodexUiCommandActionExecutorTests
             });
 
         var result = await executor.ExecuteAsync(CreateRequest(
-            ActionId.Parse(actionIdValue)));
+            ActionId.Parse(actionIdValue),
+            safetyLevel));
 
         Assert.Contains(expectedActionName, receivedNames!);
         Assert.Equal(ActionOutcome.AcceptedUnverified, result.Outcome);
@@ -36,6 +45,32 @@ public sealed class CodexUiCommandActionExecutorTests
         Assert.Equal(
             $"{actionIdValue}.control-invoked",
             evidence.Code);
+    }
+
+    [Theory]
+    [InlineData(ActionSafetyLevel.Routine)]
+    [InlineData(ActionSafetyLevel.ConfirmationRequired)]
+    public async Task AcceptRequiresHighRiskConfirmation(
+        ActionSafetyLevel safetyLevel)
+    {
+        var calls = 0;
+        var executor = new CodexUiCommandActionExecutor(
+            blockReason: null,
+            _ =>
+            {
+                calls++;
+                return CodexComposerService.UiAutomationSucceeded();
+            });
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            ApprovalActionContract.AcceptId,
+            safetyLevel));
+
+        Assert.Equal(0, calls);
+        Assert.Equal(ActionOutcome.Blocked, result.Outcome);
+        Assert.Equal(
+            "action.high-risk-confirmation-required",
+            result.ErrorCode);
     }
 
     [Fact]
@@ -126,13 +161,15 @@ public sealed class CodexUiCommandActionExecutorTests
             _ => CodexComposerService.UiAutomationSucceeded());
 
         var result = await executor.ExecuteAsync(CreateRequest(
-            ActionId.Parse("approval.accept")));
+            ActionId.Parse("approval.pause")));
 
         Assert.Equal(ActionOutcome.Unsupported, result.Outcome);
         Assert.Equal("action.unsupported", result.ErrorCode);
     }
 
-    private static ActionRequest CreateRequest(ActionId actionId)
+    private static ActionRequest CreateRequest(
+        ActionId actionId,
+        ActionSafetyLevel safetyLevel = ActionSafetyLevel.Routine)
     {
         var requestId = Guid.NewGuid();
         return new ActionRequest(
@@ -143,7 +180,7 @@ public sealed class CodexUiCommandActionExecutorTests
                 ControlId.Parse("controller.radial.command")),
             InputContext.Parse("radial.command"),
             $"test-{requestId:N}",
-            ActionSafetyLevel.Routine,
+            safetyLevel,
             DateTimeOffset.UtcNow);
     }
 }
