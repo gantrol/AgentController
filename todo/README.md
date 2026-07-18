@@ -25,7 +25,7 @@
 | 06 | [macOS 平台](06-macos-platform.md) | Planned | 01、02、05 |
 | 07 | [安全、发行与商业化](07-security-packaging-and-commercialization.md) | Planned | 全局 |
 | 08 | [测试、诊断与发布工程](08-testing-observability-and-release.md) | Planned | 全局 |
-| 09 | [渐进迁移与兼容策略](09-migration-and-compatibility.md) | Planned | 01–08 |
+| 09 | [渐进迁移与兼容策略](09-migration-and-compatibility.md) | In Progress | 01–08 |
 | 90 | [v0.7 维护清单](90-v0.7-maintenance.md) | Maintenance | 当前 WPF 版本 |
 
 ## 建议执行阶段

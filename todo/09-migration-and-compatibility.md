@@ -1,6 +1,6 @@
 # 09 — 渐进迁移与兼容策略
 
-> Status: Planned
+> Status: In Progress
 > Priority: P0
 > Depends on: 01–08
 
@@ -18,9 +18,9 @@
 
 ### M1：抽核心，不改行为
 
-- [ ] 引入 Domain/Application/Platform.Abstractions。
-- [ ] 现有 WPF 引用新核心，用户可见行为保持一致。
-- [ ] 一次只迁移一条动作链，并保留旧路径的回归测试。
+- [x] 引入 Domain/Application/Platform.Abstractions。
+- [ ] 现有 WPF 引用新核心，用户可见行为保持一致；`thread.open` 自动化回归已通过，README 实机步骤待复验。
+- [x] 一次只迁移一条动作链，并保留旧路径的回归测试；首条为 `thread.open`。
 
 ### M2：替换权威通道
 

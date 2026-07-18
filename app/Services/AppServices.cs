@@ -1,3 +1,4 @@
+using AgentController.Application.Actions;
 using CodexController.Agents;
 using CodexController.Agents.Codex;
 using CodexController.Controllers;
@@ -31,7 +32,8 @@ public sealed class AppServices : IDisposable
         CodexComposerService codexComposer,
         CodexSidebarService codexSidebar,
         XInputService controller,
-        ControllerInteractionCoordinator controllerInteraction)
+        ControllerInteractionCoordinator controllerInteraction,
+        ActionRouter actionRouter)
     {
         BridgeEvents = bridgeEvents;
         Localization = localization;
@@ -48,6 +50,7 @@ public sealed class AppServices : IDisposable
         CodexSidebar = codexSidebar;
         Controller = controller;
         ControllerInteraction = controllerInteraction;
+        ActionRouter = actionRouter;
     }
 
     public BridgeEventHub BridgeEvents { get; }
@@ -65,6 +68,7 @@ public sealed class AppServices : IDisposable
     public CodexSidebarService CodexSidebar { get; }
     public XInputService Controller { get; }
     public ControllerInteractionCoordinator ControllerInteraction { get; }
+    public ActionRouter ActionRouter { get; }
 
     public static AppServices CreateDefault()
     {
@@ -90,6 +94,11 @@ public sealed class AppServices : IDisposable
             CodexAgentTarget.CodexId);
         var activeAgent = agentTargets.Resolve(
             settings.Load().ActiveAgentId);
+        var actionRouter = new ActionRouter(
+        [
+            new CodexOpenThreadActionExecutor(
+                CodexCommandService.OpenThread),
+        ]);
         return new AppServices(
             new BridgeEventHub(),
             localization,
@@ -105,7 +114,8 @@ public sealed class AppServices : IDisposable
             codexComposer,
             codexSidebar,
             new XInputService(controllerProfiles),
-            new ControllerInteractionCoordinator());
+            new ControllerInteractionCoordinator(),
+            actionRouter);
     }
 
     public void Dispose()

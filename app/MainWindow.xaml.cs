@@ -5,6 +5,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using AgentController.Application.Actions;
+using AgentController.Domain.Actions;
+using AgentController.Domain.Inputs;
 using CodexController.Agents;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
@@ -53,6 +56,7 @@ public partial class MainWindow : Window
     private readonly IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
     private readonly ControllerInteractionCoordinator _controllerInteraction;
+    private readonly ActionRouter _actionRouter;
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
@@ -179,6 +183,7 @@ public partial class MainWindow : Window
         _keybindingProvisioner = _activeAgent.Keybindings;
         _xInputService = services.Controller;
         _controllerInteraction = services.ControllerInteraction;
+        _actionRouter = services.ActionRouter;
         _bridgeEvents = services.BridgeEvents;
         _localization = services.Localization;
         _microInput = services.MicroInput;
@@ -1337,10 +1342,12 @@ public partial class MainWindow : Window
         }
 
         SelectVisibleThread(thread.Id);
-        OpenThreadNow(
+        _ = OpenThreadAsync(
             thread.Id,
             thread.Title,
-            thread.NativeTitle ?? thread.Title);
+            thread.NativeTitle ?? thread.Title,
+            deviceId: "controller.active",
+            controlId: "controller.radial.agent-slot");
     }
 
     private void OpenAdjacentAgentTask(int direction)
@@ -1395,10 +1402,12 @@ public partial class MainWindow : Window
               tasks.Count;
         var next = tasks[nextIndex];
         SelectVisibleThread(next.ThreadId!);
-        OpenThreadNow(
+        _ = OpenThreadAsync(
             next.ThreadId!,
             next.Title,
-            next.NativeTitle ?? next.Title);
+            next.NativeTitle ?? next.Title,
+            deviceId: "controller.active",
+            controlId: "controller.radial.navigate");
     }
 
     private void SelectVisibleThread(string threadId)
@@ -1935,44 +1944,46 @@ public partial class MainWindow : Window
     private void ExecuteControllerInteractionIntent(
         ControllerInteractionIntent intent)
     {
-        switch (intent)
+        switch (intent.Kind)
         {
-            case ControllerInteractionIntent.CycleRootSidebarScope:
+            case ControllerInteractionIntentKind.CycleRootSidebarScope:
                 CycleRootSidebarScope();
                 break;
-            case ControllerInteractionIntent.BeginVirtualDialPress:
+            case ControllerInteractionIntentKind.BeginVirtualDialPress:
                 BeginVirtualDialPress();
                 break;
-            case ControllerInteractionIntent.EndVirtualDialPress:
+            case ControllerInteractionIntentKind.EndVirtualDialPress:
                 EndVirtualDialPress();
                 break;
-            case ControllerInteractionIntent.NavigateConversationTurn navigation:
-                NavigateConversationTurn(navigation.Action);
-                BeginConversationBoundaryHold(navigation.Action);
+            case ControllerInteractionIntentKind.NavigateConversationTurn:
+                NavigateConversationTurn(intent.ConversationAction);
+                BeginConversationBoundaryHold(intent.ConversationAction);
                 break;
-            case ControllerInteractionIntent.EndConversationBoundaryHold release:
-                EndConversationBoundaryHold(release.ReleasedButtons);
+            case ControllerInteractionIntentKind.EndConversationBoundaryHold:
+                EndConversationBoundaryHold(intent.ReleasedButtons);
                 break;
-            case ControllerInteractionIntent.NavigateSidebarHorizontal navigation:
+            case ControllerInteractionIntentKind.NavigateSidebarHorizontal:
                 _controllerInteraction.RequireLeftStickNeutral();
-                NavigateSidebarHorizontal(navigation.Direction);
+                NavigateSidebarHorizontal(intent.Direction);
                 break;
-            case ControllerInteractionIntent.OpenActionPanel:
+            case ControllerInteractionIntentKind.OpenActionPanel:
                 OpenActionPanel();
                 break;
-            case ControllerInteractionIntent.SelectVirtualDialOption:
+            case ControllerInteractionIntentKind.SelectVirtualDialOption:
                 SelectVirtualDialOption();
                 break;
-            case ControllerInteractionIntent.OpenSelectedSidebarTask:
-                OpenSelectedSidebarTask();
+            case ControllerInteractionIntentKind.OpenSelectedSidebarTask:
+                OpenSelectedSidebarTask(
+                    deviceId: "controller.active",
+                    controlId: "controller.face.south");
                 break;
-            case ControllerInteractionIntent.SendPrompt:
+            case ControllerInteractionIntentKind.SendPrompt:
                 SendPrompt();
                 break;
-            case ControllerInteractionIntent.BeginBaseCancelPress:
+            case ControllerInteractionIntentKind.BeginBaseCancelPress:
                 BeginBaseCancelPress();
                 break;
-            case ControllerInteractionIntent.EndBaseCancelPress:
+            case ControllerInteractionIntentKind.EndBaseCancelPress:
                 EndBaseCancelPress();
                 break;
             default:
@@ -2484,7 +2495,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenSelectedSidebarTask()
+    private void OpenSelectedSidebarTask(
+        string deviceId,
+        string controlId)
     {
         var entry = DevicePage.SelectedEntry;
         switch (SidebarNavigationIntentResolver.ResolvePrimary(entry))
@@ -2510,10 +2523,12 @@ public partial class MainWindow : Window
                 return;
         }
 
-        OpenThreadNow(
+        _ = OpenThreadAsync(
             entry!.ThreadId!,
             entry.Title,
-            entry.NativeTitle ?? entry.Title);
+            entry.NativeTitle ?? entry.Title,
+            deviceId,
+            controlId);
     }
 
     private void ActivateSelectedSidebarEntryFromPointer()
@@ -2524,7 +2539,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpenSelectedSidebarTask();
+        OpenSelectedSidebarTask(
+            deviceId: "desktop.pointer",
+            controlId: "pointer.primary");
     }
 
     private void EnterProjectTasks(
@@ -2931,10 +2948,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenThreadNow(
+    private async Task OpenThreadAsync(
         string threadId,
         string threadTitle,
-        string nativeThreadTitle)
+        string nativeThreadTitle,
+        string deviceId,
+        string controlId)
     {
         if (
             _settings.OnlyWhenCodexForeground &&
@@ -2954,7 +2973,38 @@ public partial class MainWindow : Window
 
         ClearNavigationUndo();
         var previousTitle = _sidebarAutomation.TryGetCurrentThreadTitle();
-        if (_activeAgent.DeepLinks?.OpenThread(threadId) == true)
+        var requestId = Guid.NewGuid();
+        var request = new ActionRequest(
+            requestId,
+            OpenThreadActionContract.Id,
+            new ActionSource(
+                deviceId,
+                ControlId.Parse(controlId)),
+            InputContext.Parse("sidebar.task"),
+            $"thread.open:{threadId}:{requestId:N}",
+            ActionSafetyLevel.Routine,
+            DateTimeOffset.UtcNow,
+            new Dictionary<string, string>
+            {
+                [OpenThreadActionContract.ThreadIdParameter] = threadId,
+            });
+        ActionResult result;
+        try
+        {
+            result = await _actionRouter.ExecuteAsync(request)
+                .ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            AddEvent(_localization.Strings.Format(
+                StringKeys.MessageOpenThreadFailed,
+                threadTitle));
+            return;
+        }
+
+        if (result.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified)
         {
             RegisterNavigationUndo(
                 threadTitle,
@@ -6551,7 +6601,9 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
-            OpenSelectedSidebarTask();
+            OpenSelectedSidebarTask(
+                deviceId: "desktop.keyboard",
+                controlId: "keyboard.enter");
             e.Handled = true;
             return;
         }

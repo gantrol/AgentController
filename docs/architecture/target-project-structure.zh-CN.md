@@ -164,7 +164,15 @@ AgentController.Application/
 
 ### 2026-07-18：基础按钮到意图的边界
 
-- 基础层的 L3/R3、D-pad、ABXY 与 B release 现由协调器解析为有序 `ControllerInteractionIntent`，`MainWindow` 只负责把意图分发到仍未迁移的 WPF/Agent 动作实现。
+- 基础层的 L3/R3、D-pad、ABXY 与 B release 现由协调器解析为有序的值类型 `ControllerInteractionIntent`，`MainWindow` 只负责把意图分发到仍未迁移的 WPF/Agent 动作实现。
 - 意图解析保持原执行顺序与 dial/suppression/release 语义；没有改动 LT 阈值、右摇杆轴路由、模型选择器或 Agent 自动化通道。
 - 中性和 held 帧复用空意图集合，避免在控制器高频轮询路径上引入每帧集合分配。
 - 自动化证据更新为旧客户端 600 tests、Domain 15 tests、Architecture 7 tests，共 622 passed、0 failed、0 skipped。
+
+### 2026-07-18：`thread.open` Application 垂直切片
+
+- 旧 WPF 项目已引用 Application，并将打开任务表达为包含来源、上下文、幂等键和 thread id 的 Domain `ActionRequest`。
+- Application `ActionRouter` 根据 capability priority 选择执行器并保留最强失败状态；Codex Deep Link adapter 返回 `AcceptedUnverified` 和 `Transport/thread.open.requested` evidence，不将进程启动结果描述为线程状态成功。
+- `IDeepLinks.OpenThread` 旧直接入口已删除；控制器 A、鼠标双击、键盘 Enter、Agent slot 与相邻任务入口共用同一 Action 路径，不保留双写执行通道。
+- 为避免行为漂移，foreground gate、workspace availability、navigation undo snapshot 与本地反馈仍由 WPF 管理，后续随 sidebar state/use case 一起迁移。
+- 自动化证据更新为旧客户端 603 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 630 passed、0 failed、0 skipped；README 实机打开任务步骤尚待复验。

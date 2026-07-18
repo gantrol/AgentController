@@ -167,7 +167,6 @@ public interface IComposerAutomation
 
 public interface IDeepLinks
 {
-    bool OpenThread(string threadId);
     void OpenSettings();
     void OpenKeyboardShortcuts();
 }

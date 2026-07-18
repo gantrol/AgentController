@@ -427,11 +427,6 @@ public sealed class CodexAgentTarget : IAgentTarget
 
     private sealed class DeepLinkAdapter : IDeepLinks
     {
-        public bool OpenThread(string threadId)
-        {
-            return CodexCommandService.OpenThread(threadId);
-        }
-
         public void OpenSettings()
         {
             CodexCommandService.OpenCodexSettings();

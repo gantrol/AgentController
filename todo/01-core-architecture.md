@@ -53,6 +53,8 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - [ ] 将 Sidebar、Composer、Thread 类型从 Codex 专用类型收敛为 Domain 契约。
 - [ ] 将 `AppServices` 改为纯 composition root，业务对象不自行构造基础设施。
 - [ ] UI 只订阅 Application state 和 command，不直接调用 Win32/UIA/Micro 服务。
+  - [x] `thread.open` 首个垂直切片已由 WPF 构造 `ActionRequest`，经 Application `ActionRouter` 选择 Codex Deep Link executor，并消费 `ActionResult`；旧 `IDeepLinks.OpenThread` 直接入口已删除。
+  - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
 
@@ -85,6 +87,14 @@ Native helper <-> versioned local IPC <-> Platform adapter
 
 ### 2026-07-18：基础按钮意图切片
 
-- 新增封闭的 `ControllerInteractionIntent` 集合，将基础层按钮 down/up、R3 物理 release、会话上下轮导航和侧边栏方向解析从 `MainWindow` 移入协调器。
+- 新增值类型 `ControllerInteractionIntent`，将基础层按钮 down/up、R3 物理 release、会话上下轮导航和侧边栏方向解析从 `MainWindow` 移入协调器；继承层级已压缩为 enum + payload，避免为每个意图分配对象。
 - `MainWindow` 改为顺序执行意图，保留旧路径的执行顺序、dial-context A 键分流、R3 suppression、D-pad hold release 和 B release 语义。
 - 新增 8 项意图合同测试，覆盖并发边沿顺序、held 去重、上下文分流、被 suppression 的 R3 press/release、会话 hold release 与中性帧零集合分配；完整 Release solution 测试 622/622（旧客户端 600、Domain 15、Architecture 7）。
+
+### 2026-07-18：`thread.open` 首个 Application 垂直切片
+
+- Application 新增按 capability priority 选择执行器的 `ActionRouter`；无可用执行器时保留 Blocked、Incompatible 与 Unsupported 的最强失败语义，并校验 capability/result 身份一致性。
+- WPF 的控制器 A、鼠标双击、键盘 Enter、Agent slot 和相邻任务入口现在统一构造 `thread.open` `ActionRequest`；Codex adapter 将 Deep Link 接受映射为 `AcceptedUnverified`，只报告真实的 Transport evidence，不冒充线程已经打开。
+- 删除 `IDeepLinks.OpenThread` 与 `CodexAgentTarget` 的旧直接入口，避免新旧路径并存；foreground、thread availability、undo snapshot 与本地反馈暂留 `MainWindow` 以保持现有行为。
+- 新增 5 项 Application router 测试和 4 项 Codex executor 合同测试；完整 Release solution 测试 630/630（旧客户端 603、Application 5、Domain 15、Architecture 7）。
+- README 的“按 A 打开任务”仍需实机复验后，才能把该路径视为用户侧验收完成。

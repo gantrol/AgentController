@@ -88,14 +88,6 @@ public sealed class AgentTargetTests
     }
 
     [Fact]
-    public void DeepLinkAdapterPreservesInvalidThreadGuard()
-    {
-        var target = new CodexAgentTarget(new CodexCommandService());
-
-        Assert.False(target.DeepLinks!.OpenThread(" "));
-    }
-
-    [Fact]
     public void ShortcutAdapterPreservesBridgeSafetyGate()
     {
         var target = new CodexAgentTarget(new CodexCommandService());

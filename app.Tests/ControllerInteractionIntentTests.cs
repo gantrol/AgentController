@@ -44,35 +44,24 @@ public sealed class ControllerInteractionIntentTests
             coordinator.PhysicalEdges(pressed),
             dialContextActive: false);
 
-        Assert.Collection(
-            intents,
-            intent => Assert.IsType<
-                ControllerInteractionIntent.CycleRootSidebarScope>(intent),
-            intent => Assert.IsType<
-                ControllerInteractionIntent.BeginVirtualDialPress>(intent),
-            intent => Assert.Equal(
-                ConversationTurnInputAction.PreviousUserMessage,
-                Assert.IsType<
-                    ControllerInteractionIntent.NavigateConversationTurn>(
-                        intent).Action),
-            intent => Assert.Equal(
-                -1,
-                Assert.IsType<
-                    ControllerInteractionIntent.NavigateSidebarHorizontal>(
-                        intent).Direction),
-            intent => Assert.Equal(
-                1,
-                Assert.IsType<
-                    ControllerInteractionIntent.NavigateSidebarHorizontal>(
-                        intent).Direction),
-            intent => Assert.IsType<
-                ControllerInteractionIntent.OpenActionPanel>(intent),
-            intent => Assert.IsType<
-                ControllerInteractionIntent.OpenSelectedSidebarTask>(intent),
-            intent => Assert.IsType<
-                ControllerInteractionIntent.SendPrompt>(intent),
-            intent => Assert.IsType<
-                ControllerInteractionIntent.BeginBaseCancelPress>(intent));
+        Assert.Equal(
+            [
+                ControllerInteractionIntentKind.CycleRootSidebarScope,
+                ControllerInteractionIntentKind.BeginVirtualDialPress,
+                ControllerInteractionIntentKind.NavigateConversationTurn,
+                ControllerInteractionIntentKind.NavigateSidebarHorizontal,
+                ControllerInteractionIntentKind.NavigateSidebarHorizontal,
+                ControllerInteractionIntentKind.OpenActionPanel,
+                ControllerInteractionIntentKind.OpenSelectedSidebarTask,
+                ControllerInteractionIntentKind.SendPrompt,
+                ControllerInteractionIntentKind.BeginBaseCancelPress,
+            ],
+            intents.Select(intent => intent.Kind));
+        Assert.Equal(
+            ConversationTurnInputAction.PreviousUserMessage,
+            intents[2].ConversationAction);
+        Assert.Equal(-1, intents[3].Direction);
+        Assert.Equal(1, intents[4].Direction);
     }
 
     [Fact]
@@ -81,14 +70,14 @@ public sealed class ControllerInteractionIntentTests
         var coordinator = new ControllerInteractionCoordinator();
         var pressed = ControllerButtons.A;
 
-        var intents = coordinator.ResolveBaseIntents(
+        var intent = Assert.Single(coordinator.ResolveBaseIntents(
             pressed,
             coordinator.PhysicalEdges(pressed),
-            dialContextActive: true);
+            dialContextActive: true));
 
-        Assert.IsType<
-            ControllerInteractionIntent.SelectVirtualDialOption>(
-                Assert.Single(intents));
+        Assert.Equal(
+            ControllerInteractionIntentKind.SelectVirtualDialOption,
+            intent.Kind);
     }
 
     [Fact]
@@ -117,14 +106,14 @@ public sealed class ControllerInteractionIntentTests
             ControllerButtons.RightThumb,
             ControllerButtons.RightThumb);
 
-        var intents = coordinator.ResolveBaseIntents(
+        var intent = Assert.Single(coordinator.ResolveBaseIntents(
             ControllerButtons.None,
             coordinator.PhysicalEdges(ControllerButtons.None),
-            dialContextActive: false);
+            dialContextActive: false));
 
-        Assert.IsType<
-            ControllerInteractionIntent.EndVirtualDialPress>(
-                Assert.Single(intents));
+        Assert.Equal(
+            ControllerInteractionIntentKind.EndVirtualDialPress,
+            intent.Kind);
     }
 
     [Fact]
@@ -148,17 +137,15 @@ public sealed class ControllerInteractionIntentTests
             ControllerButtons.None,
             ControllerButtons.DPadDown);
 
-        var intents = coordinator.ResolveBaseIntents(
+        var intent = Assert.Single(coordinator.ResolveBaseIntents(
             ControllerButtons.None,
             coordinator.PhysicalEdges(ControllerButtons.None),
-            dialContextActive: false);
-        var release = Assert.IsType<
-            ControllerInteractionIntent.EndConversationBoundaryHold>(
-                Assert.Single(intents));
+            dialContextActive: false));
 
         Assert.Equal(
-            ControllerButtons.DPadDown,
-            release.ReleasedButtons);
+            ControllerInteractionIntentKind.EndConversationBoundaryHold,
+            intent.Kind);
+        Assert.Equal(ControllerButtons.DPadDown, intent.ReleasedButtons);
     }
 
     [Fact]
@@ -169,13 +156,13 @@ public sealed class ControllerInteractionIntentTests
             ControllerButtons.B,
             ControllerButtons.B);
 
-        var intents = coordinator.ResolveBaseIntents(
+        var intent = Assert.Single(coordinator.ResolveBaseIntents(
             ControllerButtons.None,
             coordinator.PhysicalEdges(ControllerButtons.None),
-            dialContextActive: false);
+            dialContextActive: false));
 
-        Assert.IsType<
-            ControllerInteractionIntent.EndBaseCancelPress>(
-                Assert.Single(intents));
+        Assert.Equal(
+            ControllerInteractionIntentKind.EndBaseCancelPress,
+            intent.Kind);
     }
 }
