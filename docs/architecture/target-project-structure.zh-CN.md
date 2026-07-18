@@ -289,3 +289,25 @@ AgentController.Application/
 - presentation 仍提供实时 `canContinue` observation 和 completion callback；协调器负责 current-lease identity，避免窗口继续组合 CTS、target 与计时字段。
 - 这条边界为后续把 radial layer 和输入 context 一并迁入 Application 留出稳定 seam；本切片不触碰 LT/右摇杆路径。
 - 最新 717 项基线采用 716 项排除已知竞态后全绿 + 该项隔离 1/1；Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：radial layer orchestration
+
+- `RadialLayerCoordinator` 接管 radial/command/agent layer、确认序列、计时器、learning cue 与 acknowledgement drain；WPF 只把 `RadialLayerUpdate` 投影成菜单/反馈，并执行类型化 `RadialInputAction`。
+- `RadialInputMap` 统一物理输入到 action id 的映射，避免协调层和 presentation 各维护一套字符串；8 个 coordinator 场景锁定开层、切层、确认、超时、释放和 Agent slot 语义。
+- 本切片未触碰 LT、右摇杆、模型 picker 或对应既有兼容问题；virtual-dial 仍是下一条单独迁移边界。
+
+### 2026-07-18：Codex Composer automation roles
+
+- 原 UIA 巨型服务中可稳定命名的职责已拆为 `CodexAutomationLocator`、`CodexComposerDialProbe`、`CodexComposerAutomationExecutor` 与 `CodexComposerStateVerifier`；catalog/config 继续由此前的 `CodexComposerCatalogService` 持有。
+- `CodexComposerService` 从 8,134 行降至 6,111 行，现作为迁移 facade 和 dial/picker session owner；调用方尚未切走前保留转发，后续扩展不得重新把定位、命令与 readback 写回 facade。
+- 各角色有聚焦合同测试；拆分保持现有 UIA 顺序、超时、popup ownership 和结果语义。
+
+### 2026-07-18：composition 与 platform/application ports
+
+- `AppServices` 已删除；`AppComposition` 是唯一对象图装配点，应用生命周期由 `App.xaml.cs` 持有，窗口只消费 `MainWindowDependencies`。
+- `IForegroundApplication` 在 `Platform.Abstractions` 表达前台观察与激活，不泄露原生 handle；`IThreadNavigationContext` 由 Application 拥有，WPF/Codex adapter 在 composition 边界提供 workspace/sidebar/title 读取。
+- architecture tests 增加平台合同 shape 约束，旧客户端测试增加 composition constructor 约束。最终 Release 构建 0 warnings、0 errors；主批次 736/736，两个既有 synchronization-context 时序测试隔离运行 2/2，共 738 passed。
+
+### 2026-07-18：本轮迁移里程碑
+
+本轮定义的 thread navigation、controller hold、radial layer、Composer 四角色拆分和 composition/platform ports 已完成。目标架构本身尚未完成：virtual-dial/右摇杆、PTT、状态聚合、剩余 Codex facade、Avalonia 与 macOS 仍按 `todo/` 中独立大任务渐进迁移。旧 WPF 发布路径保持可构建、可测试，且 `virtual-micro/` 参考实现未并入本轮产品代码或提交历史。

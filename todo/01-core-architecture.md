@@ -42,21 +42,25 @@ Native helper <-> versioned local IPC <-> Platform adapter
 ### 从现有代码抽离
 
 - [ ] 把 `MainWindow` 中手柄状态机提取为 `ControllerInteractionCoordinator`。
-  - [x] 首个无行为变化切片：协调器接管有序状态缓冲、基础/物理按钮历史、LT 滞回、左右摇杆回中门禁与重复节奏，并由 `AppServices` 注入旧 WPF 客户端。
+  - [x] 首个无行为变化切片：协调器接管有序状态缓冲、基础/物理按钮历史、LT 滞回、左右摇杆回中门禁与重复节奏，并由 composition root 注入旧 WPF 客户端。
   - [x] 第二个无行为变化切片：基础层按钮边沿解析为有序 `ControllerInteractionIntent`；`MainWindow` 只按顺序分发到现有动作实现。
   - [x] `ControllerHoldCoordinator` 接管 B 三秒停止与 D-pad 回顶/到底的 threshold、取消、倒计时和完成生命周期；窗口只提供实时安全门禁与执行回调。
-  - [ ] 继续把 radial/virtual-dial 上下文、组合层、长按生命周期与 Action 发射移出 `MainWindow`，之后再迁入跨平台 Application/Domain 边界。
+  - [x] `RadialLayerCoordinator` 接管 radial/command/agent 层、确认状态、菜单计时器、输入解释和 acknowledgement 生命周期；窗口只执行类型化 update/action 并负责 WPF 呈现。
+  - [ ] 继续把 virtual-dial/右摇杆模型控制与 PTT 自动化移出 `MainWindow`，之后再迁入跨平台 Application/Domain 边界；两条路径的既有兼容问题不得混入结构迁移提交。
 - [ ] 把输入采样、边沿保留、组合层、长按和动作分发分成独立阶段。
   - [x] 已将 XInput 事件后的状态缓冲、按钮边沿、模拟扳机滞回、摇杆手势和 repeat timing 收敛到可独立测试的协调器阶段。
   - [x] 基础层的 L3/R3、D-pad、ABXY 与 B release 已从 WPF 回调解析中分离为可测试的有序意图；中性轮询帧不分配意图集合。
   - [x] B 与 D-pad 长按识别已移入独立协调器，短按/长按门禁与原 Action 语义保持不变。
-  - [ ] 分离 radial/virtual-dial 组合层与剩余 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
+  - [x] Radial 组合层已分离，ActionId 由 `RadialInputMap` 集中映射，避免 presentation 与协调器各写一套命令字符串。
+  - [ ] 分离 virtual-dial/右摇杆组合层、PTT 以及剩余 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
 - [x] 将 thread.open 前台/可用性门禁、到达确认、提前撤回、10 秒有效期与撤回执行收敛为 Application `ThreadNavigationCoordinator`；WPF 只呈现类型化 notice。
 - [ ] 把 `CodexComposerService` 拆成 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier。
   - [x] 先移出模型目录、`models_cache.json` / `config.toml` 读取与当前选项解析；目录服务可用临时 Codex home 独立测试，不再依赖 UIA 执行器内部状态。
-  - [ ] 继续拆分 WindowLocator、PopupProbe、CommandExecutor 与 ResultVerifier，并删除原服务中的兼容转发壳。
+  - [x] WindowLocator、Dial/PopupProbe、CommandExecutor 与 ResultVerifier 已分别落入 `CodexAutomationLocator`、`CodexComposerDialProbe`、`CodexComposerAutomationExecutor` 和 `CodexComposerStateVerifier`，并各有聚焦合同测试。
+  - [ ] 继续迁出仍位于 facade 中的 dial/picker session orchestration，待调用方切换后删除 `CodexComposerService` 的兼容转发壳。
 - [ ] 将 Sidebar、Composer、Thread 类型从 Codex 专用类型收敛为 Domain 契约。
-- [ ] 将 `AppServices` 改为纯 composition root，业务对象不自行构造基础设施。
+- [x] 删除 `AppServices` 服务定位器；`AppComposition` 成为唯一 composition root，`MainWindow` 只接收 `MainWindowDependencies`，业务对象不再从窗口内构造基础设施。
+- [x] 定义不泄露 HWND/Win32 类型的 `IForegroundApplication` 平台端口，以及 Application 所拥有的 `IThreadNavigationContext` 读取端口；WPF adapter 只在 composition 边界实现它们。
 - [ ] UI 只订阅 Application state 和 command，不直接调用 Win32/UIA/Micro 服务。
   - [x] `thread.open` 首个垂直切片已由 WPF 构造 `ActionRequest`，经 Application `ActionRouter` 选择 Codex Deep Link executor，并消费 `ActionResult`；旧 `IDeepLinks.OpenThread` 直接入口已删除。
   - [x] `thread.create` 第二个垂直切片已删除 WPF 内的 UIA/快捷键回退策略；Codex executor 统一执行“查找 New task 控件，找不到时回退 Ctrl+N”，WPF 只消费 `ActionResult`。
@@ -221,3 +225,25 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `MainWindow` 删除两套 cancellation 字段和异步循环，只保留读取实时控制器/foreground/radial 状态的 guard，以及现有本地化反馈与 Application action 回调。
 - 6 个生命周期案例覆盖上/下边界映射、阈值完成、提前释放、guard 拒绝、三秒倒计时与中途取消；未改动 LT、右摇杆、模型 picker 或对应兼容问题。
 - 自动化证据为旧客户端 681 tests、Application 14 tests、Domain 15 tests、Architecture 7 tests，共 717 项；采用 716 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：radial layer orchestration
+
+- 新增 `RadialLayerCoordinator`，集中持有 radial/command/agent layer、按键确认、菜单计时器、learning cue 与 acknowledgement drain；`MainWindow` 删除对应的离散字段和异步生命周期，只应用类型化 update/action。
+- `RadialInputMap` 成为 radial action id 的唯一映射位置；迁移测试发现并修正 `command-dictate` / `command-ptt` 字符串漂移，但没有改动 LT 触发、右摇杆轴路由或模型选择器自动化。
+- 8 个 coordinator 场景覆盖开层、切层、确认、超时、释放、Agent slot 与 acknowledgement；旧 WPF 仍负责菜单文案、震动和动作结果呈现。
+
+### 2026-07-18：Composer 自动化角色拆分
+
+- `CodexComposerService` 中稳定的四类职责已分别迁入 `CodexAutomationLocator`、`CodexComposerDialProbe`、`CodexComposerAutomationExecutor` 与 `CodexComposerStateVerifier`；公共结果结构迁到 `ComposerAutomationResults`。
+- facade 从 8,134 行降至 6,111 行，仍保留 dial/picker session orchestration 和迁移转发，避免一次性重写高度状态化的 UIA 路径；后续应按调用方垂直切片继续收缩，而不是把该 facade 当作新扩展点。
+- 定位、popup probe、执行和 readback 各有独立合同测试；本切片不改变虚拟拨盘映射、语音键或右摇杆行为。
+
+### 2026-07-18：composition root 与平台端口
+
+- 删除 `AppServices` 服务定位器，新增 `AppComposition` 作为唯一对象图装配点；`App.xaml.cs` 持有其生命周期，`MainWindow` 仅接收聚合的 presentation dependencies。
+- Application 的 thread navigation 改为依赖自己拥有的 `IThreadNavigationContext` 和跨平台 `IForegroundApplication`；Windows/Codex 读取细节由 composition adapter 实现，端口不暴露 HWND、UIA 或 Win32 类型。
+- Architecture/Composition 合同测试锁定依赖方向和构造边界。最终 Release solution 验收为主批次 736/736，加两个既有 synchronization-context 时序测试隔离运行 2/2，共 738 passed；构建 0 warnings、0 errors。
+
+## 本轮核心重构里程碑结论
+
+2026-07-18 计划的 thread navigation、controller hold、radial layer、Composer 四角色拆分以及 composition/platform ports 五个切片均已完成并提交。该结论只表示本轮可回滚结构迁移完成，`01` 大任务仍为 **In Progress**：virtual-dial/右摇杆、PTT、sidebar/composer presentation state、权威状态聚合和 facade 最终删除仍须按后续切片推进；Avalonia、macOS、App Server 与驱动发行分别由 02、03、05、06、07 跟踪。
