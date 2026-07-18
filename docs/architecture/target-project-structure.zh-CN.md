@@ -161,3 +161,10 @@ AgentController.Application/
 - 该类暂留在旧 `app/` 中：它仍消费迁移期 `ControllerState` 和策略类型，等逻辑输入快照与上下文合同稳定后，再整体迁往 Application/Domain，避免用一次大搬家混入行为变化。
 - `MainWindow` 仍拥有 foreground/session、radial/virtual-dial、长按和 Action 执行，所以“抽离手柄状态机”仍为进行中，而非完成。
 - 自动化证据更新为旧客户端 592 tests、Domain 15 tests、Architecture 7 tests，共 614 passed、0 failed、0 skipped；新增的 5 项合同覆盖缓冲顺序、双按钮历史、LT 滞回、回中门禁和 repeat reset。
+
+### 2026-07-18：基础按钮到意图的边界
+
+- 基础层的 L3/R3、D-pad、ABXY 与 B release 现由协调器解析为有序 `ControllerInteractionIntent`，`MainWindow` 只负责把意图分发到仍未迁移的 WPF/Agent 动作实现。
+- 意图解析保持原执行顺序与 dial/suppression/release 语义；没有改动 LT 阈值、右摇杆轴路由、模型选择器或 Agent 自动化通道。
+- 中性和 held 帧复用空意图集合，避免在控制器高频轮询路径上引入每帧集合分配。
+- 自动化证据更新为旧客户端 600 tests、Domain 15 tests、Architecture 7 tests，共 622 passed、0 failed、0 skipped。

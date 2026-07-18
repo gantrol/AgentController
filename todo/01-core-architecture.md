@@ -43,10 +43,12 @@ Native helper <-> versioned local IPC <-> Platform adapter
 
 - [ ] 把 `MainWindow` 中手柄状态机提取为 `ControllerInteractionCoordinator`。
   - [x] 首个无行为变化切片：协调器接管有序状态缓冲、基础/物理按钮历史、LT 滞回、左右摇杆回中门禁与重复节奏，并由 `AppServices` 注入旧 WPF 客户端。
+  - [x] 第二个无行为变化切片：基础层按钮边沿解析为有序 `ControllerInteractionIntent`；`MainWindow` 只按顺序分发到现有动作实现。
   - [ ] 继续把 radial/virtual-dial 上下文、组合层、长按生命周期与 Action 发射移出 `MainWindow`，之后再迁入跨平台 Application/Domain 边界。
 - [ ] 把输入采样、边沿保留、组合层、长按和动作分发分成独立阶段。
   - [x] 已将 XInput 事件后的状态缓冲、按钮边沿、模拟扳机滞回、摇杆手势和 repeat timing 收敛到可独立测试的协调器阶段。
-  - [ ] 分离组合层/长按识别与动作分发；这一阶段仍在 `MainWindow` 中。
+  - [x] 基础层的 L3/R3、D-pad、ABXY 与 B release 已从 WPF 回调解析中分离为可测试的有序意图；中性轮询帧不分配意图集合。
+  - [ ] 分离 radial/virtual-dial 组合层、长按识别与 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
 - [ ] 把 `CodexComposerService` 拆成 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier。
 - [ ] 将 Sidebar、Composer、Thread 类型从 Codex 专用类型收敛为 Domain 契约。
 - [ ] 将 `AppServices` 改为纯 composition root，业务对象不自行构造基础设施。
@@ -80,3 +82,9 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - 保留现有行为边界：`MainWindow` 仍负责 foreground/session gate、radial/virtual-dial 上下文、长按和具体 Agent 动作；本切片不调整 LT 阈值、右摇杆映射或模型选择器逻辑。
 - 新增 5 项协调器合同测试；聚焦输入回归 33/33，通过完整 Release solution 测试 614/614（旧客户端 592、Domain 15、Architecture 7）。
 - 语音键与右摇杆偶发失效均作为既有运行时问题留在 `90-v0.7-maintenance.md`，不阻塞本次架构迁移。
+
+### 2026-07-18：基础按钮意图切片
+
+- 新增封闭的 `ControllerInteractionIntent` 集合，将基础层按钮 down/up、R3 物理 release、会话上下轮导航和侧边栏方向解析从 `MainWindow` 移入协调器。
+- `MainWindow` 改为顺序执行意图，保留旧路径的执行顺序、dial-context A 键分流、R3 suppression、D-pad hold release 和 B release 语义。
+- 新增 8 项意图合同测试，覆盖并发边沿顺序、held 去重、上下文分流、被 suppression 的 R3 press/release、会话 hold release 与中性帧零集合分配；完整 Release solution 测试 622/622（旧客户端 600、Domain 15、Architecture 7）。

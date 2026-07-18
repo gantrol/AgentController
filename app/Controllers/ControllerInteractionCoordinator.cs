@@ -23,6 +23,38 @@ public readonly record struct ControllerButtonEdges(
 /// </summary>
 public sealed class ControllerInteractionCoordinator
 {
+    private static readonly ControllerInteractionIntent
+        CycleRootSidebarScopeIntent =
+            new ControllerInteractionIntent.CycleRootSidebarScope();
+    private static readonly ControllerInteractionIntent
+        BeginVirtualDialPressIntent =
+            new ControllerInteractionIntent.BeginVirtualDialPress();
+    private static readonly ControllerInteractionIntent
+        EndVirtualDialPressIntent =
+            new ControllerInteractionIntent.EndVirtualDialPress();
+    private static readonly ControllerInteractionIntent
+        NavigateSidebarLeftIntent =
+            new ControllerInteractionIntent.NavigateSidebarHorizontal(-1);
+    private static readonly ControllerInteractionIntent
+        NavigateSidebarRightIntent =
+            new ControllerInteractionIntent.NavigateSidebarHorizontal(1);
+    private static readonly ControllerInteractionIntent OpenActionPanelIntent =
+        new ControllerInteractionIntent.OpenActionPanel();
+    private static readonly ControllerInteractionIntent
+        SelectVirtualDialOptionIntent =
+            new ControllerInteractionIntent.SelectVirtualDialOption();
+    private static readonly ControllerInteractionIntent
+        OpenSelectedSidebarTaskIntent =
+            new ControllerInteractionIntent.OpenSelectedSidebarTask();
+    private static readonly ControllerInteractionIntent SendPromptIntent =
+        new ControllerInteractionIntent.SendPrompt();
+    private static readonly ControllerInteractionIntent
+        BeginBaseCancelPressIntent =
+            new ControllerInteractionIntent.BeginBaseCancelPress();
+    private static readonly ControllerInteractionIntent
+        EndBaseCancelPressIntent =
+            new ControllerInteractionIntent.EndBaseCancelPress();
+
     private readonly ControllerStateBuffer _stateBuffer;
     private readonly AxisRepeater _axisRepeater;
     private readonly StickGestureRouter _leftStickRouter = new();
@@ -57,9 +89,100 @@ public sealed class ControllerInteractionCoordinator
             current & ~_previousPhysicalButtons,
             _previousPhysicalButtons & ~current);
 
-    public ControllerButtons BaseDownEdges(
+    private ControllerButtons BaseDownEdges(
         ControllerButtons current) =>
         current & ~_previousBaseButtons;
+
+    public IReadOnlyList<ControllerInteractionIntent> ResolveBaseIntents(
+        ControllerButtons basePressed,
+        ControllerButtonEdges physicalEdges,
+        bool dialContextActive)
+    {
+        List<ControllerInteractionIntent>? intents = null;
+        if (BaseButtonTransition(
+                basePressed,
+                ControllerButtons.LeftThumb) ==
+            ControllerButtonTransition.Pressed)
+        {
+            AddIntent(ref intents, CycleRootSidebarScopeIntent);
+        }
+
+        if (
+            physicalEdges.Down.HasFlag(ControllerButtons.RightThumb) &&
+            basePressed.HasFlag(ControllerButtons.RightThumb))
+        {
+            AddIntent(ref intents, BeginVirtualDialPressIntent);
+        }
+
+        if (physicalEdges.Up.HasFlag(ControllerButtons.RightThumb))
+        {
+            AddIntent(ref intents, EndVirtualDialPressIntent);
+        }
+
+        var conversationNavigation = ConversationTurnInputMap.Resolve(
+            BaseDownEdges(basePressed));
+        if (conversationNavigation != ConversationTurnInputAction.None)
+        {
+            AddIntent(
+                ref intents,
+                new ControllerInteractionIntent.NavigateConversationTurn(
+                    conversationNavigation));
+        }
+
+        if (
+            physicalEdges.Up.HasFlag(ControllerButtons.DPadUp) ||
+            physicalEdges.Up.HasFlag(ControllerButtons.DPadDown))
+        {
+            AddIntent(
+                ref intents,
+                new ControllerInteractionIntent.EndConversationBoundaryHold(
+                    physicalEdges.Up));
+        }
+
+        AddPressIntent(
+            ref intents,
+            basePressed,
+            ControllerButtons.DPadLeft,
+            NavigateSidebarLeftIntent);
+        AddPressIntent(
+            ref intents,
+            basePressed,
+            ControllerButtons.DPadRight,
+            NavigateSidebarRightIntent);
+        AddPressIntent(
+            ref intents,
+            basePressed,
+            ControllerButtons.Y,
+            OpenActionPanelIntent);
+        AddPressIntent(
+            ref intents,
+            basePressed,
+            ControllerButtons.A,
+            dialContextActive
+                ? SelectVirtualDialOptionIntent
+                : OpenSelectedSidebarTaskIntent);
+        AddPressIntent(
+            ref intents,
+            basePressed,
+            ControllerButtons.X,
+            SendPromptIntent);
+
+        var cancelTransition = BaseButtonTransition(
+            basePressed,
+            ControllerButtons.B);
+        if (cancelTransition == ControllerButtonTransition.Pressed)
+        {
+            AddIntent(ref intents, BeginBaseCancelPressIntent);
+        }
+        else if (cancelTransition == ControllerButtonTransition.Released)
+        {
+            AddIntent(ref intents, EndBaseCancelPressIntent);
+        }
+
+        return intents is null
+            ? Array.Empty<ControllerInteractionIntent>()
+            : intents;
+    }
 
     public ControllerButtonTransition BaseButtonTransition(
         ControllerButtons current,
@@ -174,4 +297,25 @@ public sealed class ControllerInteractionCoordinator
 
     public void RequireRightStickNeutral() =>
         _rightStickRouter.RequireNeutral();
+
+    private void AddPressIntent(
+        ref List<ControllerInteractionIntent>? intents,
+        ControllerButtons current,
+        ControllerButtons button,
+        ControllerInteractionIntent intent)
+    {
+        if (BaseButtonTransition(current, button) ==
+            ControllerButtonTransition.Pressed)
+        {
+            AddIntent(ref intents, intent);
+        }
+    }
+
+    private static void AddIntent(
+        ref List<ControllerInteractionIntent>? intents,
+        ControllerInteractionIntent intent)
+    {
+        intents ??= new List<ControllerInteractionIntent>(4);
+        intents.Add(intent);
+    }
 }

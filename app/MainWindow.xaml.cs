@@ -418,10 +418,14 @@ public partial class MainWindow : Window
             wakeEligibleButtons &= ~ControllerButtons.Start;
         }
 
-        HandleButtonEdge(
-            wakeEligibleButtons,
-            ControllerButtons.Start,
-            onDown: WakeCodex);
+        if (
+            _controllerInteraction.BaseButtonTransition(
+                wakeEligibleButtons,
+                ControllerButtons.Start) ==
+            ControllerButtonTransition.Pressed)
+        {
+            WakeCodex();
+        }
 
         var foreground = _activeAgent.Presence.IsForeground;
         TryAutoArmController(foreground);
@@ -489,8 +493,6 @@ public partial class MainWindow : Window
 
         var physicalEdges =
             _controllerInteraction.PhysicalEdges(pressed);
-        var physicalDownEdges = physicalEdges.Down;
-        var physicalUpEdges = physicalEdges.Up;
         // Dial automation owns the native picker state. Controller polling
         // must never synchronously walk the UIA tree.
         var dialContextActive = IsVirtualDialContextActive;
@@ -546,72 +548,15 @@ public partial class MainWindow : Window
             ~frozenByContext &
             ~_radialSuppressedButtons &
             ~_pushToTalkSuppressedButtons;
-        HandleButtonEdge(
+        var baseIntents = _controllerInteraction.ResolveBaseIntents(
             basePressed,
-            ControllerButtons.LeftThumb,
-            onDown: CycleRootSidebarScope);
-        if (
-            physicalDownEdges.HasFlag(ControllerButtons.RightThumb) &&
-            basePressed.HasFlag(ControllerButtons.RightThumb))
+            physicalEdges,
+            dialContextActive);
+        foreach (var intent in baseIntents)
         {
-            BeginVirtualDialPress();
+            ExecuteControllerInteractionIntent(intent);
         }
 
-        if (physicalUpEdges.HasFlag(ControllerButtons.RightThumb))
-        {
-            EndVirtualDialPress();
-        }
-
-        var conversationNavigation = ConversationTurnInputMap.Resolve(
-            _controllerInteraction.BaseDownEdges(basePressed));
-        if (conversationNavigation != ConversationTurnInputAction.None)
-        {
-            NavigateConversationTurn(conversationNavigation);
-            BeginConversationBoundaryHold(conversationNavigation);
-        }
-
-        if (
-            physicalUpEdges.HasFlag(ControllerButtons.DPadUp) ||
-            physicalUpEdges.HasFlag(ControllerButtons.DPadDown))
-        {
-            EndConversationBoundaryHold(physicalUpEdges);
-        }
-
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.DPadLeft,
-            onDown: () =>
-            {
-                _controllerInteraction.RequireLeftStickNeutral();
-                NavigateSidebarHorizontal(-1);
-            });
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.DPadRight,
-            onDown: () =>
-            {
-                _controllerInteraction.RequireLeftStickNeutral();
-                NavigateSidebarHorizontal(1);
-            });
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.Y,
-            onDown: OpenActionPanel);
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.A,
-            onDown: dialContextActive
-                ? SelectVirtualDialOption
-                : OpenSelectedSidebarTask);
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.X,
-            onDown: SendPrompt);
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.B,
-            onDown: BeginBaseCancelPress,
-            onUp: EndBaseCancelPress);
         _controllerInteraction.CommitButtonHistory(
             basePressed,
             pressed);
@@ -1987,21 +1932,51 @@ public partial class MainWindow : Window
             : enUs;
     }
 
-    private void HandleButtonEdge(
-        ControllerButtons current,
-        ControllerButtons button,
-        Action onDown,
-        Action? onUp = null)
+    private void ExecuteControllerInteractionIntent(
+        ControllerInteractionIntent intent)
     {
-        var transition =
-            _controllerInteraction.BaseButtonTransition(current, button);
-        if (transition == ControllerButtonTransition.Pressed)
+        switch (intent)
         {
-            onDown();
-        }
-        else if (transition == ControllerButtonTransition.Released)
-        {
-            onUp?.Invoke();
+            case ControllerInteractionIntent.CycleRootSidebarScope:
+                CycleRootSidebarScope();
+                break;
+            case ControllerInteractionIntent.BeginVirtualDialPress:
+                BeginVirtualDialPress();
+                break;
+            case ControllerInteractionIntent.EndVirtualDialPress:
+                EndVirtualDialPress();
+                break;
+            case ControllerInteractionIntent.NavigateConversationTurn navigation:
+                NavigateConversationTurn(navigation.Action);
+                BeginConversationBoundaryHold(navigation.Action);
+                break;
+            case ControllerInteractionIntent.EndConversationBoundaryHold release:
+                EndConversationBoundaryHold(release.ReleasedButtons);
+                break;
+            case ControllerInteractionIntent.NavigateSidebarHorizontal navigation:
+                _controllerInteraction.RequireLeftStickNeutral();
+                NavigateSidebarHorizontal(navigation.Direction);
+                break;
+            case ControllerInteractionIntent.OpenActionPanel:
+                OpenActionPanel();
+                break;
+            case ControllerInteractionIntent.SelectVirtualDialOption:
+                SelectVirtualDialOption();
+                break;
+            case ControllerInteractionIntent.OpenSelectedSidebarTask:
+                OpenSelectedSidebarTask();
+                break;
+            case ControllerInteractionIntent.SendPrompt:
+                SendPrompt();
+                break;
+            case ControllerInteractionIntent.BeginBaseCancelPress:
+                BeginBaseCancelPress();
+                break;
+            case ControllerInteractionIntent.EndBaseCancelPress:
+                EndBaseCancelPress();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(intent));
         }
     }
 
