@@ -15,6 +15,8 @@
 !/public/docs/**
 !/scripts/
 !/scripts/**
+!/virtual-micro/
+!/virtual-micro/**
 
 # Build and IDE output
 **/bin/
