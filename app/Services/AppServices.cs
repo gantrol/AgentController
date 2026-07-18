@@ -99,15 +99,17 @@ public sealed class AppServices : IDisposable
             CodexAgentTarget.CodexId);
         var activeAgent = agentTargets.Resolve(
             currentSettings.ActiveAgentId);
+        Func<string?> codexActionBlockReason = () =>
+            !currentSettings.BridgeEnabled
+                ? AgentAutomationErrorCodes.BridgeSafePreview
+                : currentSettings.OnlyWhenCodexForeground &&
+                  !codexCommand.IsCodexForeground
+                    ? AgentAutomationErrorCodes.AgentNotForeground
+                    : null;
         var actionRouter = new ActionRouter(
         [
             new CodexForkThreadActionExecutor(
-                () => !currentSettings.BridgeEnabled
-                    ? AgentAutomationErrorCodes.BridgeSafePreview
-                    : currentSettings.OnlyWhenCodexForeground &&
-                      !codexCommand.IsCodexForeground
-                        ? AgentAutomationErrorCodes.AgentNotForeground
-                        : null,
+                codexActionBlockReason,
                 microInput.TryForkThread,
                 () => codexCommand.ExecuteShortcut(
                     currentSettings.ForkShortcut,
@@ -115,6 +117,11 @@ public sealed class AppServices : IDisposable
                 actionNames => codexComposer.InvokeComposerAction(
                     currentSettings,
                     actionNames)),
+            new CodexShellActionExecutor(
+                codexActionBlockReason,
+                shortcut => codexCommand.ExecuteShortcut(
+                    shortcut,
+                    currentSettings)),
             new CodexComposerActionExecutor(
                 () => codexComposer.SubmitComposer(currentSettings),
                 () => codexComposer.ClearComposer(currentSettings),

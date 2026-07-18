@@ -1171,19 +1171,22 @@ public partial class MainWindow : Window
                 ExecuteNewTaskAction();
                 break;
             case RadialInputAction.NavigateForward:
-                ExecuteActionPanelShortcut(
+                _ = ExecuteActionPanelActionAsync(
+                    NavigationActionContract.ForwardId,
                     RadialText("前进", "Forward"),
-                    "Ctrl+]");
+                    "controller.radial.action-panel.forward");
                 break;
             case RadialInputAction.ToggleSidebar:
-                ExecuteActionPanelShortcut(
+                _ = ExecuteActionPanelActionAsync(
+                    SidebarActionContract.ToggleId,
                     RadialText("切换侧边栏", "Toggle sidebar"),
-                    "Ctrl+B");
+                    "controller.radial.action-panel.toggle-sidebar");
                 break;
             case RadialInputAction.NavigateBack:
-                ExecuteActionPanelShortcut(
+                _ = ExecuteActionPanelActionAsync(
+                    NavigationActionContract.BackId,
                     RadialText("后退", "Back"),
-                    "Ctrl+[");
+                    "controller.radial.action-panel.back");
                 break;
             case RadialInputAction.ClearComposer:
                 ConfirmOrClearComposer();
@@ -1195,31 +1198,35 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExecuteActionPanelShortcut(
+    private async Task ExecuteActionPanelActionAsync(
+        ActionId actionId,
         string title,
-        string shortcut)
+        string controlId)
     {
-        var executed = _agentShortcuts.Execute(
-            shortcut,
-            _settings);
+        var result = await TryExecuteActionAsync(
+            actionId,
+            "controller.active",
+            controlId,
+            "radial.action-panel",
+            actionId.Value,
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
         EndRadialLayer(_latestControllerState.Buttons);
         AddEvent(
             title +
             ExecutionSuffix(
-                executed,
-                executed
-                    ? null
-                    : AgentAutomationErrorCodes.InputInjectionFailed,
-                shortcut));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            executed
+            succeeded
                 ? _localization.Strings.Get(
                     StringKeys.MessageExecuted)
-                : ExecutionFailureLabel(
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    shortcut));
-        Pulse(strength: executed ? 0.2 : 0.1);
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.2 : 0.1);
     }
 
     private void ConfirmOrClearComposer()

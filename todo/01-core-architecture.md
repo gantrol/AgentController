@@ -58,6 +58,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] `composer.submit` 与 `composer.clear` 共用一个 Codex Composer executor；旧 `IComposerAutomation.Submit/Clear` 直达入口已删除，清空动作在 executor 边界强制要求 `ConfirmationRequired`。
   - [x] 三秒 B 长按后的 `turn.stop` 已接入同一 Composer executor，并在执行边界强制要求 `HighRisk`；短按 B 的菜单关闭、导航撤回和本地取消仍保持独立分流。
   - [x] `thread.fork` 已将 Micro、配置快捷键和 UIA 的有序回退移出 WPF；窗口内仅供 Fork 使用的 `TryExecuteMicroInput` helper 已删除。
+  - [x] 动作面板的前进、后退和切换侧边栏已改为 `navigation.forward`、`navigation.back`、`sidebar.toggle`；快捷键映射与执行门禁由同一个 Codex shell executor 持有。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -134,3 +135,9 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `MainWindow` 内的三层选择逻辑和仅供 Fork 使用的 `TryExecuteMicroInput` 已删除；保留原有 Micro/快捷键快速路径日志与 UIA 反馈行为。
 - 四个 Codex executor 共享仅处理 adapter 协议样板的 `CodexActionExecutorBase`；具体 action capability、安全等级和 fallback 顺序不进入基类，避免用继承隐藏业务策略。
 - 新增 6 项 executor 合同测试，覆盖顺序短路、两级 fallback、UIA action names、门禁、NotSent 与 capability 缺失；完整 Release solution 测试 653/653（旧客户端 626、Application 5、Domain 15、Architecture 7）。Fork 仍需实机确认最终新任务 readback。
+
+### 2026-07-18：动作面板 shell action 切片
+
+- 前进、后退和切换侧边栏现在分别发射 `navigation.forward`、`navigation.back` 与 `sidebar.toggle`；`MainWindow` 不再保存 `Ctrl+]`、`Ctrl+[`、`Ctrl+B` 的 Codex 快捷键映射。
+- 三个 routine action 共用 `CodexShellActionExecutor`，并与 Fork 复用 composition root 的 Bridge/前台门禁；快捷键注入只返回 `AcceptedUnverified` 与对应的 `Transport/*.shortcut-sent` evidence，注入失败返回 `NotSent`。
+- 新增 7 项 executor 合同测试，覆盖全部映射、门禁短路、注入失败、transport 缺失和未知 action；完整 Release solution 测试 661/661（旧客户端 634、Application 5、Domain 15、Architecture 7）。动作面板仍需实机复验 Codex 的历史导航与侧边栏状态。

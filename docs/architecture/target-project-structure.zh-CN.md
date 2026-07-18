@@ -208,3 +208,10 @@ AgentController.Application/
 - `TryExecuteMicroInput` 随唯一调用方一起删除；新的 Fork executor 是具备真实三通道策略的 adapter，不是为单个 Action 建立的空壳层。
 - 四个真实 Codex executor 出现稳定重复后，公共的取消检查、结果/evidence 构造和自动化错误映射才下沉到 `CodexActionExecutorBase`；各动作的 capability 与 fallback policy 仍留在具体 adapter 中。
 - 自动化证据更新为旧客户端 626 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 653 passed、0 failed、0 skipped；Fork 最终状态仍需实机 readback。
+
+### 2026-07-18：动作面板 shell action adapter
+
+- Application 增加 `navigation.back`、`navigation.forward` 与 `sidebar.toggle` 合同；它们描述用户意图，不暴露 Windows 快捷键。
+- `CodexShellActionExecutor` 负责三项意图到 `Ctrl+[`、`Ctrl+]`、`Ctrl+B` 的映射，并在执行前应用 Bridge/前台 capability gate；WPF 只消费 `ActionResult` 和呈现本地反馈。
+- 键盘注入成功是 transport evidence，不是 UI 状态 readback，因此统一返回 `AcceptedUnverified`；后续 App Server 或平台观察器可在不改 UI 调用方的情况下替换权威执行通道。
+- 自动化证据更新为旧客户端 634 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 661 passed、0 failed、0 skipped。
