@@ -132,4 +132,25 @@ public sealed class RadialInputMapTests
         Assert.False(baseButtons.HasFlag(ControllerButtons.X));
         Assert.True(baseButtons.HasFlag(ControllerButtons.DPadDown));
     }
+
+    [Fact]
+    public void ActionIdsStayAlignedWithPresentedMenuItems()
+    {
+        Assert.Equal(
+            "agent-slot-6",
+            RadialInputMap.ActionId(RadialInputAction.AgentSlot6));
+        Assert.Equal(
+            "command-ptt",
+            RadialInputMap.ActionId(RadialInputAction.PushToTalk));
+        Assert.Equal(
+            "command-fork",
+            RadialInputMap.ActionId(
+                RadialInputAction.Fork,
+                RadialMenuLayerKind.Command));
+        Assert.Equal(
+            "turn-fork",
+            RadialInputMap.ActionId(
+                RadialInputAction.Fork,
+                RadialMenuLayerKind.Turn));
+    }
 }

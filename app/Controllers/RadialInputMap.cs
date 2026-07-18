@@ -89,6 +89,39 @@ public static class RadialInputMap
         };
     }
 
+    public static string ActionId(
+        RadialInputAction action,
+        RadialMenuLayerKind? layer = null)
+    {
+        var slot = AgentSlotIndex(action);
+        if (slot >= 0)
+        {
+            return $"agent-slot-{slot + 1}";
+        }
+
+        return action switch
+        {
+            RadialInputAction.ToggleFast => "command-fast",
+            RadialInputAction.Approve => "command-approve",
+            RadialInputAction.Decline => "command-decline",
+            RadialInputAction.Fork when
+                layer == RadialMenuLayerKind.Turn => "turn-fork",
+            RadialInputAction.Fork => "command-fork",
+            RadialInputAction.PushToTalk => "command-ptt",
+            RadialInputAction.Dispatch => "command-dispatch",
+            RadialInputAction.Steer => "turn-steer",
+            RadialInputAction.Queue => "turn-queue",
+            RadialInputAction.BeginStopHold => "turn-stop",
+            RadialInputAction.NewTask => "action-new-task",
+            RadialInputAction.NavigateForward => "action-forward",
+            RadialInputAction.ToggleSidebar => "action-sidebar",
+            RadialInputAction.NavigateBack => "action-back",
+            RadialInputAction.ClearComposer => "action-clear",
+            RadialInputAction.ProjectContext => "action-project",
+            _ => string.Empty,
+        };
+    }
+
     public static bool IsTurnCandidate(double triggerValue)
     {
         return triggerValue >= TurnCandidateThreshold;

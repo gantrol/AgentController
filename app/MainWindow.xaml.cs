@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private readonly XInputService _xInputService;
     private readonly ControllerInteractionCoordinator _controllerInteraction;
     private readonly ControllerHoldCoordinator _controllerHolds;
+    private readonly RadialLayerCoordinator _radialLayers;
     private readonly ActionDispatcher _actionDispatcher;
     private readonly ThreadNavigationCoordinator _threadNavigation;
     private readonly BridgeEventHub _bridgeEvents;
@@ -75,9 +76,6 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
     private readonly DispatcherTimer _radialLearningTimer;
-    private readonly RadialMenuInteractionState _radialInteraction = new();
-    private readonly RadialActionConfirmationState _radialConfirmation =
-        new();
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
@@ -90,7 +88,6 @@ public partial class MainWindow : Window
     private CodexSnapshot _snapshot = new();
     private SidebarScope _scope = SidebarScope.Projects;
     private RightControlMode _rightMode = RightControlMode.Dial;
-    private ControllerButtons _radialSuppressedButtons;
     private ControllerButtons _pushToTalkSuppressedButtons;
     private string? _selectedProjectPath;
     private bool _projectTasksPinnedOnly;
@@ -101,11 +98,6 @@ public partial class MainWindow : Window
     private ProjectDisclosureLease? _projectDisclosureLease;
     private bool _dictationInjected;
     private string? _dictationInputGlyph;
-    private bool _radialLayerEngaged;
-    private bool _radialLayerCancelled;
-    private bool _radialActionTriggered;
-    private bool _radialPushToTalkActive;
-    private bool _rightTriggerCandidate;
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
     private bool _virtualDialMenuOpen;
@@ -130,7 +122,6 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private long _leftNavigationBlockedUntil;
     private long _rightAdjustmentBlockedUntil;
-    private long _radialLayerStartedAt;
     private long _simpleModeUpgradePromptExpiresAt;
     private CancellationTokenSource? _sidebarFocusCancellation;
     private ControllerState _latestControllerState;
@@ -140,7 +131,6 @@ public partial class MainWindow : Window
     private int _speedIndex;
     private CancellationTokenSource? _composerPickerCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
-    private CancellationTokenSource? _radialConfirmationCancellation;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
     private int _pendingSimplePowerSteps;
@@ -157,8 +147,6 @@ public partial class MainWindow : Window
     private RadialMenuOverlayWindow? _radialMenuOverlayWindow;
     private SidebarNavigationWheelOverlayWindow?
         _sidebarNavigationWheelOverlayWindow;
-    private RadialMenuLayerKind? _radialLayer;
-    private string? _radialHighlightedItemId;
     private ControllerProfile _activeControllerProfile =
         BuiltInControllerProfiles.Generic;
 
@@ -182,6 +170,7 @@ public partial class MainWindow : Window
         _xInputService = services.Controller;
         _controllerInteraction = services.ControllerInteraction;
         _controllerHolds = services.ControllerHolds;
+        _radialLayers = services.RadialLayers;
         _actionDispatcher = services.ActionDispatcher;
         _threadNavigation = services.ThreadNavigation;
         _threadNavigation.NoticePublished +=
@@ -403,7 +392,7 @@ public partial class MainWindow : Window
             _blockedPushToTalkHintShown = false;
         }
 
-        _radialSuppressedButtons &= pressed;
+        _radialLayers.DrainSuppressedButtons(pressed);
         _pushToTalkSuppressedButtons &= pressed;
         if (!_settings.BridgeEnabled)
         {
@@ -413,12 +402,12 @@ public partial class MainWindow : Window
         }
 
         var radialModifierHeld =
-            _radialLayer is not null ||
+            _radialLayers.Layer is not null ||
             pressed.HasFlag(ControllerButtons.LeftShoulder) ||
             pressed.HasFlag(ControllerButtons.RightShoulder) ||
             state.RightTrigger >= RadialInputMap.TurnEngageThreshold;
         var wakeEligibleButtons =
-            pressed & ~_radialSuppressedButtons;
+            pressed & ~_radialLayers.SuppressedButtons;
         if (radialModifierHeld || IsVirtualDialContextActive)
         {
             wakeEligibleButtons &= ~ControllerButtons.Start;
@@ -506,7 +495,7 @@ public partial class MainWindow : Window
         var pushToTalkTransition = UpdatePushToTalkTrigger(
             state.LeftTrigger,
             blocked: PushToTalkInputPolicy.ShouldBlockTrigger(
-                radialLayerActive: _radialLayer is not null));
+                radialLayerActive: _radialLayers.Layer is not null));
         var pushToTalkFrameActive =
             _controllerInteraction.PushToTalkBlocksBaseInput ||
             pushToTalkTransition != AnalogTriggerTransition.None;
@@ -523,13 +512,14 @@ public partial class MainWindow : Window
         ControllerButtons frozenByContext;
         if (pushToTalkFrameActive)
         {
-            _rightTriggerCandidate = false;
+            _radialLayers.ClearRightTriggerCandidate();
             frozenByContext =
                 PushToTalkInputPolicy.FrozenBaseButtons;
         }
         else if (dialContextActive)
         {
-            if (_radialLayer is not null || _rightTriggerCandidate)
+            if (_radialLayers.Layer is not null ||
+                _radialLayers.IsRightTriggerCandidate)
             {
                 ResetRadialLayer(clearSuppression: false);
             }
@@ -548,11 +538,11 @@ public partial class MainWindow : Window
             CancelVirtualDialPressHold();
         }
 
-        var radialInputActive = _radialLayer is not null;
+        var radialInputActive = _radialLayers.Layer is not null;
         var basePressed =
             pressed &
             ~frozenByContext &
-            ~_radialSuppressedButtons &
+            ~_radialLayers.SuppressedButtons &
             ~_pushToTalkSuppressedButtons;
         var baseIntents = _controllerInteraction.ResolveBaseIntents(
             basePressed,
@@ -736,192 +726,149 @@ public partial class MainWindow : Window
 
     private ControllerButtons ProcessRadialInput(ControllerState state)
     {
-        var pressed = state.Buttons;
-        var edges = _controllerInteraction.PhysicalEdges(pressed);
-        var downEdges = edges.Down;
-        var upEdges = edges.Up;
+        var update = _radialLayers.ProcessFrame(
+            state,
+            _controllerInteraction.PhysicalEdges(state.Buttons),
+            Environment.TickCount64);
+        ApplyRadialLayerUpdate(update);
+        return update.FrozenButtons;
+    }
 
-        if (_radialLayer is null)
+    private void ApplyRadialLayerUpdate(RadialLayerUpdate update)
+    {
+        var effects = update.Effects;
+        if (effects.HasFlag(RadialLayerEffect.StopLearningTimer))
         {
-            if (
-                !_rightTriggerCandidate &&
-                RadialInputMap.IsTurnCandidate(state.RightTrigger))
-            {
-                _rightTriggerCandidate = true;
-            }
-
-            if (_rightTriggerCandidate)
-            {
-                if (
-                    state.RightTrigger <=
-                    RadialInputMap.TurnCandidateReleaseThreshold)
-                {
-                    _radialSuppressedButtons |=
-                        pressed &
-                        RadialInputMap.FrozenTurnCandidateButtons;
-                    _rightTriggerCandidate = false;
-                    return RadialInputMap.FrozenTurnCandidateButtons;
-                }
-
-                if (
-                    RadialInputMap.CanAcceptTurnAction(
-                        state.RightTrigger))
-                {
-                    _rightTriggerCandidate = false;
-                    BeginRadialLayer(RadialMenuLayerKind.Turn);
-                }
-                else
-                {
-                    return RadialInputMap.FrozenTurnCandidateButtons;
-                }
-            }
-            else if (
-                downEdges.HasFlag(ControllerButtons.RightShoulder))
-            {
-                BeginRadialLayer(RadialMenuLayerKind.Command);
-            }
-            else if (
-                downEdges.HasFlag(ControllerButtons.LeftShoulder))
-            {
-                BeginRadialLayer(RadialMenuLayerKind.Agent);
-            }
+            _radialLearningTimer.Stop();
         }
 
-        if (_radialLayer is not { } layer)
+        if (effects.HasFlag(RadialLayerEffect.StartLearningTimer))
         {
-            return ControllerButtons.None;
+            _radialLearningTimer.Start();
         }
 
-        if (
-            layer == RadialMenuLayerKind.Agent &&
-            !pressed.HasFlag(ControllerButtons.LeftShoulder))
-        {
-            CompleteShoulderLayer(
-                direction: -1,
-                pressed);
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (
-            layer == RadialMenuLayerKind.Command &&
-            !pressed.HasFlag(ControllerButtons.RightShoulder))
-        {
-            CompleteShoulderLayer(
-                direction: 1,
-                pressed);
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (
-            layer == RadialMenuLayerKind.Turn &&
-            upEdges.HasFlag(ControllerButtons.B))
+        if (effects.HasFlag(RadialLayerEffect.EndBaseCancelPress))
         {
             EndBaseCancelPress();
         }
 
-        if (
-            layer == RadialMenuLayerKind.Turn &&
-            state.RightTrigger <=
-                RadialInputMap.TurnReleaseThreshold)
+        if (effects.HasFlag(RadialLayerEffect.StopDictationPhysical))
         {
-            EndRadialLayer(pressed);
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (
-            layer == RadialMenuLayerKind.Command &&
-            _radialPushToTalkActive &&
-            upEdges.HasFlag(ControllerButtons.Back))
-        {
-            _radialPushToTalkActive = false;
             StopDictation(physicalRelease: true);
         }
 
-        if (_radialPushToTalkActive)
+        if (effects.HasFlag(RadialLayerEffect.StopDictationSynthetic))
         {
-            return RadialInputMap.FrozenBaseButtons;
+            StopDictation(physicalRelease: false);
         }
 
-        if (_radialLayerCancelled)
+        if (effects.HasFlag(RadialLayerEffect.HideMenu))
         {
-            return RadialInputMap.FrozenBaseButtons;
+            _radialMenuOverlayWindow?.HideMenu();
         }
 
-        var action = RadialInputMap.Resolve(layer, downEdges);
-        if (action == RadialInputAction.None)
+        if (effects.HasFlag(RadialLayerEffect.RefreshMenu))
         {
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (action == RadialInputAction.Cancel)
-        {
-            if (layer == RadialMenuLayerKind.Action)
-            {
-                CloseActionPanel(pressed);
-                return RadialInputMap.FrozenBaseButtons;
-            }
-
-            CancelRadialLayer();
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (_radialConfirmation.CancelUnless(action))
-        {
-            CancelRadialConfirmation();
-        }
-
-        if (KeepsRadialOpenForFollowUp(action))
-        {
-            _radialActionTriggered = true;
-            _radialLayerEngaged = true;
-            _radialLearningTimer.Stop();
-            _radialHighlightedItemId = RadialActionId(action);
             RefreshRadialMenu();
-            ExecuteRadialAction(action);
-            return RadialInputMap.FrozenBaseButtons;
         }
 
-        var actionId = RadialActionId(action);
-        if (!_radialInteraction.TryAcceptInput(actionId))
+        if (effects.HasFlag(RadialLayerEffect.RefreshAgentData))
         {
-            return RadialInputMap.FrozenBaseButtons;
+            RefreshCodexData(preserveSelection: true);
         }
 
-        _radialActionTriggered = true;
-        _radialLayerEngaged = true;
-        _radialLearningTimer.Stop();
-        _radialHighlightedItemId = actionId;
-        var actionTitle =
-            _radialMenuOverlayWindow?.AcknowledgeInputAndFade(actionId) ??
-            RadialText("轮盘指令", "Radial command");
-        ShowFeedback(
-            actionTitle,
-            RadialText(
-                "已接收，等待 Codex 响应…",
-                "Received. Waiting for Codex…"));
-        Pulse(strength: 0.18);
-        _radialInteraction.TryBeginWaiting();
-        _ = ExecuteRadialActionAfterAcknowledgementAsync(action);
-        return RadialInputMap.FrozenBaseButtons;
+        if (effects.HasFlag(RadialLayerEffect.PresentCanceled))
+        {
+            ShowFeedback(
+                RadialText("组合层", "Chord layer"),
+                RadialText(
+                    "已取消；松开修饰键后返回基础层。",
+                    "Canceled. Release the modifier to return to Base."));
+            Pulse(strength: 0.1);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.ActionPanelOpened))
+        {
+            ShowFeedback(
+                RadialText("动作面板", "Action panel"),
+                RadialText(
+                    "按手柄图中的实体键执行 · B 或 Y 关闭",
+                    "Press a mapped controller button · B or Y closes"));
+            Pulse(strength: 0.16);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.ActionPanelClosed))
+        {
+            ShowFeedback(
+                RadialText("动作面板", "Action panel"),
+                RadialText("已关闭。", "Closed."));
+            Pulse(strength: 0.08);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.OpenPreviousTask))
+        {
+            OpenAdjacentAgentTask(-1);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.OpenNextTask))
+        {
+            OpenAdjacentAgentTask(1);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.ExecuteFollowUpAction))
+        {
+            ExecuteRadialAction(update.Action);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.AcknowledgeAction))
+        {
+            var actionId =
+                _radialLayers.HighlightedItemId ??
+                RadialInputMap.ActionId(
+                    update.Action,
+                    _radialLayers.Layer);
+            var actionTitle =
+                _radialMenuOverlayWindow?.AcknowledgeInputAndFade(actionId) ??
+                RadialText("轮盘指令", "Radial command");
+            ShowFeedback(
+                actionTitle,
+                RadialText(
+                    "已接收，等待 Codex 响应…",
+                    "Received. Waiting for Codex…"));
+            Pulse(strength: 0.18);
+            _ = ExecuteRadialActionAfterAcknowledgementAsync(update.Action);
+        }
     }
 
-    private bool KeepsRadialOpenForFollowUp(
-        RadialInputAction action)
+    private void PromoteRadialLearningCue()
     {
-        return
-            action == RadialInputAction.PushToTalk ||
-            action == RadialInputAction.BeginStopHold ||
-            (
-                RequiresSecondPress(action) &&
-                !_radialConfirmation.IsPending(action)
-            );
+        ApplyRadialLayerUpdate(
+            _radialLayers.PromoteLearningCue(
+                _latestControllerState.Buttons));
     }
 
-    private static bool RequiresSecondPress(
-        RadialInputAction action) =>
-        action is
-            RadialInputAction.Approve or
-            RadialInputAction.ClearComposer;
+    private void OpenActionPanel()
+    {
+        ApplyRadialLayerUpdate(
+            _radialLayers.ToggleActionPanel(
+                _latestControllerState.Buttons,
+                Environment.TickCount64));
+    }
+
+    private void EndRadialLayer(ControllerButtons pressed)
+    {
+        ApplyRadialLayerUpdate(_radialLayers.End(pressed));
+    }
+
+    private void ResetRadialLayer(
+        bool clearSuppression,
+        bool preserveInputAcknowledgement = false)
+    {
+        ApplyRadialLayerUpdate(
+            _radialLayers.Reset(
+                clearSuppression,
+                preserveInputAcknowledgement));
+    }
 
     private async Task ExecuteRadialActionAfterAcknowledgementAsync(
         RadialInputAction action)
@@ -930,183 +877,6 @@ public partial class MainWindow : Window
         // automation or deep-link handling begins on the UI thread.
         await Dispatcher.Yield(DispatcherPriority.Background);
         ExecuteRadialAction(action);
-    }
-
-    private void BeginRadialLayer(RadialMenuLayerKind layer)
-    {
-        if (_radialLayer is not null)
-        {
-            return;
-        }
-
-        _radialLayer = layer;
-        _rightTriggerCandidate = false;
-        _radialLayerStartedAt = Environment.TickCount64;
-        _radialLayerEngaged =
-            layer is
-                RadialMenuLayerKind.Turn or
-                RadialMenuLayerKind.Action;
-        _radialLayerCancelled = false;
-        _radialActionTriggered = false;
-        _radialPushToTalkActive = false;
-        _radialHighlightedItemId = null;
-        _radialInteraction.Reset();
-
-        _radialLearningTimer.Stop();
-        if (
-            layer is
-                RadialMenuLayerKind.Agent or
-                RadialMenuLayerKind.Command)
-        {
-            _radialLearningTimer.Start();
-        }
-
-        RefreshRadialMenu();
-        if (layer == RadialMenuLayerKind.Agent)
-        {
-            RefreshCodexData(preserveSelection: true);
-        }
-    }
-
-    private void PromoteRadialLearningCue()
-    {
-        _radialLearningTimer.Stop();
-        if (
-            _radialLayer is not
-                (RadialMenuLayerKind.Agent or
-                 RadialMenuLayerKind.Command) ||
-            _radialLayerCancelled)
-        {
-            return;
-        }
-
-        var buttons = _latestControllerState.Buttons;
-        var modifierStillHeld =
-            _radialLayer == RadialMenuLayerKind.Agent
-                ? buttons.HasFlag(ControllerButtons.LeftShoulder)
-                : buttons.HasFlag(ControllerButtons.RightShoulder);
-        if (!modifierStillHeld)
-        {
-            return;
-        }
-
-        _radialLayerEngaged = true;
-        RefreshRadialMenu();
-    }
-
-    private void CompleteShoulderLayer(
-        int direction,
-        ControllerButtons pressed)
-    {
-        var elapsed =
-            Environment.TickCount64 - _radialLayerStartedAt;
-        var shouldMoveTask =
-            !_radialLayerEngaged &&
-            !_radialLayerCancelled &&
-            !_radialActionTriggered &&
-            elapsed < RadialInputMap.LearningDelayMs;
-        EndRadialLayer(pressed);
-        if (shouldMoveTask)
-        {
-            OpenAdjacentAgentTask(direction);
-        }
-    }
-
-    private void CancelRadialLayer()
-    {
-        _radialLayerCancelled = true;
-        _radialActionTriggered = true;
-        _radialLearningTimer.Stop();
-        if (_radialPushToTalkActive)
-        {
-            _radialPushToTalkActive = false;
-            StopDictation(physicalRelease: false);
-        }
-
-        _radialMenuOverlayWindow?.HideMenu();
-        ShowFeedback(
-            RadialText("组合层", "Chord layer"),
-            RadialText(
-                "已取消；松开修饰键后返回基础层。",
-                "Canceled. Release the modifier to return to Base."));
-        Pulse(strength: 0.1);
-    }
-
-    private void OpenActionPanel()
-    {
-        if (_radialLayer == RadialMenuLayerKind.Action)
-        {
-            CloseActionPanel(_latestControllerState.Buttons);
-            return;
-        }
-
-        if (_radialLayer is not null)
-        {
-            return;
-        }
-
-        BeginRadialLayer(RadialMenuLayerKind.Action);
-        ShowFeedback(
-            RadialText("动作面板", "Action panel"),
-            RadialText(
-                "按手柄图中的实体键执行 · B 或 Y 关闭",
-                "Press a mapped controller button · B or Y closes"));
-        Pulse(strength: 0.16);
-    }
-
-    private void CloseActionPanel(ControllerButtons pressed)
-    {
-        _radialSuppressedButtons |=
-            pressed & RadialInputMap.FrozenBaseButtons;
-        ResetRadialLayer(clearSuppression: false);
-        ShowFeedback(
-            RadialText("动作面板", "Action panel"),
-            RadialText("已关闭。", "Closed."));
-        Pulse(strength: 0.08);
-    }
-
-    private void EndRadialLayer(ControllerButtons pressed)
-    {
-        _radialSuppressedButtons |=
-            pressed & RadialInputMap.FrozenBaseButtons;
-        ResetRadialLayer(
-            clearSuppression: false,
-            preserveInputAcknowledgement: true);
-    }
-
-    private void ResetRadialLayer(
-        bool clearSuppression,
-        bool preserveInputAcknowledgement = false)
-    {
-        var allowAcknowledgementToFinish =
-            preserveInputAcknowledgement &&
-            _radialInteraction.Phase ==
-                RadialMenuInteractionPhase.WaitingForResponse;
-        _radialLearningTimer.Stop();
-        if (_radialPushToTalkActive)
-        {
-            _radialPushToTalkActive = false;
-            StopDictation(physicalRelease: false);
-        }
-
-        _radialLayer = null;
-        _rightTriggerCandidate = false;
-        _radialLayerEngaged = false;
-        _radialLayerCancelled = false;
-        _radialActionTriggered = false;
-        _radialLayerStartedAt = 0;
-        _radialHighlightedItemId = null;
-        _radialInteraction.Reset();
-        CancelRadialConfirmation();
-        if (clearSuppression)
-        {
-            _radialSuppressedButtons = ControllerButtons.None;
-        }
-
-        if (!allowAcknowledgementToFinish)
-        {
-            _radialMenuOverlayWindow?.HideMenu();
-        }
     }
 
     private void ExecuteRadialAction(RadialInputAction action)
@@ -1137,9 +907,8 @@ public partial class MainWindow : Window
                 ExecuteForkAction();
                 break;
             case RadialInputAction.PushToTalk:
-                if (!_radialPushToTalkActive)
+                if (_radialLayers.TryStartPushToTalk())
                 {
-                    _radialPushToTalkActive = true;
                     StartDictation(Glyph(LogicalInput.View));
                 }
                 break;
@@ -1276,17 +1045,20 @@ public partial class MainWindow : Window
         string title,
         string confirmationPrompt)
     {
-        if (_radialConfirmation.TryConfirm(action))
+        if (_radialLayers.TryConfirmAction(
+                action,
+                RadialInputMap.ActionId(
+                    action,
+                    _radialLayers.Layer),
+                TimeSpan.FromSeconds(2.5),
+                RefreshRadialMenu))
         {
-            CancelRadialConfirmation();
             return true;
         }
 
-        _radialHighlightedItemId = RadialActionId(action);
         RefreshRadialMenu();
         ShowFeedback(title, confirmationPrompt);
         Pulse(strength: 0.12);
-        ScheduleRadialConfirmationDisarm(action);
         return false;
     }
 
@@ -1317,59 +1089,6 @@ public partial class MainWindow : Window
                 ? RadialText("已清空。", "Cleared.")
                 : ExecutionFailureLabel(result?.ErrorCode));
         Pulse(strength: succeeded ? 0.2 : 0.1);
-    }
-
-    private void ScheduleRadialConfirmationDisarm(
-        RadialInputAction action)
-    {
-        _radialConfirmationCancellation?.Cancel();
-        var cancellation = new CancellationTokenSource();
-        _radialConfirmationCancellation = cancellation;
-        _ = DisarmRadialConfirmationAsync(action, cancellation);
-    }
-
-    private async Task DisarmRadialConfirmationAsync(
-        RadialInputAction action,
-        CancellationTokenSource cancellation)
-    {
-        try
-        {
-            await Task.Delay(
-                TimeSpan.FromSeconds(2.5),
-                cancellation.Token);
-            if (
-                cancellation.IsCancellationRequested ||
-                !ReferenceEquals(
-                    _radialConfirmationCancellation,
-                    cancellation))
-            {
-                return;
-            }
-
-            if (!_radialConfirmation.TryExpire(action))
-            {
-                return;
-            }
-
-            _radialHighlightedItemId = null;
-            _radialConfirmationCancellation = null;
-            RefreshRadialMenu();
-        }
-        catch (OperationCanceledException)
-        {
-            // A different action or panel close owns the current state.
-        }
-        finally
-        {
-            cancellation.Dispose();
-        }
-    }
-
-    private void CancelRadialConfirmation()
-    {
-        _radialConfirmation.Reset();
-        _radialConfirmationCancellation?.Cancel();
-        _radialConfirmationCancellation = null;
     }
 
     private void OpenAgentSlot(int slotIndex)
@@ -1543,7 +1262,8 @@ public partial class MainWindow : Window
 
     private async Task ExecuteForkActionAsync()
     {
-        var isTurnLayer = _radialLayer == RadialMenuLayerKind.Turn;
+        var isTurnLayer =
+            _radialLayers.Layer == RadialMenuLayerKind.Turn;
         var result = await TryExecuteActionAsync(
             ForkThreadActionContract.Id,
             "controller.active",
@@ -1632,8 +1352,8 @@ public partial class MainWindow : Window
     private void RefreshRadialMenu()
     {
         if (
-            _radialLayer is not { } layer ||
-            _radialLayerCancelled ||
+            _radialLayers.Layer is not { } layer ||
+            _radialLayers.IsCancelled ||
             _radialMenuOverlayWindow is null)
         {
             _radialMenuOverlayWindow?.HideMenu();
@@ -1658,11 +1378,11 @@ public partial class MainWindow : Window
                 BuildAgentRadialItems(),
                 mode,
                 isLayerEngaged: true,
-                isLearningCueReady: _radialLayerEngaged,
+                isLearningCueReady: _radialLayers.IsEngaged,
                 subtitle: RadialText(
                     "虚拟 Codex Micro 小键盘 · 按对应键切换",
                     "Virtual Codex Micro keypad · Press a mapped key to switch"),
-                interactionPhase: _radialInteraction.Phase,
+                interactionPhase: _radialLayers.InteractionPhase,
                 agentKeypad: BuildAgentKeypadPresentation()),
             RadialMenuLayerKind.Command => new RadialMenuState(
                 layer,
@@ -1671,11 +1391,11 @@ public partial class MainWindow : Window
                 BuildCommandRadialItems(),
                 mode,
                 isLayerEngaged: true,
-                isLearningCueReady: _radialLayerEngaged,
+                isLearningCueReady: _radialLayers.IsEngaged,
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.LeftStickPress)} 取消",
                     $"{Glyph(LogicalInput.LeftStickPress)} cancel"),
-                interactionPhase: _radialInteraction.Phase),
+                interactionPhase: _radialLayers.InteractionPhase),
             RadialMenuLayerKind.Turn => new RadialMenuState(
                 layer,
                 RadialText("运行中操作", "Active turn"),
@@ -1687,7 +1407,7 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     "松开 RT 关闭",
                     "Release RT to close"),
-                interactionPhase: _radialInteraction.Phase),
+                interactionPhase: _radialLayers.InteractionPhase),
             RadialMenuLayerKind.Action => new RadialMenuState(
                 layer,
                 RadialText("动作面板", "Action panel"),
@@ -1699,7 +1419,7 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} 关闭",
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} close"),
-                interactionPhase: _radialInteraction.Phase),
+                interactionPhase: _radialLayers.InteractionPhase),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(layer),
                 layer,
@@ -1762,7 +1482,7 @@ public partial class MainWindow : Window
                 RadialMenuSlotPosition.Bottom,
                 LogicalInput.FaceSouth,
                 RadialText("接受更改", "Approve changes"),
-                _radialConfirmation.IsPending(
+                _radialLayers.IsConfirmationPending(
                     RadialInputAction.Approve)
                     ? RadialText(
                         $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认",
@@ -1855,7 +1575,7 @@ public partial class MainWindow : Window
                 RadialMenuSlotPosition.CenterLeft,
                 LogicalInput.FaceSouth,
                 RadialText("清空当前输入", "Clear current input"),
-                _radialConfirmation.IsPending(
+                _radialLayers.IsConfirmationPending(
                     RadialInputAction.ClearComposer)
                     ? RadialText(
                         $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认",
@@ -1893,7 +1613,7 @@ public partial class MainWindow : Window
                 isHighlighted ||
                 string.Equals(
                     id,
-                    _radialHighlightedItemId,
+                    _radialLayers.HighlightedItemId,
                     StringComparison.Ordinal),
             logicalInput: input,
             status: status);
@@ -1986,38 +1706,6 @@ public partial class MainWindow : Window
         return resolver.Resolve(
             DispatchTurnState.Unknown,
             DispatchFollowUpBehavior.Unknown);
-    }
-
-    private string RadialActionId(RadialInputAction action)
-    {
-        var slot = RadialInputMap.AgentSlotIndex(action);
-        if (slot >= 0)
-        {
-            return $"agent-slot-{slot + 1}";
-        }
-
-        return action switch
-        {
-            RadialInputAction.ToggleFast => "command-fast",
-            RadialInputAction.Approve => "command-approve",
-            RadialInputAction.Decline => "command-decline",
-            RadialInputAction.Fork when
-                _radialLayer == RadialMenuLayerKind.Turn =>
-                "turn-fork",
-            RadialInputAction.Fork => "command-fork",
-            RadialInputAction.PushToTalk => "command-ptt",
-            RadialInputAction.Dispatch => "command-dispatch",
-            RadialInputAction.Steer => "turn-steer",
-            RadialInputAction.Queue => "turn-queue",
-            RadialInputAction.BeginStopHold => "turn-stop",
-            RadialInputAction.NewTask => "action-new-task",
-            RadialInputAction.NavigateForward => "action-forward",
-            RadialInputAction.ToggleSidebar => "action-sidebar",
-            RadialInputAction.NavigateBack => "action-back",
-            RadialInputAction.ClearComposer => "action-clear",
-            RadialInputAction.ProjectContext => "action-project",
-            _ => string.Empty,
-        };
     }
 
     private string RadialText(string zhCn, string enUs)
@@ -2403,7 +2091,7 @@ public partial class MainWindow : Window
             state.Buttons.HasFlag(button) &&
             _settings.BridgeEnabled &&
             _controllerSession.IsActive &&
-            _radialLayer is null &&
+            _radialLayers.Layer is null &&
             !IsVirtualDialContextActive &&
             !_controllerInteraction.PushToTalkBlocksBaseInput &&
             (
@@ -5655,7 +5343,7 @@ public partial class MainWindow : Window
             }
 
             UpdateLayerTabs();
-            if (_radialLayer == RadialMenuLayerKind.Agent)
+            if (_radialLayers.Layer == RadialMenuLayerKind.Agent)
             {
                 RefreshRadialMenu();
             }

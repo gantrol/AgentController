@@ -37,6 +37,7 @@ public sealed class AppServices : IDisposable
         XInputService controller,
         ControllerInteractionCoordinator controllerInteraction,
         ControllerHoldCoordinator controllerHolds,
+        RadialLayerCoordinator radialLayers,
         ActionDispatcher actionDispatcher,
         ThreadNavigationCoordinator threadNavigation)
     {
@@ -57,6 +58,7 @@ public sealed class AppServices : IDisposable
         Controller = controller;
         ControllerInteraction = controllerInteraction;
         ControllerHolds = controllerHolds;
+        RadialLayers = radialLayers;
         ActionDispatcher = actionDispatcher;
         ThreadNavigation = threadNavigation;
     }
@@ -78,6 +80,7 @@ public sealed class AppServices : IDisposable
     public XInputService Controller { get; }
     public ControllerInteractionCoordinator ControllerInteraction { get; }
     internal ControllerHoldCoordinator ControllerHolds { get; }
+    internal RadialLayerCoordinator RadialLayers { get; }
     public ActionDispatcher ActionDispatcher { get; }
     public ThreadNavigationCoordinator ThreadNavigation { get; }
 
@@ -196,6 +199,7 @@ public sealed class AppServices : IDisposable
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
             new ControllerHoldCoordinator(),
+            new RadialLayerCoordinator(),
             actionDispatcher,
             threadNavigation);
     }
@@ -209,6 +213,7 @@ public sealed class AppServices : IDisposable
 
         Controller.Dispose();
         ControllerHolds.Dispose();
+        RadialLayers.Dispose();
         ThreadNavigation.Dispose();
         MicroInput.Dispose();
         BridgeEvents.Dispose();
