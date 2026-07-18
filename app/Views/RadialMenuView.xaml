@@ -525,9 +525,9 @@
             </Border>
         </Canvas>
 
-        <views:AgentKeypadView Margin="0,0,0,12"
+        <views:AgentKeypadView Margin="0,12,0,0"
                                HorizontalAlignment="Center"
-                               VerticalAlignment="Bottom">
+                               VerticalAlignment="Top">
             <views:AgentKeypadView.Style>
                 <Style TargetType="views:AgentKeypadView">
                     <Setter Property="Visibility" Value="Collapsed" />

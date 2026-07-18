@@ -5,30 +5,38 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="clr-namespace:CodexController.Models"
              mc:Ignorable="d"
-             d:DesignHeight="460"
-             d:DesignWidth="660"
-             Width="660"
-             Height="460"
+             d:DesignHeight="360"
+             d:DesignWidth="820"
+             Width="820"
+             Height="360"
              IsHitTestVisible="False"
              SnapsToDevicePixels="True">
     <UserControl.Resources>
-        <Style x:Key="AgentKeypad.GlyphBadge"
-               TargetType="Border">
-            <Setter Property="Width" Value="32" />
-            <Setter Property="Height" Value="30" />
-            <Setter Property="Background"
-                    Value="{StaticResource Brush.Bg.Surface}" />
-            <Setter Property="BorderBrush"
-                    Value="{StaticResource Brush.Border.Subtle}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="7" />
-        </Style>
+        <LinearGradientBrush x:Key="AgentKeypad.PanelSurface"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Offset="0"
+                          Color="#FEFFFFFF" />
+            <GradientStop Offset="1"
+                          Color="#F8F1F1EC" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="AgentKeypad.KeySurface"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Offset="0"
+                          Color="#FFFFFFFF" />
+            <GradientStop Offset="0.58"
+                          Color="#FFF8F8F5" />
+            <GradientStop Offset="1"
+                          Color="#FFEAEAE5" />
+        </LinearGradientBrush>
 
         <Style x:Key="AgentKeypad.Progress"
                TargetType="ProgressBar">
             <Setter Property="Height" Value="3" />
             <Setter Property="Foreground"
-                    Value="{StaticResource Brush.Accent}" />
+                    Value="{StaticResource Brush.Agent.Glyph}" />
             <Setter Property="Background"
                     Value="{StaticResource Brush.Bg.Sunken}" />
             <Setter Property="BorderThickness" Value="0" />
@@ -53,69 +61,84 @@
 
         <Style x:Key="AgentKeypad.Key"
                TargetType="ContentControl">
-            <Setter Property="Height" Value="128" />
+            <Setter Property="Height" Value="78" />
             <Setter Property="Focusable" Value="False" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ContentControl">
-                        <Border x:Name="KeyRoot"
-                                Background="{StaticResource Brush.Bg.Surface}"
+                        <Border x:Name="RowRoot"
+                                Background="{StaticResource Brush.Agent.Row.Fill}"
                                 BorderBrush="{StaticResource Brush.Border.Subtle}"
                                 BorderThickness="1"
-                                CornerRadius="14"
+                                CornerRadius="16"
                                 AutomationProperties.Name="{Binding AccessibleName}">
-                            <Grid Margin="14,12,14,9">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="30" />
-                                    <RowDefinition Height="*" />
-                                    <RowDefinition Height="20" />
-                                    <RowDefinition Height="3" />
-                                </Grid.RowDefinitions>
+                            <Grid Margin="10,7,14,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                                <Border x:Name="GlyphBadge"
-                                        Style="{StaticResource AgentKeypad.GlyphBadge}">
-                                    <TextBlock Text="{Binding InputGlyph}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Foreground="{StaticResource Brush.Text.Primary}"
-                                               FontFamily="{StaticResource Font.Mono}"
-                                               FontSize="13"
-                                               FontWeight="{StaticResource Font.Weight.Medium}" />
+                                <Border x:Name="Keycap"
+                                        Width="58"
+                                        Height="58"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        Background="{StaticResource AgentKeypad.KeySurface}"
+                                        BorderBrush="{StaticResource Brush.Border.Subtle}"
+                                        BorderThickness="1"
+                                        CornerRadius="13"
+                                        Effect="{StaticResource Shadow.AgentKey}">
+                                    <Grid>
+                                        <TextBlock x:Name="GlyphText"
+                                                   Margin="8,5,0,0"
+                                                   HorizontalAlignment="Left"
+                                                   VerticalAlignment="Top"
+                                                   Text="{Binding InputGlyph}"
+                                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                                   FontFamily="{StaticResource Font.Mono}"
+                                                   FontSize="12"
+                                                   FontWeight="{StaticResource Font.Weight.Medium}" />
+
+                                        <Ellipse x:Name="LedHalo"
+                                                 Width="28"
+                                                 Height="28"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{StaticResource Brush.Led.Unknown}"
+                                                 Opacity="0.16" />
+                                        <Ellipse x:Name="StatusLed"
+                                                 Width="16"
+                                                 Height="16"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{StaticResource Brush.Led.Unknown}"
+                                                 Stroke="#77FFFFFF"
+                                                 StrokeThickness="1" />
+                                        <Ellipse x:Name="LedHighlight"
+                                                 Width="5"
+                                                 Height="3"
+                                                 Margin="-4,-6,0,0"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#BFFFFFFF" />
+                                    </Grid>
                                 </Border>
 
-                                <Rectangle x:Name="StatusLed"
-                                           Width="38"
-                                           Height="6"
-                                           Margin="0,7,0,0"
-                                           HorizontalAlignment="Right"
-                                           VerticalAlignment="Top"
-                                           Fill="{StaticResource Brush.Led.Unknown}"
-                                           RadiusX="3"
-                                           RadiusY="3" />
-
                                 <TextBlock x:Name="SlotTitle"
-                                           Grid.Row="1"
-                                           Margin="0,7,0,2"
+                                           Grid.Column="1"
+                                           Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
                                            Text="{Binding Title}"
                                            Foreground="{StaticResource Brush.Text.Primary}"
-                                           FontSize="14"
+                                           FontSize="15"
                                            FontWeight="{StaticResource Font.Weight.Semibold}"
-                                           LineHeight="18"
-                                           MaxHeight="40"
-                                           TextWrapping="Wrap"
                                            TextTrimming="CharacterEllipsis" />
 
-                                <TextBlock x:Name="SlotSubtitle"
-                                           Grid.Row="2"
-                                           Text="{Binding Subtitle}"
-                                           VerticalAlignment="Center"
-                                           Foreground="{StaticResource Brush.Text.Tertiary}"
-                                           FontSize="11"
-                                           TextTrimming="CharacterEllipsis" />
-
-                                <ProgressBar Grid.Row="3"
+                                <ProgressBar Grid.ColumnSpan="2"
+                                             Margin="3,0,3,-3"
+                                             VerticalAlignment="Bottom"
                                              Minimum="0"
                                              Maximum="1"
                                              Value="{Binding ConfirmationProgress, Mode=OneWay}">
@@ -139,21 +162,21 @@
                         <ControlTemplate.Triggers>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.Unassigned}">
-                                <Setter TargetName="KeyRoot"
+                                <Setter TargetName="RowRoot"
                                         Property="Opacity"
-                                        Value="0.34" />
+                                        Value="0.58" />
                                 <Setter TargetName="StatusLed"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Off}" />
                                 <Setter TargetName="StatusLed"
                                         Property="Stroke"
                                         Value="{StaticResource Brush.Border.Strong}" />
-                                <Setter TargetName="StatusLed"
-                                        Property="StrokeThickness"
-                                        Value="1" />
-                                <Setter TargetName="StatusLed"
-                                        Property="StrokeDashArray"
-                                        Value="2 2" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Opacity"
+                                        Value="0" />
+                                <Setter TargetName="LedHighlight"
+                                        Property="Visibility"
+                                        Value="Collapsed" />
                                 <Setter TargetName="SlotTitle"
                                         Property="Foreground"
                                         Value="{StaticResource Brush.Text.Tertiary}" />
@@ -163,57 +186,78 @@
                                 <Setter TargetName="StatusLed"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Idle}" />
-                                <Setter TargetName="SlotSubtitle"
-                                        Property="Foreground"
-                                        Value="{StaticResource Brush.Text.Secondary}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.Idle}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.Thinking}">
                                 <Setter TargetName="StatusLed"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Working}" />
-                                <Setter TargetName="SlotSubtitle"
-                                        Property="Foreground"
+                                <Setter TargetName="LedHalo"
+                                        Property="Fill"
                                         Value="{StaticResource Brush.Led.Working}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Opacity"
+                                        Value="0.24" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.CompleteUnread}">
                                 <Setter TargetName="StatusLed"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.CompleteUnread}" />
-                                <Setter TargetName="SlotSubtitle"
-                                        Property="Foreground"
-                                        Value="{StaticResource Brush.Status.Success}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.CompleteUnread}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.RequiresInput}">
                                 <Setter TargetName="StatusLed"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.RequiresInput}" />
-                                <Setter TargetName="SlotSubtitle"
-                                        Property="Foreground"
-                                        Value="{StaticResource Brush.Status.Warning}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.RequiresInput}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Opacity"
+                                        Value="0.24" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.Error}">
                                 <Setter TargetName="StatusLed"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Error}" />
-                                <Setter TargetName="SlotSubtitle"
-                                        Property="Foreground"
-                                        Value="{StaticResource Brush.Status.Danger}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.Error}" />
+                                <Setter TargetName="LedHalo"
+                                        Property="Opacity"
+                                        Value="0.24" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsActionEnabled}"
+                                         Value="False">
+                                <Setter TargetName="RowRoot"
+                                        Property="Opacity"
+                                        Value="0.52" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsHighlighted}"
                                          Value="True">
-                                <Setter TargetName="KeyRoot"
+                                <Setter TargetName="RowRoot"
                                         Property="Background"
-                                        Value="{StaticResource Brush.Accent.Soft}" />
-                                <Setter TargetName="KeyRoot"
+                                        Value="{StaticResource Brush.Agent.Row.Selected}" />
+                                <Setter TargetName="RowRoot"
                                         Property="BorderBrush"
-                                        Value="{StaticResource Brush.Accent}" />
-                                <Setter TargetName="KeyRoot"
+                                        Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
+                                <Setter TargetName="RowRoot"
                                         Property="BorderThickness"
                                         Value="2" />
+                                <Setter TargetName="Keycap"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
+                                <Setter TargetName="GlyphText"
+                                        Property="Foreground"
+                                        Value="{StaticResource Brush.Agent.Glyph}" />
                                 <DataTrigger.EnterActions>
                                     <BeginStoryboard x:Name="SelectedPulseStoryboard">
                                         <Storyboard RepeatBehavior="Forever"
@@ -221,7 +265,12 @@
                                             <DoubleAnimation Storyboard.TargetName="StatusLed"
                                                              Storyboard.TargetProperty="Opacity"
                                                              From="1"
-                                                             To="0.36"
+                                                             To="0.5"
+                                                             Duration="0:0:0.8" />
+                                            <DoubleAnimation Storyboard.TargetName="LedHalo"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             From="0.28"
+                                                             To="0.08"
                                                              Duration="0:0:0.8" />
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -234,230 +283,98 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsPresent}" Value="False">
-                    <Setter Property="Visibility" Value="Collapsed" />
-                </DataTrigger>
-            </Style.Triggers>
         </Style>
     </UserControl.Resources>
 
-    <Grid Width="660" Height="460">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="68" />
-            <RowDefinition Height="392" />
-        </Grid.RowDefinitions>
-
-        <Border Width="640"
-                Height="60"
-                Margin="0,0,0,8"
-                VerticalAlignment="Bottom"
-                Background="{StaticResource Brush.Overlay.Surface.Frosted}"
-                BorderBrush="{StaticResource Brush.Border.Subtle}"
+    <Grid Width="820"
+          Height="360"
+          Background="Transparent">
+        <Border Width="804"
+                Height="344"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{StaticResource AgentKeypad.PanelSurface}"
+                BorderBrush="{StaticResource Brush.Overlay.Border.Frosted}"
                 BorderThickness="1"
-                CornerRadius="14">
-            <Grid Margin="10,0,12,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <Border Width="42"
-                    Height="30"
-                    Margin="0,0,12,0"
-                    VerticalAlignment="Center"
-                    Background="{StaticResource Brush.Bg.Surface}"
-                    BorderBrush="{StaticResource Brush.Border.Strong}"
-                    BorderThickness="1"
-                    CornerRadius="7">
-                <TextBlock Text="{Binding ModifierGlyph}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Text.Primary}"
-                           FontFamily="{StaticResource Font.Mono}"
-                           FontSize="12"
-                           FontWeight="{StaticResource Font.Weight.Medium}" />
-            </Border>
-
-            <StackPanel Grid.Column="1"
-                        VerticalAlignment="Center">
-                <TextBlock Text="{Binding Title}"
-                           Foreground="{StaticResource Brush.Text.Primary}"
-                           FontSize="18"
-                           FontWeight="{StaticResource Font.Weight.Semibold}"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding AgentKeypad.Instruction}"
-                           Margin="0,2,0,0"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="11"
-                           TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-
-            <StackPanel Grid.Column="2"
-                        Margin="14,0,0,0"
-                        VerticalAlignment="Center"
-                        Orientation="Horizontal">
-                <Border Width="34"
-                        Height="30"
-                        Background="{StaticResource Brush.Bg.Surface}"
-                        BorderBrush="{StaticResource Brush.Border.Subtle}"
-                        BorderThickness="1"
-                        CornerRadius="7">
-                    <TextBlock Text="{Binding AgentKeypad.DismissGlyph}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Text.Primary}"
-                               FontFamily="{StaticResource Font.Mono}"
-                               FontSize="12" />
-                </Border>
-                <TextBlock Text="{Binding AgentKeypad.DismissHint}"
-                           Margin="8,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="12" />
-            </StackPanel>
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="1"
-                Width="640"
-                Background="{StaticResource Brush.Overlay.Surface.Frosted}"
-                BorderBrush="{StaticResource Brush.Border.Subtle}"
-                BorderThickness="1"
-                CornerRadius="20"
+                CornerRadius="24"
                 Effect="{StaticResource Shadow.Overlay}">
-            <Grid>
+            <Grid Margin="20,14,20,14">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="302" />
-                    <RowDefinition Height="1" />
-                    <RowDefinition Height="89" />
+                    <RowDefinition Height="30" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid Margin="18,17">
+                <StackPanel Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Border Width="42"
+                            Height="26"
+                            Margin="0,0,10,0"
+                            Background="{StaticResource Brush.Bg.Surface}"
+                            BorderBrush="{StaticResource Brush.Border.Subtle}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <TextBlock Text="{Binding ModifierGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Agent.Glyph}"
+                                   FontFamily="{StaticResource Font.Mono}"
+                                   FontSize="12"
+                                   FontWeight="{StaticResource Font.Weight.Bold}" />
+                    </Border>
+                    <TextBlock Text="{Binding Title}"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="15"
+                               FontWeight="{StaticResource Font.Weight.Medium}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="128" />
-                        <RowDefinition Height="12" />
-                        <RowDefinition Height="128" />
+                        <RowDefinition Height="78" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="78" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="78" />
                     </Grid.RowDefinitions>
 
-                    <!-- Physical layout: View / Up / Menu, then Left / Down / Right. -->
-                    <ContentControl Grid.Row="0"
+                    <!-- Micro order: Up/Right, Down/Left, View/Menu. -->
+                    <ContentControl x:Name="AgentUpKey"
+                                    Grid.Row="0"
+                                    Grid.Column="0"
+                                    DataContext="{Binding Top}"
+                                    Style="{StaticResource AgentKeypad.Key}" />
+                    <ContentControl x:Name="AgentRightKey"
+                                    Grid.Row="0"
+                                    Grid.Column="2"
+                                    DataContext="{Binding CenterRight}"
+                                    Style="{StaticResource AgentKeypad.Key}" />
+                    <ContentControl x:Name="AgentDownKey"
+                                    Grid.Row="2"
+                                    Grid.Column="0"
+                                    DataContext="{Binding Bottom}"
+                                    Style="{StaticResource AgentKeypad.Key}" />
+                    <ContentControl x:Name="AgentLeftKey"
+                                    Grid.Row="2"
+                                    Grid.Column="2"
+                                    DataContext="{Binding CenterLeft}"
+                                    Style="{StaticResource AgentKeypad.Key}" />
+                    <ContentControl x:Name="AgentViewKey"
+                                    Grid.Row="4"
                                     Grid.Column="0"
                                     DataContext="{Binding Left}"
                                     Style="{StaticResource AgentKeypad.Key}" />
-                    <ContentControl Grid.Row="0"
+                    <ContentControl x:Name="AgentMenuKey"
+                                    Grid.Row="4"
                                     Grid.Column="2"
-                                    DataContext="{Binding Top}"
-                                    Style="{StaticResource AgentKeypad.Key}" />
-                    <ContentControl Grid.Row="0"
-                                    Grid.Column="4"
                                     DataContext="{Binding Right}"
                                     Style="{StaticResource AgentKeypad.Key}" />
-                    <ContentControl Grid.Row="2"
-                                    Grid.Column="0"
-                                    DataContext="{Binding CenterLeft}"
-                                    Style="{StaticResource AgentKeypad.Key}" />
-                    <ContentControl Grid.Row="2"
-                                    Grid.Column="2"
-                                    DataContext="{Binding Bottom}"
-                                    Style="{StaticResource AgentKeypad.Key}" />
-                    <ContentControl Grid.Row="2"
-                                    Grid.Column="4"
-                                    DataContext="{Binding CenterRight}"
-                                    Style="{StaticResource AgentKeypad.Key}" />
-                </Grid>
-
-                <Border Grid.Row="1"
-                        Margin="18,0"
-                        Background="{StaticResource Brush.Border.Subtle}" />
-
-                <Grid Grid.Row="2"
-                      Margin="18,9,18,10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="26" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <WrapPanel HorizontalAlignment="Center"
-                               VerticalAlignment="Center">
-                        <StackPanel Margin="0,0,14,0"
-                                    Orientation="Horizontal">
-                            <Ellipse Width="10"
-                                     Height="10"
-                                     Fill="{StaticResource Brush.Led.Idle}" />
-                            <TextBlock Margin="5,0,0,0"
-                                       Text="{Binding AgentKeypad.IdleLabel}"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="10" />
-                        </StackPanel>
-                        <StackPanel Margin="0,0,14,0"
-                                    Orientation="Horizontal">
-                            <Ellipse Width="10"
-                                     Height="10"
-                                     Fill="{StaticResource Brush.Led.Working}" />
-                            <TextBlock Margin="5,0,0,0"
-                                       Text="{Binding AgentKeypad.ThinkingLabel}"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="10" />
-                        </StackPanel>
-                        <StackPanel Margin="0,0,14,0"
-                                    Orientation="Horizontal">
-                            <Ellipse Width="10"
-                                     Height="10"
-                                     Fill="{StaticResource Brush.Led.CompleteUnread}" />
-                            <TextBlock Margin="5,0,0,0"
-                                       Text="{Binding AgentKeypad.CompleteUnreadLabel}"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="10" />
-                        </StackPanel>
-                        <StackPanel Margin="0,0,14,0"
-                                    Orientation="Horizontal">
-                            <Ellipse Width="10"
-                                     Height="10"
-                                     Fill="{StaticResource Brush.Led.RequiresInput}" />
-                            <TextBlock Margin="5,0,0,0"
-                                       Text="{Binding AgentKeypad.RequiresInputLabel}"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="10" />
-                        </StackPanel>
-                        <StackPanel Margin="0,0,14,0"
-                                    Orientation="Horizontal">
-                            <Ellipse Width="10"
-                                     Height="10"
-                                     Fill="{StaticResource Brush.Led.Error}" />
-                            <TextBlock Margin="5,0,0,0"
-                                       Text="{Binding AgentKeypad.ErrorLabel}"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="10" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="10"
-                                     Height="10"
-                                     Fill="{StaticResource Brush.Led.Off}"
-                                     Stroke="{StaticResource Brush.Border.Strong}"
-                                     StrokeThickness="1"
-                                     StrokeDashArray="2 2" />
-                            <TextBlock Margin="5,0,0,0"
-                                       Text="{Binding AgentKeypad.UnassignedLabel}"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="10" />
-                        </StackPanel>
-                    </WrapPanel>
-
-                    <TextBlock Grid.Row="1"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Bottom"
-                               Text="{Binding AgentKeypad.SelectionHint}"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="11" />
                 </Grid>
             </Grid>
         </Border>
