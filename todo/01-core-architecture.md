@@ -49,7 +49,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 已将 XInput 事件后的状态缓冲、按钮边沿、模拟扳机滞回、摇杆手势和 repeat timing 收敛到可独立测试的协调器阶段。
   - [x] 基础层的 L3/R3、D-pad、ABXY 与 B release 已从 WPF 回调解析中分离为可测试的有序意图；中性轮询帧不分配意图集合。
   - [ ] 分离 radial/virtual-dial 组合层、长按识别与 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
-- [x] 将 navigation undo 的确认窗口、提前请求和到期转换收敛为 `NavigationUndoSession`；WPF 仍持有 UIA 标题轮询和反馈，等待完整 use case 迁移。
+- [x] 将 thread.open 前台/可用性门禁、到达确认、提前撤回、10 秒有效期与撤回执行收敛为 Application `ThreadNavigationCoordinator`；WPF 只呈现类型化 notice。
 - [ ] 把 `CodexComposerService` 拆成 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier。
   - [x] 先移出模型目录、`models_cache.json` / `config.toml` 读取与当前选项解析；目录服务可用临时 Codex home 独立测试，不再依赖 UIA 执行器内部状态。
   - [ ] 继续拆分 WindowLocator、PopupProbe、CommandExecutor 与 ResultVerifier，并删除原服务中的兼容转发壳。
@@ -65,9 +65,9 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 十字键短按的上一条/下一条用户消息已改为 `conversation.previous-user-message` / `conversation.next-user-message`；4 秒回顶与 3 秒到底的长按状态机保持独立。
   - [x] 十字键长按阈值后的回顶/到底已改为 `conversation.scroll-top` / `conversation.scroll-bottom`；异步 executor 只有在 UIA 滚动位置 readback 后才返回 `Succeeded`。
   - [x] Command/Turn 面板的 Approve、Decline、Steer、Queue 已改为 `approval.accept`、`approval.decline`、`turn.steer`、`turn.queue`；Approve 先经过可复用双确认状态，再由 executor 强制复核 `HighRisk`。
-  - [x] 已确认任务跳转后的短按 B 撤回改为 `navigation.undo`；语义 Back 控件调用移入 Codex executor，目标标题确认、10 秒窗口和反馈暂留 WPF。
+  - [x] 已确认任务跳转后的短按 B 撤回改为 `navigation.undo`；语义 Back 控件调用位于 Codex executor，到达确认与 10 秒窗口随后迁入 Application navigation use case。
   - [x] `MainWindow` 改为只调用 Application `ActionDispatcher`；request id、requested-at、幂等键拼装以及 ControlId/InputContext 规范化不再由 WPF 持有。
-  - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
+  - [x] thread availability、foreground gate、标题/唯一性观察、undo session 与结果通知已收敛到 `ThreadNavigationCoordinator`；WPF 只提供窗口 active observation 并映射本地化反馈。
 
 ### 状态聚合
 
@@ -205,3 +205,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - 共享 `ComposerChoiceNormalizer` 保留旧的大小写、空格与连字符匹配语义；目录解析通过注入 Codex home 和按钮文本，可在没有 Codex 进程与 UIA 窗口时独立验证。
 - 新增真实临时目录夹具，覆盖隐藏模型过滤、priority 排序、按钮文本优先级以及配置中的 Fast fallback；本切片未改动语音键、右摇杆或模型选择器操作路径。
 - 自动化证据更新为旧客户端 681 tests、Application 8 tests、Domain 15 tests、Architecture 7 tests，共 711 项；采用 710 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Application thread navigation use case
+
+- 新增跨平台 `ThreadNavigationCoordinator`，统一处理 foreground policy、thread availability、Deep Link action dispatch、目标标题连续确认、唯一性判断、提前撤回排队、10 秒 expiry 与 `navigation.undo` 执行。
+- Application 只发布 `ThreadOpenResult` / `ThreadNavigationNotice`；`MainWindow` 不再持有 navigation CTS、session、UIA 标题轮询或撤回 action control flow，只负责本地化、刷新与震动呈现。
+- 原 `app/Controllers/NavigationUndoSession` 与旧客户端单元测试删除；6 个 Application 场景测试覆盖前台阻断、任务缺失、到达确认、提前撤回、页面变化和过期回落，运行时代码在窗口侧净减少。
+- 自动化证据为旧客户端 675 tests、Application 14 tests、Domain 15 tests、Architecture 7 tests，共 711 项；采用 710 项排除已知 dispose/queue 竞态后全绿 + 该项隔离 1/1。并行验收中另一项同类 synchronization-context 测试曾偶发失败，隔离与串行复验均通过；Release 构建 0 warnings、0 errors。

@@ -275,3 +275,10 @@ AgentController.Application/
 - UIA 自动化服务不再直接访问 `CODEX_HOME` 或解析 JSON/TOML；其 `LoadCatalog` 暂为迁移转发，后续 composition root 可把目录端口直接提供给 UI/Application。
 - 公共选择值规范化收敛到 `ComposerChoiceNormalizer`，保证目录解析与尚未迁出的 dial/picker 路径使用同一匹配规则。
 - 真实临时目录夹具覆盖过滤、排序及选择优先级；最新 711 项基线采用 710 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Application thread navigation use case
+
+- `AgentController.Application.Navigation` 新增 `ThreadNavigationCoordinator`：以 primitive/delegate ports 接收 foreground、workspace availability 与当前标题观察，不引用 WPF、UIA 或 Codex 数据类型。
+- `thread.open` 的门禁、dispatch、唯一标题判断、连续到达确认和撤回 session 现在构成一个完整 Application use case；`navigation.undo` 仍通过既有 action router 选择 Codex adapter。
+- UI 订阅类型化 notice 并负责本地化文本、列表刷新与震动；窗口不再拥有 navigation session、确认 CTS、轮询 deadline 或 executor outcome 分支。
+- 6 个 Application 场景测试替代 6 个旧客户端 session 测试，基线保持 711 项：710 项排除已知 dispose/queue 竞态后全绿 + 该项隔离 1/1；Release 构建 0 warnings、0 errors。

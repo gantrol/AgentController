@@ -1,4 +1,5 @@
 using AgentController.Application.Actions;
+using AgentController.Application.Navigation;
 using CodexController.Agents;
 using CodexController.Agents.Codex;
 using CodexController.Controllers;
@@ -35,7 +36,8 @@ public sealed class AppServices : IDisposable
         CodexSidebarService codexSidebar,
         XInputService controller,
         ControllerInteractionCoordinator controllerInteraction,
-        ActionDispatcher actionDispatcher)
+        ActionDispatcher actionDispatcher,
+        ThreadNavigationCoordinator threadNavigation)
     {
         BridgeEvents = bridgeEvents;
         Localization = localization;
@@ -54,6 +56,7 @@ public sealed class AppServices : IDisposable
         Controller = controller;
         ControllerInteraction = controllerInteraction;
         ActionDispatcher = actionDispatcher;
+        ThreadNavigation = threadNavigation;
     }
 
     public BridgeEventHub BridgeEvents { get; }
@@ -73,6 +76,7 @@ public sealed class AppServices : IDisposable
     public XInputService Controller { get; }
     public ControllerInteractionCoordinator ControllerInteraction { get; }
     public ActionDispatcher ActionDispatcher { get; }
+    public ThreadNavigationCoordinator ThreadNavigation { get; }
 
     public static AppServices CreateDefault()
     {
@@ -152,6 +156,25 @@ public sealed class AppServices : IDisposable
                 CodexCommandService.OpenThread),
         ]);
         var actionDispatcher = new ActionDispatcher(actionRouter);
+        var workspace = activeAgent.WorkspaceOrEmpty();
+        var sidebar = activeAgent.SidebarOrUnavailable();
+        var threadNavigation = new ThreadNavigationCoordinator(
+            actionDispatcher,
+            () => currentSettings.OnlyWhenCodexForeground,
+            () => activeAgent.Presence.IsForeground,
+            workspace.IsThreadAvailable,
+            sidebar.TryGetCurrentThreadTitle,
+            nativeTitle => workspace.LoadSnapshot().Threads.Count(
+                thread => string.Equals(
+                    thread.NativeTitle ?? thread.Title,
+                    nativeTitle,
+                    StringComparison.Ordinal)),
+            new ThreadNavigationOptions(
+                TimeSpan.FromMilliseconds(
+                    BridgeTimings.NavigationConfirmTimeoutMs),
+                TimeSpan.FromMilliseconds(
+                    BridgeTimings.NavigationConfirmPollMs),
+                BridgeTimings.NavigationUndoWindow));
         return new AppServices(
             new BridgeEventHub(),
             localization,
@@ -169,7 +192,8 @@ public sealed class AppServices : IDisposable
             codexSidebar,
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
-            actionDispatcher);
+            actionDispatcher,
+            threadNavigation);
     }
 
     public void Dispose()
@@ -180,6 +204,7 @@ public sealed class AppServices : IDisposable
         }
 
         Controller.Dispose();
+        ThreadNavigation.Dispose();
         MicroInput.Dispose();
         BridgeEvents.Dispose();
         _disposed = true;

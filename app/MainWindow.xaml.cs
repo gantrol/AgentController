@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using AgentController.Application.Actions;
+using AgentController.Application.Navigation;
 using AgentController.Domain.Actions;
 using CodexController.Agents;
 using CodexController.Controllers;
@@ -56,6 +57,7 @@ public partial class MainWindow : Window
     private readonly XInputService _xInputService;
     private readonly ControllerInteractionCoordinator _controllerInteraction;
     private readonly ActionDispatcher _actionDispatcher;
+    private readonly ThreadNavigationCoordinator _threadNavigation;
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
@@ -136,14 +138,12 @@ public partial class MainWindow : Window
     private int _reasoningIndex;
     private int _speedIndex;
     private CancellationTokenSource? _composerPickerCancellation;
-    private CancellationTokenSource? _navigationConfirmCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
     private CancellationTokenSource? _radialConfirmationCancellation;
     private CancellationTokenSource? _cancelHoldCancellation;
     private CancellationTokenSource?
         _conversationBoundaryHoldCancellation;
     private ConversationBoundary? _conversationBoundaryHoldTarget;
-    private NavigationUndoSession? _navigationUndo;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
     private int _pendingSimplePowerSteps;
@@ -185,6 +185,9 @@ public partial class MainWindow : Window
         _xInputService = services.Controller;
         _controllerInteraction = services.ControllerInteraction;
         _actionDispatcher = services.ActionDispatcher;
+        _threadNavigation = services.ThreadNavigation;
+        _threadNavigation.NoticePublished +=
+            ThreadNavigation_NoticePublished;
         _bridgeEvents = services.BridgeEvents;
         _localization = services.Localization;
         _microInput = services.MicroInput;
@@ -1519,7 +1522,7 @@ public partial class MainWindow : Window
             ActionOutcome.AcceptedUnverified;
         if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         AddEvent(
@@ -1559,7 +1562,7 @@ public partial class MainWindow : Window
             ActionOutcome.AcceptedUnverified;
         if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         var evidenceCode = result?.Evidence.FirstOrDefault()?.Code;
@@ -1612,7 +1615,7 @@ public partial class MainWindow : Window
             ActionOutcome.AcceptedUnverified;
         if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         AddEvent(
@@ -3061,15 +3064,22 @@ public partial class MainWindow : Window
         string deviceId,
         string controlId)
     {
-        if (
-            _settings.OnlyWhenCodexForeground &&
-            !_activeAgent.Presence.IsForeground &&
-            !IsActive)
+        var result = await _threadNavigation.OpenAsync(
+            new ThreadOpenRequest(
+                threadId,
+                threadTitle,
+                nativeThreadTitle,
+                deviceId,
+                controlId,
+                IsActive))
+            .ConfigureAwait(true);
+
+        if (result.Outcome == ThreadOpenOutcome.BlockedByForeground)
         {
             return;
         }
 
-        if (!_workspaceReader.IsThreadAvailable(threadId))
+        if (result.Outcome == ThreadOpenOutcome.ThreadUnavailable)
         {
             AddEvent(_localization.Strings.Get(
                 StringKeys.MessageTaskUnavailableSkipped));
@@ -3077,36 +3087,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        ClearNavigationUndo();
-        var previousTitle = _sidebarAutomation.TryGetCurrentThreadTitle();
-        var result = await TryExecuteActionAsync(
-            OpenThreadActionContract.Id,
-            deviceId,
-            controlId,
-            "sidebar.task",
-            $"thread.open:{threadId}",
-            ActionSafetyLevel.Routine,
-            new Dictionary<string, string>
-            {
-                [OpenThreadActionContract.ThreadIdParameter] = threadId,
-            })
-            .ConfigureAwait(true);
-        if (result is null)
+        if (result.Outcome == ThreadOpenOutcome.Requested)
         {
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageOpenThreadFailed,
-                threadTitle));
-            return;
-        }
-
-        if (result.Outcome is
-            ActionOutcome.Succeeded or
-            ActionOutcome.AcceptedUnverified)
-        {
-            RegisterNavigationUndo(
-                threadTitle,
-                nativeThreadTitle,
-                previousTitle);
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageOpeningThread,
                 threadTitle));
@@ -3150,155 +3132,117 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RegisterNavigationUndo(
-        string threadTitle,
-        string nativeThreadTitle,
-        string? previousTitle)
+    private void ThreadNavigation_NoticePublished(
+        object? sender,
+        ThreadNavigationNotice notice)
     {
-        if (
-            string.IsNullOrWhiteSpace(nativeThreadTitle) ||
-            string.Equals(
-                previousTitle,
-                nativeThreadTitle,
-                StringComparison.Ordinal))
+        if (!Dispatcher.CheckAccess())
         {
+            _ = Dispatcher.BeginInvoke(new Action(
+                () => PresentThreadNavigationNotice(notice)));
             return;
         }
 
-        var matchingTitles = _snapshot.Threads.Count(thread =>
-            string.Equals(
-                thread.NativeTitle ?? thread.Title,
-                nativeThreadTitle,
-                StringComparison.Ordinal));
-        if (matchingTitles != 1)
-        {
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoUnavailableUnique,
-                threadTitle));
-            return;
-        }
-
-        var state = new NavigationUndoSession(
-            threadTitle,
-            nativeThreadTitle);
-        _navigationUndo = state;
-        var cancellation = new CancellationTokenSource();
-        _navigationConfirmCancellation = cancellation;
-        _ = ConfirmNavigationUndoAsync(state, cancellation);
+        PresentThreadNavigationNotice(notice);
     }
 
-    private async Task ConfirmNavigationUndoAsync(
-        NavigationUndoSession state,
-        CancellationTokenSource cancellation)
+    private void PresentThreadNavigationNotice(
+        ThreadNavigationNotice notice)
     {
-        var consecutiveMatches = 0;
-        var deadline =
-            Environment.TickCount64 +
-            BridgeTimings.NavigationConfirmTimeoutMs;
-        try
+        var undoGlyph = Glyph(LogicalInput.FaceEast);
+        switch (notice.Kind)
         {
-            while (Environment.TickCount64 < deadline)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                var currentTitle = await Task.Run(
-                        _sidebarAutomation.TryGetCurrentThreadTitle,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                if (
-                    string.Equals(
-                        currentTitle,
-                        state.TargetNativeTitle,
-                        StringComparison.Ordinal))
+            case ThreadNavigationNoticeKind.UndoUnavailableNonUnique:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoUnavailableUnique,
+                    notice.TargetDisplayTitle));
+                break;
+            case ThreadNavigationNoticeKind.ArrivalConfirmed:
+                if (_scope == SidebarScope.ProjectlessTasks)
                 {
-                    consecutiveMatches++;
-                    if (consecutiveMatches >= 2)
-                    {
-                        if (!ReferenceEquals(_navigationUndo, state))
-                        {
-                            return;
-                        }
-
-                        state.MarkConfirmed(
-                            DateTimeOffset.UtcNow,
-                            BridgeTimings.NavigationUndoWindow);
-                        if (_scope == SidebarScope.ProjectlessTasks)
-                        {
-                            RefreshCodexData(preserveSelection: true);
-                        }
-
-                        if (state.UndoRequested)
-                        {
-                            await ExecuteNavigationUndoAsync(state)
-                                .ConfigureAwait(true);
-                            return;
-                        }
-
-                        var undoGlyph = Glyph(LogicalInput.FaceEast);
-                        AddEvent(_localization.Strings.Format(
-                            StringKeys.MessageOpenedUndoAvailable,
-                            state.TargetDisplayTitle,
-                            undoGlyph));
-                        ShowFeedback(
-                            _localization.Strings.Get(
-                                StringKeys.MessageOpenedTask),
-                            _localization.Strings.Format(
-                                StringKeys.MessageUndoWithinSeconds,
-                                state.TargetDisplayTitle,
-                                (int)BridgeTimings
-                                    .NavigationUndoWindow.TotalSeconds,
-                                undoGlyph));
-                        return;
-                    }
+                    RefreshCodexData(preserveSelection: true);
                 }
-                else
-                {
-                    consecutiveMatches = 0;
-                }
-
-                await Task.Delay(
-                        BridgeTimings.NavigationConfirmPollMs,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-            }
-
-            if (ReferenceEquals(_navigationUndo, state))
-            {
-                _navigationUndo = null;
+                break;
+            case ThreadNavigationNoticeKind.UndoAvailable:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageOpenedUndoAvailable,
+                    notice.TargetDisplayTitle,
+                    undoGlyph));
+                ShowFeedback(
+                    _localization.Strings.Get(
+                        StringKeys.MessageOpenedTask),
+                    _localization.Strings.Format(
+                        StringKeys.MessageUndoWithinSeconds,
+                        notice.TargetDisplayTitle,
+                        (int)BridgeTimings
+                            .NavigationUndoWindow.TotalSeconds,
+                        undoGlyph));
+                break;
+            case ThreadNavigationNoticeKind.UndoQueued:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoQueued,
+                    undoGlyph));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    _localization.Strings.Get(
+                        StringKeys.MessageUndoAfterOpen));
+                Pulse(strength: 0.12);
+                break;
+            case ThreadNavigationNoticeKind.UndoUnavailableUnconfirmed:
                 AddEvent(_localization.Strings.Format(
                     StringKeys.MessageUndoUnavailableUnconfirmed,
-                    state.TargetDisplayTitle));
-                if (state.UndoRequested)
+                    notice.TargetDisplayTitle));
+                if (notice.UndoWasRequested)
                 {
                     ShowFeedback(
                         _localization.Strings.Format(
                             StringKeys.MessageButtonUndo,
-                            Glyph(LogicalInput.FaceEast)),
+                            undoGlyph),
                         _localization.Strings.Get(
                             StringKeys.MessageUndoUnconfirmed));
                 }
-            }
+                break;
+            case ThreadNavigationNoticeKind.UndoPageChanged:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoPageChanged,
+                    undoGlyph));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    _localization.Strings.Get(
+                        StringKeys.MessageUndoPageChangedDetail));
+                Pulse(strength: 0.12);
+                break;
+            case ThreadNavigationNoticeKind.UndoSucceeded:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoSucceeded,
+                    undoGlyph,
+                    notice.TargetDisplayTitle));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    _localization.Strings.Format(
+                        StringKeys.MessageReturnedToPreviousTask,
+                        notice.TargetDisplayTitle));
+                Pulse(strength: 0.18);
+                break;
+            case ThreadNavigationNoticeKind.UndoFailed:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoFailed,
+                    undoGlyph,
+                    ExecutionFailureLabel(notice.ErrorCode)));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    ExecutionFailureLabel(notice.ErrorCode));
+                Pulse(strength: 0.12);
+                break;
         }
-        catch (OperationCanceledException)
-        {
-            // A newer navigation or an intentional command invalidated this frame.
-        }
-        finally
-        {
-            if (ReferenceEquals(_navigationConfirmCancellation, cancellation))
-            {
-                _navigationConfirmCancellation = null;
-            }
-
-            cancellation.Dispose();
-        }
-    }
-
-    private void ClearNavigationUndo()
-    {
-        _navigationUndo = null;
-        var cancellation = _navigationConfirmCancellation;
-        _navigationConfirmCancellation = null;
-        cancellation?.Cancel();
     }
 
     private void BeginVirtualDialPress()
@@ -3677,7 +3621,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (TryHandleNavigationUndo())
+        if (_threadNavigation.TryRequestUndo())
         {
             return;
         }
@@ -4926,7 +4870,7 @@ public partial class MainWindow : Window
                     break;
                 }
 
-                ClearNavigationUndo();
+                _threadNavigation.ClearUndo();
             }
         }
         catch (OperationCanceledException)
@@ -5426,7 +5370,7 @@ public partial class MainWindow : Window
             _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
         if (result.Executed)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
         else
         {
@@ -5522,7 +5466,7 @@ public partial class MainWindow : Window
             ActionOutcome.AcceptedUnverified;
         if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         AddEvent(
@@ -5561,7 +5505,7 @@ public partial class MainWindow : Window
 
             _pushToTalkAutomation.RequestStop();
             EnsurePushToTalkAutomationPump();
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
             var cancelGlyph = Glyph(LogicalInput.FaceEast);
             AddEvent(
                 _localization.Strings.Format(
@@ -5599,7 +5543,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (TryHandleNavigationUndo())
+        if (_threadNavigation.TryRequestUndo())
         {
             return;
         }
@@ -5627,44 +5571,6 @@ public partial class MainWindow : Window
         Pulse(strength: 0.18);
     }
 
-    private bool TryHandleNavigationUndo()
-    {
-        if (_navigationUndo is not { } undo)
-        {
-            return false;
-        }
-
-        var action = undo.RequestUndo(DateTimeOffset.UtcNow);
-        if (
-            action ==
-                NavigationUndoPressAction.QueueUntilNavigationConfirms)
-        {
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoQueued,
-                cancelGlyph));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonUndo,
-                    cancelGlyph),
-                _localization.Strings.Get(
-                    StringKeys.MessageUndoAfterOpen));
-            Pulse(strength: 0.12);
-            return true;
-        }
-
-        if (
-            action ==
-                NavigationUndoPressAction.ExpireAndBeginStopHold)
-        {
-            ClearNavigationUndo();
-            return false;
-        }
-
-        _ = ExecuteNavigationUndoAsync(undo);
-        return true;
-    }
-
     private void StopCurrentTurn()
     {
         _ = StopCurrentTurnAsync();
@@ -5685,7 +5591,7 @@ public partial class MainWindow : Window
             ActionOutcome.Succeeded or
             ActionOutcome.AcceptedUnverified)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageCurrentOperationStopped,
                 cancelGlyph));
@@ -5713,80 +5619,6 @@ public partial class MainWindow : Window
             ExecutionFailureLabel(
                 result?.ErrorCode));
         Pulse(strength: 0.18);
-    }
-
-    private async Task ExecuteNavigationUndoAsync(
-        NavigationUndoSession undo)
-    {
-        if (!ReferenceEquals(_navigationUndo, undo))
-        {
-            return;
-        }
-
-        var currentTitle =
-            _sidebarAutomation.TryGetCurrentThreadTitle();
-        if (
-            !string.Equals(
-                currentTitle,
-                undo.TargetNativeTitle,
-                StringComparison.Ordinal))
-        {
-            ClearNavigationUndo();
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoPageChanged,
-                cancelGlyph));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonUndo,
-                    cancelGlyph),
-                _localization.Strings.Get(
-                    StringKeys.MessageUndoPageChangedDetail));
-            Pulse(strength: 0.12);
-            return;
-        }
-
-        var result = await TryExecuteActionAsync(
-            NavigationActionContract.UndoId,
-            "controller.active",
-            "controller.face.east",
-            "navigation.undo",
-            "navigation.undo",
-            ActionSafetyLevel.Routine)
-            .ConfigureAwait(true);
-        if (result?.Outcome is
-            ActionOutcome.Succeeded or
-            ActionOutcome.AcceptedUnverified)
-        {
-            var target = undo.TargetDisplayTitle;
-            ClearNavigationUndo();
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoSucceeded,
-                cancelGlyph,
-                target));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonUndo,
-                    cancelGlyph),
-                _localization.Strings.Format(
-                    StringKeys.MessageReturnedToPreviousTask,
-                    target));
-            Pulse(strength: 0.18);
-            return;
-        }
-
-        var undoGlyph = Glyph(LogicalInput.FaceEast);
-        AddEvent(_localization.Strings.Format(
-            StringKeys.MessageUndoFailed,
-            undoGlyph,
-            ExecutionFailureLabel(result?.ErrorCode)));
-        ShowFeedback(
-            _localization.Strings.Format(
-                StringKeys.MessageButtonUndo,
-                undoGlyph),
-            ExecutionFailureLabel(result?.ErrorCode));
-        Pulse(strength: 0.12);
     }
 
     private void UpdateControllerVisual(ControllerState state)
@@ -6877,7 +6709,9 @@ public partial class MainWindow : Window
         _pushToTalkAutomation.Reset();
         _dictationInjected = false;
         _dictationInputGlyph = null;
-        ClearNavigationUndo();
+        _threadNavigation.NoticePublished -=
+            ThreadNavigation_NoticePublished;
+        _threadNavigation.ClearUndo();
         _xInputService.StateChanged -= XInputService_StateChanged;
         _localization.PropertyChanged -=
             Localization_PropertyChanged;
