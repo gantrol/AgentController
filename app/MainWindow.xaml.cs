@@ -1504,36 +1504,39 @@ public partial class MainWindow : Window
 
     private void ExecuteNewTaskAction()
     {
+        _ = ExecuteNewTaskActionAsync();
+    }
+
+    private async Task ExecuteNewTaskActionAsync()
+    {
         var title = RadialText("新建任务", "New task");
-        var result = _composerAutomation.InvokeAction(
-            _settings,
-            "New task",
-            "New Task",
-            "New chat",
-            "New Chat",
-            "新建任务",
-            "新对话");
-        var usedShortcut = false;
-        if (
-            !result.Succeeded &&
-            string.Equals(
-                result.Error,
-                AgentAutomationErrorCodes.ElementNotFound,
-                StringComparison.Ordinal))
+        var requestId = Guid.NewGuid();
+        var request = new ActionRequest(
+            requestId,
+            CreateThreadActionContract.Id,
+            new ActionSource(
+                "controller.active",
+                ControlId.Parse("controller.radial.new-task")),
+            InputContext.Parse("radial.action-panel"),
+            $"thread.create:{requestId:N}",
+            ActionSafetyLevel.Routine,
+            DateTimeOffset.UtcNow);
+        ActionResult? result = null;
+        try
         {
-            usedShortcut = true;
-            var shortcutSucceeded =
-                _agentShortcuts.Execute("Ctrl+N", _settings);
-            result = shortcutSucceeded
-                ? new ComposerAutomationResult(true)
-                : new ComposerAutomationResult(
-                    false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    "Ctrl+N");
+            result = await _actionRouter.ExecuteAsync(request)
+                .ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // Presentation still owns localized feedback during migration.
         }
 
         EndRadialLayer(_latestControllerState.Buttons);
-        if (result.Succeeded)
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
             ClearNavigationUndo();
         }
@@ -1541,17 +1544,14 @@ public partial class MainWindow : Window
         AddEvent(
             title +
             ExecutionSuffix(
-                result.Succeeded,
-                result.Error,
-                usedShortcut ? "Ctrl+N" : result.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            result.Succeeded
+            succeeded
                 ? _localization.Strings.Get(StringKeys.MessageExecuted)
-                : ExecutionFailureLabel(
-                    result.Error,
-                    result.ErrorDetail));
-        Pulse(strength: result.Succeeded ? 0.22 : 0.1);
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.22 : 0.1);
     }
 
     private void RefreshRadialMenu()

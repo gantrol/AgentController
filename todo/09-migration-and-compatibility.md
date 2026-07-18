@@ -19,8 +19,8 @@
 ### M1：抽核心，不改行为
 
 - [x] 引入 Domain/Application/Platform.Abstractions。
-- [ ] 现有 WPF 引用新核心，用户可见行为保持一致；`thread.open` 自动化回归已通过，README 实机步骤待复验。
-- [x] 一次只迁移一条动作链，并保留旧路径的回归测试；首条为 `thread.open`。
+- [ ] 现有 WPF 引用新核心，用户可见行为保持一致；`thread.open` 与 `thread.create` 自动化回归已通过，README 实机步骤待复验。
+- [x] 一次只迁移一条动作链，并保留旧路径的回归测试；已完成 `thread.open` 与 `thread.create`，且旧直接执行路径均已删除。
 
 ### M2：替换权威通道
 

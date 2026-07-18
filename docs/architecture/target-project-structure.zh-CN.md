@@ -176,3 +176,10 @@ AgentController.Application/
 - `IDeepLinks.OpenThread` 旧直接入口已删除；控制器 A、鼠标双击、键盘 Enter、Agent slot 与相邻任务入口共用同一 Action 路径，不保留双写执行通道。
 - 为避免行为漂移，foreground gate、workspace availability、navigation undo snapshot 与本地反馈仍由 WPF 管理，后续随 sidebar state/use case 一起迁移。
 - 自动化证据更新为旧客户端 603 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 630 passed、0 failed、0 skipped；README 实机打开任务步骤尚待复验。
+
+### 2026-07-18：`thread.create` Application 垂直切片
+
+- 新建任务现在与打开任务共用 Domain `ActionRequest` → Application `ActionRouter` → Codex executor → `ActionResult` 路径；`MainWindow` 不再选择 UIA 与快捷键执行器。
+- Codex executor 内聚原有的多语言 New task 控件调用和仅在 ElementNotFound 时启用的 `Ctrl+N` 回退，避免迁移时改变安全门禁与错误分支。
+- UIA 调用与快捷键发送分别报告 `UiObservation` 和 `Transport` evidence，成功请求均为 `AcceptedUnverified`；是否真的进入空白任务仍需后续状态观察器确认。
+- 自动化证据更新为旧客户端 608 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 635 passed、0 failed、0 skipped；README 实机新建任务步骤尚待复验。

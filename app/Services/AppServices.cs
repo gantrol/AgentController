@@ -96,6 +96,13 @@ public sealed class AppServices : IDisposable
             settings.Load().ActiveAgentId);
         var actionRouter = new ActionRouter(
         [
+            new CodexCreateThreadActionExecutor(
+                actionNames => codexComposer.InvokeComposerAction(
+                    settings.Load(),
+                    actionNames),
+                shortcut => codexCommand.ExecuteShortcut(
+                    shortcut,
+                    settings.Load())),
             new CodexOpenThreadActionExecutor(
                 CodexCommandService.OpenThread),
         ]);

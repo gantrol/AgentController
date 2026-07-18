@@ -54,6 +54,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - [ ] 将 `AppServices` 改为纯 composition root，业务对象不自行构造基础设施。
 - [ ] UI 只订阅 Application state 和 command，不直接调用 Win32/UIA/Micro 服务。
   - [x] `thread.open` 首个垂直切片已由 WPF 构造 `ActionRequest`，经 Application `ActionRouter` 选择 Codex Deep Link executor，并消费 `ActionResult`；旧 `IDeepLinks.OpenThread` 直接入口已删除。
+  - [x] `thread.create` 第二个垂直切片已删除 WPF 内的 UIA/快捷键回退策略；Codex executor 统一执行“查找 New task 控件，找不到时回退 Ctrl+N”，WPF 只消费 `ActionResult`。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -98,3 +99,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - 删除 `IDeepLinks.OpenThread` 与 `CodexAgentTarget` 的旧直接入口，避免新旧路径并存；foreground、thread availability、undo snapshot 与本地反馈暂留 `MainWindow` 以保持现有行为。
 - 新增 5 项 Application router 测试和 4 项 Codex executor 合同测试；完整 Release solution 测试 630/630（旧客户端 603、Application 5、Domain 15、Architecture 7）。
 - README 的“按 A 打开任务”仍需实机复验后，才能把该路径视为用户侧验收完成。
+
+### 2026-07-18：`thread.create` 第二个 Application 垂直切片
+
+- WPF 的 Y → 十字键上入口现在构造 `thread.create` `ActionRequest`，原先位于 `MainWindow` 的多语言 UIA 控件匹配、ElementNotFound 判断和 `Ctrl+N` 回退策略已删除。
+- Codex executor 保留原执行顺序；UIA 控件调用记录为 `UiObservation/thread.create.control-invoked`，快捷键注入记录为 `Transport/thread.create.shortcut-sent`，两者均返回 `AcceptedUnverified`，不冒充新任务已被界面确认。
+- 新增 5 项 executor 合同测试，覆盖 UIA 成功、快捷键回退、注入失败、不可回退错误和 capability 缺失；完整 Release solution 测试 635/635（旧客户端 608、Application 5、Domain 15、Architecture 7）。
+- README 的“Y 后按十字键上新建任务”仍需实机复验；现有 LT 语音键与右摇杆问题不在本切片内。
