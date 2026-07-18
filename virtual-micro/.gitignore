@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/x64/
+*.cat
+*.cer
+*.dll
+*.exp
+*.ilk
+*.lib
+*.log
+*.pdb
+*.sys
+design-preview.png
