@@ -44,26 +44,43 @@ The complete visual, driver, interaction, and acceptance specification is in
 ## Portable desktop app
 
 The [`v0.1.0` prerelease](../../../releases/tag/codex-micro-v0.1.0) includes a
-self-contained Windows x64 portable archive. It does not require a separate
-.NET runtime and does not import a self-signed root certificate. The archive
-contains the desktop application only: build and install the VHF driver below
-before launching `CodexMicroSimulator.exe`.
+self-contained Windows x64 portable app and a separate unsigned developer
+driver package. The app does not require a separate .NET runtime and does not
+import a self-signed root certificate. The unsigned driver package saves the
+C/C++ compilation step, but must be signed locally before installation. See
+[`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for the exact signing order.
+
+## Unsigned developer driver package
+
+`CodexMicroVhfUm-v0.1.0-win-x64-UNSIGNED-DEVELOPER.zip` contains the prebuilt
+UMDF2 DLL, INF, unsigned catalog, native PnP installer, source needed for audit,
+and the local signing/install script. It contains no certificate or private
+key and is not installable as a production driver in its downloaded state.
+
+Use this package when you want to audit and locally re-sign the exact binaries
+without compiling C/C++. See the [unsigned package guide](./UNSIGNED-DRIVER.md).
 
 ## Build locally
 
-This repository intentionally ships driver source only. Generated `.dll`,
-`.sys`, `.cat`, `.cer`, and installer binaries are ignored and must not be
-expected from a clone or committed back to the repository.
+The Git repository intentionally stores driver source only. Generated `.dll`,
+`.sys`, `.cat`, `.cer`, and installer binaries remain ignored and must not be
+committed back to the repository. The separately attached Release asset is the
+only prebuilt developer-driver distribution.
 
 Prerequisites:
 
-- Windows 10/11 x64;
+- Windows 11 x64 is the tested build host;
 - .NET SDK 9 for the desktop app and tests;
-- Visual Studio 2022 or newer with **Desktop development with C++**, Windows SDK
-  `10.0.26100.0` (or a compatible newer SDK), and MSBuild;
-- internet access for the first NuGet restore of the pinned
-  `Microsoft.Windows.WDK.x64` package;
+- the reproducible driver route is Visual Studio/Build Tools 2022 with
+  **Desktop development with C++**, MSVC v143 x64/x86 build tools, x64/x86
+  Spectre-mitigated libraries, Windows SDK `10.0.26100.0`, and MSBuild;
+- internet access for the first restore of pinned NuGet package
+  `Microsoft.Windows.WDK.x64` `10.0.26100.6584`;
 - an elevated PowerShell only for the installation step.
+
+Visual Studio 2026 can drive the build when the v143 toolset and matching
+26100 SDK components are also installed. The project intentionally pins the
+26100 toolchain instead of silently moving to a newer WDK.
 
 From the repository root, build the desktop app first:
 
@@ -113,6 +130,12 @@ written to `virtual-micro/driver-install.log`.
 The generated certificate and signed build outputs are local development
 artifacts. Do not publish the private key or reuse this test certificate as a
 production signing identity.
+
+For a downloaded unsigned package, this is also the simplest local secondary
+signing path: the script signs the DLL first, regenerates the catalog so it
+contains the signed DLL hash, signs the catalog, verifies the PnP device, and
+installs it. To sign with an existing development certificate or verify every
+step manually, follow [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md).
 
 ## Verify
 
