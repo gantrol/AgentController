@@ -63,6 +63,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] 十字键长按阈值后的回顶/到底已改为 `conversation.scroll-top` / `conversation.scroll-bottom`；异步 executor 只有在 UIA 滚动位置 readback 后才返回 `Succeeded`。
   - [x] Command/Turn 面板的 Approve、Decline、Steer、Queue 已改为 `approval.accept`、`approval.decline`、`turn.steer`、`turn.queue`；Approve 先经过可复用双确认状态，再由 executor 强制复核 `HighRisk`。
   - [x] 已确认任务跳转后的短按 B 撤回改为 `navigation.undo`；语义 Back 控件调用移入 Codex executor，目标标题确认、10 秒窗口和反馈暂留 WPF。
+  - [x] `MainWindow` 改为只调用 Application `ActionDispatcher`；request id、requested-at、幂等键拼装以及 ControlId/InputContext 规范化不再由 WPF 持有。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -180,3 +181,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - 新 `CodexNavigationUndoActionExecutor` 保留原语义 Back 按钮 UIA 路径，成功只报告 `AcceptedUnverified` 与 `UiObservation/navigation.undo.control-invoked`；目标页面是否已返回仍需后续状态观察器确认。
 - `ISidebarAutomation.GoBack`、Codex adapter 转发和 unavailable fallback 已删除；`CodexSidebarService.GoBack` 只由 composition root 注入 executor，WPF 不再直接选择这条执行通道。
 - 新增 8 个 executor 合同案例；最新 705 项基线采用 704 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。README 的“打开任务后短按 B 撤回”仍需实机复验。
+
+### 2026-07-18：Application action dispatcher 边界
+
+- 新增 `ActionDispatcher` 作为 UI 可调用的 Application facade：由它生成 request id 和 requested-at、规范化幂等 scope，并构造 `ActionSource`、`ControlId`、`InputContext` 与最终 `ActionRequest`。
+- `ActionRouter` 继续只负责 capability probe 与 executor 选择，且不再由 `AppServices` 暴露给 `MainWindow`；WPF 的 `TryExecuteActionAsync` 只保留 presentation exception boundary。
+- 所有已迁移动作保持原 action id、来源字符串、上下文、安全级别、参数和每次调用唯一的幂等键，没有改动 LT、右摇杆、radial 手势或任何 Codex executor。
+- 新增 3 个 Application 合同案例，覆盖确定性 request metadata、scope 规范化、参数透传和取消短路；最新 708 项基线采用 707 项 solution 排除已知竞态后全绿，加该竞态测试隔离 1/1，Release 构建 0 warnings、0 errors。

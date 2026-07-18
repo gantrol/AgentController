@@ -7,7 +7,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using AgentController.Application.Actions;
 using AgentController.Domain.Actions;
-using AgentController.Domain.Inputs;
 using CodexController.Agents;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
@@ -56,7 +55,7 @@ public partial class MainWindow : Window
     private readonly IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
     private readonly ControllerInteractionCoordinator _controllerInteraction;
-    private readonly ActionRouter _actionRouter;
+    private readonly ActionDispatcher _actionDispatcher;
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
@@ -185,7 +184,7 @@ public partial class MainWindow : Window
         _keybindingProvisioner = _activeAgent.Keybindings;
         _xInputService = services.Controller;
         _controllerInteraction = services.ControllerInteraction;
-        _actionRouter = services.ActionRouter;
+        _actionDispatcher = services.ActionDispatcher;
         _bridgeEvents = services.BridgeEvents;
         _localization = services.Localization;
         _microInput = services.MicroInput;
@@ -3133,18 +3132,16 @@ public partial class MainWindow : Window
         ActionSafetyLevel safetyLevel,
         IReadOnlyDictionary<string, string>? parameters = null)
     {
-        var requestId = Guid.NewGuid();
         try
         {
-            return await _actionRouter.ExecuteAsync(new ActionRequest(
-                requestId,
+            return await _actionDispatcher.ExecuteAsync(
                 actionId,
-                new ActionSource(deviceId, ControlId.Parse(controlId)),
-                InputContext.Parse(context),
-                $"{idempotencyScope}:{requestId:N}",
+                deviceId,
+                controlId,
+                context,
+                idempotencyScope,
                 safetyLevel,
-                DateTimeOffset.UtcNow,
-                parameters)).ConfigureAwait(false);
+                parameters).ConfigureAwait(false);
         }
         catch (Exception)
         {

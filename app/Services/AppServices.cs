@@ -35,7 +35,7 @@ public sealed class AppServices : IDisposable
         CodexSidebarService codexSidebar,
         XInputService controller,
         ControllerInteractionCoordinator controllerInteraction,
-        ActionRouter actionRouter)
+        ActionDispatcher actionDispatcher)
     {
         BridgeEvents = bridgeEvents;
         Localization = localization;
@@ -53,7 +53,7 @@ public sealed class AppServices : IDisposable
         CodexSidebar = codexSidebar;
         Controller = controller;
         ControllerInteraction = controllerInteraction;
-        ActionRouter = actionRouter;
+        ActionDispatcher = actionDispatcher;
     }
 
     public BridgeEventHub BridgeEvents { get; }
@@ -72,7 +72,7 @@ public sealed class AppServices : IDisposable
     public CodexSidebarService CodexSidebar { get; }
     public XInputService Controller { get; }
     public ControllerInteractionCoordinator ControllerInteraction { get; }
-    public ActionRouter ActionRouter { get; }
+    public ActionDispatcher ActionDispatcher { get; }
 
     public static AppServices CreateDefault()
     {
@@ -151,6 +151,7 @@ public sealed class AppServices : IDisposable
             new CodexOpenThreadActionExecutor(
                 CodexCommandService.OpenThread),
         ]);
+        var actionDispatcher = new ActionDispatcher(actionRouter);
         return new AppServices(
             new BridgeEventHub(),
             localization,
@@ -168,7 +169,7 @@ public sealed class AppServices : IDisposable
             codexSidebar,
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
-            actionRouter);
+            actionDispatcher);
     }
 
     public void Dispose()

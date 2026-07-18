@@ -253,3 +253,11 @@ AgentController.Application/
 - Codex adapter 成功只产生 `UiObservation/navigation.undo.control-invoked` 和 `AcceptedUnverified`，不把按钮调用当作已返回上一任务；失败继续保留 Blocked、NotSent、Unsupported 与 Failed 的终态区分。
 - 旧 `ISidebarAutomation.GoBack` 展示层端口及两套 adapter 样板已删除；UIA 服务由 composition root 直接注入 action executor。
 - 自动化证据为旧客户端 678 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 705 项；采用 704 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：Application dispatcher facade
+
+- `ActionDispatcher` 位于 Application，接收 action id、设备/控件来源、输入上下文、幂等 scope、安全级别和参数；它统一生成 request id、时间戳以及最终 `ActionRequest`。
+- `ActionRouter` 保持为纯 executor selection 组件，不承担展示异常处理或 UI feedback；composition root 构造 router 后只把 dispatcher 提供给旧 WPF。
+- `MainWindow` 不再引用 `ActionSource`、`ControlId`、`InputContext`，也不再自行拼接 `{scope}:{requestId}`。当前保留的 `TryExecuteActionAsync` 仅把 Application 异常收敛为本地失败反馈。
+- 这一层是未来自定义按钮、Avalonia 与 macOS UI 的稳定发射入口；平台 UI 无需知道 Codex executor registry 或 request metadata 生成规则。
+- 自动化证据为旧客户端 678 tests、Application 8 tests、Domain 15 tests、Architecture 7 tests，共 708 项；采用 707 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。
