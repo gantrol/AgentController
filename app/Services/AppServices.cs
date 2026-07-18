@@ -36,6 +36,7 @@ public sealed class AppServices : IDisposable
         CodexSidebarService codexSidebar,
         XInputService controller,
         ControllerInteractionCoordinator controllerInteraction,
+        ControllerHoldCoordinator controllerHolds,
         ActionDispatcher actionDispatcher,
         ThreadNavigationCoordinator threadNavigation)
     {
@@ -55,6 +56,7 @@ public sealed class AppServices : IDisposable
         CodexSidebar = codexSidebar;
         Controller = controller;
         ControllerInteraction = controllerInteraction;
+        ControllerHolds = controllerHolds;
         ActionDispatcher = actionDispatcher;
         ThreadNavigation = threadNavigation;
     }
@@ -75,6 +77,7 @@ public sealed class AppServices : IDisposable
     public CodexSidebarService CodexSidebar { get; }
     public XInputService Controller { get; }
     public ControllerInteractionCoordinator ControllerInteraction { get; }
+    internal ControllerHoldCoordinator ControllerHolds { get; }
     public ActionDispatcher ActionDispatcher { get; }
     public ThreadNavigationCoordinator ThreadNavigation { get; }
 
@@ -192,6 +195,7 @@ public sealed class AppServices : IDisposable
             codexSidebar,
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
+            new ControllerHoldCoordinator(),
             actionDispatcher,
             threadNavigation);
     }
@@ -204,6 +208,7 @@ public sealed class AppServices : IDisposable
         }
 
         Controller.Dispose();
+        ControllerHolds.Dispose();
         ThreadNavigation.Dispose();
         MicroInput.Dispose();
         BridgeEvents.Dispose();

@@ -282,3 +282,10 @@ AgentController.Application/
 - `thread.open` 的门禁、dispatch、唯一标题判断、连续到达确认和撤回 session 现在构成一个完整 Application use case；`navigation.undo` 仍通过既有 action router 选择 Codex adapter。
 - UI 订阅类型化 notice 并负责本地化文本、列表刷新与震动；窗口不再拥有 navigation session、确认 CTS、轮询 deadline 或 executor outcome 分支。
 - 6 个 Application 场景测试替代 6 个旧客户端 session 测试，基线保持 711 项：710 项排除已知 dispose/queue 竞态后全绿 + 该项隔离 1/1；Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：controller hold lifecycle
+
+- `ControllerHoldCoordinator` 作为迁移期 controller orchestration 组件，集中管理 B stop hold 与 D-pad boundary hold 的异步生命周期，不依赖 WPF 控件或 Codex UIA。
+- presentation 仍提供实时 `canContinue` observation 和 completion callback；协调器负责 current-lease identity，避免窗口继续组合 CTS、target 与计时字段。
+- 这条边界为后续把 radial layer 和输入 context 一并迁入 Application 留出稳定 seam；本切片不触碰 LT/右摇杆路径。
+- 最新 717 项基线采用 716 项排除已知竞态后全绿 + 该项隔离 1/1；Release 构建 0 warnings、0 errors。

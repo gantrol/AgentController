@@ -44,11 +44,13 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - [ ] 把 `MainWindow` 中手柄状态机提取为 `ControllerInteractionCoordinator`。
   - [x] 首个无行为变化切片：协调器接管有序状态缓冲、基础/物理按钮历史、LT 滞回、左右摇杆回中门禁与重复节奏，并由 `AppServices` 注入旧 WPF 客户端。
   - [x] 第二个无行为变化切片：基础层按钮边沿解析为有序 `ControllerInteractionIntent`；`MainWindow` 只按顺序分发到现有动作实现。
+  - [x] `ControllerHoldCoordinator` 接管 B 三秒停止与 D-pad 回顶/到底的 threshold、取消、倒计时和完成生命周期；窗口只提供实时安全门禁与执行回调。
   - [ ] 继续把 radial/virtual-dial 上下文、组合层、长按生命周期与 Action 发射移出 `MainWindow`，之后再迁入跨平台 Application/Domain 边界。
 - [ ] 把输入采样、边沿保留、组合层、长按和动作分发分成独立阶段。
   - [x] 已将 XInput 事件后的状态缓冲、按钮边沿、模拟扳机滞回、摇杆手势和 repeat timing 收敛到可独立测试的协调器阶段。
   - [x] 基础层的 L3/R3、D-pad、ABXY 与 B release 已从 WPF 回调解析中分离为可测试的有序意图；中性轮询帧不分配意图集合。
-  - [ ] 分离 radial/virtual-dial 组合层、长按识别与 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
+  - [x] B 与 D-pad 长按识别已移入独立协调器，短按/长按门禁与原 Action 语义保持不变。
+  - [ ] 分离 radial/virtual-dial 组合层与剩余 Domain Action 发射；这些阶段仍在 `MainWindow` 中。
 - [x] 将 thread.open 前台/可用性门禁、到达确认、提前撤回、10 秒有效期与撤回执行收敛为 Application `ThreadNavigationCoordinator`；WPF 只呈现类型化 notice。
 - [ ] 把 `CodexComposerService` 拆成 WindowLocator、PopupProbe、CommandExecutor、ResultVerifier。
   - [x] 先移出模型目录、`models_cache.json` / `config.toml` 读取与当前选项解析；目录服务可用临时 Codex home 独立测试，不再依赖 UIA 执行器内部状态。
@@ -212,3 +214,10 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - Application 只发布 `ThreadOpenResult` / `ThreadNavigationNotice`；`MainWindow` 不再持有 navigation CTS、session、UIA 标题轮询或撤回 action control flow，只负责本地化、刷新与震动呈现。
 - 原 `app/Controllers/NavigationUndoSession` 与旧客户端单元测试删除；6 个 Application 场景测试覆盖前台阻断、任务缺失、到达确认、提前撤回、页面变化和过期回落，运行时代码在窗口侧净减少。
 - 自动化证据为旧客户端 675 tests、Application 14 tests、Domain 15 tests、Architecture 7 tests，共 711 项；采用 710 项排除已知 dispose/queue 竞态后全绿 + 该项隔离 1/1。并行验收中另一项同类 synchronization-context 测试曾偶发失败，隔离与串行复验均通过；Release 构建 0 warnings、0 errors。
+
+### 2026-07-18：controller hold lifecycle
+
+- 新增 `ControllerHoldCoordinator`，统一拥有 cancel hold 与 conversation boundary hold 的 CTS、阈值等待、释放取消、倒计时去重及 completion lifetime；由 composition root 创建并释放。
+- `MainWindow` 删除两套 cancellation 字段和异步循环，只保留读取实时控制器/foreground/radial 状态的 guard，以及现有本地化反馈与 Application action 回调。
+- 6 个生命周期案例覆盖上/下边界映射、阈值完成、提前释放、guard 拒绝、三秒倒计时与中途取消；未改动 LT、右摇杆、模型 picker 或对应兼容问题。
+- 自动化证据为旧客户端 681 tests、Application 14 tests、Domain 15 tests、Architecture 7 tests，共 717 项；采用 716 项排除已知竞态后全绿 + 该项隔离 1/1，Release 构建 0 warnings、0 errors。

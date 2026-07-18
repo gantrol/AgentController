@@ -56,6 +56,7 @@ public partial class MainWindow : Window
     private readonly IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
     private readonly ControllerInteractionCoordinator _controllerInteraction;
+    private readonly ControllerHoldCoordinator _controllerHolds;
     private readonly ActionDispatcher _actionDispatcher;
     private readonly ThreadNavigationCoordinator _threadNavigation;
     private readonly BridgeEventHub _bridgeEvents;
@@ -140,10 +141,6 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _composerPickerCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
     private CancellationTokenSource? _radialConfirmationCancellation;
-    private CancellationTokenSource? _cancelHoldCancellation;
-    private CancellationTokenSource?
-        _conversationBoundaryHoldCancellation;
-    private ConversationBoundary? _conversationBoundaryHoldTarget;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
     private int _pendingSimplePowerSteps;
@@ -184,6 +181,7 @@ public partial class MainWindow : Window
         _keybindingProvisioner = _activeAgent.Keybindings;
         _xInputService = services.Controller;
         _controllerInteraction = services.ControllerInteraction;
+        _controllerHolds = services.ControllerHolds;
         _actionDispatcher = services.ActionDispatcher;
         _threadNavigation = services.ThreadNavigation;
         _threadNavigation.NoticePublished +=
@@ -2345,116 +2343,62 @@ public partial class MainWindow : Window
     private void BeginConversationBoundaryHold(
         ConversationTurnInputAction action)
     {
-        CancelConversationBoundaryHold();
-        var boundary =
-            ConversationBoundaryHoldPolicy.ResolveBoundary(action);
-        var cancellation = new CancellationTokenSource();
-        _conversationBoundaryHoldTarget = boundary;
-        _conversationBoundaryHoldCancellation = cancellation;
-        _ = PromoteConversationBoundaryHoldAsync(
-            boundary,
-            cancellation);
+        _controllerHolds.BeginConversationBoundary(
+            action,
+            BridgeTimings.ConversationTopHoldMs,
+            BridgeTimings.ConversationBottomHoldMs,
+            CanContinueConversationBoundaryHold,
+            ExecuteConversationBoundaryHoldAsync);
     }
 
     private void EndConversationBoundaryHold(
         ControllerButtons releasedButtons)
     {
-        if (_conversationBoundaryHoldTarget is not { } boundary)
-        {
-            return;
-        }
-
-        var button =
-            ConversationBoundaryHoldPolicy.ResolveButton(boundary);
-        if (releasedButtons.HasFlag(button))
-        {
-            CancelConversationBoundaryHold();
-        }
+        _controllerHolds.EndConversationBoundary(releasedButtons);
     }
 
-    private async Task PromoteConversationBoundaryHoldAsync(
-        ConversationBoundary boundary,
-        CancellationTokenSource cancellation)
+    private async Task ExecuteConversationBoundaryHoldAsync(
+        ConversationBoundary boundary)
     {
-        try
+        var actionId = boundary == ConversationBoundary.Top
+            ? ConversationActionContract.ScrollTopId
+            : ConversationActionContract.ScrollBottomId;
+        var result = await TryExecuteActionAsync(
+                actionId,
+                "controller.active",
+                boundary == ConversationBoundary.Top
+                    ? "controller.dpad.up.hold"
+                    : "controller.dpad.down.hold",
+                "conversation.navigation",
+                actionId.Value,
+                ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome == ActionOutcome.Succeeded;
+        var title = boundary == ConversationBoundary.Top
+            ? RadialText("已置顶", "Jumped to top")
+            : RadialText("已置底", "Jumped to bottom");
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                succeeded,
+                result?.ErrorCode));
+        if (!succeeded)
         {
-            var holdMs =
-                ConversationBoundaryHoldPolicy.ResolveHoldMilliseconds(
-                    boundary,
-                    BridgeTimings.ConversationTopHoldMs,
-                    BridgeTimings.ConversationBottomHoldMs);
-            await Task.Delay(holdMs, cancellation.Token)
-                .ConfigureAwait(true);
-            if (!CanContinueConversationBoundaryHold(
-                    boundary,
-                    cancellation))
-            {
-                return;
-            }
-
-            _conversationBoundaryHoldCancellation = null;
-            _conversationBoundaryHoldTarget = null;
-            var actionId = boundary == ConversationBoundary.Top
-                ? ConversationActionContract.ScrollTopId
-                : ConversationActionContract.ScrollBottomId;
-            var result = await TryExecuteActionAsync(
-                    actionId,
-                    "controller.active",
-                    boundary == ConversationBoundary.Top
-                        ? "controller.dpad.up.hold"
-                        : "controller.dpad.down.hold",
-                    "conversation.navigation",
-                    actionId.Value,
-                    ActionSafetyLevel.Routine)
-                .ConfigureAwait(true);
-            var succeeded = result?.Outcome == ActionOutcome.Succeeded;
-            var title = boundary == ConversationBoundary.Top
-                ? RadialText("已置顶", "Jumped to top")
-                : RadialText("已置底", "Jumped to bottom");
-            AddEvent(
-                title +
-                ExecutionSuffix(
-                    succeeded,
-                    result?.ErrorCode));
-            if (!succeeded)
-            {
-                ShowFeedback(
-                    title,
-                    ExecutionFailureLabel(result?.ErrorCode));
-            }
-
-            Pulse(strength: succeeded ? 0.18 : 0.1);
+            ShowFeedback(
+                title,
+                ExecutionFailureLabel(result?.ErrorCode));
         }
-        catch (OperationCanceledException)
-        {
-            // Releasing the D-pad before the threshold keeps turn navigation.
-        }
-        finally
-        {
-            if (ReferenceEquals(
-                    _conversationBoundaryHoldCancellation,
-                    cancellation))
-            {
-                _conversationBoundaryHoldCancellation = null;
-                _conversationBoundaryHoldTarget = null;
-            }
 
-            cancellation.Dispose();
-        }
+        Pulse(strength: succeeded ? 0.18 : 0.1);
     }
 
     private bool CanContinueConversationBoundaryHold(
-        ConversationBoundary boundary,
-        CancellationTokenSource cancellation)
+        ConversationBoundary boundary)
     {
         var state = _xInputService.LastState;
         var button =
             ConversationBoundaryHoldPolicy.ResolveButton(boundary);
         return
-            ReferenceEquals(
-                _conversationBoundaryHoldCancellation,
-                cancellation) &&
-            !cancellation.IsCancellationRequested &&
             state.IsConnected &&
             state.Buttons.HasFlag(button) &&
             _settings.BridgeEnabled &&
@@ -2470,10 +2414,7 @@ public partial class MainWindow : Window
 
     private void CancelConversationBoundaryHold()
     {
-        var cancellation = _conversationBoundaryHoldCancellation;
-        _conversationBoundaryHoldCancellation = null;
-        _conversationBoundaryHoldTarget = null;
-        cancellation?.Cancel();
+        _controllerHolds.CancelConversationBoundary();
     }
 
     private void CycleRootSidebarScope()
@@ -3636,84 +3577,21 @@ public partial class MainWindow : Window
 
     private void BeginCancelHold()
     {
-        if (_cancelHoldCancellation is not null)
-        {
-            return;
-        }
-
-        var cancellation = new CancellationTokenSource();
-        _cancelHoldCancellation = cancellation;
-        _ = RunCancelHoldAsync(cancellation);
+        _controllerHolds.BeginCancelHold(
+            BridgeTimings.CancelHoldMs,
+            CanContinueCancelHold,
+            remaining =>
+            {
+                ShowCancelHoldCountdown(remaining);
+                Pulse(strength: 0.06);
+            },
+            StopCurrentTurn);
     }
 
-    private async Task RunCancelHoldAsync(
-        CancellationTokenSource cancellation)
-    {
-        var startedAt = Environment.TickCount64;
-        var lastRemaining = -1;
-        try
-        {
-            while (true)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                if (!CanContinueCancelHold(cancellation))
-                {
-                    return;
-                }
-
-                var elapsed = Environment.TickCount64 - startedAt;
-                if (CancelHoldCountdownPolicy.IsComplete(
-                        elapsed,
-                        BridgeTimings.CancelHoldMs))
-                {
-                    break;
-                }
-
-                var remaining =
-                    CancelHoldCountdownPolicy.RemainingSeconds(
-                        elapsed,
-                        BridgeTimings.CancelHoldMs);
-                if (remaining != lastRemaining)
-                {
-                    lastRemaining = remaining;
-                    ShowCancelHoldCountdown(remaining);
-                    Pulse(strength: 0.06);
-                }
-
-                await Task.Delay(80, cancellation.Token)
-                    .ConfigureAwait(true);
-            }
-
-            if (!CanContinueCancelHold(cancellation))
-            {
-                return;
-            }
-
-            _cancelHoldCancellation = null;
-            StopCurrentTurn();
-        }
-        catch (OperationCanceledException)
-        {
-            // Releasing B, losing the session, or closing the app disarms it.
-        }
-        finally
-        {
-            if (ReferenceEquals(_cancelHoldCancellation, cancellation))
-            {
-                _cancelHoldCancellation = null;
-            }
-
-            cancellation.Dispose();
-        }
-    }
-
-    private bool CanContinueCancelHold(
-        CancellationTokenSource cancellation)
+    private bool CanContinueCancelHold()
     {
         var state = _xInputService.LastState;
         return
-            ReferenceEquals(_cancelHoldCancellation, cancellation) &&
-            !cancellation.IsCancellationRequested &&
             state.IsConnected &&
             state.Buttons.HasFlag(ControllerButtons.B) &&
             _settings.BridgeEnabled &&
@@ -3739,14 +3617,11 @@ public partial class MainWindow : Window
 
     private void CancelBaseCancelHold(bool showFeedback)
     {
-        var cancellation = _cancelHoldCancellation;
-        if (cancellation is null)
+        if (!_controllerHolds.CancelBaseCancelHold())
         {
             return;
         }
 
-        _cancelHoldCancellation = null;
-        cancellation.Cancel();
         if (showFeedback)
         {
             _overlayWindow?.ShowMessage(
