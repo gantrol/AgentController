@@ -191,12 +191,6 @@ public static class AgentCapabilityFallbacks
         public ComposerDialResult DialCancel(AppSettings settings) =>
             DialFailed();
 
-        public ComposerAutomationResult Submit(AppSettings settings) =>
-            Failed();
-
-        public ComposerAutomationResult Clear(AppSettings settings) =>
-            Failed();
-
         public ComposerAutomationResult Cancel(AppSettings settings) =>
             Failed();
 

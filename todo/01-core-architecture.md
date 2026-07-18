@@ -55,6 +55,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - [ ] UI 只订阅 Application state 和 command，不直接调用 Win32/UIA/Micro 服务。
   - [x] `thread.open` 首个垂直切片已由 WPF 构造 `ActionRequest`，经 Application `ActionRouter` 选择 Codex Deep Link executor，并消费 `ActionResult`；旧 `IDeepLinks.OpenThread` 直接入口已删除。
   - [x] `thread.create` 第二个垂直切片已删除 WPF 内的 UIA/快捷键回退策略；Codex executor 统一执行“查找 New task 控件，找不到时回退 Ctrl+N”，WPF 只消费 `ActionResult`。
+  - [x] `composer.submit` 与 `composer.clear` 共用一个 Codex Composer executor；旧 `IComposerAutomation.Submit/Clear` 直达入口已删除，清空动作在 executor 边界强制要求 `ConfirmationRequired`。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -106,3 +107,12 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - Codex executor 保留原执行顺序；UIA 控件调用记录为 `UiObservation/thread.create.control-invoked`，快捷键注入记录为 `Transport/thread.create.shortcut-sent`，两者均返回 `AcceptedUnverified`，不冒充新任务已被界面确认。
 - 新增 5 项 executor 合同测试，覆盖 UIA 成功、快捷键回退、注入失败、不可回退错误和 capability 缺失；完整 Release solution 测试 635/635（旧客户端 608、Application 5、Domain 15、Architecture 7）。
 - README 的“Y 后按十字键上新建任务”仍需实机复验；现有 LT 语音键与右摇杆问题不在本切片内。
+
+### 2026-07-18：Composer submit/clear 垂直切片
+
+- X 发送与动作面板双确认清空现在都经由统一的 WPF → Application action 网关和同一个 Codex Composer executor；没有为每个 Composer 动作复制独立 executor 类。
+- `composer.submit` 的 Ctrl+Enter 注入只返回 `AcceptedUnverified` 与 `Transport/composer.submit.shortcut-sent`；`composer.clear` 只有在旧服务完成文本清空 readback 后才返回 `Succeeded` 与 `UiObservation/composer.clear.verified`。
+- `composer.clear` 在 executor 边界拒绝低于 `ConfirmationRequired` 的请求，保留并加固原有双 A 确认；`IComposerAutomation.Submit/Clear` 及 Codex/null-object adapter 的旧入口已删除。
+- composition root 现在只加载一次当前设置，WPF 和所有 action executor 共享同一实例，避免执行时重新读取磁盘产生瞬时配置漂移。
+- 新增 9 项 executor 合同测试；完整 Release solution 测试 644/644（旧客户端 617、Application 5、Domain 15、Architecture 7）。README 的 X 发送和双确认清空仍需实机复验。
+- `Cancel` 暂不迁移：现有服务成功结果无法区分 named UIA button 与 Escape fallback，在通道信息补齐前不能生成诚实 evidence。

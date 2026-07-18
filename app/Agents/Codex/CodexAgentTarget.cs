@@ -409,16 +409,6 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _composer.DialCancel(settings);
         }
 
-        public ComposerAutomationResult Submit(AppSettings settings)
-        {
-            return _composer.SubmitComposer(settings);
-        }
-
-        public ComposerAutomationResult Clear(AppSettings settings)
-        {
-            return _composer.ClearComposer(settings);
-        }
-
         public ComposerAutomationResult Cancel(AppSettings settings)
         {
             return _composer.CancelComposer(settings);

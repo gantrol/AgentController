@@ -158,10 +158,6 @@ public interface IComposerAutomation
 
     ComposerDialResult DialCancel(AppSettings settings);
 
-    ComposerAutomationResult Submit(AppSettings settings);
-
-    ComposerAutomationResult Clear(AppSettings settings);
-
     ComposerAutomationResult Cancel(AppSettings settings);
 }
 

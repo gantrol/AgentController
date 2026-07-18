@@ -82,7 +82,7 @@ public partial class MainWindow : Window
     private readonly PushToTalkAutomationState _pushToTalkAutomation =
         new();
 
-    private AppSettings _settings = new();
+    private readonly AppSettings _settings;
     private CodexSnapshot _snapshot = new();
     private SidebarScope _scope = SidebarScope.Projects;
     private RightControlMode _rightMode = RightControlMode.Dial;
@@ -175,6 +175,7 @@ public partial class MainWindow : Window
     {
         ArgumentNullException.ThrowIfNull(services);
         _settingsService = services.Settings;
+        _settings = services.CurrentSettings;
         _activeAgent = services.ActiveAgent;
         _workspaceReader = _activeAgent.WorkspaceOrEmpty();
         _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
@@ -253,7 +254,6 @@ public partial class MainWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        _settings = _settingsService.Load();
         _localization.SetLanguage(_settings.Language);
         _localization.PropertyChanged +=
             Localization_PropertyChanged;
@@ -1169,7 +1169,9 @@ public partial class MainWindow : Window
                 }
                 break;
             case RadialInputAction.Dispatch:
-                SendPrompt(Glyph(LogicalInput.Menu));
+                SendPrompt(
+                    Glyph(LogicalInput.Menu),
+                    "controller.radial.dispatch");
                 break;
             case RadialInputAction.Steer:
                 ExecuteNamedRadialAction(
@@ -1266,25 +1268,36 @@ public partial class MainWindow : Window
 
         _actionPanelConfirmationCancellation?.Cancel();
         _actionPanelConfirmationCancellation = null;
-        var result = _composerAutomation.Clear(_settings);
+        _ = ClearComposerAsync();
+    }
+
+    private async Task ClearComposerAsync()
+    {
+        var result = await TryExecuteActionAsync(
+            ComposerActionContract.ClearId,
+            "controller.active",
+            "controller.radial.clear-composer",
+            "radial.action-panel",
+            "composer.clear",
+            ActionSafetyLevel.ConfirmationRequired)
+            .ConfigureAwait(true);
+
         EndRadialLayer(_latestControllerState.Buttons);
+        var succeeded = result?.Outcome == ActionOutcome.Succeeded;
         var title = RadialText(
             "清空当前输入",
             "Clear current input");
         AddEvent(
             title +
             ExecutionSuffix(
-                result.Succeeded,
-                result.Error,
-                result.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            result.Succeeded
+            succeeded
                 ? RadialText("已清空。", "Cleared.")
-                : ExecutionFailureLabel(
-                    result.Error,
-                    result.ErrorDetail));
-        Pulse(strength: result.Succeeded ? 0.2 : 0.1);
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.2 : 0.1);
     }
 
     private void ScheduleActionPanelClearDisarm()
@@ -1510,27 +1523,14 @@ public partial class MainWindow : Window
     private async Task ExecuteNewTaskActionAsync()
     {
         var title = RadialText("新建任务", "New task");
-        var requestId = Guid.NewGuid();
-        var request = new ActionRequest(
-            requestId,
+        var result = await TryExecuteActionAsync(
             CreateThreadActionContract.Id,
-            new ActionSource(
-                "controller.active",
-                ControlId.Parse("controller.radial.new-task")),
-            InputContext.Parse("radial.action-panel"),
-            $"thread.create:{requestId:N}",
-            ActionSafetyLevel.Routine,
-            DateTimeOffset.UtcNow);
-        ActionResult? result = null;
-        try
-        {
-            result = await _actionRouter.ExecuteAsync(request)
-                .ConfigureAwait(true);
-        }
-        catch (Exception)
-        {
-            // Presentation still owns localized feedback during migration.
-        }
+            "controller.active",
+            "controller.radial.new-task",
+            "radial.action-panel",
+            "thread.create",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
 
         EndRadialLayer(_latestControllerState.Buttons);
         var succeeded = result?.Outcome is
@@ -2973,28 +2973,19 @@ public partial class MainWindow : Window
 
         ClearNavigationUndo();
         var previousTitle = _sidebarAutomation.TryGetCurrentThreadTitle();
-        var requestId = Guid.NewGuid();
-        var request = new ActionRequest(
-            requestId,
+        var result = await TryExecuteActionAsync(
             OpenThreadActionContract.Id,
-            new ActionSource(
-                deviceId,
-                ControlId.Parse(controlId)),
-            InputContext.Parse("sidebar.task"),
-            $"thread.open:{threadId}:{requestId:N}",
+            deviceId,
+            controlId,
+            "sidebar.task",
+            $"thread.open:{threadId}",
             ActionSafetyLevel.Routine,
-            DateTimeOffset.UtcNow,
             new Dictionary<string, string>
             {
                 [OpenThreadActionContract.ThreadIdParameter] = threadId,
-            });
-        ActionResult result;
-        try
-        {
-            result = await _actionRouter.ExecuteAsync(request)
-                .ConfigureAwait(true);
-        }
-        catch (Exception)
+            })
+            .ConfigureAwait(true);
+        if (result is null)
         {
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageOpenThreadFailed,
@@ -3023,6 +3014,35 @@ public partial class MainWindow : Window
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageOpenThreadFailed,
                 threadTitle));
+        }
+    }
+
+    private async Task<ActionResult?> TryExecuteActionAsync(
+        ActionId actionId,
+        string deviceId,
+        string controlId,
+        string context,
+        string idempotencyScope,
+        ActionSafetyLevel safetyLevel,
+        IReadOnlyDictionary<string, string>? parameters = null)
+    {
+        var requestId = Guid.NewGuid();
+        try
+        {
+            return await _actionRouter.ExecuteAsync(new ActionRequest(
+                requestId,
+                actionId,
+                new ActionSource(deviceId, ControlId.Parse(controlId)),
+                InputContext.Parse(context),
+                $"{idempotencyScope}:{requestId:N}",
+                safetyLevel,
+                DateTimeOffset.UtcNow,
+                parameters)).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Localized feedback remains a presentation concern during migration.
+            return null;
         }
     }
 
@@ -5371,13 +5391,33 @@ public partial class MainWindow : Window
 
     private void SendPrompt()
     {
-        SendPrompt(Glyph(LogicalInput.FaceWest));
+        SendPrompt(
+            Glyph(LogicalInput.FaceWest),
+            "controller.face.west");
     }
 
-    private void SendPrompt(string sendGlyph)
+    private void SendPrompt(string sendGlyph, string controlId)
     {
-        var automation = _composerAutomation.Submit(_settings);
-        if (automation.Succeeded)
+        _ = SendPromptAsync(sendGlyph, controlId);
+    }
+
+    private async Task SendPromptAsync(
+        string sendGlyph,
+        string controlId)
+    {
+        var result = await TryExecuteActionAsync(
+            ComposerActionContract.SubmitId,
+            "controller.active",
+            controlId,
+            "composer.input",
+            "composer.submit",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
             ClearNavigationUndo();
         }
@@ -5387,17 +5427,14 @@ public partial class MainWindow : Window
                 StringKeys.MessageSendPrompt,
                 sendGlyph) +
             ExecutionSuffix(
-                automation.Succeeded,
-                automation.Error,
-                automation.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             _localization.Strings.ControlSend(sendGlyph),
-            automation.Succeeded
+            succeeded
                 ? _localization.Strings.Get(
                     StringKeys.MessageSent)
-                : ExecutionFailureLabel(
-                    automation.Error,
-                    automation.ErrorDetail));
+                : ExecutionFailureLabel(result?.ErrorCode));
         Pulse(strength: 0.28);
     }
 

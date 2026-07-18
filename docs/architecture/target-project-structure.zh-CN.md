@@ -183,3 +183,11 @@ AgentController.Application/
 - Codex executor 内聚原有的多语言 New task 控件调用和仅在 ElementNotFound 时启用的 `Ctrl+N` 回退，避免迁移时改变安全门禁与错误分支。
 - UIA 调用与快捷键发送分别报告 `UiObservation` 和 `Transport` evidence，成功请求均为 `AcceptedUnverified`；是否真的进入空白任务仍需后续状态观察器确认。
 - 自动化证据更新为旧客户端 608 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 635 passed、0 failed、0 skipped；README 实机新建任务步骤尚待复验。
+
+### 2026-07-18：Composer submit/clear Application 垂直切片
+
+- `composer.submit` 与 `composer.clear` 共享 Codex Composer executor，因为二者已形成稳定的同通道结果映射；没有为每个 Action 建立继承层级或独立样板 executor。
+- WPF 内四条已迁移动作统一通过一个 action gateway 构造来源、上下文、幂等键、安全级别和时间戳，并将路由异常收敛为 presentation failure；窗口不再直接调用 Submit/Clear adapter。
+- 清空请求必须携带 `ConfirmationRequired`，且旧 UI 保持双 A 确认；发送只报告快捷键已注入，清空则要求 UIA 文本 readback，二者因此分别映射为 `AcceptedUnverified` 与 `Succeeded`。
+- `AppServices` 持有唯一当前设置实例并同时提供给 WPF 与 executor，避免每次动作重新读盘；它仍是迁移期 composition root，后续再将可变设置状态移入 Application state。
+- 自动化证据更新为旧客户端 617 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 644 passed、0 failed、0 skipped；README 的发送与清空步骤尚待实机复验。

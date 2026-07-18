@@ -4,6 +4,7 @@ using CodexController.Agents.Codex;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
+using CodexController.Models;
 using CodexController.Services.Micro;
 
 namespace CodexController.Services;
@@ -25,6 +26,7 @@ public sealed class AppServices : IDisposable
         IAgentTarget activeAgent,
         StartupRegistrationService startupRegistration,
         SettingsService settings,
+        AppSettings currentSettings,
         CodexDataService codexData,
         CodexCommandService codexCommand,
         CodexKeybindingService codexKeybindings,
@@ -42,6 +44,7 @@ public sealed class AppServices : IDisposable
         ActiveAgent = activeAgent;
         StartupRegistration = startupRegistration;
         Settings = settings;
+        CurrentSettings = currentSettings;
         CodexData = codexData;
         CodexCommand = codexCommand;
         CodexKeybindings = codexKeybindings;
@@ -60,6 +63,7 @@ public sealed class AppServices : IDisposable
     public IAgentTarget ActiveAgent { get; }
     public StartupRegistrationService StartupRegistration { get; }
     public SettingsService Settings { get; }
+    public AppSettings CurrentSettings { get; }
     public CodexDataService CodexData { get; }
     public CodexCommandService CodexCommand { get; }
     public CodexKeybindingService CodexKeybindings { get; }
@@ -74,6 +78,7 @@ public sealed class AppServices : IDisposable
     {
         var startupRegistration = new StartupRegistrationService();
         var settings = new SettingsService(startupRegistration);
+        var currentSettings = settings.Load();
         var localization = new LocalizationService();
         var codexData = new CodexDataService(localization);
         var codexCommand = new CodexCommandService();
@@ -93,16 +98,19 @@ public sealed class AppServices : IDisposable
             [codexAgent],
             CodexAgentTarget.CodexId);
         var activeAgent = agentTargets.Resolve(
-            settings.Load().ActiveAgentId);
+            currentSettings.ActiveAgentId);
         var actionRouter = new ActionRouter(
         [
+            new CodexComposerActionExecutor(
+                () => codexComposer.SubmitComposer(currentSettings),
+                () => codexComposer.ClearComposer(currentSettings)),
             new CodexCreateThreadActionExecutor(
                 actionNames => codexComposer.InvokeComposerAction(
-                    settings.Load(),
+                    currentSettings,
                     actionNames),
                 shortcut => codexCommand.ExecuteShortcut(
                     shortcut,
-                    settings.Load())),
+                    currentSettings)),
             new CodexOpenThreadActionExecutor(
                 CodexCommandService.OpenThread),
         ]);
@@ -114,6 +122,7 @@ public sealed class AppServices : IDisposable
             activeAgent,
             startupRegistration,
             settings,
+            currentSettings,
             codexData,
             codexCommand,
             codexKeybindings,
