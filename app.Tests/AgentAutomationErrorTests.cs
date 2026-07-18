@@ -20,6 +20,8 @@ public sealed class AgentAutomationErrorTests
 
         var composer = new CodexComposerService()
             .SubmitComposer(settings);
+        var stop = new CodexComposerService()
+            .StopCurrentTurn(settings);
         var sidebar = new CodexSidebarService()
             .GoBack(settings);
 
@@ -31,6 +33,9 @@ public sealed class AgentAutomationErrorTests
             new AgentAutomationError(
                 AgentAutomationErrorCodes.BridgeSafePreview),
             composer.Failure);
+        Assert.Equal(
+            AgentAutomationErrorCodes.BridgeSafePreview,
+            stop.Error);
 
         Assert.Equal(
             AgentAutomationErrorCodes.BridgeSafePreview,
@@ -63,6 +68,10 @@ public sealed class AgentAutomationErrorTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("Ctrl+Enter", sentShortcut);
+        Assert.Equal(
+            ComposerAutomationChannel.KeyboardInput,
+            result.Channel);
+        Assert.False(result.StateVerified);
     }
 
     [Fact]

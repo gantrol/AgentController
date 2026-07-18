@@ -63,6 +63,15 @@ public sealed class CodexCreateThreadActionExecutor : IActionExecutor
         var automation = _invokeAutomation?.Invoke(ActionNames);
         if (automation?.Succeeded == true)
         {
+            if (automation.Channel !=
+                ComposerAutomationChannel.UiAutomation)
+            {
+                return ValueTask.FromResult(Result(
+                    request,
+                    ActionOutcome.Failed,
+                    "action.evidence.missing"));
+            }
+
             return ValueTask.FromResult(Accepted(
                 request,
                 ActionEvidenceKind.UiObservation,

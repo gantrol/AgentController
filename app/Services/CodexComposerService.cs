@@ -44,10 +44,19 @@ public sealed class ComposerCatalog
     }
 }
 
+public enum ComposerAutomationChannel
+{
+    Unknown,
+    UiAutomation,
+    KeyboardInput,
+}
+
 public sealed record ComposerAutomationResult(
     bool Succeeded,
     string? Error = null,
-    string? ErrorDetail = null)
+    string? ErrorDetail = null,
+    ComposerAutomationChannel Channel = ComposerAutomationChannel.Unknown,
+    bool StateVerified = false)
 {
     public AgentAutomationError? Failure =>
         Error is null
@@ -2379,7 +2388,9 @@ public sealed partial class CodexComposerService
                     NativeSubmitShortcut);
             }
 
-            return new(true);
+            return new(
+                true,
+                Channel: ComposerAutomationChannel.KeyboardInput);
         }
         catch (Exception exception)
         {
@@ -2489,7 +2500,10 @@ public sealed partial class CodexComposerService
             }
 
             return WaitForComposerTextToClear(editor, timeoutMs: 280)
-                ? new(true)
+                ? new(
+                    true,
+                    Channel: ComposerAutomationChannel.UiAutomation,
+                    StateVerified: true)
                 : new(
                     false,
                     AgentAutomationErrorCodes.ElementUnsupported,
@@ -2510,6 +2524,13 @@ public sealed partial class CodexComposerService
                 exception.Message);
         }
     }
+
+    public ComposerAutomationResult StopCurrentTurn(AppSettings settings) =>
+        InvokeComposerAction(
+            settings,
+            "Stop",
+            "Cancel",
+            "Cancel request");
 
     public ComposerAutomationResult CancelComposer(AppSettings settings)
     {
@@ -2562,7 +2583,9 @@ public sealed partial class CodexComposerService
             }
 
             return Win32Input.SendKey(0x1B)
-                ? new(true)
+                ? new(
+                    true,
+                    Channel: ComposerAutomationChannel.KeyboardInput)
                 : new(
                     false,
                     AgentAutomationErrorCodes.InputInjectionFailed,
@@ -2656,7 +2679,9 @@ public sealed partial class CodexComposerService
             try
             {
                 pattern.Invoke();
-                return new(true);
+                return new(
+                    true,
+                    Channel: ComposerAutomationChannel.UiAutomation);
             }
             catch (ElementNotAvailableException)
             {

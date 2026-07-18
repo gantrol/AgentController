@@ -5568,13 +5568,23 @@ public partial class MainWindow : Window
 
     private void StopCurrentTurn()
     {
-        var automation = _composerAutomation.InvokeAction(
-            _settings,
-            "Stop",
-            "Cancel",
-            "Cancel request");
+        _ = StopCurrentTurnAsync();
+    }
+
+    private async Task StopCurrentTurnAsync()
+    {
+        var result = await TryExecuteActionAsync(
+            TurnActionContract.StopId,
+            "controller.active",
+            "controller.face.east.hold",
+            "turn.running",
+            "turn.stop",
+            ActionSafetyLevel.HighRisk)
+            .ConfigureAwait(true);
         var cancelGlyph = Glyph(LogicalInput.FaceEast);
-        if (automation.Succeeded)
+        if (result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified)
         {
             ClearNavigationUndo();
             AddEvent(_localization.Strings.Format(
@@ -5596,15 +5606,13 @@ public partial class MainWindow : Window
                 cancelGlyph) +
             ExecutionSuffix(
                 false,
-                automation.Error,
-                automation.ErrorDetail));
+                result?.ErrorCode));
         ShowFeedback(
             _localization.Strings.Format(
                 StringKeys.MessageButtonCancel,
                 cancelGlyph),
             ExecutionFailureLabel(
-                automation.Error,
-                automation.ErrorDetail));
+                result?.ErrorCode));
         Pulse(strength: 0.18);
     }
 

@@ -56,6 +56,7 @@ Native helper <-> versioned local IPC <-> Platform adapter
   - [x] `thread.open` 首个垂直切片已由 WPF 构造 `ActionRequest`，经 Application `ActionRouter` 选择 Codex Deep Link executor，并消费 `ActionResult`；旧 `IDeepLinks.OpenThread` 直接入口已删除。
   - [x] `thread.create` 第二个垂直切片已删除 WPF 内的 UIA/快捷键回退策略；Codex executor 统一执行“查找 New task 控件，找不到时回退 Ctrl+N”，WPF 只消费 `ActionResult`。
   - [x] `composer.submit` 与 `composer.clear` 共用一个 Codex Composer executor；旧 `IComposerAutomation.Submit/Clear` 直达入口已删除，清空动作在 executor 边界强制要求 `ConfirmationRequired`。
+  - [x] 三秒 B 长按后的 `turn.stop` 已接入同一 Composer executor，并在执行边界强制要求 `HighRisk`；短按 B 的菜单关闭、导航撤回和本地取消仍保持独立分流。
   - [ ] 将 thread availability、foreground gate、undo snapshot 和 UI feedback 收敛到 Application command/state；当前为保持行为不变仍留在 WPF。
 
 ### 状态聚合
@@ -115,4 +116,12 @@ Native helper <-> versioned local IPC <-> Platform adapter
 - `composer.clear` 在 executor 边界拒绝低于 `ConfirmationRequired` 的请求，保留并加固原有双 A 确认；`IComposerAutomation.Submit/Clear` 及 Codex/null-object adapter 的旧入口已删除。
 - composition root 现在只加载一次当前设置，WPF 和所有 action executor 共享同一实例，避免执行时重新读取磁盘产生瞬时配置漂移。
 - 新增 9 项 executor 合同测试；完整 Release solution 测试 644/644（旧客户端 617、Application 5、Domain 15、Architecture 7）。README 的 X 发送和双确认清空仍需实机复验。
-- `Cancel` 暂不迁移：现有服务成功结果无法区分 named UIA button 与 Escape fallback，在通道信息补齐前不能生成诚实 evidence。
+- `Cancel` 暂不迁移：它承载短按 B 的菜单关闭、录音中止、导航撤回和 UIA/Escape fallback，必须先拆清本地取消与业务 Action，而不能直接等同于停止任务。
+
+### 2026-07-18：`turn.stop` 高风险垂直切片
+
+- B 键语义被明确拆分：三秒长按完成后才构造 `turn.stop` `ActionRequest`；短按仍优先处理录音、本地选择、导航撤回和菜单关闭，不会误用停止任务 Action。
+- `ComposerAutomationResult` 新增 `Channel` 与 `StateVerified`，旧服务现在明确报告 UIA、键盘输入和清空状态回读；成功但缺少预期通道时 executor 失败关闭为 `action.evidence.missing`。
+- `turn.stop` 在 executor 边界要求 `HighRisk`，UIA Stop/Cancel 按钮调用只返回 `AcceptedUnverified` 与 `UiObservation/turn.stop.control-invoked`，不宣称任务状态已经停止。
+- `StopCurrentTurn` 中直接调用 `IComposerAutomation.InvokeAction` 的旧执行路径已删除；短按所用 `CancelComposer` 暂留，因为其 UIA/Escape fallback 属于不同的本地取消语义。
+- 新增 3 项合同测试，并加强 Submit、Clear、Create 对通道证据的断言；完整 Release solution 测试 647/647（旧客户端 620、Application 5、Domain 15、Architecture 7）。README 的三秒长按停止仍需实机 readback 验收。

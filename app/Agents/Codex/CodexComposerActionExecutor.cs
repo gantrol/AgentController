@@ -10,15 +10,18 @@ public sealed class CodexComposerActionExecutor : IActionExecutor
 
     private readonly Func<ComposerAutomationResult>? _submit;
     private readonly Func<ComposerAutomationResult>? _clear;
+    private readonly Func<ComposerAutomationResult>? _stop;
     private readonly Func<DateTimeOffset> _clock;
 
     public CodexComposerActionExecutor(
         Func<ComposerAutomationResult>? submit,
         Func<ComposerAutomationResult>? clear,
+        Func<ComposerAutomationResult>? stop = null,
         Func<DateTimeOffset>? clock = null)
     {
         _submit = submit;
         _clear = clear;
+        _stop = stop;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
@@ -59,46 +62,29 @@ public sealed class CodexComposerActionExecutor : IActionExecutor
                 automation.Error));
         }
 
-        var completedAt = _clock();
-        var isSubmit = request.ActionId == ComposerActionContract.SubmitId;
-        return ValueTask.FromResult(new ActionResult(
-            request.RequestId,
-            request.ActionId,
-            isSubmit
-                ? ActionOutcome.AcceptedUnverified
-                : ActionOutcome.Succeeded,
-            Id,
-            completedAt,
-            [
-                new ActionEvidence(
-                    isSubmit
-                        ? ActionEvidenceKind.Transport
-                        : ActionEvidenceKind.UiObservation,
-                    Id,
-                    isSubmit
-                        ? "composer.submit.shortcut-sent"
-                        : "composer.clear.verified",
-                    completedAt,
-                    confidence: 1),
-            ]));
+        return ValueTask.FromResult(CompleteSuccessful(
+            request,
+            automation));
     }
 
     private ExecutorCapability CapabilityFor(ActionRequest request)
     {
         var knownAction =
             request.ActionId == ComposerActionContract.SubmitId ||
-            request.ActionId == ComposerActionContract.ClearId;
+            request.ActionId == ComposerActionContract.ClearId ||
+            request.ActionId == TurnActionContract.StopId;
         var operation = OperationFor(request.ActionId);
-        if (operation is not null &&
-            request.ActionId == ComposerActionContract.ClearId &&
-            request.SafetyLevel < ActionSafetyLevel.ConfirmationRequired)
+        var requiredSafety = RequiredSafetyFor(request.ActionId);
+        if (operation is not null && request.SafetyLevel < requiredSafety)
         {
             return new ExecutorCapability(
                 Id,
                 request.ActionId,
                 ExecutorCapabilityStatus.Blocked,
                 Priority: 100,
-                ReasonCode: "action.confirmation-required");
+                ReasonCode: requiredSafety == ActionSafetyLevel.HighRisk
+                    ? "action.high-risk-confirmation-required"
+                    : "action.confirmation-required");
         }
 
         return new ExecutorCapability(
@@ -122,9 +108,84 @@ public sealed class CodexComposerActionExecutor : IActionExecutor
             return _submit;
         }
 
-        return actionId == ComposerActionContract.ClearId
-            ? _clear
-            : null;
+        if (actionId == ComposerActionContract.ClearId)
+        {
+            return _clear;
+        }
+
+        return actionId == TurnActionContract.StopId ? _stop : null;
+    }
+
+    private static ActionSafetyLevel RequiredSafetyFor(ActionId actionId) =>
+        actionId == TurnActionContract.StopId
+            ? ActionSafetyLevel.HighRisk
+            : actionId == ComposerActionContract.ClearId
+                ? ActionSafetyLevel.ConfirmationRequired
+                : ActionSafetyLevel.Routine;
+
+    private ActionResult CompleteSuccessful(
+        ActionRequest request,
+        ComposerAutomationResult automation)
+    {
+        var descriptor = SuccessDescriptorFor(request.ActionId, automation);
+        if (descriptor is null)
+        {
+            return Complete(
+                request,
+                ActionOutcome.Failed,
+                "action.evidence.missing");
+        }
+
+        var completedAt = _clock();
+        return new ActionResult(
+            request.RequestId,
+            request.ActionId,
+            descriptor.Value.Outcome,
+            Id,
+            completedAt,
+            [
+                new ActionEvidence(
+                    descriptor.Value.EvidenceKind,
+                    Id,
+                    descriptor.Value.EvidenceCode,
+                    completedAt,
+                    confidence: 1),
+            ]);
+    }
+
+    private static SuccessDescriptor? SuccessDescriptorFor(
+        ActionId actionId,
+        ComposerAutomationResult automation)
+    {
+        if (actionId == ComposerActionContract.SubmitId &&
+            automation.Channel == ComposerAutomationChannel.KeyboardInput)
+        {
+            return new(
+                ActionOutcome.AcceptedUnverified,
+                ActionEvidenceKind.Transport,
+                "composer.submit.shortcut-sent");
+        }
+
+        if (actionId == ComposerActionContract.ClearId &&
+            automation.Channel == ComposerAutomationChannel.UiAutomation &&
+            automation.StateVerified)
+        {
+            return new(
+                ActionOutcome.Succeeded,
+                ActionEvidenceKind.UiObservation,
+                "composer.clear.verified");
+        }
+
+        if (actionId == TurnActionContract.StopId &&
+            automation.Channel == ComposerAutomationChannel.UiAutomation)
+        {
+            return new(
+                ActionOutcome.AcceptedUnverified,
+                ActionEvidenceKind.UiObservation,
+                "turn.stop.control-invoked");
+        }
+
+        return null;
     }
 
     private static ActionOutcome FailureOutcome(string? errorCode) =>
@@ -155,4 +216,9 @@ public sealed class CodexComposerActionExecutor : IActionExecutor
             Id,
             _clock(),
             errorCode: errorCode);
+
+    private readonly record struct SuccessDescriptor(
+        ActionOutcome Outcome,
+        ActionEvidenceKind EvidenceKind,
+        string EvidenceCode);
 }

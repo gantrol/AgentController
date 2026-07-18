@@ -17,7 +17,9 @@ public sealed class CodexCreateThreadActionExecutorTests
             names =>
             {
                 invokedNames = names;
-                return new ComposerAutomationResult(true);
+                return new ComposerAutomationResult(
+                    true,
+                    Channel: ComposerAutomationChannel.UiAutomation);
             },
             _ => throw new InvalidOperationException());
 

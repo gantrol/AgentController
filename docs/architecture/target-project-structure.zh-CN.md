@@ -191,3 +191,11 @@ AgentController.Application/
 - 清空请求必须携带 `ConfirmationRequired`，且旧 UI 保持双 A 确认；发送只报告快捷键已注入，清空则要求 UIA 文本 readback，二者因此分别映射为 `AcceptedUnverified` 与 `Succeeded`。
 - `AppServices` 持有唯一当前设置实例并同时提供给 WPF 与 executor，避免每次动作重新读盘；它仍是迁移期 composition root，后续再将可变设置状态移入 Application state。
 - 自动化证据更新为旧客户端 617 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 644 passed、0 failed、0 skipped；README 的发送与清空步骤尚待实机复验。
+
+### 2026-07-18：`turn.stop` 与执行通道证据
+
+- `ComposerAutomationResult` 在迁移期 adapter 边界增加 `Channel` 和 `StateVerified`；Submit 报告 KeyboardInput，Clear 报告 UIA + readback，Stop 报告 UIA invocation，Unknown 成功不再被 executor 接受。
+- 三秒 B 长按完成后由 WPF 发射 `turn.stop` HighRisk 请求；Composer executor 同时执行安全级别复核，低风险请求在触碰 UIA 前即返回 Blocked。
+- Stop 的 UIA 调用是请求证据而非状态证据，因此结果为 `AcceptedUnverified`；后续应由 App Server 或独立状态观察器确认任务确已停止。
+- 短按 B 的本地取消状态机没有并入 `turn.stop`，避免菜单关闭、录音中止和导航撤回意外升级为高风险业务动作。
+- 自动化证据更新为旧客户端 620 tests、Application 5 tests、Domain 15 tests、Architecture 7 tests，共 647 passed、0 failed、0 skipped；README 的长按停止步骤尚待实机复验。

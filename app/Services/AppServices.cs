@@ -103,7 +103,8 @@ public sealed class AppServices : IDisposable
         [
             new CodexComposerActionExecutor(
                 () => codexComposer.SubmitComposer(currentSettings),
-                () => codexComposer.ClearComposer(currentSettings)),
+                () => codexComposer.ClearComposer(currentSettings),
+                () => codexComposer.StopCurrentTurn(currentSettings)),
             new CodexCreateThreadActionExecutor(
                 actionNames => codexComposer.InvokeComposerAction(
                     currentSettings,

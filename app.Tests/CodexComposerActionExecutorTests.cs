@@ -13,7 +13,9 @@ public sealed class CodexComposerActionExecutorTests
     public async Task SubmitReturnsUnverifiedTransportEvidence()
     {
         var executor = new CodexComposerActionExecutor(
-            () => new ComposerAutomationResult(true),
+            () => new ComposerAutomationResult(
+                true,
+                Channel: ComposerAutomationChannel.KeyboardInput),
             clear: null);
 
         var result = await executor.ExecuteAsync(CreateRequest(
@@ -30,7 +32,10 @@ public sealed class CodexComposerActionExecutorTests
     {
         var executor = new CodexComposerActionExecutor(
             submit: null,
-            () => new ComposerAutomationResult(true));
+            () => new ComposerAutomationResult(
+                true,
+                Channel: ComposerAutomationChannel.UiAutomation,
+                StateVerified: true));
 
         var result = await executor.ExecuteAsync(CreateRequest(
             ComposerActionContract.ClearId,
@@ -60,6 +65,65 @@ public sealed class CodexComposerActionExecutorTests
         Assert.Equal(0, clearCalls);
         Assert.Equal(ActionOutcome.Blocked, result.Outcome);
         Assert.Equal("action.confirmation-required", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task StopReturnsUnverifiedUiEvidence()
+    {
+        var executor = new CodexComposerActionExecutor(
+            submit: null,
+            clear: null,
+            stop: () => new ComposerAutomationResult(
+                true,
+                Channel: ComposerAutomationChannel.UiAutomation));
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            TurnActionContract.StopId,
+            ActionSafetyLevel.HighRisk));
+
+        Assert.Equal(ActionOutcome.AcceptedUnverified, result.Outcome);
+        var evidence = Assert.Single(result.Evidence);
+        Assert.Equal(ActionEvidenceKind.UiObservation, evidence.Kind);
+        Assert.Equal("turn.stop.control-invoked", evidence.Code);
+    }
+
+    [Fact]
+    public async Task StopWithoutHighRiskConfirmationIsBlocked()
+    {
+        var stopCalls = 0;
+        var executor = new CodexComposerActionExecutor(
+            submit: null,
+            clear: null,
+            stop: () =>
+            {
+                stopCalls++;
+                return new ComposerAutomationResult(true);
+            });
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            TurnActionContract.StopId,
+            ActionSafetyLevel.ConfirmationRequired));
+
+        Assert.Equal(0, stopCalls);
+        Assert.Equal(ActionOutcome.Blocked, result.Outcome);
+        Assert.Equal(
+            "action.high-risk-confirmation-required",
+            result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SuccessfulOperationWithoutChannelFailsClosed()
+    {
+        var executor = new CodexComposerActionExecutor(
+            () => new ComposerAutomationResult(true),
+            clear: null);
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            ComposerActionContract.SubmitId));
+
+        Assert.Equal(ActionOutcome.Failed, result.Outcome);
+        Assert.Equal("action.evidence.missing", result.ErrorCode);
+        Assert.Empty(result.Evidence);
     }
 
     [Theory]
@@ -109,7 +173,9 @@ public sealed class CodexComposerActionExecutorTests
     public async Task DifferentActionIsUnsupportedByProbe()
     {
         var executor = new CodexComposerActionExecutor(
-            () => new ComposerAutomationResult(true),
+            () => new ComposerAutomationResult(
+                true,
+                Channel: ComposerAutomationChannel.KeyboardInput),
             clear: null);
         var request = CreateRequest(ActionId.Parse("thread.open"));
 
