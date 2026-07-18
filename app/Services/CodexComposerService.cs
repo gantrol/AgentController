@@ -2113,7 +2113,7 @@ public sealed partial class CodexComposerService
                 }
 
                 pattern.Invoke();
-                return new(true);
+                return UiAutomationActionSucceeded();
             }
 
             return new(
@@ -2129,6 +2129,11 @@ public sealed partial class CodexComposerService
                 exception.Message);
         }
     }
+
+    internal static ComposerAutomationResult UiAutomationActionSucceeded() =>
+        new(
+            true,
+            Channel: ComposerAutomationChannel.UiAutomation);
 
     public Task<ComposerAutomationResult> InvokeComposerActionAsync(
         AppSettings settings,

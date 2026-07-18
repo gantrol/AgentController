@@ -96,6 +96,19 @@ public sealed class AgentAutomationErrorTests
     }
 
     [Fact]
+    public void ComposerUiAutomationActionReportsItsChannel()
+    {
+        var result =
+            CodexComposerService.UiAutomationActionSucceeded();
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(
+            ComposerAutomationChannel.UiAutomation,
+            result.Channel);
+        Assert.False(result.StateVerified);
+    }
+
+    [Fact]
     public void InvalidKeybindingsReturnCodeAndMachineReadableDetail()
     {
         lock (EnvironmentLock)
