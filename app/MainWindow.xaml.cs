@@ -2215,12 +2215,19 @@ public partial class MainWindow : Window
     private void NavigateConversationTurn(
         ConversationTurnInputAction action)
     {
-        var shortcut = ConversationTurnInputMap.ShortcutFor(action);
-        if (shortcut is null)
+        var actionId = ConversationTurnInputMap.ActionIdFor(action);
+        if (actionId is null)
         {
             return;
         }
 
+        _ = NavigateConversationTurnAsync(action, actionId.Value);
+    }
+
+    private async Task NavigateConversationTurnAsync(
+        ConversationTurnInputAction action,
+        ActionId actionId)
+    {
         var title = action ==
             ConversationTurnInputAction.PreviousUserMessage
                 ? RadialText(
@@ -2229,26 +2236,35 @@ public partial class MainWindow : Window
                 : RadialText(
                     "下一条用户消息",
                     "Next user message");
-        var executed = _agentShortcuts.Execute(shortcut, _settings);
+        var result = await TryExecuteActionAsync(
+            actionId,
+            "controller.active",
+            action == ConversationTurnInputAction.PreviousUserMessage
+                ? "controller.dpad.up"
+                : "controller.dpad.down",
+            "conversation.navigation",
+            actionId.Value,
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
         AddEvent(
             title +
-            (executed
+            (succeeded
                 ? $" · {_localization.Strings.Get(
                     StringKeys.MessageShortcutSent)}"
                 : ExecutionSuffix(
                     false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    shortcut)));
-        if (!executed)
+                    result?.ErrorCode)));
+        if (!succeeded)
         {
             ShowFeedback(
                 title,
-                ExecutionFailureLabel(
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    shortcut));
+                ExecutionFailureLabel(result?.ErrorCode));
         }
 
-        Pulse(strength: executed ? 0.16 : 0.1);
+        Pulse(strength: succeeded ? 0.16 : 0.1);
     }
 
     private void BeginConversationBoundaryHold(

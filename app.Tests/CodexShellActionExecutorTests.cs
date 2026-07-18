@@ -12,6 +12,8 @@ public sealed class CodexShellActionExecutorTests
     [Theory]
     [InlineData("navigation.back", "Ctrl+[")]
     [InlineData("navigation.forward", "Ctrl+]")]
+    [InlineData("conversation.previous-user-message", "Alt+Up")]
+    [InlineData("conversation.next-user-message", "Alt+Down")]
     [InlineData("sidebar.toggle", "Ctrl+B")]
     public async Task KnownActionSendsMappedShortcut(
         string actionIdValue,

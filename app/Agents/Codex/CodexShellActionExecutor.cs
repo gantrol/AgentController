@@ -89,6 +89,16 @@ public sealed class CodexShellActionExecutor : CodexActionExecutorBase
             return "Ctrl+]";
         }
 
+        if (actionId == ConversationActionContract.PreviousUserMessageId)
+        {
+            return "Alt+Up";
+        }
+
+        if (actionId == ConversationActionContract.NextUserMessageId)
+        {
+            return "Alt+Down";
+        }
+
         return actionId == SidebarActionContract.ToggleId
             ? "Ctrl+B"
             : null;
