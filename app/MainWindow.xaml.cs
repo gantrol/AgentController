@@ -8,7 +8,9 @@ using System.Windows.Threading;
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
 using AgentController.Domain.Actions;
+using AgentController.Platform.Windowing;
 using CodexController.Agents;
+using CodexController.Composition;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
@@ -65,6 +67,7 @@ public partial class MainWindow : Window
     private readonly MicroInputService _microInput;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
+    private readonly IForegroundApplication _foregroundApplication;
     private readonly DevicePageViewModel _devicePageViewModel;
     private readonly ConfigPageViewModel _configPageViewModel;
     private readonly SettingsPageViewModel _settingsPageViewModel;
@@ -156,29 +159,30 @@ public partial class MainWindow : Window
             _selectedProjectPath,
             _projectTasksPinnedOnly);
 
-    public MainWindow(AppServices services)
+    internal MainWindow(MainWindowDependencies dependencies)
     {
-        ArgumentNullException.ThrowIfNull(services);
-        _settingsService = services.Settings;
-        _settings = services.CurrentSettings;
-        _activeAgent = services.ActiveAgent;
+        ArgumentNullException.ThrowIfNull(dependencies);
+        _settingsService = dependencies.Settings;
+        _settings = dependencies.CurrentSettings;
+        _activeAgent = dependencies.ActiveAgent;
+        _foregroundApplication = dependencies.ForegroundApplication;
         _workspaceReader = _activeAgent.WorkspaceOrEmpty();
         _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
         _composerAutomation = _activeAgent.ComposerOrUnavailable();
         _agentShortcuts = _activeAgent.Shortcuts;
         _keybindingProvisioner = _activeAgent.Keybindings;
-        _xInputService = services.Controller;
-        _controllerInteraction = services.ControllerInteraction;
-        _controllerHolds = services.ControllerHolds;
-        _radialLayers = services.RadialLayers;
-        _actionDispatcher = services.ActionDispatcher;
-        _threadNavigation = services.ThreadNavigation;
+        _xInputService = dependencies.Controller;
+        _controllerInteraction = dependencies.ControllerInteraction;
+        _controllerHolds = dependencies.ControllerHolds;
+        _radialLayers = dependencies.RadialLayers;
+        _actionDispatcher = dependencies.ActionDispatcher;
+        _threadNavigation = dependencies.ThreadNavigation;
         _threadNavigation.NoticePublished +=
             ThreadNavigation_NoticePublished;
-        _bridgeEvents = services.BridgeEvents;
-        _localization = services.Localization;
-        _microInput = services.MicroInput;
-        _controllerProfiles = services.ControllerProfiles;
+        _bridgeEvents = dependencies.BridgeEvents;
+        _localization = dependencies.Localization;
+        _microInput = dependencies.MicroInput;
+        _controllerProfiles = dependencies.ControllerProfiles;
         _configPageViewModel = new ConfigPageViewModel(
             OpenAgentShortcuts,
             () => SaveSettings(
@@ -422,7 +426,7 @@ public partial class MainWindow : Window
             WakeCodex();
         }
 
-        var foreground = _activeAgent.Presence.IsForeground;
+        var foreground = _foregroundApplication.IsForeground;
         TryAutoArmController(foreground);
         var foregroundAllowsInput =
             ObserveCodexForeground(foreground);
@@ -1785,7 +1789,8 @@ public partial class MainWindow : Window
                 "codex.wake"));
         try
         {
-            var woke = await Task.Run(_activeAgent.Presence.Wake);
+            var woke = await Task.Run(
+                _foregroundApplication.TryActivate);
             if (!woke)
             {
                 _controllerSession.Lock();
@@ -2096,7 +2101,7 @@ public partial class MainWindow : Window
             !_controllerInteraction.PushToTalkBlocksBaseInput &&
             (
                 !_settings.OnlyWhenCodexForeground ||
-                _activeAgent.Presence.IsForeground
+                _foregroundApplication.IsForeground
             );
     }
 
@@ -3286,7 +3291,7 @@ public partial class MainWindow : Window
             _controllerSession.IsActive &&
             (
                 !_settings.OnlyWhenCodexForeground ||
-                _activeAgent.Presence.IsForeground
+                _foregroundApplication.IsForeground
             );
     }
 
@@ -3641,7 +3646,7 @@ public partial class MainWindow : Window
             closeMenu &&
             hadOpenMenu &&
             _settings.BridgeEnabled &&
-            _activeAgent.Presence.IsForeground)
+            _foregroundApplication.IsForeground)
         {
             _ = CloseVirtualDialMenuAsync(showFeedback: false);
         }
@@ -5738,7 +5743,7 @@ public partial class MainWindow : Window
 
     private void UpdateCodexStatus()
     {
-        var foreground = _activeAgent.Presence.IsForeground;
+        var foreground = _foregroundApplication.IsForeground;
         TryAutoArmController(foreground);
         _ = ObserveCodexForeground(foreground);
 
@@ -5918,7 +5923,7 @@ public partial class MainWindow : Window
 
         if (
             _settings.OnlyWhenCodexForeground &&
-            !_activeAgent.Presence.IsForeground)
+            !_foregroundApplication.IsForeground)
         {
             return _localization.Strings.Format(
                 StringKeys.MessageWaitingForAgentForeground,

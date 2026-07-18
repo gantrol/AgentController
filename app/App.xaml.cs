@@ -1,7 +1,7 @@
 using System.Threading;
 using System.Windows;
+using CodexController.Composition;
 using CodexController.Localization;
-using CodexController.Services;
 
 namespace CodexController;
 
@@ -9,7 +9,7 @@ public partial class App : System.Windows.Application
 {
     private Mutex? _singleInstanceMutex;
     private bool _ownsSingleInstanceMutex;
-    private AppServices? _services;
+    private AppComposition? _composition;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -31,9 +31,9 @@ public partial class App : System.Windows.Application
         }
 
         base.OnStartup(e);
-        _services = AppServices.CreateDefault();
-        LocalizationHost.Use(_services.Localization);
-        var window = new MainWindow(_services);
+        _composition = AppComposition.CreateDefault();
+        LocalizationHost.Use(_composition.Localization);
+        var window = new MainWindow(_composition.Desktop);
         MainWindow = window;
         if (e.Args.Contains("--background", StringComparer.OrdinalIgnoreCase))
         {
@@ -55,8 +55,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _services?.Dispose();
-        _services = null;
+        _composition?.Dispose();
+        _composition = null;
         if (_ownsSingleInstanceMutex)
         {
             _singleInstanceMutex?.ReleaseMutex();

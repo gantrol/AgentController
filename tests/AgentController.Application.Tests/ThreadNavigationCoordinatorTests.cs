@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
 using AgentController.Domain.Actions;
+using AgentController.Platform.Windowing;
 using Xunit;
 
 namespace AgentController.Application.Tests;
@@ -199,11 +200,12 @@ public sealed class ThreadNavigationCoordinatorTests
                 router,
                 Guid.NewGuid,
                 clock ?? (() => Start)),
-            requiresForeground ?? (() => false),
-            isAgentForeground ?? (() => true),
-            isThreadAvailable ?? (_ => true),
-            readTitle,
-            _ => 1,
+            new StubThreadNavigationContext(
+                readTitle,
+                requiresForeground ?? (() => false),
+                isThreadAvailable ?? (_ => true)),
+            new StubForegroundApplication(
+                isAgentForeground ?? (() => true)),
             new ThreadNavigationOptions(
                 TimeSpan.FromSeconds(1),
                 TimeSpan.Zero,
@@ -211,6 +213,48 @@ public sealed class ThreadNavigationCoordinatorTests
             clock ?? (() => Start),
             () => 0,
             delay ?? ((_, _) => Task.CompletedTask));
+    }
+
+    private sealed class StubThreadNavigationContext :
+        IThreadNavigationContext
+    {
+        private readonly Func<string?> _readTitle;
+        private readonly Func<bool> _requiresForeground;
+        private readonly Func<string, bool> _isThreadAvailable;
+
+        internal StubThreadNavigationContext(
+            Func<string?> readTitle,
+            Func<bool> requiresForeground,
+            Func<string, bool> isThreadAvailable)
+        {
+            _readTitle = readTitle;
+            _requiresForeground = requiresForeground;
+            _isThreadAvailable = isThreadAvailable;
+        }
+
+        public bool RequiresForeground => _requiresForeground();
+
+        public bool IsThreadAvailable(string threadId) =>
+            _isThreadAvailable(threadId);
+
+        public string? ReadCurrentThreadTitle() => _readTitle();
+
+        public int CountThreadTitleMatches(string nativeTitle) => 1;
+    }
+
+    private sealed class StubForegroundApplication :
+        IForegroundApplication
+    {
+        private readonly Func<bool> _isForeground;
+
+        internal StubForegroundApplication(Func<bool> isForeground)
+        {
+            _isForeground = isForeground;
+        }
+
+        public bool IsForeground => _isForeground();
+
+        public bool TryActivate() => true;
     }
 
     private static ThreadOpenRequest Request(

@@ -1,5 +1,6 @@
 using AgentController.Application.Actions;
 using AgentController.Domain.Actions;
+using AgentController.Platform.Windowing;
 
 namespace AgentController.Application.Navigation;
 
@@ -78,11 +79,8 @@ public sealed class ThreadNavigationCoordinator : IDisposable
 {
     private readonly object _gate = new();
     private readonly ActionDispatcher _actions;
-    private readonly Func<bool> _requiresForeground;
-    private readonly Func<bool> _isAgentForeground;
-    private readonly Func<string, bool> _isThreadAvailable;
-    private readonly Func<string?> _readCurrentThreadTitle;
-    private readonly Func<string, int> _countThreadTitleMatches;
+    private readonly IThreadNavigationContext _context;
+    private readonly IForegroundApplication _foregroundApplication;
     private readonly ThreadNavigationOptions _options;
     private readonly Func<DateTimeOffset> _clock;
     private readonly Func<long> _tickCount;
@@ -93,11 +91,8 @@ public sealed class ThreadNavigationCoordinator : IDisposable
 
     public ThreadNavigationCoordinator(
         ActionDispatcher actions,
-        Func<bool> requiresForeground,
-        Func<bool> isAgentForeground,
-        Func<string, bool> isThreadAvailable,
-        Func<string?> readCurrentThreadTitle,
-        Func<string, int> countThreadTitleMatches,
+        IThreadNavigationContext context,
+        IForegroundApplication foregroundApplication,
         ThreadNavigationOptions options,
         Func<DateTimeOffset>? clock = null,
         Func<long>? tickCount = null,
@@ -105,17 +100,11 @@ public sealed class ThreadNavigationCoordinator : IDisposable
     {
         _actions = actions ??
             throw new ArgumentNullException(nameof(actions));
-        _requiresForeground = requiresForeground ??
-            throw new ArgumentNullException(nameof(requiresForeground));
-        _isAgentForeground = isAgentForeground ??
-            throw new ArgumentNullException(nameof(isAgentForeground));
-        _isThreadAvailable = isThreadAvailable ??
-            throw new ArgumentNullException(nameof(isThreadAvailable));
-        _readCurrentThreadTitle = readCurrentThreadTitle ??
-            throw new ArgumentNullException(nameof(readCurrentThreadTitle));
-        _countThreadTitleMatches = countThreadTitleMatches ??
+        _context = context ??
+            throw new ArgumentNullException(nameof(context));
+        _foregroundApplication = foregroundApplication ??
             throw new ArgumentNullException(
-                nameof(countThreadTitleMatches));
+                nameof(foregroundApplication));
         options.Validate();
         _options = options;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
@@ -133,20 +122,20 @@ public sealed class ThreadNavigationCoordinator : IDisposable
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.ThreadId);
 
-        if (_requiresForeground() &&
-            !_isAgentForeground() &&
+        if (_context.RequiresForeground &&
+            !_foregroundApplication.IsForeground &&
             !request.PresentationIsActive)
         {
             return new(ThreadOpenOutcome.BlockedByForeground);
         }
 
-        if (!_isThreadAvailable(request.ThreadId))
+        if (!_context.IsThreadAvailable(request.ThreadId))
         {
             return new(ThreadOpenOutcome.ThreadUnavailable);
         }
 
         ClearUndo();
-        var previousTitle = _readCurrentThreadTitle();
+        var previousTitle = _context.ReadCurrentThreadTitle();
         ActionResult result;
         try
         {
@@ -261,7 +250,7 @@ public sealed class ThreadNavigationCoordinator : IDisposable
             return;
         }
 
-        if (_countThreadTitleMatches(nativeTitle) != 1)
+        if (_context.CountThreadTitleMatches(nativeTitle) != 1)
         {
             Publish(new(
                 ThreadNavigationNoticeKind.UndoUnavailableNonUnique,
@@ -296,7 +285,7 @@ public sealed class ThreadNavigationCoordinator : IDisposable
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 var currentTitle = await Task.Run(
-                        _readCurrentThreadTitle,
+                        _context.ReadCurrentThreadTitle,
                         cancellation.Token)
                     .ConfigureAwait(false);
                 if (string.Equals(
@@ -402,7 +391,7 @@ public sealed class ThreadNavigationCoordinator : IDisposable
             }
         }
 
-        var currentTitle = _readCurrentThreadTitle();
+        var currentTitle = _context.ReadCurrentThreadTitle();
         if (!string.Equals(
                 currentTitle,
                 undo.TargetNativeTitle,
