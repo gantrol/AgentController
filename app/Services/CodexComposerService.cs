@@ -1080,7 +1080,7 @@ public sealed partial class CodexComposerService
                     // Compact/Advanced views, open Model/Effort/Speed, or
                     // commit a leaf. The VHF/keyboard acknowledgement only
                     // proves input delivery, so it cannot tell those cases
-                    // apart. Keep native ownership until B/R3 explicitly
+                    // apart. Keep native ownership until B explicitly
                     // dismisses the session; otherwise the next stick frame
                     // leaks into the Simple Power F17/F18 fallback.
                     return new(
@@ -1698,12 +1698,51 @@ public sealed partial class CodexComposerService
         }
     }
 
-    public ComposerDialResult DialCancel(AppSettings settings)
+    public ComposerDialResult DialCancel(
+        AppSettings settings,
+        bool menuExpected = false)
     {
         var gate = ValidateInteractiveBridge(settings);
         if (gate is not null)
         {
             return gate;
+        }
+
+        if (menuExpected)
+        {
+            // The official Micro bridge reserves AG00 as contextual Back:
+            // while a composer menu is mounted it dispatches Escape and
+            // suppresses the normal Agent-slot action. This is the canonical
+            // Micro-first dismissal path. A possibly delivered report must
+            // never be followed by a second native Escape.
+            var micro = _microInput.SendAgentSlot(0);
+            if (micro is
+                MicroReportSendResult.Accepted or
+                MicroReportSendResult.OutcomeUnknown)
+            {
+                lock (_dialSync)
+                {
+                    ClearOwnedDialPopup();
+                }
+
+                return new(
+                    true,
+                    _dialControlName,
+                    IsMenuOpen: false,
+                    MenuWasPresent: true,
+                    StateVerified: false);
+            }
+
+            if (micro == MicroReportSendResult.Rejected)
+            {
+                return new(
+                    false,
+                    _dialControlName,
+                    IsMenuOpen: true,
+                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                    ErrorDetail: "micro.agent-back-rejected",
+                    MenuWasPresent: true);
+            }
         }
 
         lock (_dialSync)

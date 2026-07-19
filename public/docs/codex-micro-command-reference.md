@@ -1,7 +1,7 @@
 # Codex Micro 指令参考
 
 > Status: Observed private compatibility contract
-> Evidence baseline: Codex Desktop 26.707.12708 and local `codex-micro-v0.1.0`
+> Evidence baseline: Codex Desktop 26.707.12708、26.715.4045 and local `codex-micro-v0.1.0`
 > 这些值不是 OpenAI 承诺的公开稳定 ABI；使用前必须经过 Codex build 指纹门禁。
 
 ## 1. `v.oai.hid` 键指令
@@ -26,17 +26,17 @@
 
 | `k` | 指令 | Agent Controller 映射 |
 | --- | --- | --- |
-| `ENC_CW` | 编码器顺时针一个档位，`act=2` | 右摇杆上 / `EncoderStep(+1)` |
-| `ENC_CC` | 编码器逆时针一个档位，`act=2` | 右摇杆下 / `EncoderStep(-1)` |
+| `ENC_CW` | 编码器顺时针一个档位，`act=2` | 右摇杆上或左 / `EncoderStep(+1)` |
+| `ENC_CC` | 编码器逆时针一个档位，`act=2` | 右摇杆下或右 / `EncoderStep(-1)` |
 | `ENC` | 编码器按压，使用 `act=1` 后 `act=0` | R3 短按；Agent Controller 的 R3 长按保留给自身设置，不发送 `ENC` hold |
 
-右摇杆左/右不是 Micro 旋钮档位，禁止编码成 `ENC_CW` 或 `ENC_CC`。
+手柄用两个物理轴表达一个 Micro 旋钮：上与左都投影为上一项（`ENC_CW`），下与右都投影为下一项（`ENC_CC`）。R3 独占 `ENC` 按压语义，任何方向都不得承担进入或确认。
 
 ### Agent 与 Command key
 
 | `k` | 当前观测/默认含义 | 正确时序 |
 | --- | --- | --- |
-| `AG00..AG05` | 六个 Agent slot | tap：`1` → `0`；双击由两组 tap 构成 |
+| `AG00..AG05` | 六个 Agent slot | tap：`1` → `0`；双击由两组 tap 构成；菜单打开时官方 bridge 会拦截全部 Agent 键，其中只有 `AG00` 发送上下文 `Escape` |
 | `ACT06` | Fast toggle | tap：`1` → `0` |
 | `ACT07` | Approve | tap：`1` → `0`；必须先验证审批上下文和布局 |
 | `ACT08` | Decline | tap：`1` → `0`；必须先验证审批上下文和布局 |
@@ -119,12 +119,17 @@ transport ACK 不是 `v.oai.hid` 的动作完成回执。
 
 ```text
 右摇杆上: ENC_CW act=2
+右摇杆左: ENC_CW act=2
 右摇杆下: ENC_CC act=2
+右摇杆右: ENC_CC act=2
 R3 短按:  ENC act=1 -> ENC act=0
+B（Micro 菜单会话）: AG00 act=1 -> AG00 act=0
 PTT:      ACT10 act=1 -> 保持 -> ACT10 act=0
 Agent 1:  AG00 act=1 -> AG00 act=0
 Submit:   ACT12 act=1 -> ACT12 act=0
 ```
+
+`AG00` 是上下文相关信号：官方 26.715 bridge 检测到 Composer 菜单时把它转换为 `Escape` 并阻止 Agent 切换；没有菜单时它仍是 Agent 槽位 1。因此 Agent Controller 只有在由 R3 建立且尚未由 B 结束的 Micro 菜单会话中，才能把 B 投影为 `AG00`。若 transport 返回 `Accepted` 或 `OutcomeUnknown`，禁止再补发原生 Escape；只有明确 `NotSent` 才能进入受控的原生回退。
 
 ## 7. UMDF2/VHF 驱动合同
 

@@ -12,13 +12,13 @@
 | 左摇杆右/左 | 进入项目 / 退出项目 | 本地任务导航 |
 | L3 | 循环置顶任务、置顶项目、项目、未归项目任务 | 本地任务导航 |
 | A | 打开当前任务或确认当前本地选择 | App Server / deeplink / verified adapter |
-| 右摇杆上/下 | 按视觉顺序遍历 Composer 控件或菜单项 | Micro `ENC_CW / ENC_CC` |
-| 右摇杆左/右 | 按屏幕方向调整当前控件；右进入、左返回 | 独立 `CurrentControlLeft/Right` executor；不得发送 `ENC_*` |
+| 右摇杆上或左 | 选择上一 Composer 控件或菜单项 | Micro `ENC_CW` |
+| 右摇杆下或右 | 选择下一 Composer 控件或菜单项 | Micro `ENC_CC` |
 | R3 短按 | 打开、进入或确认当前 Micro 旋钮项 | Micro `ENC` down/up |
 | R3 长按 | 打开 Agent Controller 设置 | 本地应用动作；不得泄漏成方向输入 |
 | LT 按住/松开 | 开始/停止按住说话 | Micro `ACT10` down/up |
 | X | 发送当前 composer 内容 | 已验证 Command slot；默认 `ACT12`，否则语义 adapter |
-| B 短按 | 关闭当前菜单、返回或撤回最近导航 | 当前上下文 Cancel |
+| B 短按 | 关闭当前 Micro 菜单、返回或撤回最近导航 | 菜单会话优先发送 Micro `AG00`；其他上下文 Cancel |
 | B 长按 3 秒 | 终止当前运行；提前松开取消 | App Server `turn/interrupt` 优先 |
 | Y | 打开动作面板 | 本地 UI |
 | 十字键上/下 | 上一轮/下一轮；长按到顶部/底部 | Codex semantic/verified navigation adapter |
@@ -49,13 +49,13 @@ L3/R3 都表示**垂直按下摇杆帽**，不是把摇杆向下拨。
 
 | 物理方向 | 含义 | 禁止行为 |
 | --- | --- | --- |
-| 上 | 选择上一控件/菜单项，发送一个 `ENC_CW` 档位 | 不得执行横向增加或进入 |
-| 下 | 选择下一控件/菜单项，发送一个 `ENC_CC` 档位 | 不得执行横向减少或返回 |
-| 左 | 当前控件向左/减小，或退出当前菜单 | 不得发送 `ENC_CW/ENC_CC` |
-| 右 | 当前控件向右/增大，或进入当前菜单 | 不得发送 `ENC_CW/ENC_CC` |
+| 上 | 选择上一控件/菜单项，发送一个 `ENC_CW` 档位 | 不得进入或确认 |
+| 左 | 与“上”相同，发送一个 `ENC_CW` 档位 | 不得返回或减小当前控件 |
+| 下 | 选择下一控件/菜单项，发送一个 `ENC_CC` 档位 | 不得进入或确认 |
+| 右 | 与“下”相同，发送一个 `ENC_CC` 档位 | 不得进入或增大当前控件 |
 | 回中 | 结束当前轴手势并释放 ownership | neutral 不得被合并丢失 |
 
-一次手势只能由一个轴持有；必须回中后才能把 ownership 切换给另一个轴。菜单打开与否不能改变轴语义。
+一次手势只能由一个轴持有；必须回中后才能把 ownership 切换给另一个轴。两个轴最终投影到同一个 Micro encoder，菜单打开与否不能改变方向语义。R3 是唯一的进入/确认键；B 在 Micro 菜单会话中投影为官方 bridge 的 `AG00` 上下文返回。
 
 ## 5. 安全与结果规则
 

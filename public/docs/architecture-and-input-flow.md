@@ -1,7 +1,7 @@
 # 架构与输入链路
 
 > Status: Controller-input remediation implemented; hardware acceptance pending
-> Updated: 2026-07-18
+> Updated: 2026-07-19
 
 ## 1. 两条互补控制平面
 
@@ -31,7 +31,7 @@ flowchart LR
 
 ## 2. 右摇杆目标链路
 
-右摇杆纵向模拟 Micro 左上角旋钮；横向是手柄额外提供的当前控件操作轴，不能伪装成旋钮档位。
+右摇杆的两个物理轴都模拟 Micro 左上角旋钮。为了让四向手势符合二维空间直觉，上/左都是上一项（`ENC_CW`），下/右都是下一项（`ENC_CC`）；进入和确认只由 R3 的 `ENC` 按压负责。
 
 ```mermaid
 sequenceDiagram
@@ -65,25 +65,58 @@ sequenceDiagram
 | 手柄动作 | 类型化意图 | 设备/执行通道 |
 | --- | --- | --- |
 | 右摇杆上 | `EncoderStep(+1)` | `ENC_CW, act=2` |
+| 右摇杆左 | `EncoderStep(+1)` | `ENC_CW, act=2` |
 | 右摇杆下 | `EncoderStep(-1)` | `ENC_CC, act=2` |
+| 右摇杆右 | `EncoderStep(-1)` | `ENC_CC, act=2` |
 | R3 短按 | `EncoderPress` | `ENC` down/up |
 | R3 长按 | `OpenAgentControllerSettings` | 本地应用动作；不发送 `ENC`，并抑制同一次短按 |
-| 右摇杆左/右 | `CurrentControlLeft / CurrentControlRight` | 独立、可验证的导航 executor；绝不发送 `ENC_*` |
+| B（Micro 菜单会话） | `ContextualBack` | `AG00` down/up；官方 bridge 在菜单存在时转换为 Escape 并抑制 Agent 切换 |
 | 摇杆回中 | `Neutral` | 释放 axis ownership；不得被快照合并丢失 |
 
 ## 3. 当前实现与剩余边界
 
-当前实现已经固定纵横轴所有权和执行通道：
+当前实现已经固定 Micro-first 的会话、手势与执行通道：
 
 1. `ControllerStateBuffer` 只合并处于同一手势区域的快照，不能跨过按钮、LT 阈值、轴方向或完整 neutral；
 2. `StickGestureRouter` 在一次手势内锁定轴与方向，只有 X/Y 都回到 release zone 才允许下一手势重新判定；
-3. 右摇杆纵向只进入 `MicroInputService.SendEncoderSteps`，不读取 popup 状态，也不进入横向 executor；
-4. 右摇杆横向只进入带 generation 和 450 ms 有效期的 `CurrentControlIntentBuffer`，目标没有可验证 readback 时不注入按键；
-5. 可展开控件的“右进入”优先发送 Micro `ENC` 按压；只有明确 `NotSent` 才允许 Right Arrow。`Accepted`、`OutcomeUnknown`、`Rejected` 均禁止双发；
-6. 横向 Left/Right/Escape 在 Codex 仍为前台、可见选择与键盘焦点一致时才发送；RangeValue 控件还必须读回正确方向的数值变化；
-7. popup/readback 请求采用合并而非互相取消；旧 generation 或超时 intent 不得在后来打开的菜单中重放；
+3. 右摇杆纵向和横向都只进入 `MicroInputService.SendEncoderSteps`；横向在投影前反号，使左与上、右与下分别成为同一语义；任何轴都不读取 popup 状态；
+4. R3 首次短按发送 `ENC` 并建立本地 Micro 菜单会话；会话内再次短按仍发送 `ENC`，由官方 bridge 负责进入 Advanced、打开子菜单或确认叶子；
+5. B 只在该会话内发送 `AG00` tap。26.715 bridge 检测到 Composer 菜单时将 `AG00` 转换为 Escape；没有菜单时 `AG00` 仍是 Agent 槽位 1，因此不得凭 popup 猜测或在普通 Base 层发送；
+6. `AG00` 返回 `Accepted`、`OutcomeUnknown` 或 `Rejected` 后均禁止补发原生 Escape；只有明确 `NotSent` 才允许进入既有的受控原生退出路径；
+7. popup/readback 请求采用合并而非互相取消；UIA 回读只提供反馈，不得在驱动已接受输入后改发第二套动作，也不得提前清除由 R3 建立、等待 B 结束的会话；
 8. LT 使用 Micro-first 的 down/up 状态机；不确定 release 会补发一次，下一次 press 会先恢复 neutral；
 9. Agent Controller 与 `virtual-micro` 都是同一当前用户 Broker 的客户端，桌面进程不再直接打开驱动；Broker 合并重叠 held key，并按最近活跃顺序仲裁 analog；Agent Controller 启动时后台预热 Broker，输入线程不会承担最长约 3 秒的首次连接等待，失败连接有 2 秒退避。
+
+### 菜单进入与退出时序
+
+```mermaid
+sequenceDiagram
+    actor User as 用户
+    participant Pad as 手柄
+    participant App as Agent Controller
+    participant Driver as CodexMicroVhfUm
+    participant Bridge as codex-micro-bridge
+    participant UI as Composer menu
+
+    User->>Pad: 短按 R3
+    Pad->>App: RightStickPress
+    App->>Driver: ENC down/up
+    Driver->>Bridge: ENC
+    Bridge->>UI: 打开 Advanced / 进入 / 确认
+    App->>App: 保持 Micro 菜单会话
+
+    User->>Pad: 短按 B
+    Pad->>App: ContextualBack
+    App->>Driver: AG00 down/up
+    Driver->>Bridge: AG00
+    alt Composer 菜单存在
+        Bridge->>UI: Escape
+        Bridge-->>App: 抑制 Agent 槽位切换
+    else 菜单不存在
+        Bridge->>UI: 切换 Agent 槽位 1
+    end
+    Note over App,Bridge: 所以 AG00 只能在 R3 建立的菜单会话内发送
+```
 
 仍未完成的是实体手柄与真实 Codex build 的验收记录，以及覆盖原始输入到 readback 的可导出 correlation trace；自动化测试不能替代这两项。
 

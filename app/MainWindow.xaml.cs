@@ -110,6 +110,7 @@ public partial class MainWindow : Window
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
     private bool _virtualDialMenuOpen;
+    private bool _virtualDialSessionActive;
     private bool _modelPickerShortcutReady;
     private bool _virtualDialConfirmationPending;
     private bool _virtualDialOpenPending;
@@ -599,9 +600,9 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        // Vertical is always the native Micro encoder. Horizontal is a
-        // separate gamepad-only operation axis and must never become an
-        // encoder detent, regardless of popup state.
+        // Micro-first: the stick is a two-axis projection of one encoder.
+        // Up/left select the previous item; down/right select the next item.
+        // R3 is the only enter/confirm gesture.
         _controllerInteraction.RepeatAnalogAxis(
             "right-y",
             rightGesture.VerticalDirection,
@@ -628,17 +629,18 @@ public partial class MainWindow : Window
             _settings.RepeatIntervalMs,
             direction =>
             {
-                var navigation =
-                    VirtualDialInputPolicy.ResolveHorizontalNavigation(
+                var steps =
+                    VirtualDialInputPolicy.ResolveHorizontalEncoderSteps(
                         direction);
-                if (navigation is { } resolved)
+                if (steps != 0)
                 {
-                    QueueVirtualDialNavigation(resolved);
+                    QueueVirtualDialEncoderSteps(steps);
                 }
             });
     }
 
     private bool IsVirtualDialContextActive =>
+        _virtualDialSessionActive ||
         _virtualDialMenuOpen ||
         _virtualDialOpenPending ||
         _virtualDialCancelRequested ||
@@ -2929,6 +2931,12 @@ public partial class MainWindow : Window
     private void HandleComposerDialShortPress()
     {
         _controllerInteraction.RequireRightStickNeutral();
+        if (_virtualDialSessionActive)
+        {
+            SelectVirtualDialOption();
+            return;
+        }
+
         _ = PressVirtualDialAsync();
     }
 
@@ -3150,7 +3158,9 @@ public partial class MainWindow : Window
             Volatile.Read(ref _virtualDialGeneration))
         {
             var cleanup = await RunVirtualDialAutomationAsync(
-                    () => _composerAutomation.DialCancel(_settings))
+                    () => _composerAutomation.DialCancel(
+                        _settings,
+                        menuExpected: true))
                 .ConfigureAwait(true);
             _virtualDialCleanupPending = false;
             _virtualDialOpenPending = false;
@@ -3181,6 +3191,7 @@ public partial class MainWindow : Window
         PresentVirtualDialResult(result);
         if (result.Succeeded)
         {
+            _virtualDialSessionActive = true;
             QueueMicroReadback();
         }
     }
@@ -3279,7 +3290,10 @@ public partial class MainWindow : Window
                 readback.DisplayText);
         }
 
-        if (menuWasOpen && !readback.IsMenuOpen)
+        if (
+            menuWasOpen &&
+            !readback.IsMenuOpen &&
+            !_virtualDialSessionActive)
         {
             BeginVirtualDialReleaseDrain();
         }
@@ -3323,6 +3337,7 @@ public partial class MainWindow : Window
         }
         else if (result.Succeeded && !result.IsMenuOpen)
         {
+            _virtualDialSessionActive = false;
             _composerPickerMenuLikelyOpen = false;
             BeginVirtualDialReleaseDrain();
         }
@@ -3493,13 +3508,17 @@ public partial class MainWindow : Window
 
     private async Task CloseVirtualDialMenuAsync(
         bool showFeedback,
-        bool fallbackToBaseCancel = false)
+        bool fallbackToBaseCancel = false,
+        bool menuExpected = false)
     {
-        var hadContext = IsVirtualDialContextActive;
+        var hadContext =
+            menuExpected || IsVirtualDialContextActive;
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
-                () => _composerAutomation.DialCancel(_settings))
+                () => _composerAutomation.DialCancel(
+                    _settings,
+                    menuExpected: hadContext))
             .ConfigureAwait(true);
         if (
             generation !=
@@ -3527,6 +3546,7 @@ public partial class MainWindow : Window
         {
             if (hadContext && !result.IsMenuOpen)
             {
+                _virtualDialSessionActive = false;
                 BeginVirtualDialReleaseDrain();
             }
 
@@ -3646,24 +3666,24 @@ public partial class MainWindow : Window
                     "Delete is protected; use the native Codex queue menu"),
             "dial-selection-unverified" =>
                 RadialText(
-                    "先左右拨动，看到选项高亮后再按下 RS",
-                    "Move left or right until an option is highlighted, then press RS"),
+                    "先拨动右摇杆选择，看到高亮后再按下 R3",
+                    "Move the right stick until an option is highlighted, then press R3"),
             "dial-step-no-selection-change" =>
                 RadialText(
                     "没有可选项 · B 关闭 · RS 重新打开",
                     "No selectable option · B close · RS reopen"),
             "dial-enter-with-right" =>
                 RadialText(
-                    "这是一个子菜单 · 右推右摇杆进入",
-                    "This item has a submenu · move the right stick right"),
+                    "这是一个子菜单 · 按 R3 进入",
+                    "This item has a submenu · press R3 to enter"),
             "dial-no-submenu" =>
                 RadialText(
-                    "这是具体选项 · 按 A 确认",
-                    "This is a concrete option · press A to select"),
+                    "这是具体选项 · 按 R3 确认",
+                    "This is a concrete option · press R3 to select"),
             "dial-closed-horizontal-only" =>
                 RadialText(
-                    "菜单关闭时只用左右切换控件",
-                    "Use left or right to switch controls while closed"),
+                    "按 R3 打开当前 Micro 控件",
+                    "Press R3 to open the current Micro control"),
             "dial-initial-focus" =>
                 RadialText(
                     "菜单已打开，但选项未能高亮 · B 关闭后重试",
@@ -3716,6 +3736,7 @@ public partial class MainWindow : Window
 
     private void ResetVirtualDialInput(bool closeMenu)
     {
+        var hadDialContext = IsVirtualDialContextActive;
         var hadPendingOpen = _virtualDialOpenPending;
         Interlocked.Increment(ref _virtualDialGeneration);
         if (hadPendingOpen)
@@ -3724,6 +3745,7 @@ public partial class MainWindow : Window
         }
 
         _virtualDialOpenPending = false;
+        _virtualDialSessionActive = false;
         _virtualDialCancelRequested = false;
         _dialInputReleasePending = false;
         _microReadbackRequests.ClearPending();
@@ -3735,6 +3757,7 @@ public partial class MainWindow : Window
         ClearPendingVirtualDialInput();
 
         var hadOpenMenu =
+            hadDialContext ||
             _virtualDialMenuOpen ||
             _composerPickerMenuLikelyOpen;
         SetVirtualDialMenuOpen(false);
@@ -3752,7 +3775,9 @@ public partial class MainWindow : Window
             _settings.BridgeEnabled &&
             _foregroundApplication.IsForeground)
         {
-            _ = CloseVirtualDialMenuAsync(showFeedback: false);
+            _ = CloseVirtualDialMenuAsync(
+                showFeedback: false,
+                menuExpected: hadDialContext);
         }
     }
 
@@ -3966,8 +3991,8 @@ public partial class MainWindow : Window
                     "The model picker shortcut is unavailable or conflicts; check Settings and restart Codex"),
             "composer-model-picker-refocus" =>
                 RadialText(
-                    "未能结束模型选择会话；请保持 Codex 在前台后再按 B/R3",
-                    "Could not end the model picker session; keep Codex in front and press B/R3 again"),
+                    "未能结束模型选择会话；请保持 Codex 在前台后再按 B",
+                    "Could not end the model picker session; keep Codex in front and press B again"),
             "composer-speed-option" =>
                 RadialText(
                     "当前账户或模型没有提供这个速度选项",
@@ -4272,6 +4297,7 @@ public partial class MainWindow : Window
     private async Task<ComposerDialResult>
         CloseVirtualDialForPushToTalkAsync()
     {
+        var hadDialSession = IsVirtualDialContextActive;
         Interlocked.Increment(ref _virtualDialGeneration);
         ClearPendingVirtualDialInput();
         CancelVirtualDialPressHold();
@@ -4283,7 +4309,9 @@ public partial class MainWindow : Window
         _controllerInteraction.RequireRightStickNeutral();
 
         var closeTask = RunVirtualDialAutomationAsync(
-            () => _composerAutomation.DialCancel(_settings));
+            () => _composerAutomation.DialCancel(
+                _settings,
+                menuExpected: hadDialSession));
         try
         {
             var result = await closeTask
@@ -4295,6 +4323,8 @@ public partial class MainWindow : Window
                 result.Succeeded && result.IsMenuOpen,
                 result.Succeeded &&
                     result.RequiresConfirmation);
+            _virtualDialSessionActive =
+                !result.Succeeded || result.IsMenuOpen;
             return result;
         }
         catch (TimeoutException)
@@ -4303,6 +4333,7 @@ public partial class MainWindow : Window
             SetVirtualDialMenuOpen(
                 true,
                 _virtualDialConfirmationPending);
+            _virtualDialSessionActive = true;
             return new(
                 false,
                 IsMenuOpen: true,

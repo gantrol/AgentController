@@ -149,16 +149,16 @@ tests/
 | X 发送 | 当前布局中已验证为 Codex/Send 的 Command slot；官方默认是 `ACT12` | 映射未知时不猜 ACT12；提示恢复默认布局或使用明确的语义降级。 |
 | Fork / Fast / Approve / Decline | 当前布局中对应 Command slot；默认分别为 ACT09、ACT06、ACT07、ACT08 | 高风险确认仍由 Application 安全策略控制，HID 只负责最后一次物理动作。 |
 | 右摇杆纵向重复 | 向上为 `ENC_CW`、向下为 `ENC_CC`，`act=2` | 默认进入 `composer-navigation`，让 Codex 自己遍历 Model、Effort、Speed 和其他 Composer 控件，不再探测弹窗。 |
-| 右摇杆横向重复 | 不发送 `ENC_*`；生成 `CurrentControlLeft / CurrentControlRight` | 保持实际屏幕方向，调整当前控件；右进入/打开、左退出/返回。它是手柄扩展操作，必须使用独立且可验证的导航 executor，绝不能复用 Micro 旋钮档位。 |
+| 右摇杆横向重复 | 向左与向上相同，发送 `ENC_CW`；向右与向下相同，发送 `ENC_CC` | 手柄四向共同投影为一个 Micro encoder；方向不承担进入、确认、返回或数值调整。 |
 | R3 短按 | `ENC` down/up | 打开或确认当前 Composer 控件。 |
 | R3 长按 | 不发送 `ENC`；生成 `OpenAgentControllerSettings` | 打开 Agent Controller 自身设置，并抑制同一次手势的短按；Micro 设置由独立入口负责。 |
 | RB + 右摇杆 | 连续 `v.oai.rad(a,d)`；释放或回中发送 `d=0` | 提供真实 Micro analog；只有越过激活阈值才触发，允许合并中间帧但绝不丢 neutral。 |
-| B 在 Micro 菜单打开时 | 邻近旋钮的取消 Agent Key | 只有当前构建和槽位已验证才发送；三秒 Stop 仍是 App Server `turn/interrupt`。 |
+| B 在由 R3 建立的 Micro 菜单会话中 | `AG00` down/up | 当前 26.715 bridge 将菜单上下文中的 Agent 键 1 转换为 Escape 并抑制 Agent 切换；没有菜单时 `AG00` 仍是槽位 1，因此只能由明确会话发送。只有 `NotSent` 可降级；三秒 Stop 仍是 App Server `turn/interrupt`。 |
 | 选中六个 Micro Agent slot 之一并按 A | 对应 `AG00..AG05` 的真实 tap/double-tap | 单击只切换，双击 350 ms 内切换并前置 Codex；任务名必须有独立 roster 证据。 |
 | 左摇杆任意任务树导航、任意任务打开 | 不强行投影 Micro | 本地 UI + App Server/deep link；真实 Micro 只有六个 Agent slot，不能冒充无限任务索引。 |
 | Y 清空、新建任务；D-pad 轮次跳转；B 长按停止 | 只有官方布局明确提供相应 Command slot 时才用 Micro | 否则使用 App Server 或已有语义 adapter，不为它们新增 UIA Micro 仿制。 |
 
-右摇杆从“硬编码模型控制器”改成“原生 Dial”是本次改造的关键。`composer-navigation` 让输入框上方工具遍历成为 Codex 自己的职责；Reasoning-only 只是用户可选的官方 Dial 模式，不能再由 Agent Controller 假定。
+右摇杆从“硬编码模型控制器”改成“原生 Dial”是本次改造的关键。`composer-navigation` 让输入框上方工具遍历成为 Codex 自己的职责；Reasoning-only 只是用户可选的官方 Dial 模式，不能再由 Agent Controller 假定。二维摇杆只是同一个旋钮的一组冗余手势：上/左为 previous，下/右为 next；R3 是唯一 enter/confirm，B 通过官方 `AG00` 上下文语义返回。
 
 ### 自定义按钮如何与官方布局共存
 

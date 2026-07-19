@@ -388,9 +388,11 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _composer.DialSelect(settings);
         }
 
-        public ComposerDialResult DialCancel(AppSettings settings)
+        public ComposerDialResult DialCancel(
+            AppSettings settings,
+            bool menuExpected = false)
         {
-            return _composer.DialCancel(settings);
+            return _composer.DialCancel(settings, menuExpected);
         }
 
         public ComposerAutomationResult Cancel(AppSettings settings)

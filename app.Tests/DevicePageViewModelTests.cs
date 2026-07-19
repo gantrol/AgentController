@@ -72,7 +72,7 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · press LS (L3) to change root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Up/down selects a control · left/right adjusts it · tap RS (R3) to confirm · hold RS for Agent Controller settings",
+            "Up/left: previous · down/right: next · tap RS (R3) to enter or confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -212,7 +212,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Micro control · ↑↓ select · ←→ adjust",
+            "Micro control · ↑/← previous · ↓/→ next · R3 enter",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -249,7 +249,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Micro 控制 · ↑↓ 选择控件 · ←→ 调整当前项",
+            "Micro 控制 · ↑/← 上一项 · ↓/→ 下一项 · R3 进入",
             viewModel.RightModeValue);
     }
 
@@ -267,13 +267,13 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: true);
 
         Assert.Equal(
-            "Micro menu active · ↑↓ select a control · ←→ adjust it · A Select · B Close",
+            "Micro menu active · ↑/← previous · ↓/→ next · A Enter or confirm · B Back",
             viewModel.RightStickHint);
 
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Up/down selects a control · left/right adjusts it · tap RS (R3) to confirm · hold RS for Agent Controller settings",
+            "Up/left: previous · down/right: next · tap RS (R3) to enter or confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
     }
 

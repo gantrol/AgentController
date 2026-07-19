@@ -149,7 +149,9 @@ public interface IComposerAutomation
 
     ComposerDialResult DialSelect(AppSettings settings);
 
-    ComposerDialResult DialCancel(AppSettings settings);
+    ComposerDialResult DialCancel(
+        AppSettings settings,
+        bool menuExpected = false);
 
     ComposerAutomationResult Cancel(AppSettings settings);
 }

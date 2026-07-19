@@ -521,8 +521,8 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             Text("右摇杆：Micro 控制", "Right stick: Micro control"),
             string.IsNullOrWhiteSpace(_rightStickHint)
                 ? Text(
-                "上下选择控件，左右调整",
-                "Select controls vertically and adjust horizontally")
+                "上或左选上一项，下或右选下一项；按 R3 进入或确认",
+                "Up/left selects previous; down/right selects next; press R3 to enter or confirm")
                 : _rightStickHint),
         new(
             "↑↓",

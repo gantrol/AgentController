@@ -24,22 +24,16 @@ public sealed class VirtualDialInputPolicyTests
     }
 
     [Theory]
-    [InlineData(-1, ComposerDialNavigation.Left)]
-    [InlineData(1, ComposerDialNavigation.Right)]
-    public void HorizontalMotionKeepsItsLiteralScreenDirection(
+    [InlineData(-1, 1)]
+    [InlineData(0, 0)]
+    [InlineData(1, -1)]
+    public void HorizontalMotionProjectsToTheSamePreviousNextAxis(
         int direction,
-        ComposerDialNavigation expected)
+        int expected)
     {
         Assert.Equal(
             expected,
-            VirtualDialInputPolicy.ResolveHorizontalNavigation(direction));
-    }
-
-    [Fact]
-    public void NeutralHorizontalMotionDoesNotNavigate()
-    {
-        Assert.Null(
-            VirtualDialInputPolicy.ResolveHorizontalNavigation(0));
+            VirtualDialInputPolicy.ResolveHorizontalEncoderSteps(direction));
     }
 
     [Theory]

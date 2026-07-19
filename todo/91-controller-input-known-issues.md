@@ -16,21 +16,23 @@
 
 | ID | 场景 | 期望 | 修复前实际 |
 | --- | --- | --- | --- |
-| RS-01 | Power 横条 | 右摇杆左/右按屏幕方向减小/增大 | 当前方向已正确，作为其他控件的对照样本保留 |
-| RS-02 | `Approve for me` | 右进入/打开，左退出/返回；打开后上/下移动菜单高亮 | 右能打开、左能退出，但菜单内没有可靠可见高亮，输入容易表现为卡住 |
-| RS-03 | `Add files and more @` | 左/右只负责进入/返回或当前控件的横向动作，上/下选择菜单项 | 左/右动作仍可能反向或落到错误目标，菜单选择不可靠 |
-| RS-04 | 模型选择器 | 进入后上/下按视觉顺序选择模型，左返回；不得把横向动作解释为纵向旋钮档位 | 左/右行为仍不正确，上/下与左/右容易混用 |
-| RS-05 | Composer 主控件 | 上/下依次选择 Advanced、Fast、Power 横条等控件；左/右调整当前控件或进入/返回 | 上/下有时重复横向调整或落到别的控件，当前控件与实际焦点会失配 |
+| RS-01 | Power 横条 | 上/左产生上一档，右/下产生下一档；全部由官方 encoder bridge 决定实际 Power 变化 | 旧实现把横向交给另一套 Left/Right executor，形成两套语义 |
+| RS-02 | `Approve for me` | R3 进入；四向只分为 previous/next；B 返回 | 旧实现把右当进入、左当退出，菜单内没有可靠可见高亮，输入容易表现为卡住 |
+| RS-03 | `Add files and more @` | R3 进入；上/左上一项，右/下下一项；B 返回 | 旧横向动作可能反向或落到错误目标，菜单选择不可靠 |
+| RS-04 | 模型选择器 | R3 打开/进入/确认；四向遍历；B 返回 | 左/右行为仍不正确，上/下与左/右容易混用 |
+| RS-05 | Composer 主控件 | 四向遍历 Advanced、Fast、Power 等控件；R3 进入/确认 | 旧实现让纵向选择、横向调整/进入，当前控件与实际焦点会失配 |
 | RS-06 | 连续或斜向拨动右摇杆 | 一次手势只能由一个轴拥有，回中后下一手势重新判定 | 纵横指令偶发混淆；斜向起步、快速换向和回中附近更容易出现 |
 | RS-07 | 模型控制器长期使用 | 每次手势都能继续控制当前模型界面 | 偶发完全失去手柄控制；打开模型选择器后又恢复，恢复动作只是复现线索，不是解决方案 |
 | LT-01 | LT 按住说话 | 按下开始、松开停止，任何退出或断连都补发 release | 偶发语音键无效；尚未确认是边沿丢失、策略阻止、自动化失败还是 Codex 未读回 |
 | SRC-01 | 实体控制器 + `virtual-micro` 模拟器 | 两者可同时连接，由 Broker 串行化输入并分别管理 held/neutral 生命周期 | 当前看起来只能有一个输入源正常占用；共享句柄、sequence、output/RPC 所有权尚未统一 |
 | RS-08 | 2026-07-19 新构建，右摇杆纯左/纯右 | `Closed` 基态也必须投递屏幕同向的横向动作；上下仍只产生 `ENC_*` | 横向 intent 被“必须有非空 UIA ItemName”的门禁永久挂起，左右均毫无反应 |
 | WAK-01 | 菜单键唤醒 | Agent Controller 显示反馈后，真实 Codex 主窗口成为前台；若已有多个主窗口，再按菜单键切换下一个 | popup 正常出现，但旧实现按最新进程的 `MainWindowHandle` 选窗并从工作线程直接 `SetForegroundWindow`，Windows 拒绝置前 |
+| BACK-01 | B 退出 Micro 菜单 | 在 R3 建立的菜单会话中发送 `AG00` tap，由官方 bridge 上下文转换为 Escape | 旧实现依赖本地 popup/UIA ownership；驱动已接受 `ENC` 但回读尚未识别菜单时，B 会落入普通取消路径或退出失败 |
 
 ## 从 `virtual-micro` 更新确认的事实（2026-07-19）
 
-- 旋钮旋转仍只有 `ENC_CW` / `ENC_CC`、`act=2`；旋钮按压仍为 `ENC` down/up；模拟摇杆是独立的 `v.oai.rad`。Micro 协议不存在“横向旋钮”命令，所以右摇杆左右只能是 Agent Controller 的显式扩展，绝不能伪装成另一组 `ENC_*`。
+- 旋钮旋转仍只有 `ENC_CW` / `ENC_CC`、`act=2`；旋钮按压仍为 `ENC` down/up；模拟摇杆是独立的 `v.oai.rad`。Agent Controller 不再发明“横向旋钮”协议，而是把摇杆四向折叠成同一个 encoder：上/左 → `ENC_CW`，下/右 → `ENC_CC`。
+- 当前 26.715.4045 bridge 对菜单中的 Agent 键有明确上下文逻辑：`AG00..AG05` 按下都会阻止普通 Agent 切换，其中只有 `AG00` 向当前 Composer 菜单发送 Escape。因此 B 的 Micro-first 投影是已知菜单会话中的 `AG00` tap，不是裸 Escape。
 - `fix(micro): make encoder input responsive` 使用有界 accumulator、约 24 ms 的档位间隔和 180 ms 过期时间，不在每个档位发送前同步等待 UIA。Agent Controller 的纵向实现继续遵守这套原则。
 - `virtual-micro` 的 `CodexWindowActivator` 不信任 `Process.MainWindowHandle`：它枚举 Codex 顶层窗，按 tool-window、owner、窗口类和面积评分，再通过 `AttachThreadInput`、`BringWindowToTop`、`SetForegroundWindow`、`SetActiveWindow`、`SetFocus` 与 `SwitchToThisWindow` 置前。Agent Controller 已移植同一策略，并补上工作线程消息队列初始化。
 - v1.0.1/v1.0.2 的新 build 兼容与屏幕灯光保持逻辑不改变上述输入映射；单 Broker 仍是实体控制器与模拟器并存时唯一允许的驱动 owner。
@@ -39,15 +41,14 @@
 
 | ID | 已实施修复 | 自动化证据 | 实机状态 |
 | --- | --- | --- | --- |
-| RS-01 | 横向 literal screen direction 保持不变；RangeValue 必须读回正确方向变化 | `CurrentControlActionPolicyTests` | 待按 Power 横条左右各 10 次复验 |
-| RS-02 / RS-03 / RS-04 | 上/下固定为 Micro encoder；左仅退出菜单，右仅在已验证可展开控件进入；菜单必须读回具体选中项 | `VirtualDialInputPolicyTests`、`CodexMicroReadbackObserverTests`、`CurrentControlActionPolicyTests` | 待真实 Approve、Add files、模型菜单复验 |
-| RS-05 | 横向 executor 只接受与当前可见选择一致的 Codex 键盘焦点；未验证时不注入；可调整控件验证数值方向 | `CurrentControlActionPolicyTests` | 待 Advanced、Fast、Power 顺序复验 |
+| RS-01 / RS-02 / RS-03 / RS-04 / RS-05 | 两个摇杆轴统一投影为官方 encoder：上/左 previous，下/右 next；R3 独占进入/确认，不再运行横向 current-control executor | `VirtualDialInputPolicyTests`、`ComposerDialNativeInputPolicyTests` | 待真实 Power、Approve、Add files、模型、Advanced 顺序复验 |
 | RS-06 | state buffer 保留跨区、换向和完整 neutral；手势期间同时锁定轴与方向，回中后才重新判定 | `ControllerStateBufferTests`、`StickGestureRouterTests` | 待慢速、快速、斜向和未完全回中矩阵 |
 | RS-07 | encoder intent 有界合并且 180 ms 过期；横向 intent 绑定 generation 且 450 ms 过期；readback 合并请求，不再通过 cancellation 互相饿死；Broker 在应用启动时后台预热且失败重连退避 | `EncoderStepAccumulatorTests`、`CurrentControlIntentBufferTests`、`BrokerCoexistenceTests` | 待长期重复与“打开模型选择器后恢复”复验 |
 | LT-01 | PTT 改为 Micro-first down/up；release 不确定时补发一次；下一次 press 先恢复 neutral；断连/退出保留 release | `MicroRpcCodecTests`、`PushToTalkAutomationStateTests`、`ControllerStateBufferTests` | 待短按、口述、菜单、失焦、断连复验 |
 | SRC-01 | Agent Controller 与模拟器都改为 named-pipe client；唯一 Broker 独占 `CodexMicroVhfUm`、统一 sequence 和 output/RPC reader；重叠 held key 只投递第一次 down/最后一次 up；analog owner 释放时恢复最近仍活跃来源；请求执行/完成续期/lease expiry 原子化；缓存 request response 防止超时重放双发 | `BrokerCoexistenceTests`、`ClientInputStateTests`、`MicroInputBatchTests`、`MicroDriverOwnershipRulesTests` | 三客户端 fake-driver 仲裁与 lease 边界验收通过；真实驱动双进程仍待复验 |
 | RS-08 | `Closed` 是“已确认无打开 surface”，不再要求虚构的非空 `ItemName`；横向策略直接保留 literal Left/Right，执行器仍要求 Codex 前台。任何已识别的具体 surface 继续要求真实焦点与目标名称一致 | `CurrentControlActionPolicyTests`、`VirtualDialInputPolicyTests`、`StickGestureRouterTests` | 25 项定向测试通过；待新构建纯左/纯右实机复验 |
 | WAK-01 | 统一枚举并评分 Codex 顶层窗；排除/降权 owned/tool window，恢复最小化主窗，附加输入线程后置前；UIA locator 复用同一主窗选择结果。菜单键在 Codex 已前台且存在多个主窗口时只循环主窗口，普通快捷键聚焦不循环 | `Win32InputTests`；后台 Chrome → Codex 一次性实机激活探针 | 探针从 `chrome` 前台成功切至 `ChatGPT/Codex`；仍待菜单键实体手柄复验与双主窗口复验 |
+| BACK-01 | R3 成功后持有本地 Micro 菜单会话；会话内 B 优先发送官方 `AG00` 上下文返回，只有 `NotSent` 才进入原生退出回退；回读不能提前释放会话 | `ComposerDialNativeInputPolicyTests` | 待 R3 → Advanced → 子菜单 → B 一次退出实机复验 |
 
 分层提交：
 
@@ -72,9 +73,9 @@
 ## 不可变交互合同
 
 - 右摇杆模拟 Micro 左上角旋钮的完整交互，不再维持另一套“简易/高级模型控制”状态机。
-- 上/下是选择轴：在 composer 中遍历 Advanced、Fast、Power 等控件；在弹出菜单或模型列表中按视觉顺序移动高亮。每个重复档只允许产生一个 `ENC_CW` / `ENC_CC act=2`。
-- 左/右是操作轴：按实际屏幕方向调整当前控件；对可进入的菜单，右进入/打开、左退出/返回。左/右不得产生 ENC 档位。
+- 上/左是同一个 previous 手势，产生 `ENC_CW act=2`；下/右是同一个 next 手势，产生 `ENC_CC act=2`。两个物理轴不再拥有不同业务语义。
 - R3 短按表示旋钮按压，长按打开 Agent Controller 设置；二者都不得被解释为方向动作，且长按必须抑制同一次手势的短按。教程必须说明 R3 是“垂直按下右摇杆帽”。
+- R3 是唯一的打开、进入与确认键。B 是唯一的菜单返回键：会话内发送 `AG00` tap，由官方 bridge 转成 Escape；R3 不再兼任退出。
 - 菜单打开后必须有可见选择或可验证 readback。只有“菜单已打开”而没有当前项身份，不算导航成功。
 - Micro 驱动返回 `Accepted`、`OutcomeUnknown` 或 `Rejected` 后不得再注入第二套 UIA/键盘动作；只有明确 `NotSent` 才允许降级。
 - neutral、key-up 和 PTT release 不能被模拟量合并丢弃；断连时只释放该输入源持有的状态。
@@ -158,7 +159,10 @@ flowchart LR
     State["ControllerState<br/>RightX / RightY"] --> Buffer["ControllerStateBuffer<br/>保留换向与 neutral"]
     Buffer --> Router["StickGestureRouter<br/>锁定轴 + 方向直到回中"]
 
-    Router -->|"Vertical"| Encoder["EncoderStepAccumulator<br/>有界 + 180 ms TTL"]
+    Router -->|"Vertical: 上/下"| Projection["Micro-first projection<br/>上 = +1 / 下 = -1"]
+    Router -->|"Horizontal: 左/右"| Projection2["Micro-first projection<br/>左 = +1 / 右 = -1"]
+    Projection --> Encoder["EncoderStepAccumulator<br/>有界 + 180 ms TTL"]
+    Projection2 --> Encoder
     Encoder --> Micro["MicroInputService<br/>ENC_CW / ENC_CC act=2"]
     Micro --> Client["MicroBrokerClient<br/>clientId + requestId"]
     Client --> Pipe["current-user named pipe"]
@@ -166,21 +170,15 @@ flowchart LR
     Broker --> Driver["CodexMicroVhfUm<br/>UMDF2 / VHF"]
     Driver --> Codex["Windows HID → codex-micro-service → bridge"]
 
-    Router -->|"Horizontal"| Intent["CurrentControlIntentBuffer<br/>generation + 450 ms TTL"]
-    Intent --> Readback["只读 UIA readback<br/>具体选择 + focus"]
-    Readback --> Executor{"CurrentControlExecutor"}
-    Executor -->|"右进入可展开控件"| MicroPress["Micro ENC down/up"]
-    Executor -->|"已验证可调控件"| Native["Left / Right"]
-    Executor -->|"左退出已打开菜单"| Escape["Escape"]
-    Executor -->|"已验证 Closed / 无具体 surface"| ClosedNative["仅 Codex 前台时<br/>literal Left / Right"]
-    Executor -->|"具体 surface 未验证 / intent 过期"| Drop["不注入"]
+    R3["R3 短按"] --> MicroPress["Micro ENC down/up<br/>打开 / 进入 / 确认"] --> Client
+    B["B · 已持有菜单会话"] --> AgentBack["Micro AG00 down/up<br/>官方 bridge 上下文 Back"] --> Client
 ```
 
-纵向不再读取 popup 或横向 readback；横向也不能进入 `SendEncoderSteps`。UIA 在横向链路中只负责读取目标、焦点与结果，不能凭 popup 可见就宣告成功。唯一例外是观察器已确认没有打开 surface 的 `Closed` 基态：此时没有可供校验的 item name，允许在“真实 Codex 主窗口当前为前台”这一硬门禁下发送 literal Left/Right；一旦检测到具体菜单、审批框或控件，仍恢复严格目标校验。
+两个轴都不读取 popup，也不再走 `CurrentControlIntentBuffer` 或 `CurrentControlExecutor`。UIA 只提供异步反馈，不能决定发送哪一类输入。R3 成功投递后建立本地菜单会话；B 只在该会话内发送 `AG00`，避免菜单其实不存在时误切 Agent 槽位 1。
 
 ### 修复后原生 Micro 时序
 
-右摇杆上/下固定表示 Micro 旋钮旋转；路由不得读取或猜测 Codex popup 来改变轴语义：
+右摇杆四向固定表示同一个 Micro 旋钮旋转；路由不得读取或猜测 Codex popup 来改变方向语义：
 
 ```mermaid
 sequenceDiagram
@@ -228,10 +226,12 @@ sequenceDiagram
 | 手柄动作 | 类型化意图 | Codex 最终输入 |
 | --- | --- | --- |
 | 右摇杆上 | `EncoderStep(+1)` | `ENC_CW, act=2` |
+| 右摇杆左 | `EncoderStep(+1)` | `ENC_CW, act=2` |
 | 右摇杆下 | `EncoderStep(-1)` | `ENC_CC, act=2` |
+| 右摇杆右 | `EncoderStep(-1)` | `ENC_CC, act=2` |
 | R3 短按 | `EncoderPress` | `ENC` down/up |
 | R3 长按 | `OpenAgentControllerSettings` | 本地应用动作；不发送 `ENC`，并抑制同一次短按 |
-| 右摇杆左/右 | `CurrentControlLeft / CurrentControlRight` | 独立导航 executor；绝不转换成 `ENC_*` |
+| B（Micro 菜单会话） | `ContextualBack` | `AG00` down/up；官方 bridge 转换为 Escape |
 | 回中 | `Neutral` | 释放轴 ownership，不得被快照合并丢失 |
 
 ## 已处理的故障层与仍待确认部分
@@ -242,9 +242,9 @@ sequenceDiagram
 | --- | --- |
 | Input buffer | 不能跨 gesture region 合并；按钮、LT 阈值、方向和 neutral 边界必须保留 |
 | Gesture | 一次手势只有一个轴和一个方向；换轴、反向都必须先完整回中 |
-| Projection | 纵向唯一投影为 `ENC_CW / ENC_CC act=2`；横向永远不是 encoder detent |
-| Session | encoder 有界合并；横向 intent 绑定 generation/TTL；readback 使用 coalescing gate |
-| Verification | popup visible 不等于成功；具体菜单必须有具体选择，具体控件横向必须匹配真实 focus，数值必须按预期方向变化；只有 verified `Closed` 可使用 Codex-foreground-bound literal fallback |
+| Projection | 四向折叠到一个 encoder：上/左为 `ENC_CW`，下/右为 `ENC_CC`；R3 为 `ENC`，B 会话返回为 `AG00` |
+| Session | encoder 有界合并；R3 建立、B 结束 Micro 菜单会话；readback 使用 coalescing gate 且不能提前释放会话 |
+| Verification | popup visible 不等于成功；UIA 只做反馈。B 的 `AG00` 必须由本地会话门禁，防止无菜单时误切 Agent 1 |
 | Window activation | 枚举并评分所有 Codex 顶层窗，不再按进程启动时间猜 `MainWindowHandle`；工作线程先创建消息队列并附加输入线程；菜单循环只包含无 owner、非 tool 的主窗口 |
 | PTT | down/up、OutcomeUnknown、release retry、restart neutral 与断连清理进入同一状态机 |
 | Transport ownership | 单 Broker 独占 handle、sequence 与 output reader；客户端状态按 lease 隔离；同键引用合并，analog 按最近活跃 owner 恢复；活跃请求不会被 lease sweeper 中途摘除 |
@@ -253,7 +253,7 @@ sequenceDiagram
 
 - 实体控制器采样与 WPF Dispatcher 长时间繁忙时，是否仍能观察到完整 neutral，`DroppedStateCount` 是否增加。
 - 每个真实手势是否只出现一个轴、一个方向和一个执行通道；Micro 返回非 `NotSent` 后是否仍有第二次原生按键。
-- 当前 Codex build 的菜单 selection、UIA focus 与可见高亮是否一致；不一致时 executor 是否确实拒绝发送。
+- 当前 Codex build 的菜单 selection、UIA focus 与可见高亮是否一致；不一致时是否仍只影响反馈而不产生第二套输入。
 - popup 打开/关闭、失焦/恢复和鼠标先操作后，generation/TTL 是否阻止旧 intent 重放。
 - 当前 Codex build 对 Approve、Add files、模型列表、Advanced、Fast、Power 暴露的 readback 结构是否覆盖现有观察器。
 - 两个真实桌面进程是否都只连接 Broker，驱动 batch sequence 是否单调，output/RPC 是否只有一个 reader；重叠 PTT 是否只有一次物理 down/up，analog 后来 owner 释放后是否恢复前一来源。
@@ -274,9 +274,9 @@ sequenceDiagram
 
 ## 最小复现矩阵
 
-- [ ] 在 Power 横条先验证纯左、纯右各 10 次，确认方向与单次动作数，建立正常对照。
-- [ ] 从 composer 主界面用纯上/下各 10 次遍历 Advanced、Fast、Power，确认没有横向值变化。
-- [ ] 分别进入 `Approve for me`、`Add files and more @` 和模型选择器，验证右进入、左退出、上/下移动可见高亮。
+- [ ] 在 Power 横条验证纯上、左、下、右各 10 次，确认上=左、下=右且每次只有一个 encoder 档位。
+- [ ] 从 composer 主界面用四向各 10 次遍历 Advanced、Fast、Power，确认只有 previous/next 两种方向语义。
+- [ ] 分别进入 `Approve for me`、`Add files and more @` 和模型选择器，验证 R3 进入/确认、四向移动、B 通过 `AG00` 返回。
 - [ ] 对每个场景覆盖：缓慢单轴、快速单轴、斜向起步、未完全回中换轴、完全回中后换轴、长时间重复。
 - [ ] 覆盖 popup 打开/关闭、Codex 失焦/恢复、鼠标先打开菜单、R3 打开模型列表、菜单中途关闭。
 - [ ] 复现模型控制失活，并比较选择器打开前后完整状态快照；不得只记录“打开后恢复”。

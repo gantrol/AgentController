@@ -1,5 +1,3 @@
-using CodexController.Services;
-
 namespace CodexController.Controllers;
 
 public static class VirtualDialInputPolicy
@@ -30,18 +28,14 @@ public static class VirtualDialInputPolicy
     }
 
     /// <summary>
-    /// The gamepad adds a second axis around Micro's encoder semantics.
-    /// Horizontal motion always keeps its literal screen direction so a
-    /// left push can never be reinterpreted as an encoder "down" step.
+    /// A stick has two axes while the Micro encoder has one. Both axes are
+    /// therefore projected onto the same previous/next contract: left is the
+    /// same as up (clockwise/previous), and right is the same as down
+    /// (counter-clockwise/next). Enter and confirmation belong exclusively to
+    /// the encoder press (R3), never to a direction.
     /// </summary>
-    public static ComposerDialNavigation? ResolveHorizontalNavigation(
-        int direction) =>
-        Math.Sign(direction) switch
-        {
-            -1 => ComposerDialNavigation.Left,
-            1 => ComposerDialNavigation.Right,
-            _ => null,
-        };
+    public static int ResolveHorizontalEncoderSteps(int direction) =>
+        -Math.Sign(direction);
 
     /// <summary>
     /// Vertical motion is the physical Micro encoder projection. It never

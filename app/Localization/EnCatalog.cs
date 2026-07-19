@@ -35,9 +35,9 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · press {0} (L3) to change root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "Up/down selects a control · left/right adjusts it · tap {0} (R3) to confirm · hold {0} for Agent Controller settings",
+                "Up/left: previous · down/right: next · tap {0} (R3) to enter or confirm · hold {0} for Agent Controller settings",
             [StringKeys.ControlRightStickHintOpen] =
-                "Micro menu active · ↑↓ select a control · ←→ adjust it · {2} Select · {1} Close",
+                "Micro menu active · ↑/← previous · ↓/→ next · {2} Enter or confirm · {1} Back",
             [StringKeys.ControlRightStickHintConfirmation] =
                 "Model selection confirmation · {2} Confirm · {1} Cancel",
             [StringKeys.ControlPrimary] = "{0} · Open task",
@@ -66,7 +66,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
             [StringKeys.ComposerDialReady] =
-                "Micro control · ↑↓ select · ←→ adjust",
+                "Micro control · ↑/← previous · ↓/→ next · R3 enter",
             [StringKeys.ComposerConnectController] =
                 "Connect a controller to begin",
             [StringKeys.ComposerDialSettingsOpened] =

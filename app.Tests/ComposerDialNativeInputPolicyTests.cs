@@ -243,6 +243,39 @@ public sealed class ComposerDialNativeInputPolicyTests
             DecodeHidEvents(transport.Reports));
     }
 
+    [Fact]
+    public void ExpectedMenuCancelUsesOfficialAg00ContextualBack()
+    {
+        using var transport = new RecordingTransport();
+        using var micro = new MicroInputService(transport);
+        var keys = new List<ushort>();
+        var service = new CodexComposerService(
+            micro,
+            _ => true,
+            key =>
+            {
+                keys.Add(key);
+                return true;
+            });
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        var result = service.DialCancel(
+            settings,
+            menuExpected: true);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.IsMenuOpen);
+        Assert.False(result.StateVerified);
+        Assert.Empty(keys);
+        Assert.Equal(
+            [("AG00", 1), ("AG00", 0)],
+            DecodeHidEvents(transport.Reports));
+    }
+
     private static IReadOnlyList<(string Key, int Action)> DecodeHidEvents(
         IReadOnlyList<byte[]> reports)
     {

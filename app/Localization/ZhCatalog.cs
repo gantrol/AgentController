@@ -34,9 +34,9 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · 按下左摇杆 {0}（L3）切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "上下选择控件 · 左右调整当前控件 · 短按右摇杆 {0}（R3）确认 · 长按 {0} 打开 Agent Controller 设置",
+                "↑/← 上一项 · ↓/→ 下一项 · 短按右摇杆 {0}（R3）进入或确认 · 长按 {0} 打开 Agent Controller 设置",
             [StringKeys.ControlRightStickHintOpen] =
-                "Micro 菜单已打开 · ↑↓ 选择控件 · ←→ 调整当前控件 · {2} 确认 · {1} 关闭",
+                "Micro 菜单已打开 · ↑/← 上一项 · ↓/→ 下一项 · {2} 进入或确认 · {1} 返回",
             [StringKeys.ControlRightStickHintConfirmation] =
                 "模型选择确认 · {2} 确认 · {1} 取消",
             [StringKeys.ControlPrimary] = "{0} · 打开任务",
@@ -62,7 +62,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆 Micro 旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
             [StringKeys.ComposerDialReady] =
-                "Micro 控制 · ↑↓ 选择控件 · ←→ 调整当前项",
+                "Micro 控制 · ↑/← 上一项 · ↓/→ 下一项 · R3 进入",
             [StringKeys.ComposerConnectController] =
                 "连接手柄后开始",
             [StringKeys.ComposerDialSettingsOpened] =

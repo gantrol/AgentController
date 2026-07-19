@@ -179,7 +179,9 @@ public static class AgentCapabilityFallbacks
         public ComposerDialResult DialSelect(AppSettings settings) =>
             DialFailed();
 
-        public ComposerDialResult DialCancel(AppSettings settings) =>
+        public ComposerDialResult DialCancel(
+            AppSettings settings,
+            bool menuExpected = false) =>
             DialFailed();
 
         public ComposerAutomationResult Cancel(AppSettings settings) =>
