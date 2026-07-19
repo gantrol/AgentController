@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Windows.Automation;
+using CodexController.Native;
 
 namespace CodexController.Services;
 
@@ -7,25 +7,15 @@ internal static class CodexAutomationLocator
 {
     internal static (AutomationElement Window, int ProcessId)? FindCodexWindow()
     {
-        foreach (var process in Process.GetProcessesByName("ChatGPT"))
+        if (!CodexWindowActivator.TryFindMainWindow(out var candidate))
         {
-            if (process.MainWindowHandle == nint.Zero)
-            {
-                process.Dispose();
-                continue;
-            }
-
-            var processId = process.Id;
-            var handle = process.MainWindowHandle;
-            process.Dispose();
-            var window = AutomationElement.FromHandle(handle);
-            if (window is not null)
-            {
-                return (window, processId);
-            }
+            return null;
         }
 
-        return null;
+        var window = AutomationElement.FromHandle(candidate.Handle);
+        return window is null
+            ? null
+            : (window, checked((int)candidate.ProcessId));
     }
 
     internal static AutomationElement? FindComposerButton(

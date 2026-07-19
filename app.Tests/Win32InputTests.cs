@@ -4,6 +4,31 @@ namespace CodexController.Tests;
 
 public sealed class Win32InputTests
 {
+    [Fact]
+    public void MainElectronWindowOutranksOwnedToolWindow()
+    {
+        var main = new CodexWindowCandidate(
+            new nint(1),
+            10,
+            "Codex",
+            "Chrome_WidgetWin_1",
+            HasOwner: false,
+            IsToolWindow: false,
+            Area: 1_800_000);
+        var tool = new CodexWindowCandidate(
+            new nint(2),
+            10,
+            "ChatGPT",
+            "Chrome_WidgetWin_1",
+            HasOwner: true,
+            IsToolWindow: true,
+            Area: 2_000_000);
+
+        Assert.True(
+            CodexWindowActivator.ScoreCandidate(main) >
+            CodexWindowActivator.ScoreCandidate(tool));
+    }
+
     [Theory]
     [InlineData(0x25)]
     [InlineData(0x26)]

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace CodexController.Native;
@@ -77,46 +76,14 @@ internal static partial class Win32Input
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetForegroundWindow(nint window);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool IsIconic(nint window);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ShowWindowAsync(nint window, int command);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetCursorPos(out NativePoint point);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetCursorPos(int x, int y);
 
-    public static bool IsCodexForeground()
-    {
-        var window = GetForegroundWindow();
-        if (window == nint.Zero)
-        {
-            return false;
-        }
-
-        _ = GetWindowThreadProcessId(window, out var processId);
-        try
-        {
-            using var process = Process.GetProcessById((int)processId);
-            return string.Equals(
-                process.ProcessName,
-                "ChatGPT",
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public static bool IsCodexForeground() =>
+        CodexWindowActivator.IsForeground();
 
     public static bool IsProcessForeground(int expectedProcessId)
     {
@@ -135,65 +102,8 @@ internal static partial class Win32Input
         return processId == (uint)expectedProcessId;
     }
 
-    public static bool FocusCodex()
-    {
-        nint target = nint.Zero;
-        var selectedStart = DateTime.MinValue;
-        foreach (var process in Process.GetProcessesByName("ChatGPT"))
-        {
-            try
-            {
-                var handle = process.MainWindowHandle;
-                if (handle == nint.Zero)
-                {
-                    continue;
-                }
-
-                DateTime start;
-                try
-                {
-                    start = process.StartTime;
-                }
-                catch
-                {
-                    start = DateTime.MinValue;
-                }
-
-                if (target == nint.Zero || start >= selectedStart)
-                {
-                    target = handle;
-                    selectedStart = start;
-                }
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-
-        if (target == nint.Zero)
-        {
-            return false;
-        }
-
-        if (IsIconic(target))
-        {
-            _ = ShowWindowAsync(target, 9);
-            Thread.Sleep(40);
-        }
-
-        _ = SetForegroundWindow(target);
-        if (IsCodexForeground())
-        {
-            return true;
-        }
-
-        // A synthetic Alt edge grants the calling desktop process permission
-        // to activate the window under Windows foreground-lock rules.
-        _ = SendKey(0x12);
-        _ = SetForegroundWindow(target);
-        return IsCodexForeground();
-    }
+    public static bool FocusCodex() =>
+        CodexWindowActivator.TryActivate();
 
     public static bool FocusCodexAndWait(int timeoutMs = 420)
     {
