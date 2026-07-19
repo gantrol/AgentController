@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.7.0-hotfix",
+    [string]$Version = "1.0.0",
     [string]$Runtime = "win-x64"
 )
 
@@ -11,6 +11,7 @@ $repoRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot ".."))
 $artifactRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repoRoot ".artifacts\release\$Version"))
+$dotnetArtifactsRoot = Join-Path $artifactRoot "dotnet"
 $publishRoot = Join-Path $artifactRoot "publish"
 $packageName = "AgentController-$Version-$Runtime"
 $packageRoot = Join-Path $artifactRoot $packageName
@@ -48,6 +49,7 @@ $project = Join-Path $repoRoot "app\AgentController.csproj"
 & dotnet publish $project `
     -c Release `
     -r $Runtime `
+    --artifacts-path $dotnetArtifactsRoot `
     --self-contained true `
     --output $publishRoot `
     -p:PublishSingleFile=true `
@@ -68,6 +70,12 @@ $docsRoot = Join-Path $packageRoot "DOCS"
 New-Item -ItemType Directory -Path $docsRoot -Force | Out-Null
 $docsImageRoot = Join-Path $docsRoot "public\images"
 New-Item -ItemType Directory -Path $docsImageRoot -Force | Out-Null
+$docsPublicRoot = Join-Path $docsRoot "public\docs"
+New-Item -ItemType Directory -Path $docsPublicRoot -Force | Out-Null
+$docsDesignRoot = Join-Path $docsRoot "docs"
+New-Item -ItemType Directory -Path $docsDesignRoot -Force | Out-Null
+$docsVirtualMicroRoot = Join-Path $docsRoot "virtual-micro"
+New-Item -ItemType Directory -Path $docsVirtualMicroRoot -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") `
     -Destination $docsRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.zh-CN.md") `
@@ -81,17 +89,33 @@ Copy-Item -LiteralPath (
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") `
     -Destination $packageRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "public\docs\controller-command-reference-v0.7.md") `
-    -Destination $docsRoot
+    Join-Path $repoRoot "public\docs\controller-operations.md") `
+    -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "public\docs\release-v0.7.md") `
-    -Destination $docsRoot
+    Join-Path $repoRoot "public\docs\release-v1.0.md") `
+    -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "public\docs\codex-micro-virtual-hid-bridge-plan.md") `
-    -Destination $docsRoot
+    Join-Path $repoRoot "public\docs\architecture-and-input-flow.md") `
+    -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "docs\codex-26.707.12708-vhf-status-input.zh-CN.md") `
-    -Destination $docsRoot
+    Join-Path $repoRoot "public\docs\codex-micro-command-reference.md") `
+    -Destination $docsPublicRoot
+$installTutorials = @(
+    Get-ChildItem `
+        -LiteralPath (Join-Path $repoRoot "docs") `
+        -Filter "CodexMicroSimulator-*.zh-CN.md" `
+        -File)
+if ($installTutorials.Count -ne 1) {
+    throw "Expected exactly one Codex Micro installation tutorial, found $($installTutorials.Count)."
+}
+Copy-Item -LiteralPath $installTutorials[0].FullName `
+    -Destination $docsDesignRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "virtual-micro\UNSIGNED-DRIVER.md") `
+    -Destination $docsVirtualMicroRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "virtual-micro\UNSIGNED-DRIVER.zh-CN.md") `
+    -Destination $docsVirtualMicroRoot
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force

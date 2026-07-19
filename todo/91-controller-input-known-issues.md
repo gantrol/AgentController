@@ -25,7 +25,7 @@
 | RS-07 | 模型控制器长期使用 | 每次手势都能继续控制当前模型界面 | 偶发完全失去手柄控制；打开模型选择器后又恢复，恢复动作只是复现线索，不是解决方案 |
 | LT-01 | LT 按住说话 | 按下开始、松开停止，任何退出或断连都补发 release | 偶发语音键无效；尚未确认是边沿丢失、策略阻止、自动化失败还是 Codex 未读回 |
 | SRC-01 | 实体控制器 + `virtual-micro` 模拟器 | 两者可同时连接，由 Broker 串行化输入并分别管理 held/neutral 生命周期 | 当前看起来只能有一个输入源正常占用；共享句柄、sequence、output/RPC 所有权尚未统一 |
-| RS-08 | 2026-07-19 新构建，右摇杆纯左/纯右 | `Closed` 基态也必须投递屏幕同向的横向动作；上下仍只产生 `ENC_*` | 横向 intent 被“必须有非空 UIA ItemName”的门禁永久挂起，左右均毫无反应 |
+| RS-08 | 2026-07-19 新构建，右摇杆纯左/纯右 | 左与上统一投递 `ENC_CW`，右与下统一投递 `ENC_CC`，不得依赖 UIA ItemName | 过渡实现的横向 intent 被“必须有非空 UIA ItemName”的门禁永久挂起，左右均毫无反应 |
 | WAK-01 | 菜单键唤醒 | Agent Controller 显示反馈后，真实 Codex 主窗口成为前台；若已有多个主窗口，再按菜单键切换下一个 | popup 正常出现，但旧实现按最新进程的 `MainWindowHandle` 选窗并从工作线程直接 `SetForegroundWindow`，Windows 拒绝置前 |
 | BACK-01 | B 退出 Micro 菜单 | 在 R3 建立的菜单会话中发送 `AG00` tap，由官方 bridge 上下文转换为 Escape | 旧实现依赖本地 popup/UIA ownership；驱动已接受 `ENC` 但回读尚未识别菜单时，B 会落入普通取消路径或退出失败 |
 
@@ -43,10 +43,10 @@
 | --- | --- | --- | --- |
 | RS-01 / RS-02 / RS-03 / RS-04 / RS-05 | 两个摇杆轴统一投影为官方 encoder：上/左 previous，下/右 next；R3 独占进入/确认，不再运行横向 current-control executor | `VirtualDialInputPolicyTests`、`ComposerDialNativeInputPolicyTests` | 待真实 Power、Approve、Add files、模型、Advanced 顺序复验 |
 | RS-06 | state buffer 保留跨区、换向和完整 neutral；手势期间同时锁定轴与方向，回中后才重新判定 | `ControllerStateBufferTests`、`StickGestureRouterTests` | 待慢速、快速、斜向和未完全回中矩阵 |
-| RS-07 | encoder intent 有界合并且 180 ms 过期；横向 intent 绑定 generation 且 450 ms 过期；readback 合并请求，不再通过 cancellation 互相饿死；Broker 在应用启动时后台预热且失败重连退避 | `EncoderStepAccumulatorTests`、`CurrentControlIntentBufferTests`、`BrokerCoexistenceTests` | 待长期重复与“打开模型选择器后恢复”复验 |
+| RS-07 | encoder intent 有界合并且 180 ms 过期；readback 合并请求，不再通过 cancellation 互相饿死；Broker 在应用启动时后台预热且失败重连退避。过渡期的横向 intent buffer 已随四向统一 encoder 一并退出运行路径 | `EncoderStepAccumulatorTests`、`ComposerDialNativeInputPolicyTests`、`BrokerCoexistenceTests` | 待长期重复与“打开模型选择器后恢复”复验 |
 | LT-01 | PTT 改为 Micro-first down/up；release 不确定时补发一次；下一次 press 先恢复 neutral；断连/退出保留 release | `MicroRpcCodecTests`、`PushToTalkAutomationStateTests`、`ControllerStateBufferTests` | 待短按、口述、菜单、失焦、断连复验 |
 | SRC-01 | Agent Controller 与模拟器都改为 named-pipe client；唯一 Broker 独占 `CodexMicroVhfUm`、统一 sequence 和 output/RPC reader；重叠 held key 只投递第一次 down/最后一次 up；analog owner 释放时恢复最近仍活跃来源；请求执行/完成续期/lease expiry 原子化；缓存 request response 防止超时重放双发 | `BrokerCoexistenceTests`、`ClientInputStateTests`、`MicroInputBatchTests`、`MicroDriverOwnershipRulesTests` | 三客户端 fake-driver 仲裁与 lease 边界验收通过；真实驱动双进程仍待复验 |
-| RS-08 | `Closed` 是“已确认无打开 surface”，不再要求虚构的非空 `ItemName`；横向策略直接保留 literal Left/Right，执行器仍要求 Codex 前台。任何已识别的具体 surface 继续要求真实焦点与目标名称一致 | `CurrentControlActionPolicyTests`、`VirtualDialInputPolicyTests`、`StickGestureRouterTests` | 25 项定向测试通过；待新构建纯左/纯右实机复验 |
+| RS-08 | 最终方案删除横向 current-control executor：左直接投影为 `EncoderStep(+1)`，右直接投影为 `EncoderStep(-1)`，因此不再读取 popup、`ItemName` 或 `Closed` 状态 | `VirtualDialInputPolicyTests`、`ComposerDialNativeInputPolicyTests`、`StickGestureRouterTests` | 待新构建纯左/纯右实机复验 |
 | WAK-01 | 统一枚举并评分 Codex 顶层窗；排除/降权 owned/tool window，恢复最小化主窗，附加输入线程后置前；UIA locator 复用同一主窗选择结果。菜单键在 Codex 已前台且存在多个主窗口时只循环主窗口，普通快捷键聚焦不循环 | `Win32InputTests`；后台 Chrome → Codex 一次性实机激活探针 | 探针从 `chrome` 前台成功切至 `ChatGPT/Codex`；仍待菜单键实体手柄复验与双主窗口复验 |
 | BACK-01 | R3 成功后持有本地 Micro 菜单会话；会话内 B 优先发送官方 `AG00` 上下文返回，只有 `NotSent` 才进入原生退出回退；回读不能提前释放会话 | `ComposerDialNativeInputPolicyTests` | 待 R3 → Advanced → 子菜单 → B 一次退出实机复验 |
 
@@ -68,7 +68,7 @@
 14. `be0d67e` — 移植并强化 `virtual-micro` 主窗口枚举与前台激活；
 15. `af81c9a` — 菜单键在多个 Codex 主窗口之间显式循环，普通聚焦保持稳定。
 
-当前自动化基线为主解决方案 796 项、`CodexMicro.Protocol` 5 项；共享工作区中包含待提交 `virtual-micro` 兼容更新时，`CodexMicro.Desktop` 47 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
+当前自动化基线为主解决方案 797 项；`virtual-micro` 桌面测试 47 项、协议测试 5 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
 
 ## 不可变交互合同
 

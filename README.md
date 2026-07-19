@@ -3,7 +3,7 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-0.7.0--hotfix-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![version](https://img.shields.io/badge/version-1.0.0-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
 Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex, and perhaps you wanted one. But consider the evidence:
 
@@ -34,7 +34,7 @@ I directed Codex to build a prototype. Two hours later it worked; another day we
 
 - Press **Menu** (☰ on an Xbox controller, also called Start or `+` on some gamepads) to wake or foreground Codex when needed.
 - Use the **left stick** to walk the task tree: up/down moves between siblings, right enters a project, and left returns to the parent level. Press **A** to open a task. Click **L3** to cycle between pinned tasks, pinned projects, projects, and projectless tasks.
-- The **right stick extends the Codex Micro upper-left encoder**. Up/down emits `ENC_CW / ENC_CC` to traverse controls such as Advanced, Fast, and the Power slider; left/right keeps its literal screen direction to adjust or enter the current control. Tap **R3** to press the encoder, or hold it for Agent Controller settings. The two axes are never collapsed into one detent stream.
+- The **right stick emulates the Codex Micro upper-left encoder**. Up or left emits `ENC_CW` for the previous item; down or right emits `ENC_CC` for the next item. Tap **R3** to open, enter, or confirm, or hold it for Agent Controller settings.
 - Hold **LT** to dictate and release it to stop.
 - Press **X** to send.
 - To clear the composer, press **Y**, then **A** twice to confirm.
@@ -60,9 +60,9 @@ The [Codex Micro desktop simulator](virtual-micro/README.md) renders a resizable
 
 > ⚠️ **Security notice — read before use**
 >
-> This experimental v0.7 prototype was produced in one day with **Codex using GPT-5.6 Sol** and has not received an independent human code or security audit. A Codex update can change shortcuts or the accessibility tree, causing UI Automation to fail or perform the wrong action. The binary is unsigned. Review the source, test only with non-critical tasks, and use it entirely at your own risk. What the app does on your machine:
+> v1 remains experimental software, continuously rebuilt from an early one-day prototype, and has not received an independent human code or security audit. A Codex update can change its Micro bridge, shortcuts, or accessibility tree, causing features to fail or perform the wrong action. The app and developer driver are unsigned. Review the source, test only with non-critical tasks, and use it entirely at your own risk. What the app does on your machine:
 >
-> - sends keyboard shortcuts and UI Automation commands to the **Codex window**; controller input is normally gated to Codex being in the foreground, and turning the Bridge off blocks controller actions;
+> - sends HID reports to the optional Micro-compatible device through a local Broker, with limited keyboard-shortcut or UI Automation fallbacks only when delivery is explicitly unavailable; controller input is normally gated to Codex being in the foreground, and turning the Bridge off blocks controller actions;
 > - reads local Codex task data under `~/.codex`; if fallback bindings are enabled, it can append F17/F18/F20/F22 bindings to Codex's keybindings file;
 > - writes its own settings under `%LOCALAPPDATA%`;
 > - can register itself to start with Windows (off by default);
@@ -86,8 +86,9 @@ The tested controllers are the 8BitDo Ultimate 2, Xbox Series controller, and Fl
 3. Because the binary is unsigned, Windows SmartScreen may warn you. Choose **More info → Run anyway** only after reviewing the security notice above; alternatively, build from source.
 4. Connect the controller in XInput mode, launch Codex, and make sure the Bridge is enabled. When connected, the Device page shows the controller name and a localized **Live input** / **实时输入** badge.
 5. Some features may require restarting the Codex desktop app (**ChatGPT**), especially after Agent Controller first provisions or updates Codex keybindings.
+6. For the complete Micro-first HID path, separately install the repository's only supported device component: `CodexMicroVhfUm` (UMDF2/VHF). The current release provides an unsigned developer workflow only; read the [installation tutorial](docs/CodexMicroSimulator-安装教程.zh-CN.md) and [unsigned-driver guide](virtual-micro/UNSIGNED-DRIVER.md) first.
 
-The v0.7.0-hotfix Windows package is self-contained and does not require a separate .NET runtime.
+The v1.0.0 Windows package is self-contained and does not require a separate .NET runtime. Agent Controller still launches without the driver, but its limited `NotSent` fallbacks are not full Micro compatibility.
 
 ### Control reference
 
@@ -101,10 +102,10 @@ The v0.7.0-hotfix Windows package is self-contained and does not require a separ
 | L3 | Cycle roots: pinned tasks → pinned projects → projects → projectless tasks. |
 | A | Open the focused task. Projects are entered with right. |
 | X | Send the current composer text. The fallback uses the configured submit binding, never Enter. |
-| B | Close a menu or undo recent navigation when applicable; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
+| B | In a Micro menu session opened through R3, send Agent key 1 (`AG00`) so the official bridge performs its contextual Back action; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
 | Y | Open the action panel. |
 | D-pad ↑ / ↓ | Previous / next Q&A turn; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
-| Right stick | Up/down selects controls through Micro encoder detents; left/right adjusts the current control in the same screen direction. Codex still owns traversal, with no separate Simple/Advanced stick state machine. |
+| Right stick | Up or left emits `ENC_CW` (previous); down or right emits `ENC_CC` (next). All four directions become Micro encoder detents, with no gamepad-only UI state machine. |
 | R3 tap / hold | Tap to press the Micro encoder and open, enter, or confirm the current item. Hold for 500 ms to open Agent Controller settings. |
 | LB / RB tap | Open the previous / next available task. |
 | LT hold | Start push-to-talk dictation; release to finish. |
@@ -130,19 +131,19 @@ The v0.7.0-hotfix Windows package is self-contained and does not require a separ
 
 Holding a right-stick direction builds momentum over about two seconds. The first step is immediate, repeat speed then ramps smoothly, and a deeper tilt allows a higher final rate.
 
-If the current selection exposes Speed but no Simple Power control—as Sol Max currently does—Agent Controller asks whether to switch modes. Press **A** for Advanced or **B** to remain in Simple; Standard/Fast stays available either way. After you decline, the same model/effort selection is not prompted again until the selection changes.
-
 The interface supports Simplified Chinese, English, or the Windows display language.
 
-For implementation status and edge cases, see the [v0.7 controller command reference](public/docs/controller-command-reference-v0.7.md) and [v0.7 release notes](public/docs/release-v0.7.md) (both currently in Chinese).
+For implementation status and edge cases, see the [v1 control reference](public/docs/controller-operations.md), [architecture and input flow](public/docs/architecture-and-input-flow.md), [Micro command reference](public/docs/codex-micro-command-reference.md), and [v1.0 release notes](public/docs/release-v1.0.md).
 
 ### Known limitations
 
-- Most actions depend on Codex's current shortcuts and accessibility tree. A Codex UI update can break them.
+- The Micro-first path depends on Codex's current private HID contract, `codex-micro-service`, and `codex-micro-bridge`; OpenAI does not promise this as a stable public ABI.
+- The full Micro path requires users to review, build, or locally sign `CodexMicroVhfUm`. Do not disable Windows driver-signing enforcement or import untrusted certificates.
+- Fallback actions may still depend on Codex's current shortcuts and accessibility tree. A Codex UI update can break them.
 - The Simple model list uses the official command shortcut; conflicts are blocked. Restart Codex once if it does not hot-load a newly written binding.
 - Unit tests and a successful Release build do not replace physical end-to-end testing against the current Codex app, account, and model options.
 - Agent slots currently use the first six tasks in the live snapshot; Agent and Command slots are not yet user-configurable.
-- Hands-free double-pull dictation, the base View action, Plan-mode controller routing, and a virtual HID bridge are not included in v0.7.
+- v1 does not yet provide a macOS build, commercially signed driver installer, configurable Agent/Command slots, or complete Plan-mode controller routing.
 
 ### Beyond Codex
 
@@ -157,7 +158,7 @@ Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 1
 ```powershell
 dotnet build AgentController.sln -c Release
 dotnet test AgentController.sln -c Release
-./scripts/package-release.ps1 -Version 0.7.0-hotfix
+./scripts/package-release.ps1 -Version 1.0.0
 ```
 
 Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
@@ -165,7 +166,7 @@ Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The p
 To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
 
 ```powershell
-./scripts/publish-release.ps1 -Version 0.7.0-hotfix
+./scripts/publish-release.ps1 -Version 1.0.0
 ```
 
 The command rebuilds the package, verifies its SHA-256 checksum, checks the remote tag, and idempotently creates or updates the Release. Pass `-SkipBuild` to upload already-built artifacts.
@@ -183,6 +184,7 @@ Key paths in the repository are:
 - `app/` — the Windows WPF application and source of truth for runtime behavior;
 - `app.Tests/` — regression tests for controller input, localization, navigation, bridge safety, and Codex integration policies;
 - `scripts/` — reproducible Release packaging;
+- `virtual-micro/` — the Micro simulator, single Broker, `CodexMicroVhfUm` device support, and compatibility tests;
 - `docs/` — interaction specifications and active design/consultation notes;
 - `public/docs/` — user-facing command references, release notes, and experimental plans;
 - `todo/` — roadmap organized by major workstream; start with [`todo/README.md`](todo/README.md).

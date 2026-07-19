@@ -14,10 +14,10 @@
     <Description>Windows desktop gamepad controller for AI agents; the current integration targets Codex.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\AgentController.ico</ApplicationIcon>
-    <Version>0.7.0-hotfix</Version>
-    <AssemblyVersion>0.7.0.0</AssemblyVersion>
-    <FileVersion>0.7.0.0</FileVersion>
-    <InformationalVersion>0.7.0-hotfix</InformationalVersion>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
