@@ -44,24 +44,10 @@ public static class VirtualDialInputPolicy
         };
 
     /// <summary>
-    /// Vertical motion traverses controls only while Codex owns an open
-    /// composer surface. Outside that context it is deliberately inert so
-    /// the two stick axes cannot collapse back into duplicate detents.
+    /// Vertical motion is the physical Micro encoder projection. It never
+    /// depends on Agent Controller's popup guess: Codex owns composer and
+    /// menu traversal for every encoder detent.
     /// </summary>
-    public static ComposerDialNavigation? ResolveVerticalNavigation(
-        int direction,
-        bool isMenuActive)
-    {
-        if (!isMenuActive)
-        {
-            return null;
-        }
-
-        return Math.Sign(direction) switch
-        {
-            -1 => ComposerDialNavigation.Down,
-            1 => ComposerDialNavigation.Up,
-            _ => null,
-        };
-    }
+    public static int ResolveVerticalEncoderSteps(int direction) =>
+        Math.Sign(direction);
 }

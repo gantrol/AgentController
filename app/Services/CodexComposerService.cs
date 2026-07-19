@@ -626,10 +626,14 @@ public sealed partial class CodexComposerService
 
         return navigation switch
         {
-            ComposerDialNavigation.Left =>
-                DialStep(-1, settings),
-            ComposerDialNavigation.Right =>
-                DialStep(1, settings),
+            ComposerDialNavigation.Left or
+            ComposerDialNavigation.Right => new(
+                false,
+                ControlName: _dialControlName,
+                IsMenuOpen: false,
+                Error:
+                    AgentAutomationErrorCodes.ElementUnsupported,
+                ErrorDetail: "dial-current-control-unverified"),
             _ => new(
                 false,
                 ControlName: _dialControlName,

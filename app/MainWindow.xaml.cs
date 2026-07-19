@@ -28,6 +28,11 @@ namespace CodexController;
 
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan EncoderStepInterval =
+        TimeSpan.FromMilliseconds(24);
+    private static readonly TimeSpan EncoderIntentMaximumAge =
+        TimeSpan.FromMilliseconds(180);
+
     private static readonly SidebarScope[] RootSidebarScopes =
     [
         SidebarScope.PinnedTasks,
@@ -79,6 +84,7 @@ public partial class MainWindow : Window
         new();
     private readonly PushToTalkAutomationState _pushToTalkAutomation =
         new();
+    private readonly EncoderStepAccumulator _encoderSteps = new(3);
 
     private readonly AppSettings _settings;
     private CodexSnapshot _snapshot = new();
@@ -126,6 +132,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _rightStickPressCancellation;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
+    private int _encoderStepPumpRunning;
     private int _virtualDialGeneration;
     private int _dictationPumpRunning;
     private Forms.NotifyIcon? _trayIcon;
@@ -580,31 +587,24 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        // Preserve the gamepad's two-dimensional intent around the Micro
-        // encoder. Vertical movement traverses rows in an owned composer
-        // surface; horizontal movement adjusts or enters the current row.
-        // Never merge the axes: doing so turned a left push into ENC_CC and
-        // made it appear to move right in Codex.
+        // Vertical is always the native Micro encoder. Horizontal is a
+        // separate gamepad-only operation axis and must never become an
+        // encoder detent, regardless of popup state.
         _controllerInteraction.RepeatAnalogAxis(
             "right-y",
-            dialContextActive
-                ? rightGesture.VerticalDirection
-                : 0,
-            dialContextActive
-                ? rightGesture.VerticalMagnitude
-                : 0,
+            rightGesture.VerticalDirection,
+            rightGesture.VerticalMagnitude,
             virtualDialDeadZone,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
             direction =>
             {
-                var navigation =
-                    VirtualDialInputPolicy.ResolveVerticalNavigation(
-                        direction,
-                        isMenuActive: true);
-                if (navigation is { } resolved)
+                var steps =
+                    VirtualDialInputPolicy.ResolveVerticalEncoderSteps(
+                        direction);
+                if (steps != 0)
                 {
-                    QueueVirtualDialNavigation(resolved);
+                    QueueVirtualDialEncoderSteps(steps);
                 }
             });
         _controllerInteraction.RepeatAnalogAxis(
@@ -656,14 +656,18 @@ public partial class MainWindow : Window
         _controllerInteraction.RequireNeutralRouting();
     }
 
+    private void ClearPendingVirtualDialInput()
+    {
+        Interlocked.Exchange(ref _pendingDialNavigation, 0);
+        _encoderSteps.Clear();
+    }
+
     private void BeginVirtualDialReleaseDrain()
     {
         _composerPickerMenuLikelyOpen = false;
         _dialInputReleasePending =
             !IsControllerNeutral(_xInputService.LastState);
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            0);
+        ClearPendingVirtualDialInput();
         CancelVirtualDialPressHold();
         ResetRadialLayer(clearSuppression: false);
         _controllerInteraction.RequireNeutralRouting();
@@ -2829,6 +2833,7 @@ public partial class MainWindow : Window
         }
 
         CancelPendingComposerSelection();
+        ClearPendingVirtualDialInput();
         _controllerInteraction.RequireRightStickNeutral();
         _rightStickPressHeld = true;
         _rightStickHoldTriggered = false;
@@ -2857,9 +2862,7 @@ public partial class MainWindow : Window
             }
 
             _rightStickHoldTriggered = true;
-            Interlocked.Exchange(
-                ref _pendingDialNavigation,
-                0);
+            ClearPendingVirtualDialInput();
             if (IsVirtualDialContextActive)
             {
                 await CloseVirtualDialMenuAsync(showFeedback: false)
@@ -2916,6 +2919,96 @@ public partial class MainWindow : Window
         _controllerInteraction.RequireRightStickNeutral();
         _ = PressVirtualDialAsync();
     }
+
+    private void QueueVirtualDialEncoderSteps(int steps)
+    {
+        if (
+            steps == 0 ||
+            _virtualDialCancelRequested ||
+            _virtualDialCleanupPending ||
+            _dialInputReleasePending)
+        {
+            return;
+        }
+
+        _encoderSteps.Add(steps, Stopwatch.GetTimestamp());
+        if (
+            _encoderSteps.Pending != 0 &&
+            Interlocked.Exchange(ref _encoderStepPumpRunning, 1) == 0)
+        {
+            _ = PumpVirtualDialEncoderStepsAsync();
+        }
+    }
+
+    private async Task PumpVirtualDialEncoderStepsAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                var intent = _encoderSteps.TakeNext(
+                    Stopwatch.GetTimestamp(),
+                    ToStopwatchTicks(EncoderIntentMaximumAge));
+                if (intent is null)
+                {
+                    return;
+                }
+
+                var generation =
+                    Volatile.Read(ref _virtualDialGeneration);
+                var sendStarted = Stopwatch.GetTimestamp();
+                var result = await RunVirtualDialAutomationAsync(
+                        () => _composerAutomation.DialStep(
+                            intent.Value.Direction,
+                            _settings))
+                    .ConfigureAwait(true);
+                if (
+                    Stopwatch.GetTimestamp() - sendStarted >
+                    ToStopwatchTicks(EncoderIntentMaximumAge))
+                {
+                    _encoderSteps.Clear();
+                }
+
+                if (
+                    generation ==
+                        Volatile.Read(ref _virtualDialGeneration) &&
+                    !_virtualDialCancelRequested)
+                {
+                    PresentVirtualDialResult(result);
+                }
+
+                if (!result.Succeeded)
+                {
+                    _encoderSteps.Clear();
+                    return;
+                }
+
+                if (_encoderSteps.Pending != 0)
+                {
+                    await Task.Delay(EncoderStepInterval)
+                        .ConfigureAwait(true);
+                }
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _encoderStepPumpRunning, 0);
+            if (
+                _encoderSteps.Pending != 0 &&
+                Interlocked.Exchange(
+                    ref _encoderStepPumpRunning,
+                    1) == 0)
+            {
+                _ = PumpVirtualDialEncoderStepsAsync();
+            }
+        }
+    }
+
+    private static long ToStopwatchTicks(TimeSpan duration) =>
+        Math.Max(
+            1,
+            (long)Math.Round(
+                duration.TotalSeconds * Stopwatch.Frequency));
 
     private void QueueVirtualDialNavigation(
         ComposerDialNavigation navigation)
@@ -3205,7 +3298,7 @@ public partial class MainWindow : Window
         }
 
         _virtualDialCancelRequested = true;
-        Interlocked.Exchange(ref _pendingDialNavigation, 0);
+        ClearPendingVirtualDialInput();
         _ = CloseVirtualDialMenuAsync(
             showFeedback: false,
             fallbackToBaseCancel: false);
@@ -3231,9 +3324,7 @@ public partial class MainWindow : Window
         var expectedDialContext = IsVirtualDialContextActive;
         ShowComposerExitPending();
         _virtualDialCancelRequested = true;
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            0);
+        ClearPendingVirtualDialInput();
         _ = CloseVirtualDialMenuAsync(
             showFeedback: true,
             fallbackToBaseCancel: !expectedDialContext);
@@ -3473,9 +3564,7 @@ public partial class MainWindow : Window
         _virtualDialCancelRequested = false;
         _dialInputReleasePending = false;
         CancelVirtualDialPressHold();
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            0);
+        ClearPendingVirtualDialInput();
 
         var hadOpenMenu =
             _virtualDialMenuOpen ||
@@ -4033,9 +4122,7 @@ public partial class MainWindow : Window
         CloseVirtualDialForPushToTalkAsync()
     {
         Interlocked.Increment(ref _virtualDialGeneration);
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            0);
+        ClearPendingVirtualDialInput();
         CancelVirtualDialPressHold();
         _virtualDialOpenPending = false;
         _virtualDialCancelRequested = false;

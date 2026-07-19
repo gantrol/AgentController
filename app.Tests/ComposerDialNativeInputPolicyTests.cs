@@ -193,6 +193,31 @@ public sealed class ComposerDialNativeInputPolicyTests
             DecodeHidEvents(transport.Reports));
     }
 
+    [Fact]
+    public void ClosedHorizontalNavigationNeverBecomesEncoderRotation()
+    {
+        using var transport = new RecordingTransport();
+        using var micro = new MicroInputService(transport);
+        var service = new CodexComposerService(
+            micro,
+            _ => true,
+            _ => true);
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        _ = service.DialNavigate(
+            ComposerDialNavigation.Left,
+            settings);
+        _ = service.DialNavigate(
+            ComposerDialNavigation.Right,
+            settings);
+
+        Assert.Empty(transport.Reports);
+    }
+
     private static IReadOnlyList<(string Key, int Action)> DecodeHidEvents(
         IReadOnlyList<byte[]> reports)
     {

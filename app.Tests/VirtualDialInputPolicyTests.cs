@@ -43,29 +43,15 @@ public sealed class VirtualDialInputPolicyTests
     }
 
     [Theory]
-    [InlineData(-1, ComposerDialNavigation.Down)]
-    [InlineData(1, ComposerDialNavigation.Up)]
-    public void VerticalMotionTraversesAnOpenComposerSurface(
+    [InlineData(-1, -1)]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    public void VerticalMotionAlwaysProjectsToEncoderSteps(
         int direction,
-        ComposerDialNavigation expected)
+        int expected)
     {
         Assert.Equal(
             expected,
-            VirtualDialInputPolicy.ResolveVerticalNavigation(
-                direction,
-                isMenuActive: true));
-    }
-
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(0)]
-    [InlineData(1)]
-    public void VerticalMotionIsInertWithoutAnOpenComposerSurface(
-        int direction)
-    {
-        Assert.Null(
-            VirtualDialInputPolicy.ResolveVerticalNavigation(
-                direction,
-                isMenuActive: false));
+            VirtualDialInputPolicy.ResolveVerticalEncoderSteps(direction));
     }
 }
