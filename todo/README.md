@@ -27,6 +27,7 @@
 | 08 | [测试、诊断与发布工程](08-testing-observability-and-release.md) | Planned | 全局 |
 | 09 | [渐进迁移与兼容策略](09-migration-and-compatibility.md) | In Progress | 01–08 |
 | 90 | [v0.7 维护清单](90-v0.7-maintenance.md) | Maintenance | 当前 WPF 版本 |
+| 91 | [控制器输入已知问题与实机复现](91-controller-input-known-issues.md) | Investigation | 03、08、当前 WPF 版本 |
 
 ## 建议执行阶段
 
