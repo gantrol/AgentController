@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CodexMicro.Protocol\CodexMicro.Protocol.csproj" />
+    <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

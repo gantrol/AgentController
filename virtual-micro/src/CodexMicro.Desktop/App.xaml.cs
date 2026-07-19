@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using AgentController.MicroBroker;
 
 namespace CodexMicro.Desktop;
 
@@ -13,6 +14,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (MicroBrokerHost.IsBrokerArgument(e.Args))
+        {
+            var exitCode = MicroBrokerHost.RunFromCommandLine();
+            Shutdown(exitCode);
+            return;
+        }
+
         _singleInstanceMutex = new Mutex(
             initiallyOwned: true,
             SingleInstanceMutexName,

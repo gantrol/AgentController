@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using AgentController.MicroBroker;
 using CodexController.Composition;
 using CodexController.Localization;
 
@@ -7,12 +8,27 @@ namespace CodexController;
 
 public partial class App : System.Windows.Application
 {
+    internal static bool SuppressCompositionStartupForTests { get; set; }
+
     private Mutex? _singleInstanceMutex;
     private bool _ownsSingleInstanceMutex;
     private AppComposition? _composition;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (SuppressCompositionStartupForTests)
+        {
+            base.OnStartup(e);
+            return;
+        }
+
+        if (MicroBrokerHost.IsBrokerArgument(e.Args))
+        {
+            var exitCode = MicroBrokerHost.RunFromCommandLine();
+            Shutdown(exitCode);
+            return;
+        }
+
         var isDevelopmentInstance = e.Args.Contains(
             "--dev-instance",
             StringComparer.OrdinalIgnoreCase);

@@ -46,6 +46,7 @@
   <ItemGroup>
     <ProjectReference Include="..\src\AgentController.Application\AgentController.Application.csproj" />
     <ProjectReference Include="..\src\AgentController.Platform.Abstractions\AgentController.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>
 
 </Project>

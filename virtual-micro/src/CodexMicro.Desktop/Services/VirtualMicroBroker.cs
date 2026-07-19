@@ -1,4 +1,3 @@
-using System.IO;
 using CodexMicro.Desktop.Driver;
 using CodexMicro.Protocol;
 
@@ -7,21 +6,15 @@ namespace CodexMicro.Desktop.Services;
 internal sealed class VirtualMicroBroker : IDisposable
 {
     private readonly VirtualMicroDriverClient _driver = new();
-    private readonly HostRpcAssembler _assembler = new();
-    private readonly DeviceRpcHandler _rpc = new();
     private readonly object _heldSync = new();
     private readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
-    private CancellationTokenSource? _outputCancellation;
-    private Task? _outputTask;
     private bool _compatible;
     private bool _disposed;
 
     public VirtualMicroBroker()
     {
-        _rpc.SlotLightingObserved += (_, snapshot) =>
+        _driver.SlotLightingObserved += (_, snapshot) =>
             SlotLightingObserved?.Invoke(this, snapshot);
-        _rpc.RpcObserved += (_, method) =>
-            Log?.Invoke(this, $"Codex → Micro · {method}");
     }
 
     public event EventHandler<string>? Log;
@@ -44,14 +37,8 @@ internal sealed class VirtualMicroBroker : IDisposable
             throw new InvalidOperationException(compatibility.Detail);
         }
 
-        StopOutputLoop();
         var info = _driver.Connect();
         _compatible = true;
-        _assembler.Reset();
-        _outputCancellation = new CancellationTokenSource();
-        _outputTask = Task.Run(
-            () => PollOutputAsync(_outputCancellation.Token),
-            _outputCancellation.Token);
         StateChanged?.Invoke(this, "ready");
         Log?.Invoke(
             this,
@@ -218,7 +205,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         }
 
         _disposed = true;
-        StopOutputLoop();
         BestEffortNeutralize();
         _driver.Dispose();
         _compatible = false;
@@ -237,61 +223,6 @@ internal sealed class VirtualMicroBroker : IDisposable
                 $"Micro → Codex · {label} · {result.Disposition}");
             return result;
         });
-    }
-
-    private async Task PollOutputAsync(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                var output = _driver.TryReadOutput();
-                if (output is null)
-                {
-                    await Task.Delay(12, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
-                if (output.WireReport[1] == MicroProtocol.DebugChannel)
-                {
-                    Log?.Invoke(this, "Codex → Micro · debug frame ignored");
-                    continue;
-                }
-
-                var json = _assembler.Append(
-                    output.WireReport,
-                    DateTimeOffset.UtcNow);
-                if (json is null)
-                {
-                    continue;
-                }
-
-                var response = _rpc.Handle(json);
-                var result = _driver.Submit(response);
-                if (result.Disposition != MicroSendDisposition.Accepted)
-                {
-                    Log?.Invoke(
-                        this,
-                        $"RPC response {result.Disposition}; no automatic retry.");
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception exception) when (
-                exception is IOException or
-                    InvalidDataException or
-                    InvalidOperationException or
-                    System.ComponentModel.Win32Exception)
-            {
-                _assembler.Reset();
-                _compatible = false;
-                Log?.Invoke(this, $"Broker stopped · {exception.Message}");
-                StateChanged?.Invoke(this, $"faulted:{exception.Message}");
-                break;
-            }
-        }
     }
 
     private void BestEffortNeutralize()
@@ -321,22 +252,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         {
             // Shutdown neutralization is best effort and is never retried.
         }
-    }
-
-    private void StopOutputLoop()
-    {
-        _outputCancellation?.Cancel();
-        try
-        {
-            _outputTask?.Wait(TimeSpan.FromMilliseconds(250));
-        }
-        catch (AggregateException)
-        {
-        }
-
-        _outputCancellation?.Dispose();
-        _outputCancellation = null;
-        _outputTask = null;
     }
 
     private void EnsureReady()

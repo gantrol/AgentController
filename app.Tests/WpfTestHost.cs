@@ -44,6 +44,7 @@ internal static class WpfTestHost
         {
             try
             {
+                App.SuppressCompositionStartupForTests = true;
                 _application = new App
                 {
                     ShutdownMode =

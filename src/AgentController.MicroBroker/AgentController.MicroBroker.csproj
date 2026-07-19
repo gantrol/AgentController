@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <AssemblyName>AgentController.MicroBroker</AssemblyName>
+    <RootNamespace>AgentController.MicroBroker</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\virtual-micro\src\CodexMicro.Protocol\CodexMicro.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgentController.MicroBroker.Tests" />
+  </ItemGroup>
+
+</Project>
