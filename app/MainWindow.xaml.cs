@@ -3952,8 +3952,7 @@ public partial class MainWindow : Window
     {
         _dictationInputGlyph = voiceGlyph;
         DevicePage.SetVoiceHalo(active: true);
-        _pushToTalkAutomation.RequestStart(
-            dialContextActive: IsVirtualDialContextActive);
+        _pushToTalkAutomation.RequestStart();
         EnsurePushToTalkAutomationPump();
     }
 
@@ -4005,25 +4004,6 @@ public partial class MainWindow : Window
 
                 switch (action)
                 {
-                    case PushToTalkAutomationAction.CloseDial:
-                    {
-                        var closeResult =
-                            await CloseVirtualDialForPushToTalkAsync()
-                                .ConfigureAwait(true);
-                        var closed =
-                            closeResult.Succeeded &&
-                            !closeResult.IsMenuOpen;
-                        _pushToTalkAutomation.Complete(
-                            action,
-                            closed);
-                        if (!closed)
-                        {
-                            PresentDictationDialCloseFailure(
-                                closeResult);
-                        }
-
-                        break;
-                    }
                     case PushToTalkAutomationAction.StartDictation:
                     {
                         var result =
@@ -4034,7 +4014,9 @@ public partial class MainWindow : Window
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
                                         .StartActionNames,
-                                    ComposerAutomationChannel.Unknown)
+                                    ComposerAutomationChannel.Unknown,
+                                    closeDialBeforeFallback:
+                                        IsVirtualDialContextActive)
                                 .ConfigureAwait(true);
                         _pushToTalkAutomation.Complete(
                             action,
@@ -4062,7 +4044,8 @@ public partial class MainWindow : Window
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
                                         .StopActionNames,
-                                    _dictationAutomationChannel)
+                                    _dictationAutomationChannel,
+                                    closeDialBeforeFallback: false)
                                 .ConfigureAwait(true);
                         var stopped =
                             result.Executed ||
@@ -4166,7 +4149,8 @@ public partial class MainWindow : Window
             int timeoutMs,
             bool allowShortcutFallback,
             IReadOnlyList<string> actionNames,
-            ComposerAutomationChannel requiredChannel)
+            ComposerAutomationChannel requiredChannel,
+            bool closeDialBeforeFallback)
     {
         var microSession =
             requiredChannel == ComposerAutomationChannel.MicroHid;
@@ -4179,11 +4163,22 @@ public partial class MainWindow : Window
             );
         if (microSession || mayStartMicroSession)
         {
+            var rearmingUnconfirmedPress =
+                microPressed &&
+                _microInput.HasUnconfirmedPushToTalkState;
             var micro = _microInput.SendPushToTalk(microPressed);
             if (
-                microSession &&
-                !microPressed &&
-                micro == MicroReportSendResult.NotSent)
+                (
+                    microSession &&
+                    !microPressed &&
+                    micro is
+                        MicroReportSendResult.NotSent or
+                        MicroReportSendResult.OutcomeUnknown
+                ) ||
+                (
+                    rearmingUnconfirmedPress &&
+                    micro == MicroReportSendResult.NotSent
+                ))
             {
                 await Task.Delay(
                         BridgeTimings.MicroReleaseRetryDelayMs)
@@ -4222,6 +4217,25 @@ public partial class MainWindow : Window
                         AgentAutomationErrorCodes.InputInjectionFailed,
                         "micro.input-not-sent",
                         ComposerAutomationChannel.MicroHid));
+            }
+        }
+
+        if (closeDialBeforeFallback && allowShortcutFallback)
+        {
+            var closeResult =
+                await CloseVirtualDialForPushToTalkAsync()
+                    .ConfigureAwait(true);
+            if (!closeResult.Succeeded || closeResult.IsMenuOpen)
+            {
+                PresentDictationDialCloseFailure(closeResult);
+                return new(
+                    false,
+                    new ComposerAutomationResult(
+                        false,
+                        closeResult.Error ??
+                            AgentAutomationErrorCodes.ElementUnsupported,
+                        closeResult.ErrorDetail ??
+                            "dictation-dial-close"));
             }
         }
 

@@ -3,7 +3,6 @@ namespace CodexController.Controllers;
 public enum PushToTalkAutomationAction
 {
     None,
-    CloseDial,
     StartDictation,
     StopDictation,
 }
@@ -42,8 +41,7 @@ public sealed class PushToTalkAutomationState
     private long _revision;
     private long _attemptedRevision = -1;
     private PushToTalkAutomationAction _attemptedAction;
-    private bool _dialCloseRequired;
-
+    private bool _restartRequired;
     public bool WantsDictation { get; private set; }
 
     public bool IsDictating { get; private set; }
@@ -60,17 +58,17 @@ public sealed class PushToTalkAutomationState
         }
     }
 
-    public void RequestStart(bool dialContextActive)
+    public void RequestStart()
     {
+        _restartRequired |= IsDictating && !WantsDictation;
         WantsDictation = true;
-        _dialCloseRequired |= dialContextActive;
         _revision++;
     }
 
     public void RequestStop()
     {
         WantsDictation = false;
-        _dialCloseRequired = false;
+        _restartRequired = false;
         _revision++;
     }
 
@@ -96,17 +94,11 @@ public sealed class PushToTalkAutomationState
     {
         switch (action)
         {
-            case PushToTalkAutomationAction.CloseDial:
-                _dialCloseRequired = false;
-                if (!succeeded && _attemptedRevision == _revision)
-                {
-                    WantsDictation = false;
-                }
-                break;
             case PushToTalkAutomationAction.StartDictation:
                 if (succeeded)
                 {
                     IsDictating = true;
+                    _restartRequired = false;
                 }
                 else if (_attemptedRevision == _revision)
                 {
@@ -126,15 +118,15 @@ public sealed class PushToTalkAutomationState
     {
         WantsDictation = false;
         IsDictating = false;
-        _dialCloseRequired = false;
+        _restartRequired = false;
         _revision++;
     }
 
     private PushToTalkAutomationAction ResolveNextAction()
     {
-        if (WantsDictation && _dialCloseRequired)
+        if (WantsDictation && IsDictating && _restartRequired)
         {
-            return PushToTalkAutomationAction.CloseDial;
+            return PushToTalkAutomationAction.StopDictation;
         }
 
         if (WantsDictation && !IsDictating)

@@ -44,6 +44,17 @@ public sealed class MicroInputService : IDisposable
 
     public MicroTransportState State => _transport.State;
 
+    public bool HasUnconfirmedPushToTalkState
+    {
+        get
+        {
+            lock (_heldSync)
+            {
+                return _heldKeys.Contains("ACT10");
+            }
+        }
+    }
+
     public bool TryToggleFast() =>
         WasHandled(SendToggleFast());
 
@@ -78,22 +89,55 @@ public sealed class MicroInputService : IDisposable
 
     public MicroReportSendResult SendPushToTalk(bool pressed)
     {
-        var releaseHeldKey = false;
-        if (!pressed)
+        if (
+            pressed &&
+            !_layout.AllowsCommand(
+                "ACT10_ACT11",
+                "dictation.pushToTalk"))
         {
-            lock (_heldSync)
-            {
-                releaseHeldKey = _heldKeys.Contains("ACT10");
-            }
+            return MicroReportSendResult.NotSent;
+        }
+
+        var releaseHeldKey = false;
+        var restartHeldKey = false;
+        lock (_heldSync)
+        {
+            var isHeld = _heldKeys.Contains("ACT10");
+            releaseHeldKey = !pressed && isHeld;
+            restartHeldKey = pressed && isHeld;
         }
 
         if (
+            !pressed &&
             !releaseHeldKey &&
             !_layout.AllowsCommand(
                 "ACT10_ACT11",
                 "dictation.pushToTalk"))
         {
             return MicroReportSendResult.NotSent;
+        }
+
+        if (restartHeldKey)
+        {
+            var reports = new List<byte[]>();
+            Append(
+                reports,
+                MicroRpcCodec.EncodeHid("ACT10", action: 0));
+            Append(
+                reports,
+                MicroRpcCodec.EncodeHid("ACT10", action: 1));
+            var restart = _transport.Send(reports);
+            if (restart is
+                MicroReportSendResult.Accepted or
+                MicroReportSendResult.OutcomeUnknown)
+            {
+                lock (_heldSync)
+                {
+                    _heldKeys.Add("ACT10");
+                }
+            }
+
+            return restart;
         }
 
         return SendKeyState("ACT10", pressed);

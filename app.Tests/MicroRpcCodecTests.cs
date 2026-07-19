@@ -188,6 +188,35 @@ public sealed class MicroInputServiceTests
     }
 
     [Fact]
+    public void NextPressRearmsAnUnconfirmedPushToTalkRelease()
+    {
+        using var transport = new RecordingTransport();
+        transport.Results.Enqueue(MicroReportSendResult.Accepted);
+        transport.Results.Enqueue(MicroReportSendResult.OutcomeUnknown);
+        transport.Results.Enqueue(MicroReportSendResult.Accepted);
+        using var input = CreateInput(transport);
+
+        Assert.Equal(
+            MicroReportSendResult.Accepted,
+            input.SendPushToTalk(pressed: true));
+        Assert.Equal(
+            MicroReportSendResult.OutcomeUnknown,
+            input.SendPushToTalk(pressed: false));
+        Assert.Equal(
+            MicroReportSendResult.Accepted,
+            input.SendPushToTalk(pressed: true));
+
+        Assert.Equal(
+            [
+                ("ACT10", 1),
+                ("ACT10", 0),
+                ("ACT10", 0),
+                ("ACT10", 1),
+            ],
+            DecodeHidEvents(transport.Reports));
+    }
+
+    [Fact]
     public void AgentZeroIsARealSlotAndNeverEscape()
     {
         using var transport = new RecordingTransport();

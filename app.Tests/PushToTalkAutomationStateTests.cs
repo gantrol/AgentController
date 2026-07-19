@@ -28,18 +28,12 @@ public sealed class PushToTalkAutomationStateTests
     }
 
     [Fact]
-    public void DialContextIsClosedBeforeDictationStarts()
+    public void StartIsNeverBlockedBehindPopupAutomation()
     {
         var state = new PushToTalkAutomationState();
 
-        state.RequestStart(dialContextActive: true);
+        state.RequestStart();
 
-        Assert.Equal(
-            PushToTalkAutomationAction.CloseDial,
-            state.BeginNextAction());
-        state.Complete(
-            PushToTalkAutomationAction.CloseDial,
-            succeeded: true);
         Assert.Equal(
             PushToTalkAutomationAction.StartDictation,
             state.BeginNextAction());
@@ -49,7 +43,7 @@ public sealed class PushToTalkAutomationStateTests
     public void ReleaseDuringStartImmediatelySchedulesStopAfterSuccess()
     {
         var state = new PushToTalkAutomationState();
-        state.RequestStart(dialContextActive: false);
+        state.RequestStart();
         Assert.Equal(
             PushToTalkAutomationAction.StartDictation,
             state.BeginNextAction());
@@ -76,7 +70,7 @@ public sealed class PushToTalkAutomationStateTests
     public void FailedStartDoesNotSpinUntilASecondPhysicalPress()
     {
         var state = new PushToTalkAutomationState();
-        state.RequestStart(dialContextActive: false);
+        state.RequestStart();
         var action = state.BeginNextAction();
 
         state.Complete(action, succeeded: false);
@@ -88,47 +82,9 @@ public sealed class PushToTalkAutomationStateTests
             PushToTalkAutomationAction.None,
             state.BeginNextAction());
         state.RequestStop();
-        state.RequestStart(dialContextActive: false);
+        state.RequestStart();
         Assert.Equal(
             PushToTalkAutomationAction.StartDictation,
-            state.BeginNextAction());
-    }
-
-    [Fact]
-    public void FailedDialCloseAbortsStartUntilTriggerIsPressedAgain()
-    {
-        var state = new PushToTalkAutomationState();
-        state.RequestStart(dialContextActive: true);
-        var action = state.BeginNextAction();
-
-        state.Complete(action, succeeded: false);
-
-        Assert.False(state.WantsDictation);
-        Assert.False(state.IsDictating);
-        Assert.False(state.HasPendingAction);
-        Assert.Equal(
-            PushToTalkAutomationAction.None,
-            state.BeginNextAction());
-        state.RequestStart(dialContextActive: false);
-        Assert.Equal(
-            PushToTalkAutomationAction.StartDictation,
-            state.BeginNextAction());
-    }
-
-    [Fact]
-    public void ReleaseDuringDialCloseNeverStartsDictation()
-    {
-        var state = new PushToTalkAutomationState();
-        state.RequestStart(dialContextActive: true);
-        var action = state.BeginNextAction();
-
-        state.RequestStop();
-        state.Complete(action, succeeded: true);
-
-        Assert.False(state.WantsDictation);
-        Assert.False(state.IsDictating);
-        Assert.Equal(
-            PushToTalkAutomationAction.None,
             state.BeginNextAction());
     }
 
@@ -136,7 +92,7 @@ public sealed class PushToTalkAutomationStateTests
     public void FailedStopKeepsRecordingStateVisibleWithoutSpinning()
     {
         var state = new PushToTalkAutomationState();
-        state.RequestStart(dialContextActive: false);
+        state.RequestStart();
         var start = state.BeginNextAction();
         state.Complete(start, succeeded: true);
         state.RequestStop();
@@ -157,16 +113,42 @@ public sealed class PushToTalkAutomationStateTests
     }
 
     [Fact]
+    public void NewPressAfterFailedReleaseRetriesReleaseBeforeRestart()
+    {
+        var state = new PushToTalkAutomationState();
+        state.RequestStart();
+        state.Complete(
+            state.BeginNextAction(),
+            succeeded: true);
+        state.RequestStop();
+        state.Complete(
+            state.BeginNextAction(),
+            succeeded: false);
+
+        state.RequestStart();
+
+        Assert.Equal(
+            PushToTalkAutomationAction.StopDictation,
+            state.BeginNextAction());
+        state.Complete(
+            PushToTalkAutomationAction.StopDictation,
+            succeeded: true);
+        Assert.Equal(
+            PushToTalkAutomationAction.StartDictation,
+            state.BeginNextAction());
+    }
+
+    [Fact]
     public void NewPressDuringStopRestartsOnlyAfterSuccessfulStop()
     {
         var state = new PushToTalkAutomationState();
-        state.RequestStart(dialContextActive: false);
+        state.RequestStart();
         var firstStart = state.BeginNextAction();
         state.Complete(firstStart, succeeded: true);
         state.RequestStop();
         var stop = state.BeginNextAction();
 
-        state.RequestStart(dialContextActive: false);
+        state.RequestStart();
         state.Complete(stop, succeeded: true);
 
         Assert.True(state.WantsDictation);
