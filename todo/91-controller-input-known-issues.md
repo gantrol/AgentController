@@ -1,18 +1,18 @@
 # 91 — 控制器输入已知问题与实机复现
 
-> Status: Investigation
+> Status: Code remediation complete; real-device acceptance pending
 > Priority: P0 for right-stick navigation; P1 for intermittent input loss
 > Depends on: 03-codex-micro-compatibility, 08-testing-observability-and-release
 
 ## 目的
 
-集中记录当前真实 Codex Desktop + 实体手柄上仍未解决的输入问题。这里的现象优先于单元测试结论；没有真实 HID/Micro 发送记录、界面状态变化和实机复现，不得把问题标记为完成。
+集中记录真实 Codex Desktop + 实体手柄的控制器输入问题、代码修复与实机验收。这里的现象优先于单元测试结论；没有真实 HID/Micro 发送记录、界面状态变化和实机复现，不得把问题标记为完成。
 
-2026-07-18 的右摇杆修复分支已全部丢弃，只保留本问题记录。该分支先后尝试恢复双轴导航、用 UIA 语义/几何关联菜单归属，以及在输入侧增加更强的轴锁定、缓存和 pending 清理，但实机问题仍然存在。该结果只能证明这些修补不足，不能证明 UIA、输入缓冲或任一单层就是根因；没有端到端证据前不要原样重做。
+2026-07-18 早先的右摇杆试验分支已全部丢弃。当前 `codex/fix-controller-input-91` 从 `main` 重新按故障层实施：先固定物理手势边界，再冻结纵横轴语义，随后处理 PTT、readback、横向执行器、异步 session，最后引入单 Broker。下面保留修复前基线，并把代码证据与仍未完成的实机证据分开记录。
 
-## 已确认现象
+## 问题基线（修复前）
 
-| ID | 场景 | 期望 | 实际 / 当前状态 |
+| ID | 场景 | 期望 | 修复前实际 |
 | --- | --- | --- | --- |
 | RS-01 | Power 横条 | 右摇杆左/右按屏幕方向减小/增大 | 当前方向已正确，作为其他控件的对照样本保留 |
 | RS-02 | `Approve for me` | 右进入/打开，左退出/返回；打开后上/下移动菜单高亮 | 右能打开、左能退出，但菜单内没有可靠可见高亮，输入容易表现为卡住 |
@@ -23,6 +23,31 @@
 | RS-07 | 模型控制器长期使用 | 每次手势都能继续控制当前模型界面 | 偶发完全失去手柄控制；打开模型选择器后又恢复，恢复动作只是复现线索，不是解决方案 |
 | LT-01 | LT 按住说话 | 按下开始、松开停止，任何退出或断连都补发 release | 偶发语音键无效；尚未确认是边沿丢失、策略阻止、自动化失败还是 Codex 未读回 |
 | SRC-01 | 实体控制器 + `virtual-micro` 模拟器 | 两者可同时连接，由 Broker 串行化输入并分别管理 held/neutral 生命周期 | 当前看起来只能有一个输入源正常占用；共享句柄、sequence、output/RPC 所有权尚未统一 |
+
+## 代码修复状态（2026-07-18）
+
+| ID | 已实施修复 | 自动化证据 | 实机状态 |
+| --- | --- | --- | --- |
+| RS-01 | 横向 literal screen direction 保持不变；RangeValue 必须读回正确方向变化 | `CurrentControlActionPolicyTests` | 待按 Power 横条左右各 10 次复验 |
+| RS-02 / RS-03 / RS-04 | 上/下固定为 Micro encoder；左仅退出菜单，右仅在已验证可展开控件进入；菜单必须读回具体选中项 | `VirtualDialInputPolicyTests`、`CodexMicroReadbackObserverTests`、`CurrentControlActionPolicyTests` | 待真实 Approve、Add files、模型菜单复验 |
+| RS-05 | 横向 executor 只接受与当前可见选择一致的 Codex 键盘焦点；未验证时不注入；可调整控件验证数值方向 | `CurrentControlActionPolicyTests` | 待 Advanced、Fast、Power 顺序复验 |
+| RS-06 | state buffer 保留跨区、换向和完整 neutral；手势期间同时锁定轴与方向，回中后才重新判定 | `ControllerStateBufferTests`、`StickGestureRouterTests` | 待慢速、快速、斜向和未完全回中矩阵 |
+| RS-07 | encoder intent 有界合并且 180 ms 过期；横向 intent 绑定 generation 且 450 ms 过期；readback 合并请求，不再通过 cancellation 互相饿死 | `EncoderStepAccumulatorTests`、`CurrentControlIntentBufferTests` | 待长期重复与“打开模型选择器后恢复”复验 |
+| LT-01 | PTT 改为 Micro-first down/up；release 不确定时补发一次；下一次 press 先恢复 neutral；断连/退出保留 release | `MicroRpcCodecTests`、`PushToTalkAutomationStateTests`、`ControllerStateBufferTests` | 待短按、口述、菜单、失焦、断连复验 |
+| SRC-01 | Agent Controller 与模拟器都改为 named-pipe client；唯一 Broker 独占 `CodexMicroVhfUm`、统一 sequence 和 output/RPC reader，并按 client lease 中和 | `BrokerCoexistenceTests`、`ClientInputStateTests`、`MicroDriverOwnershipRulesTests` | 双客户端 fake-driver 验收通过；真实驱动双进程仍待复验 |
+
+分层提交：
+
+1. `f809b90` — 保留手势边界；
+2. `1030dff` — 纵向固定走 Micro encoder；
+3. `b114dd3` — PTT Micro-first 与恢复状态机；
+4. `f054aca` — 只读菜单/readback 验证；
+5. `40ab80f` — 已验证横向控件执行器；
+6. `65a1dfa` — generation、TTL 与 readback 饥饿修复；
+7. `38b42f8` — 单 Broker、多客户端 lease；
+8. `119a815` — 架构测试禁止桌面进程重新直接打开驱动。
+
+当前自动化基线为主解决方案 784 项、`CodexMicro.Protocol` 5 项、`CodexMicro.Desktop` 44 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
 
 ## 不可变交互合同
 
@@ -36,9 +61,9 @@
 
 ## 右摇杆到 Codex 的端到端 UML
 
-### 当前实际链路（问题基线）
+### 修复前链路（历史问题基线）
 
-当前实现不是一条纯 Micro 链路，而是根据菜单状态在 Micro、原生方向键和 UIA 之间切换：
+修复前实现不是一条稳定的 Micro 链路，而是根据菜单状态在 Micro、原生方向键和 UIA 之间切换：
 
 ```mermaid
 flowchart LR
@@ -94,7 +119,7 @@ flowchart LR
     O --> Q --> R --> S --> T --> U --> V --> W
 ```
 
-### 当前轴语义冲突
+### 修复前轴语义冲突（已移除）
 
 菜单状态会改变哪个物理轴被转换成 `ENC_*`，所以“上下、左右混淆”不一定只来自摇杆斜向噪声：
 
@@ -106,7 +131,33 @@ flowchart LR
     E2 --> SAME
 ```
 
-### 目标原生 Micro 时序
+### 修复后实际链路
+
+```mermaid
+flowchart LR
+    State["ControllerState<br/>RightX / RightY"] --> Buffer["ControllerStateBuffer<br/>保留换向与 neutral"]
+    Buffer --> Router["StickGestureRouter<br/>锁定轴 + 方向直到回中"]
+
+    Router -->|"Vertical"| Encoder["EncoderStepAccumulator<br/>有界 + 180 ms TTL"]
+    Encoder --> Micro["MicroInputService<br/>ENC_CW / ENC_CC act=2"]
+    Micro --> Client["MicroBrokerClient<br/>clientId + requestId"]
+    Client --> Pipe["current-user named pipe"]
+    Pipe --> Broker["唯一 Micro Broker<br/>global sequence / lease / output reader"]
+    Broker --> Driver["CodexMicroVhfUm<br/>UMDF2 / VHF"]
+    Driver --> Codex["Windows HID → codex-micro-service → bridge"]
+
+    Router -->|"Horizontal"| Intent["CurrentControlIntentBuffer<br/>generation + 450 ms TTL"]
+    Intent --> Readback["只读 UIA readback<br/>具体选择 + focus"]
+    Readback --> Executor{"CurrentControlExecutor"}
+    Executor -->|"右进入可展开控件"| MicroPress["Micro ENC down/up"]
+    Executor -->|"已验证可调控件"| Native["Left / Right"]
+    Executor -->|"左退出已打开菜单"| Escape["Escape"]
+    Executor -->|"未验证 / 过期"| Drop["不注入"]
+```
+
+纵向不再读取 popup 或横向 readback；横向也不能进入 `SendEncoderSteps`。UIA 在横向链路中只负责读取目标、焦点与结果，不能凭 popup 可见就宣告成功。
+
+### 修复后原生 Micro 时序
 
 右摇杆上/下固定表示 Micro 旋钮旋转；路由不得读取或猜测 Codex popup 来改变轴语义：
 
@@ -119,9 +170,10 @@ sequenceDiagram
     participant Input as Controller Input
     participant Gesture as PhysicalGestureEngine
     participant Projection as Micro Projection
-    participant Broker as Micro Broker
     participant Codec as Micro Codec
-    participant Driver as KMDF/VHF Driver
+    participant Client as Broker Client
+    participant Broker as Micro Broker
+    participant Driver as CodexMicroVhfUm / UMDF2 VHF
     participant HID as Windows HID
     participant Service as codex-micro-service
     participant Bridge as codex-micro-bridge
@@ -133,10 +185,10 @@ sequenceDiagram
     Gesture->>Gesture: 锁定 Vertical 轴
     Gesture->>Projection: EncoderStep(+1)
 
-    Projection->>Broker: MicroControlIntent + epoch + sequence
-    Broker->>Codec: 编码 ENC_CW, act=2
-    Codec-->>Broker: 64-byte Report, ID 0x06 / Channel 0x02
-    Broker->>Driver: IOCTL SubmitInput(batch)
+    Projection->>Codec: 编码 ENC_CW, act=2
+    Codec-->>Client: 64-byte Report, ID 0x06 / Channel 0x02
+    Client->>Broker: named-pipe submit + clientId + requestId
+    Broker->>Driver: IOCTL SubmitInput(batch + global sequence)
     Driver->>HID: VhfReadReportSubmit
     HID->>Service: HID input report
     Service->>Bridge: Micro encoder event
@@ -161,17 +213,28 @@ sequenceDiagram
 | 右摇杆左/右 | `CurrentControlLeft / CurrentControlRight` | 独立导航 executor；绝不转换成 `ENC_*` |
 | 回中 | `Neutral` | 释放轴 ownership，不得被快照合并丢失 |
 
-## 仍待确认的根因
+## 已处理的故障层与仍待确认部分
 
-以下均是待证假设，不是结论：
+代码 fixture 已把问题拆到以下确定层，不再用一个“右摇杆偶发失灵”概括全部故障：
 
-- XInput 快照合并或 UI 线程排队丢失关键 neutral，导致上一轴的 ownership 延续到下一手势。
-- 方向锁定只覆盖单个路由层，后续 coordinator、Micro transport 或 UIA fallback 又重新按原始 X/Y 判定。
-- 同一手势同时进入 Micro 与 legacy UIA/键盘降级路径，先后作用于不同控件。
-- 菜单“逻辑归属”、UIA focus、键盘 selection 和屏幕可见高亮是四种不同状态，当前代码错误地把其中一个当成全部成立。
-- popup 打开/关闭时 session、pending repeat 或 cancellation token 未完整换代，旧动作在新上下文执行。
-- Codex Desktop 对不同 composer 控件采用不同菜单/listbox 结构，基于名称、几何或固定 Tab/Arrow 的推断不稳定。
-- 实体控制器与模拟器争用设备接口、全局 sequence 或 output report 读取者，导致其中一个输入源看似失联。
+| 故障层 | 修复 |
+| --- | --- |
+| Input buffer | 不能跨 gesture region 合并；按钮、LT 阈值、方向和 neutral 边界必须保留 |
+| Gesture | 一次手势只有一个轴和一个方向；换轴、反向都必须先完整回中 |
+| Projection | 纵向唯一投影为 `ENC_CW / ENC_CC act=2`；横向永远不是 encoder detent |
+| Session | encoder 有界合并；横向 intent 绑定 generation/TTL；readback 使用 coalescing gate |
+| Verification | popup visible 不等于成功；菜单必须有具体选择，横向必须匹配真实 focus，数值必须按预期方向变化 |
+| PTT | down/up、OutcomeUnknown、release retry、restart neutral 与断连清理进入同一状态机 |
+| Transport ownership | 单 Broker 独占 handle、sequence 与 output reader；客户端状态按 lease 隔离 |
+
+以下部分仍必须由实机记录确认，不能从自动化测试推断：
+
+- 实体控制器采样与 WPF Dispatcher 长时间繁忙时，是否仍能观察到完整 neutral，`DroppedStateCount` 是否增加。
+- 每个真实手势是否只出现一个轴、一个方向和一个执行通道；Micro 返回非 `NotSent` 后是否仍有第二次原生按键。
+- 当前 Codex build 的菜单 selection、UIA focus 与可见高亮是否一致；不一致时 executor 是否确实拒绝发送。
+- popup 打开/关闭、失焦/恢复和鼠标先操作后，generation/TTL 是否阻止旧 intent 重放。
+- 当前 Codex build 对 Approve、Add files、模型列表、Advanced、Fast、Power 暴露的 readback 结构是否覆盖现有观察器。
+- 两个真实桌面进程是否都只连接 Broker，驱动 batch sequence 是否单调，output/RPC 是否只有一个 reader。
 
 ## 下一次排查必须采集的证据
 

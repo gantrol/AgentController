@@ -1,6 +1,6 @@
 # 架构与输入链路
 
-> Status: Initial design summary
+> Status: Controller-input remediation implemented; hardware acceptance pending
 > Updated: 2026-07-18
 
 ## 1. 两条互补控制平面
@@ -71,15 +71,21 @@ sequenceDiagram
 | 右摇杆左/右 | `CurrentControlLeft / CurrentControlRight` | 独立、可验证的导航 executor；绝不发送 `ENC_*` |
 | 摇杆回中 | `Neutral` | 释放 axis ownership；不得被快照合并丢失 |
 
-## 3. 当前实现与目标的边界
+## 3. 当前实现与剩余边界
 
-当前 WPF 实现仍在 `MainWindow`、`CodexComposerService` 内维护 popup、键盘和 UIA fallback；菜单状态可能改变纵横轴最终进入的执行器。目标结构要求：
+当前实现已经固定纵横轴所有权和执行通道：
 
-1. 输入层只产生稳定的物理手势和 neutral 生命周期；
-2. `MicroControlIntent` 不包含 UIA、窗口句柄或 Codex 文案；
-3. Micro 可表达的动作不再以 UIA 为主执行器；
-4. `NotSent` 才允许进入明确的降级路径；`Accepted`、`OutcomeUnknown`、`Rejected` 均禁止双发；
-5. 每个动作带 correlation id，能串起原始输入、路由、report、transport 结果和 Codex readback。
+1. `ControllerStateBuffer` 只合并处于同一手势区域的快照，不能跨过按钮、LT 阈值、轴方向或完整 neutral；
+2. `StickGestureRouter` 在一次手势内锁定轴与方向，只有 X/Y 都回到 release zone 才允许下一手势重新判定；
+3. 右摇杆纵向只进入 `MicroInputService.SendEncoderSteps`，不读取 popup 状态，也不进入横向 executor；
+4. 右摇杆横向只进入带 generation 和 450 ms 有效期的 `CurrentControlIntentBuffer`，目标没有可验证 readback 时不注入按键；
+5. 可展开控件的“右进入”优先发送 Micro `ENC` 按压；只有明确 `NotSent` 才允许 Right Arrow。`Accepted`、`OutcomeUnknown`、`Rejected` 均禁止双发；
+6. 横向 Left/Right/Escape 在 Codex 仍为前台、可见选择与键盘焦点一致时才发送；RangeValue 控件还必须读回正确方向的数值变化；
+7. popup/readback 请求采用合并而非互相取消；旧 generation 或超时 intent 不得在后来打开的菜单中重放；
+8. LT 使用 Micro-first 的 down/up 状态机；不确定 release 会补发一次，下一次 press 会先恢复 neutral；
+9. Agent Controller 与 `virtual-micro` 都是同一当前用户 Broker 的客户端，桌面进程不再直接打开驱动。
+
+仍未完成的是实体手柄与真实 Codex build 的验收记录，以及覆盖原始输入到 readback 的可导出 correlation trace；自动化测试不能替代这两项。
 
 完整问题基线见[控制器输入已知问题与实机复现](../../todo/91-controller-input-known-issues.md)。
 
@@ -91,7 +97,7 @@ sequenceDiagram
 | --- | --- |
 | Git 跟踪的驱动源码 | **仅保留** `virtual-micro/driver/CodexMicroVhfUm/`；它是 UMDF2/VHF source driver。工作区中的 `CodexMicroVhf/`、`CodexMicroHidUm/` 当前均未被 Git 跟踪，不属于项目依赖。 |
 | `virtual-micro` 构建、安装与 v0.1.0 | 构建说明、安装脚本和 `codex-micro-v0.1.0` 标签都只选择 `CodexMicroVhfUm.dll`，安装 Source PnP ID `Root\CodexMicroHidUm`；与 v0.1.0 一致。 |
-| Agent Controller 运行时 | 不静态链接驱动 DLL，也不检查 UMDF service 名称；它只打开下表的设备接口并验证 protocol v1。因此它依赖的是 **CodexMicroVhfUm 提供的接口合同**，而不是 Windows loader 层面的 DLL 依赖。任何冒充同一 GUID/合同的驱动理论上也能被打开。 |
+| Agent Controller 运行时 | Agent Controller 和 `virtual-micro` 只连接当前用户 named pipe；只有隐藏的 `AgentController.MicroBroker` 进程独占设备接口、分配全局 sequence，并单点读取 output/RPC。因此运行时依赖的是 **CodexMicroVhfUm 提供的接口合同**，而不是 Windows loader 层面的 DLL 静态依赖。任何冒充同一 GUID/合同的驱动理论上仍可能被打开。 |
 | Agent Controller 发布包 | 当前 `package-release.ps1` 不携带或安装驱动；Full Micro mode 需要另行安装匹配的 Device Support。 |
 
 冻结合同：
@@ -103,10 +109,37 @@ sequenceDiagram
 | Source PnP ID | `Root\CodexMicroHidUm` |
 | 私有接口 GUID | `E2A7CB54-8420-4D51-9DD8-D6575B9251D1` |
 | Broker contract | magic `0x314D4356`（`VCM1`）、version `1` |
-| Agent Controller 使用的 IOCTL | `GET_INFO 0x800`、`SUBMIT_INPUT 0x801`、`READ_OUTPUT 0x802` |
-| v0.1.0 额外能力 | `SUBMIT_KEYBOARD 0x803`，只允许 Tab、Shift+Tab、Enter；当前 Agent Controller transport 尚未使用 |
+| Broker 使用的 IOCTL | `GET_INFO 0x800`、`SUBMIT_INPUT 0x801`、`READ_OUTPUT 0x802`；模拟器对话框操作还使用 `SUBMIT_KEYBOARD 0x803` |
+| v0.1.0 键盘能力 | `SUBMIT_KEYBOARD 0x803` 只允许 Tab、Shift+Tab、Enter；Agent Controller 的常规 Micro input 不使用它 |
 | Micro wire report | 64 bytes，Report ID `0x06` |
 
-所以，“产品只选择 `CodexMicroVhfUm`”已经成立；“运行时能证明打开的一定是该二进制”尚未成立。正式 Broker/Device Support 还需校验 Provider、service、PnP identity、驱动版本和签名，再允许 Full Micro mode。
+所以，“产品只选择 `CodexMicroVhfUm`”以及“只有 Broker 能直接打开私有接口”已经成立，并由 `MicroDriverOwnershipRulesTests` 防止回退；“运行时能证明打开的一定是该二进制”尚未成立。正式 Device Support 还需校验 Provider、service、PnP identity、驱动版本和签名，再允许 Full Micro mode。
 
 与 `codex-micro-v0.1.0` 标签逐文件比较时，`Driver.c`、`Driver.h`、`Public.h` 和 INF 合同没有变化；当前版本只在 `.vcxproj` 增加了 Debug/Release 静态运行库选择。因此设备身份、IOCTL、report 和 UMDF2/VHF 行为合同仍与 v0.1.0 对齐。
+
+## 5. 单 Broker、多客户端实际链路
+
+```mermaid
+flowchart LR
+    Pad["实体控制器"] --> App["Agent Controller"]
+    Sim["virtual-micro"] --> SimClient["Simulator Broker Client"]
+    App --> AppClient["Agent Controller Broker Client"]
+    AppClient -->|"current-user named pipe"| Broker["唯一 Micro Broker 进程"]
+    SimClient -->|"current-user named pipe"| Broker
+    Broker -->|"exclusive handle + global sequence"| Driver["CodexMicroVhfUm"]
+    Driver --> HID["VHF HID child"]
+    HID --> Codex["codex-micro-service / bridge"]
+    Codex -->|"output RPC / lighting"| Driver
+    Driver -->|"single reader"| Broker
+    Broker -->|"event cursor broadcast"| AppClient
+    Broker -->|"event cursor broadcast"| SimClient
+```
+
+Broker 对每个客户端保存独立 `clientId`、心跳 lease、held key、PTT 和 analog 状态。正常 disconnect、客户端崩溃后的 lease expiry、Broker 退出都会执行 best-effort neutral；当另一客户端仍持有同一键或 analog 时，不发送会释放对方状态的 neutral。管道限定当前用户、帧长和 batch 数，并限制同时连接数；驱动 handle、batch sequence 和 output/RPC reader 只有一份。
+
+自动回归覆盖：
+
+- 两个客户端交换连接顺序后共享同一 connection epoch，驱动只连接一次；
+- 一个客户端退出只释放自己的 held state；同键/同 analog 被另一客户端持有时不会误释放；
+- output/RPC 只有 Broker 读取，灯光状态同时广播给两个客户端；
+- app、Broker、协议和模拟器测试通过后，仍必须执行 [`91-controller-input-known-issues.md`](../../todo/91-controller-input-known-issues.md) 中未勾选的实机矩阵。

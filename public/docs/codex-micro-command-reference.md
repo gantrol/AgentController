@@ -134,7 +134,7 @@ Submit:   ACT12 act=1 -> ACT12 act=0
 - Source PnP ID：`Root\CodexMicroHidUm`；
 - 私有接口：`E2A7CB54-8420-4D51-9DD8-D6575B9251D1`；
 - contract magic/version：`0x314D4356` / `1`；
-- Agent Controller 当前使用 `GET_INFO`、`SUBMIT_INPUT`、`READ_OUTPUT`；
-- `codex-micro-v0.1.0` 的同一 UMDF2 source 还提供受限键盘 child，只允许 Tab、Shift+Tab、Enter。
+- 唯一的 `AgentController.MicroBroker` 使用 `GET_INFO`、`SUBMIT_INPUT`、`READ_OUTPUT`，并为模拟器的受限对话框操作使用 `SUBMIT_KEYBOARD`；
+- `codex-micro-v0.1.0` 的同一 UMDF2 source 提供受限键盘 child，只允许 Tab、Shift+Tab、Enter。
 
-Agent Controller 没有静态链接该 DLL；它通过设备接口使用合同。因此发布与健康检查仍需验证实际安装的 Provider、service、PnP identity、版本和签名，不能只凭 GUID 判断驱动身份。
+Agent Controller 与 `virtual-micro` 都没有静态链接或直接打开该 DLL；它们通过当前用户 named pipe 连接 Broker。只有 Broker 通过设备接口使用合同、分配全局 batch sequence 并读取 output/RPC。架构测试禁止桌面客户端重新出现 `DeviceIoControl` 或私有接口 GUID。发布与健康检查仍需验证实际安装的 Provider、service、PnP identity、版本和签名，不能只凭 GUID 判断驱动身份。
