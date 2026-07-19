@@ -4,6 +4,8 @@
 > Priority: P0 for right-stick navigation; P1 for intermittent input loss
 > Depends on: 03-codex-micro-compatibility, 08-testing-observability-and-release
 
+> 2026-07-19 实机回归重新发现两条 P0：右摇杆横向完全无动作，以及菜单键只显示 Agent Controller 反馈、无法把 Codex 置前。代码根因已分别在 `c7754f7`、`be0d67e` 修复；多 Codex 主窗口循环选择在 `af81c9a` 增补。仍须用新构建复验，不能因自动化与一次本机激活探针通过而关闭本条目。
+
 ## 目的
 
 集中记录真实 Codex Desktop + 实体手柄的控制器输入问题、代码修复与实机验收。这里的现象优先于单元测试结论；没有真实 HID/Micro 发送记录、界面状态变化和实机复现，不得把问题标记为完成。
@@ -23,6 +25,15 @@
 | RS-07 | 模型控制器长期使用 | 每次手势都能继续控制当前模型界面 | 偶发完全失去手柄控制；打开模型选择器后又恢复，恢复动作只是复现线索，不是解决方案 |
 | LT-01 | LT 按住说话 | 按下开始、松开停止，任何退出或断连都补发 release | 偶发语音键无效；尚未确认是边沿丢失、策略阻止、自动化失败还是 Codex 未读回 |
 | SRC-01 | 实体控制器 + `virtual-micro` 模拟器 | 两者可同时连接，由 Broker 串行化输入并分别管理 held/neutral 生命周期 | 当前看起来只能有一个输入源正常占用；共享句柄、sequence、output/RPC 所有权尚未统一 |
+| RS-08 | 2026-07-19 新构建，右摇杆纯左/纯右 | `Closed` 基态也必须投递屏幕同向的横向动作；上下仍只产生 `ENC_*` | 横向 intent 被“必须有非空 UIA ItemName”的门禁永久挂起，左右均毫无反应 |
+| WAK-01 | 菜单键唤醒 | Agent Controller 显示反馈后，真实 Codex 主窗口成为前台；若已有多个主窗口，再按菜单键切换下一个 | popup 正常出现，但旧实现按最新进程的 `MainWindowHandle` 选窗并从工作线程直接 `SetForegroundWindow`，Windows 拒绝置前 |
+
+## 从 `virtual-micro` 更新确认的事实（2026-07-19）
+
+- 旋钮旋转仍只有 `ENC_CW` / `ENC_CC`、`act=2`；旋钮按压仍为 `ENC` down/up；模拟摇杆是独立的 `v.oai.rad`。Micro 协议不存在“横向旋钮”命令，所以右摇杆左右只能是 Agent Controller 的显式扩展，绝不能伪装成另一组 `ENC_*`。
+- `fix(micro): make encoder input responsive` 使用有界 accumulator、约 24 ms 的档位间隔和 180 ms 过期时间，不在每个档位发送前同步等待 UIA。Agent Controller 的纵向实现继续遵守这套原则。
+- `virtual-micro` 的 `CodexWindowActivator` 不信任 `Process.MainWindowHandle`：它枚举 Codex 顶层窗，按 tool-window、owner、窗口类和面积评分，再通过 `AttachThreadInput`、`BringWindowToTop`、`SetForegroundWindow`、`SetActiveWindow`、`SetFocus` 与 `SwitchToThisWindow` 置前。Agent Controller 已移植同一策略，并补上工作线程消息队列初始化。
+- v1.0.1/v1.0.2 的新 build 兼容与屏幕灯光保持逻辑不改变上述输入映射；单 Broker 仍是实体控制器与模拟器并存时唯一允许的驱动 owner。
 
 ## 代码修复状态（2026-07-18）
 
@@ -35,6 +46,8 @@
 | RS-07 | encoder intent 有界合并且 180 ms 过期；横向 intent 绑定 generation 且 450 ms 过期；readback 合并请求，不再通过 cancellation 互相饿死；Broker 在应用启动时后台预热且失败重连退避 | `EncoderStepAccumulatorTests`、`CurrentControlIntentBufferTests`、`BrokerCoexistenceTests` | 待长期重复与“打开模型选择器后恢复”复验 |
 | LT-01 | PTT 改为 Micro-first down/up；release 不确定时补发一次；下一次 press 先恢复 neutral；断连/退出保留 release | `MicroRpcCodecTests`、`PushToTalkAutomationStateTests`、`ControllerStateBufferTests` | 待短按、口述、菜单、失焦、断连复验 |
 | SRC-01 | Agent Controller 与模拟器都改为 named-pipe client；唯一 Broker 独占 `CodexMicroVhfUm`、统一 sequence 和 output/RPC reader；重叠 held key 只投递第一次 down/最后一次 up；analog owner 释放时恢复最近仍活跃来源；请求执行/完成续期/lease expiry 原子化；缓存 request response 防止超时重放双发 | `BrokerCoexistenceTests`、`ClientInputStateTests`、`MicroInputBatchTests`、`MicroDriverOwnershipRulesTests` | 三客户端 fake-driver 仲裁与 lease 边界验收通过；真实驱动双进程仍待复验 |
+| RS-08 | `Closed` 是“已确认无打开 surface”，不再要求虚构的非空 `ItemName`；横向策略直接保留 literal Left/Right，执行器仍要求 Codex 前台。任何已识别的具体 surface 继续要求真实焦点与目标名称一致 | `CurrentControlActionPolicyTests`、`VirtualDialInputPolicyTests`、`StickGestureRouterTests` | 25 项定向测试通过；待新构建纯左/纯右实机复验 |
+| WAK-01 | 统一枚举并评分 Codex 顶层窗；排除/降权 owned/tool window，恢复最小化主窗，附加输入线程后置前；UIA locator 复用同一主窗选择结果。菜单键在 Codex 已前台且存在多个主窗口时只循环主窗口，普通快捷键聚焦不循环 | `Win32InputTests`；后台 Chrome → Codex 一次性实机激活探针 | 探针从 `chrome` 前台成功切至 `ChatGPT/Codex`；仍待菜单键实体手柄复验与双主窗口复验 |
 
 分层提交：
 
@@ -50,8 +63,11 @@
 10. `2465499` — 应用启动时后台预热 Broker，输入路径不承担首次连接等待；
 11. `d2879ae` — 重叠 held key 引用合并与 analog 最近活跃 owner 恢复；
 12. `7a41fa4` — 请求执行、完成续期与 lease expiry 原子化。
+13. `c7754f7` — 修复 `Closed` 基态横向 intent 被空名称门禁吞掉；
+14. `be0d67e` — 移植并强化 `virtual-micro` 主窗口枚举与前台激活；
+15. `af81c9a` — 菜单键在多个 Codex 主窗口之间显式循环，普通聚焦保持稳定。
 
-当前自动化基线为主解决方案 791 项、`CodexMicro.Protocol` 5 项、`CodexMicro.Desktop` 44 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
+当前自动化基线为主解决方案 796 项、`CodexMicro.Protocol` 5 项；共享工作区中包含待提交 `virtual-micro` 兼容更新时，`CodexMicro.Desktop` 47 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
 
 ## 不可变交互合同
 
@@ -156,10 +172,11 @@ flowchart LR
     Executor -->|"右进入可展开控件"| MicroPress["Micro ENC down/up"]
     Executor -->|"已验证可调控件"| Native["Left / Right"]
     Executor -->|"左退出已打开菜单"| Escape["Escape"]
-    Executor -->|"未验证 / 过期"| Drop["不注入"]
+    Executor -->|"已验证 Closed / 无具体 surface"| ClosedNative["仅 Codex 前台时<br/>literal Left / Right"]
+    Executor -->|"具体 surface 未验证 / intent 过期"| Drop["不注入"]
 ```
 
-纵向不再读取 popup 或横向 readback；横向也不能进入 `SendEncoderSteps`。UIA 在横向链路中只负责读取目标、焦点与结果，不能凭 popup 可见就宣告成功。
+纵向不再读取 popup 或横向 readback；横向也不能进入 `SendEncoderSteps`。UIA 在横向链路中只负责读取目标、焦点与结果，不能凭 popup 可见就宣告成功。唯一例外是观察器已确认没有打开 surface 的 `Closed` 基态：此时没有可供校验的 item name，允许在“真实 Codex 主窗口当前为前台”这一硬门禁下发送 literal Left/Right；一旦检测到具体菜单、审批框或控件，仍恢复严格目标校验。
 
 ### 修复后原生 Micro 时序
 
@@ -227,7 +244,8 @@ sequenceDiagram
 | Gesture | 一次手势只有一个轴和一个方向；换轴、反向都必须先完整回中 |
 | Projection | 纵向唯一投影为 `ENC_CW / ENC_CC act=2`；横向永远不是 encoder detent |
 | Session | encoder 有界合并；横向 intent 绑定 generation/TTL；readback 使用 coalescing gate |
-| Verification | popup visible 不等于成功；菜单必须有具体选择，横向必须匹配真实 focus，数值必须按预期方向变化 |
+| Verification | popup visible 不等于成功；具体菜单必须有具体选择，具体控件横向必须匹配真实 focus，数值必须按预期方向变化；只有 verified `Closed` 可使用 Codex-foreground-bound literal fallback |
+| Window activation | 枚举并评分所有 Codex 顶层窗，不再按进程启动时间猜 `MainWindowHandle`；工作线程先创建消息队列并附加输入线程；菜单循环只包含无 owner、非 tool 的主窗口 |
 | PTT | down/up、OutcomeUnknown、release retry、restart neutral 与断连清理进入同一状态机 |
 | Transport ownership | 单 Broker 独占 handle、sequence 与 output reader；客户端状态按 lease 隔离；同键引用合并，analog 按最近活跃 owner 恢复；活跃请求不会被 lease sweeper 中途摘除 |
 
@@ -239,6 +257,7 @@ sequenceDiagram
 - popup 打开/关闭、失焦/恢复和鼠标先操作后，generation/TTL 是否阻止旧 intent 重放。
 - 当前 Codex build 对 Approve、Add files、模型列表、Advanced、Fast、Power 暴露的 readback 结构是否覆盖现有观察器。
 - 两个真实桌面进程是否都只连接 Broker，驱动 batch sequence 是否单调，output/RPC 是否只有一个 reader；重叠 PTT 是否只有一次物理 down/up，analog 后来 owner 释放后是否恢复前一来源。
+- 菜单键从 Chrome、桌面、最小化 Codex 等不同前台状态唤醒时，真实主窗口是否每次置前；存在两个 Codex 主窗口时是否只在两者间循环而永不命中工具窗。
 
 ## 下一次排查必须采集的证据
 
@@ -263,6 +282,7 @@ sequenceDiagram
 - [ ] 复现模型控制失活，并比较选择器打开前后完整状态快照；不得只记录“打开后恢复”。
 - [ ] 对 LT 覆盖短按、正常口述、菜单开关、失焦、断连，并确认 down/up 是否都到达每一层。
 - [ ] 单独连接实体控制器、单独连接模拟器、先后交换连接顺序、同时持续输入；重点复验同一 PTT 的重叠 down/up 与 analog owner 交接，验证 SRC-01 的 lease、恢复顺序与 sequence。
+- [ ] 从 Chrome、桌面、最小化 Codex 三种状态各按菜单键 10 次；再打开两个 Codex 主窗口连续点按菜单键，确认按主窗口顺序循环且不命中 tool/popup。
 - [ ] 至少在 Xbox Series、Flydigi Vader 4 Pro、8BitDo Ultimate 2 和当前支持的 Codex build 上保存实机结果。
 
 ## 完成门槛
