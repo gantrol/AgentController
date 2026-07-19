@@ -31,10 +31,10 @@ public sealed class ZhCatalog : DictionaryStringCatalog
 
             [StringKeys.ControlLeftStick] = "左摇杆",
             [StringKeys.ControlLeftStickHint] =
-                "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
+                "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · 按下左摇杆 {0}（L3）切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "上下选择控件 · 左右调整当前控件 · 短按 {0} 确认 · 长按 {0} 打开 Agent Controller 设置",
+                "上下选择控件 · 左右调整当前控件 · 短按右摇杆 {0}（R3）确认 · 长按 {0} 打开 Agent Controller 设置",
             [StringKeys.ControlRightStickHintOpen] =
                 "Micro 菜单已打开 · ↑↓ 选择控件 · ←→ 调整当前控件 · {2} 确认 · {1} 关闭",
             [StringKeys.ControlRightStickHintConfirmation] =

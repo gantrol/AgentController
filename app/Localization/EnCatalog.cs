@@ -32,10 +32,10 @@ public sealed class EnCatalog : DictionaryStringCatalog
 
             [StringKeys.ControlLeftStick] = "Left stick",
             [StringKeys.ControlLeftStickHint] =
-                "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
+                "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · press {0} (L3) to change root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "Up/down selects a control · left/right adjusts it · tap {0} to confirm · hold {0} for Agent Controller settings",
+                "Up/down selects a control · left/right adjusts it · tap {0} (R3) to confirm · hold {0} for Agent Controller settings",
             [StringKeys.ControlRightStickHintOpen] =
                 "Micro menu active · ↑↓ select a control · ←→ adjust it · {2} Select · {1} Close",
             [StringKeys.ControlRightStickHintConfirmation] =

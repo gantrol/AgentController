@@ -3,6 +3,7 @@ using System.Windows.Input;
 using CodexController.Controllers;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 
 namespace CodexController.ViewModels;
@@ -66,7 +67,8 @@ public sealed class DevicePageViewModel : ObservableObject
         ObservableCollection<SidebarEntry> sidebarEntries,
         ReadOnlyObservableCollection<BridgeFeedbackLogRow> recentEvents,
         Action refresh,
-        Action<SidebarScope> selectRootScope)
+        Action<SidebarScope> selectRootScope,
+        Action? refreshTutorialDispatch = null)
     {
         ArgumentNullException.ThrowIfNull(sidebarEntries);
         ArgumentNullException.ThrowIfNull(recentEvents);
@@ -75,6 +77,8 @@ public sealed class DevicePageViewModel : ObservableObject
 
         SidebarEntries = sidebarEntries;
         RecentEvents = recentEvents;
+        Tutorial = new ControllerTutorialViewModel(
+            refreshTutorialDispatch);
         RefreshCommand = new RelayCommand(refresh);
         SelectPinnedTasksCommand = new RelayCommand(
             () => selectRootScope(SidebarScope.PinnedTasks));
@@ -91,6 +95,8 @@ public sealed class DevicePageViewModel : ObservableObject
     public ReadOnlyObservableCollection<BridgeFeedbackLogRow>
         RecentEvents
     { get; }
+
+    public ControllerTutorialViewModel Tutorial { get; }
 
     public ICommand RefreshCommand { get; }
 
@@ -415,6 +421,12 @@ public sealed class DevicePageViewModel : ObservableObject
             strings.ControlWakeAgentDescription(AgentName);
         SidebarTitle = strings.SidebarAgent(AgentName);
 
+        Tutorial.UpdateContext(
+            strings,
+            controllerProfile,
+            LeftStickHint,
+            RightStickHint);
+
         RefreshControllerPresentation();
         RefreshRightModeLabel();
         RefreshRightModeValue();
@@ -423,6 +435,7 @@ public sealed class DevicePageViewModel : ObservableObject
 
     public void UpdateControllerState(ControllerState state)
     {
+        Tutorial.ObserveStickPresses(state);
         var connectionChanged =
             _controllerState.IsConnected != state.IsConnected;
         _controllerState = state;
@@ -434,6 +447,15 @@ public sealed class DevicePageViewModel : ObservableObject
 
         RefreshControllerPresentation();
     }
+
+    internal void UpdateTutorialLayer(
+        RadialMenuLayerKind? layer,
+        bool isEngaged,
+        bool isCancelled) =>
+        Tutorial.UpdateActiveLayer(layer, isEngaged, isCancelled);
+
+    internal void UpdateTutorialDispatch(DispatchDisplay display) =>
+        Tutorial.UpdateDispatchPresentation(display);
 
     public void UpdateAgentStatus(string statusText, bool isActive)
     {
@@ -474,6 +496,14 @@ public sealed class DevicePageViewModel : ObservableObject
         _isVirtualDialConfirmationPending =
             isOpen && requiresConfirmation;
         RefreshRightStickHint();
+        if (_strings is not null)
+        {
+            Tutorial.UpdateContext(
+                _strings,
+                _controllerProfile,
+                LeftStickHint,
+                RightStickHint);
+        }
     }
 
     public void UpdateSidebarScope(

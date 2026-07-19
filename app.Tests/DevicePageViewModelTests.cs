@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CodexController.Controllers;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 using CodexController.ViewModels;
 
@@ -68,10 +69,10 @@ public sealed class DevicePageViewModelTests
         Assert.Equal("Y", viewModel.ProjectGlyph);
         Assert.Equal("+", viewModel.WakeGlyph);
         Assert.Equal(
-            "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
+            "↑↓ Move focus · → Enter project · ← Exit project · A Open task · press LS (L3) to change root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Up/down selects a control · left/right adjusts it · tap RS to confirm · hold RS for Agent Controller settings",
+            "Up/down selects a control · left/right adjusts it · tap RS (R3) to confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -272,7 +273,7 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Up/down selects a control · left/right adjusts it · tap RS to confirm · hold RS for Agent Controller settings",
+            "Up/down selects a control · left/right adjusts it · tap RS (R3) to confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
     }
 
@@ -387,6 +388,58 @@ public sealed class DevicePageViewModelTests
         Assert.True(viewModel.IsAgentStatusActive);
     }
 
+    [Fact]
+    public void DashboardTutorialObservesStickPressesButNotRawShoulders()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.UpdateContext(
+            new LocalizationService(AppLanguage.EnUs).Strings,
+            "Codex",
+            BuiltInControllerProfiles.Xbox);
+
+        viewModel.UpdateControllerState(
+            ConnectedState(
+                "Tests",
+                ControllerButtons.RightShoulder));
+
+        Assert.Equal(
+            ControllerTutorialMode.Overview,
+            viewModel.Tutorial.Mode);
+
+        viewModel.UpdateControllerState(ConnectedState("Tests"));
+        viewModel.UpdateControllerState(
+            ConnectedState(
+                "Tests",
+                ControllerButtons.RightThumb));
+
+        Assert.Equal(
+            ControllerTutorialMode.StickPress,
+            viewModel.Tutorial.Mode);
+    }
+
+    [Fact]
+    public void MicroMenuHintRefreshPreservesLiveTutorialDispatch()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.UpdateContext(
+            new LocalizationService(AppLanguage.EnUs).Strings,
+            "Codex",
+            BuiltInControllerProfiles.Xbox);
+        viewModel.UpdateTutorialDispatch(new DispatchDisplay(
+            DispatchDisplayKind.Queue,
+            "Queue next turn",
+            "Runs after the current turn"));
+
+        viewModel.UpdateVirtualDialMenuState(isOpen: true);
+        viewModel.Tutorial.SelectCommandCommand.Execute(null);
+
+        Assert.Contains(
+            viewModel.Tutorial.Items,
+            item =>
+                item.Title == "Queue next turn" &&
+                item.Description == "Runs after the current turn");
+    }
+
     private static DevicePageViewModel CreateViewModel()
     {
         return new DevicePageViewModel(
@@ -397,14 +450,16 @@ public sealed class DevicePageViewModelTests
             _ => { });
     }
 
-    private static ControllerState ConnectedState(string backend)
+    private static ControllerState ConnectedState(
+        string backend,
+        ControllerButtons buttons = ControllerButtons.None)
     {
         return new ControllerState(
             true,
             0,
             1,
             backend,
-            ControllerButtons.None,
+            buttons,
             0,
             0,
             0,

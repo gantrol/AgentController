@@ -1,4 +1,3 @@
-using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -16,46 +15,14 @@ public sealed class AgentKeypadViewDesignTests
     [Fact]
     public void RendersMicroStyleOverlayFamily()
     {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                RenderAndAssertLayout();
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
+        WpfTestHost.Run(RenderAndAssertLayout);
     }
 
     private static void RenderAndAssertLayout()
     {
-        var application = new App
-        {
-            ShutdownMode = ShutdownMode.OnExplicitShutdown,
-        };
-        application.InitializeComponent();
-
-        try
-        {
-            RenderAndAssertAgentLayout();
-            RenderAndAssertActionLayouts();
-            RenderAndAssertSidebarLayout();
-        }
-        finally
-        {
-            application.Shutdown();
-        }
+        RenderAndAssertAgentLayout();
+        RenderAndAssertActionLayouts();
+        RenderAndAssertSidebarLayout();
     }
 
     private static void RenderAndAssertAgentLayout()

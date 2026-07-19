@@ -48,6 +48,8 @@ The first public version was tested with an 8BitDo Ultimate 2, an Xbox Series co
 
 And the six Agent keys from Codex Micro? Hold **LB**, then use the four D-pad directions, View (⧉), or Menu (☰) to choose one of the six visible Agent slots.
 
+If the controller shorthand is unfamiliar, the dashboard now includes an interactive guide for Basics, Tap Y, Hold LB, Hold RT, Hold RB, and stick presses. Click a tab or press the matching control to switch the lesson. L3/R3 are also labeled as LS/RS and animated as vertical stick-cap presses—not downward stick movement.
+
 ### Codex Micro desktop simulator: a second route
 
 Alongside the gamepad route, this repository now explores and improves Codex Micro through a separate implementation: an independent desktop virtual keypad. The current milestone is a successful end-to-end bring-up against the Codex desktop app; buttons, the encoder, joystick, Micro settings routing, and Agent state reports now travel through the VHF/UMDF2 path.

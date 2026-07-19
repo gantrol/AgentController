@@ -15,6 +15,7 @@ using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Presentation;
 using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 using CodexController.Services;
@@ -200,7 +201,8 @@ public partial class MainWindow : Window
             RefreshDeviceData,
             scope => SetSidebarScope(
                 scope,
-                showFeedback: false));
+                showFeedback: false),
+            RefreshTutorialDispatch);
         DevicePage.DataContext = _devicePageViewModel;
         _feedbackPresenter.PropertyChanged +=
             FeedbackPresenter_PropertyChanged;
@@ -673,6 +675,10 @@ public partial class MainWindow : Window
     private void ApplyRadialLayerUpdate(RadialLayerUpdate update)
     {
         var effects = update.Effects;
+        _devicePageViewModel.UpdateTutorialLayer(
+            _radialLayers.Layer,
+            _radialLayers.IsEngaged,
+            _radialLayers.IsCancelled);
         if (effects.HasFlag(RadialLayerEffect.StopLearningTimer))
         {
             _radialLearningTimer.Stop();
@@ -1407,132 +1413,51 @@ public partial class MainWindow : Window
         BuildCommandRadialItems()
     {
         var dispatch = ResolveDispatchDisplay();
-        return
-        [
-            RadialItem(
-                "command-fast",
-                RadialMenuSlotPosition.Top,
-                LogicalInput.FaceNorth,
-                _localization.Strings.ConfigToggleFast),
-            RadialItem(
-                "command-decline",
-                RadialMenuSlotPosition.Right,
-                LogicalInput.FaceEast,
-                RadialText("拒绝更改", "Decline changes")),
-            RadialItem(
-                "command-approve",
-                RadialMenuSlotPosition.Bottom,
-                LogicalInput.FaceSouth,
-                RadialText("接受更改", "Approve changes"),
-                _radialLayers.IsConfirmationPending(
-                    RadialInputAction.Approve)
-                    ? RadialText(
-                        $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认",
-                        $"Press {Glyph(LogicalInput.FaceSouth)} " +
-                        "again to confirm")
-                    : RadialText(
-                        "需要二次确认",
-                        "Requires confirmation")),
-            RadialItem(
-                "command-fork",
-                RadialMenuSlotPosition.Left,
-                LogicalInput.FaceWest,
-                RadialText("分支任务", "Fork task")),
-            RadialItem(
-                "command-ptt",
-                RadialMenuSlotPosition.CenterLeft,
-                LogicalInput.View,
-                _localization.Strings.ConfigDictation,
-                RadialText("按住说话", "Hold to talk")),
-            RadialItem(
-                "command-dispatch",
-                RadialMenuSlotPosition.CenterRight,
-                LogicalInput.Menu,
-                dispatch.Label,
-                dispatch.Description),
-        ];
+        _devicePageViewModel.UpdateTutorialDispatch(dispatch);
+        return ControllerLayerPresentationFactory.Command(
+                _localization.EffectiveLanguage,
+                new ControllerCommandPresentationOptions(
+                    _localization.Strings.ConfigToggleFast,
+                    _localization.Strings.ConfigDictation,
+                    dispatch.Label,
+                    dispatch.Description,
+                    Glyph(LogicalInput.FaceSouth),
+                    _radialLayers.IsConfirmationPending(
+                        RadialInputAction.Approve)))
+            .Select(RadialItem)
+            .ToArray();
     }
 
     private IReadOnlyList<RadialMenuItemState>
         BuildTurnRadialItems()
     {
-        var contextual = RadialText(
-            "仅在 Codex 显示对应操作时可用",
-            "Available only when Codex shows the matching action");
-        return
-        [
-            RadialItem(
-                "turn-queue",
-                RadialMenuSlotPosition.Top,
-                LogicalInput.FaceNorth,
-                RadialText("排到下一轮", "Queue next turn"),
-                contextual),
-            RadialItem(
-                "turn-stop",
-                RadialMenuSlotPosition.Right,
-                LogicalInput.FaceEast,
-                RadialText("停止", "Stop"),
-                RadialText("长按 3 秒", "Hold for 3 seconds")),
-            RadialItem(
-                "turn-fork",
-                RadialMenuSlotPosition.Bottom,
-                LogicalInput.FaceSouth,
-                RadialText("分支任务", "Fork task")),
-            RadialItem(
-                "turn-steer",
-                RadialMenuSlotPosition.Left,
-                LogicalInput.FaceWest,
-                RadialText("加入当前运行", "Steer current turn"),
-                contextual),
-        ];
+        return ControllerLayerPresentationFactory.Turn(
+                _localization.EffectiveLanguage)
+            .Select(RadialItem)
+            .ToArray();
     }
 
     private IReadOnlyList<RadialMenuItemState>
         BuildActionRadialItems()
     {
-        return
-        [
-            RadialItem(
-                "action-new-task",
-                RadialMenuSlotPosition.Top,
-                LogicalInput.DPadUp,
-                RadialText("新建任务", "New task")),
-            RadialItem(
-                "action-forward",
-                RadialMenuSlotPosition.Right,
-                LogicalInput.DPadRight,
-                RadialText("前进", "Forward")),
-            RadialItem(
-                "action-sidebar",
-                RadialMenuSlotPosition.Bottom,
-                LogicalInput.DPadDown,
-                RadialText("切换侧边栏", "Toggle sidebar")),
-            RadialItem(
-                "action-back",
-                RadialMenuSlotPosition.Left,
-                LogicalInput.DPadLeft,
-                RadialText("后退", "Back")),
-            RadialItem(
-                "action-clear",
-                RadialMenuSlotPosition.CenterLeft,
-                LogicalInput.FaceSouth,
-                RadialText("清空当前输入", "Clear current input"),
-                _radialLayers.IsConfirmationPending(
-                    RadialInputAction.ClearComposer)
-                    ? RadialText(
-                        $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认",
-                        $"Press {Glyph(LogicalInput.FaceSouth)} " +
-                        "again to confirm")
-                    : RadialText(
-                        "需要二次确认",
-                        "Requires confirmation")),
-            RadialItem(
-                "action-project",
-                RadialMenuSlotPosition.CenterRight,
-                LogicalInput.FaceWest,
-                RadialText("项目上下文", "Project context")),
-        ];
+        return ControllerLayerPresentationFactory.Action(
+                _localization.EffectiveLanguage,
+                new ControllerActionPresentationOptions(
+                    Glyph(LogicalInput.FaceSouth),
+                    _radialLayers.IsConfirmationPending(
+                        RadialInputAction.ClearComposer)))
+            .Select(RadialItem)
+            .ToArray();
     }
+
+    private RadialMenuItemState RadialItem(
+        ControllerLayerItemPresentation item) =>
+        RadialItem(
+            item.Id,
+            item.Position,
+            item.Input,
+            item.Title,
+            item.Description);
 
     private RadialMenuItemState RadialItem(
         string id,
@@ -1649,6 +1574,10 @@ public partial class MainWindow : Window
             DispatchTurnState.Unknown,
             DispatchFollowUpBehavior.Unknown);
     }
+
+    private void RefreshTutorialDispatch() =>
+        _devicePageViewModel.UpdateTutorialDispatch(
+            ResolveDispatchDisplay());
 
     private string RadialText(string zhCn, string enUs)
     {
@@ -4598,6 +4527,7 @@ public partial class MainWindow : Window
             strings,
             agentName,
             _activeControllerProfile);
+        RefreshTutorialDispatch();
         _configPageViewModel.UpdateContext(
             strings,
             agentName,

@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:loc="clr-namespace:CodexController.Localization"
+             xmlns:views="clr-namespace:CodexController.Views"
              mc:Ignorable="d"
              d:DesignHeight="660"
              d:DesignWidth="1184">
@@ -25,7 +26,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -33,14 +33,14 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="{loc:Loc device.gamepad-bridge}"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="{StaticResource Font.Size.Caption}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock Text="{loc:Loc device.live-input}"
-                                   Margin="0,3,0,0"
+                        <TextBlock Text="{Binding Tutorial.Heading}"
+                                   Foreground="{StaticResource Brush.Text.Primary}"
                                    FontSize="{StaticResource Font.Size.Display}"
                                    FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Tutorial.Subheading}"
+                                   Margin="0,3,0,0"
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontSize="{StaticResource Font.Size.Caption}" />
                     </StackPanel>
                     <Border Grid.Column="1"
                             Padding="9,5"
@@ -70,207 +70,10 @@
                     </Border>
                 </Grid>
 
-                <Viewbox Grid.Row="1"
-                         Stretch="Uniform"
-                         Margin="12,2">
-                    <Grid Width="600" Height="380">
-                        <Image Source="/Assets/controller.png"
-                               Width="600"
-                               Height="380"
-                               Stretch="Uniform"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                        <Canvas Width="600"
-                                Height="380"
-                                IsHitTestVisible="False">
-                            <Border x:Name="LeftTriggerHalo"
-                                    Canvas.Left="171"
-                                    Canvas.Top="58"
-                                    Width="54"
-                                    Height="34"
-                                    Background="{StaticResource Brush.Accent.Halo}"
-                                    BorderBrush="{StaticResource Brush.Accent}"
-                                    BorderThickness="2"
-                                    CornerRadius="17"
-                                    Opacity="0" />
-                            <Border x:Name="LeftShoulderHalo"
-                                    Canvas.Left="176"
-                                    Canvas.Top="82"
-                                    Width="100"
-                                    Height="25"
-                                    Background="{StaticResource Brush.Accent.Halo}"
-                                    BorderBrush="{StaticResource Brush.Accent}"
-                                    BorderThickness="2"
-                                    CornerRadius="12"
-                                    Opacity="0" />
-                            <Border x:Name="RightShoulderHalo"
-                                    Canvas.Left="324"
-                                    Canvas.Top="82"
-                                    Width="100"
-                                    Height="25"
-                                    Background="{StaticResource Brush.Accent.Halo}"
-                                    BorderBrush="{StaticResource Brush.Accent}"
-                                    BorderThickness="2"
-                                    CornerRadius="12"
-                                    Opacity="0" />
-                            <Border x:Name="RightTriggerHalo"
-                                    Canvas.Left="375"
-                                    Canvas.Top="58"
-                                    Width="54"
-                                    Height="34"
-                                    Background="{StaticResource Brush.Accent.Halo}"
-                                    BorderBrush="{StaticResource Brush.Accent}"
-                                    BorderThickness="2"
-                                    CornerRadius="17"
-                                    Opacity="0" />
-                            <Ellipse x:Name="LeftStickHalo"
-                                     Canvas.Left="178"
-                                     Canvas.Top="138"
-                                     Width="46"
-                                     Height="46"
-                                     Stroke="{StaticResource SageBrush}"
-                                     StrokeThickness="2"
-                                     Opacity="0.0">
-                                <Ellipse.RenderTransform>
-                                    <TranslateTransform x:Name="LeftStickTransform" />
-                                </Ellipse.RenderTransform>
-                            </Ellipse>
-                            <Ellipse x:Name="RightStickHalo"
-                                     Canvas.Left="326"
-                                     Canvas.Top="196"
-                                     Width="46"
-                                     Height="46"
-                                     Stroke="{StaticResource SageBrush}"
-                                     StrokeThickness="2"
-                                     Opacity="0.0">
-                                <Ellipse.RenderTransform>
-                                    <TranslateTransform x:Name="RightStickTransform" />
-                                </Ellipse.RenderTransform>
-                            </Ellipse>
-                            <Ellipse x:Name="ButtonAHalo"
-                                     Canvas.Left="384"
-                                     Canvas.Top="172"
-                                     Width="28"
-                                     Height="28"
-                                     Fill="{StaticResource Brush.Accent.Halo}"
-                                     Stroke="{StaticResource Brush.Accent}"
-                                     StrokeThickness="2"
-                                     Opacity="0" />
-                            <Ellipse x:Name="ButtonXHalo"
-                                     Canvas.Left="359"
-                                     Canvas.Top="146"
-                                     Width="28"
-                                     Height="28"
-                                     Fill="{StaticResource Brush.Accent.Halo}"
-                                     Stroke="{StaticResource Brush.Accent}"
-                                     StrokeThickness="2"
-                                     Opacity="0" />
-                            <Ellipse x:Name="ButtonBHalo"
-                                     Canvas.Left="411"
-                                     Canvas.Top="146"
-                                     Width="28"
-                                     Height="28"
-                                     Fill="{StaticResource Brush.Status.Danger.Halo}"
-                                     Stroke="{StaticResource Brush.Status.Danger}"
-                                     StrokeThickness="2"
-                                     Opacity="0" />
-                            <Ellipse x:Name="ButtonYHalo"
-                                     Canvas.Left="385"
-                                     Canvas.Top="120"
-                                     Width="28"
-                                     Height="28"
-                                     Fill="{StaticResource Brush.Accent.Halo}"
-                                     Stroke="{StaticResource Brush.Accent}"
-                                     StrokeThickness="2"
-                                     Opacity="0" />
-                            <Ellipse x:Name="MenuButtonHalo"
-                                     Canvas.Left="316"
-                                     Canvas.Top="150"
-                                     Width="24"
-                                     Height="24"
-                                     Fill="{StaticResource Brush.Accent.Halo}"
-                                     Stroke="{StaticResource Brush.Accent}"
-                                     StrokeThickness="2"
-                                     Opacity="0" />
-                            <Border Canvas.Left="158"
-                                    Canvas.Top="46"
-                                    Padding="6,2"
-                                    Background="{StaticResource Brush.Bg.Inverse}"
-                                    CornerRadius="8">
-                                <TextBlock x:Name="LeftTriggerGlyphText"
-                                           Text="{Binding LeftTriggerGlyph}"
-                                           Foreground="{StaticResource Brush.Text.Inverse}"
-                                           FontFamily="{StaticResource Font.Mono}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           FontWeight="Bold" />
-                            </Border>
-                            <Border Canvas.Left="238"
-                                    Canvas.Top="72"
-                                    Padding="6,2"
-                                    Background="{StaticResource Brush.Bg.Inverse}"
-                                    CornerRadius="8">
-                                <TextBlock x:Name="LeftShoulderGlyphText"
-                                           Text="{Binding LeftShoulderGlyph}"
-                                           Foreground="{StaticResource Brush.Text.Inverse}"
-                                           FontFamily="{StaticResource Font.Mono}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           FontWeight="Bold" />
-                            </Border>
-                            <Border Canvas.Left="338"
-                                    Canvas.Top="72"
-                                    Padding="6,2"
-                                    Background="{StaticResource Brush.Bg.Inverse}"
-                                    CornerRadius="8">
-                                <TextBlock x:Name="RightShoulderGlyphText"
-                                           Text="{Binding RightShoulderGlyph}"
-                                           Foreground="{StaticResource Brush.Text.Inverse}"
-                                           FontFamily="{StaticResource Font.Mono}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           FontWeight="Bold" />
-                            </Border>
-                            <Border Canvas.Left="414"
-                                    Canvas.Top="46"
-                                    Padding="6,2"
-                                    Background="{StaticResource Brush.Bg.Inverse}"
-                                    CornerRadius="8">
-                                <TextBlock x:Name="RightTriggerGlyphText"
-                                           Text="{Binding RightTriggerGlyph}"
-                                           Foreground="{StaticResource Brush.Text.Inverse}"
-                                           FontFamily="{StaticResource Font.Mono}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           FontWeight="Bold" />
-                            </Border>
-                        </Canvas>
-                    </Grid>
-                </Viewbox>
-
-                <Grid Grid.Row="2" Margin="2,2,2,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc control.left-stick}"
-                                   FontSize="{StaticResource Font.Size.Label}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock x:Name="LeftStickHintText"
-                                   Text="{Binding LeftStickHint}"
-                                   Margin="0,4,0,0"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Caption}"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="{loc:Loc control.right-stick}"
-                                   FontSize="{StaticResource Font.Size.Label}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock x:Name="RightStickHintText"
-                                   Text="{Binding RightStickHint}"
-                                   Margin="0,4,0,0"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Caption}"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Grid>
+                <views:ControllerTutorialView x:Name="ControllerTutorial"
+                                              Grid.Row="1"
+                                              Margin="0,10,0,0"
+                                              DataContext="{Binding Tutorial}" />
             </Grid>
         </Border>
 
