@@ -35,9 +35,9 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "Move to turn the Micro encoder · tap {0} to press it · hold {0} for Agent Controller settings",
+                "Up/down selects a control · left/right adjusts it · tap {0} to confirm · hold {0} for Agent Controller settings",
             [StringKeys.ControlRightStickHintOpen] =
-                "Micro menu active · move the stick to turn · {2} Select · {1} Close",
+                "Micro menu active · ↑↓ select a control · ←→ adjust it · {2} Select · {1} Close",
             [StringKeys.ControlRightStickHintConfirmation] =
                 "Model selection confirmation · {2} Confirm · {1} Cancel",
             [StringKeys.ControlPrimary] = "{0} · Open task",
@@ -66,7 +66,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
             [StringKeys.ComposerDialReady] =
-                "Micro encoder · Codex owns navigation",
+                "Micro control · ↑↓ select · ←→ adjust",
             [StringKeys.ComposerConnectController] =
                 "Connect a controller to begin",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -126,12 +126,12 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Right stick · Micro encoder",
             [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "Either stick axis becomes clockwise/counter-clockwise encoder detents; Codex decides what the current control means.",
+                "↑↓ uses Micro encoder detents to traverse Advanced, Fast, Power, and other controls; ←→ keeps its screen direction and adjusts the current control.",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
                 "Tap presses the Micro encoder; hold for 500 ms to open Agent Controller settings",
             [StringKeys.ConfigSelectionBehavior] =
-                "Codex composer-navigation owns tool, Model, Effort, Speed, and submenu traversal; Agent Controller does not infer the active picker.",
+                "Codex composer-navigation owns control traversal; the gamepad keeps two-dimensional intent and never merges left/right with up/down.",
             [StringKeys.ConfigAgentShortcuts] = "{0} shortcuts",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "The app safely appends fallback bindings; new bindings take effect after {0} restarts.",

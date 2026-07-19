@@ -9,6 +9,7 @@ public sealed class RadialMenuViewModel : ObservableObject
     private string _title = string.Empty;
     private string _subtitle = string.Empty;
     private string _modifierGlyph = string.Empty;
+    private string _learningGuideLabel = string.Empty;
     private RadialMenuDisplayMode _displayMode =
         RadialMenuDisplayMode.Learning;
     private RadialMenuInteractionPhase _interactionPhase =
@@ -73,6 +74,14 @@ public sealed class RadialMenuViewModel : ObservableObject
         private set => SetProperty(ref _modifierGlyph, value);
     }
 
+    public string LearningGuideLabel
+    {
+        get => _learningGuideLabel;
+        private set => SetProperty(
+            ref _learningGuideLabel,
+            value);
+    }
+
     public RadialMenuDisplayMode DisplayMode
     {
         get => _displayMode;
@@ -133,6 +142,7 @@ public sealed class RadialMenuViewModel : ObservableObject
         Title = state.Title;
         Subtitle = state.Subtitle;
         ModifierGlyph = state.ModifierGlyph;
+        LearningGuideLabel = state.LearningGuideLabel;
         DisplayMode = state.DisplayMode;
         InteractionPhase = state.InteractionPhase;
         AgentKeypad = state.AgentKeypad;

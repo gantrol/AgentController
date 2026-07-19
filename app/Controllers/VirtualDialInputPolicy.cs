@@ -1,3 +1,5 @@
+using CodexController.Services;
+
 namespace CodexController.Controllers;
 
 public static class VirtualDialInputPolicy
@@ -28,12 +30,38 @@ public static class VirtualDialInputPolicy
     }
 
     /// <summary>
-    /// A virtual dial detent fires once when the stick leaves neutral.
-    /// Holding the stick must not repeat keyboard-like actions in Codex.
+    /// The gamepad adds a second axis around Micro's encoder semantics.
+    /// Horizontal motion always keeps its literal screen direction so a
+    /// left push can never be reinterpreted as an encoder "down" step.
     /// </summary>
-    public static bool ShouldQueueStep(
-        bool horizontalStarted,
-        int horizontalDirection) =>
-        horizontalStarted &&
-        horizontalDirection is -1 or 1;
+    public static ComposerDialNavigation? ResolveHorizontalNavigation(
+        int direction) =>
+        Math.Sign(direction) switch
+        {
+            -1 => ComposerDialNavigation.Left,
+            1 => ComposerDialNavigation.Right,
+            _ => null,
+        };
+
+    /// <summary>
+    /// Vertical motion traverses controls only while Codex owns an open
+    /// composer surface. Outside that context it is deliberately inert so
+    /// the two stick axes cannot collapse back into duplicate detents.
+    /// </summary>
+    public static ComposerDialNavigation? ResolveVerticalNavigation(
+        int direction,
+        bool isMenuActive)
+    {
+        if (!isMenuActive)
+        {
+            return null;
+        }
+
+        return Math.Sign(direction) switch
+        {
+            -1 => ComposerDialNavigation.Down,
+            1 => ComposerDialNavigation.Up,
+            _ => null,
+        };
+    }
 }

@@ -34,9 +34,9 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "推动即转动 Micro 旋钮 · 短按 {0} 按下旋钮 · 长按 {0} 打开 Agent Controller 设置",
+                "上下选择控件 · 左右调整当前控件 · 短按 {0} 确认 · 长按 {0} 打开 Agent Controller 设置",
             [StringKeys.ControlRightStickHintOpen] =
-                "Micro 菜单已打开 · 推动摇杆转动 · {2} 确认 · {1} 关闭",
+                "Micro 菜单已打开 · ↑↓ 选择控件 · ←→ 调整当前控件 · {2} 确认 · {1} 关闭",
             [StringKeys.ControlRightStickHintConfirmation] =
                 "模型选择确认 · {2} 确认 · {1} 取消",
             [StringKeys.ControlPrimary] = "{0} · 打开任务",
@@ -62,7 +62,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆 Micro 旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
             [StringKeys.ComposerDialReady] =
-                "Micro 旋钮 · 由 Codex 解释当前导航",
+                "Micro 控制 · ↑↓ 选择控件 · ←→ 调整当前项",
             [StringKeys.ComposerConnectController] =
                 "连接手柄后开始",
             [StringKeys.ComposerDialSettingsOpened] =
@@ -120,12 +120,12 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "右摇杆 · Micro 旋钮",
             [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "任一摇杆轴向都会变成顺/逆时针旋钮档位；当前控件的含义由 Codex 决定。",
+                "↑↓ 通过 Micro 旋钮档位遍历 Advanced、Fast、Power 等控件；←→ 保持屏幕方向并调整当前控件。",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
                 "短按即按下 Micro 旋钮；长按 500 ms 打开 Agent Controller 设置",
             [StringKeys.ConfigSelectionBehavior] =
-                "Composer 工具、Model、Effort、Speed 和子菜单遍历由 Codex composer-navigation 持有；Agent Controller 不再猜测当前选择器。",
+                "Codex composer-navigation 持有控件遍历；手柄保留二维语义，不会再把左推误译成 ENC_CC 或把上下与左右合并。",
             [StringKeys.ConfigAgentShortcuts] = "{0} 快捷键",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "程序会安全追加降级绑定；新绑定在 {0} 重启后生效。",

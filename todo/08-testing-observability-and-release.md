@@ -33,7 +33,7 @@
 
 - [ ] 菜单键（Xbox ☰ / Start / `+`）能启动 Codex，或在 Codex 已运行时将它可靠地置于前台；重复按键不创建多余实例。
 - [ ] 左摇杆上/下能在同级任务中移动，右进入项目、左退出项目，A 打开当前任务；L3 能依次访问置顶任务、置顶项目、项目和未归项目任务，并实际打开至少一个置顶任务和一个未置顶任务。
-- [ ] 右摇杆每次重复只产生一个 `ENC_CW` / `ENC_CC act=2` 档位，短按 R3 只产生一对 `ENC` down/up；在 Codex `composer-navigation` 下实际遍历 Composer 工具、Model、Effort、Speed 和子菜单，不再进入旧简易/高级状态机。
+- [ ] 右摇杆上/下每次重复只产生一个 `ENC_CW` / `ENC_CC act=2` 档位并遍历 Advanced、Fast、Power 等控件；左/右保持实际屏幕方向且不得产生 ENC；短按 R3 只产生一对 `ENC` down/up，不再进入旧简易/高级状态机。
 - [ ] 驱动 `NotSent` 时旋钮才允许走既有降级路径；`Accepted`、`OutcomeUnknown`、`Rejected` 都不得重复注入键盘/UIA，transport ACK 只证明投递，不能冒充界面 readback。
 - [ ] 按住 LT 开始录音、松开停止；覆盖短按、正常口述、Codex 失焦和菜单打开场景，确认不会残留录音状态。
 - [ ] X 能发送已有输入，并能区分发送成功、仍在输入框和正在运行三种结果。

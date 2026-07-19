@@ -34,7 +34,7 @@ public static class BuiltInControllerProfiles
             displayName: "Xbox Controller",
             visual: ControllerVisual.Xbox,
             glyphs: CreateXboxGlyphs(
-                view: "▣",
+                view: "⧉",
                 menu: "☰",
                 leftAuxiliary: "P3",
                 rightAuxiliary: "P1"),

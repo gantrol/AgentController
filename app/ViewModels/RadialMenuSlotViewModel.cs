@@ -92,25 +92,9 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
         get => _logicalInput;
         private set
         {
-            if (SetProperty(ref _logicalInput, value))
-            {
-                OnPropertyChanged(nameof(PhysicalPositionGlyph));
-                OnPropertyChanged(nameof(HasPhysicalPositionGlyph));
-            }
+            SetProperty(ref _logicalInput, value);
         }
     }
-
-    public string PhysicalPositionGlyph => LogicalInput switch
-    {
-        CodexController.Controllers.LogicalInput.FaceNorth => "↑",
-        CodexController.Controllers.LogicalInput.FaceEast => "→",
-        CodexController.Controllers.LogicalInput.FaceSouth => "↓",
-        CodexController.Controllers.LogicalInput.FaceWest => "←",
-        _ => string.Empty,
-    };
-
-    public bool HasPhysicalPositionGlyph =>
-        !string.IsNullOrEmpty(PhysicalPositionGlyph);
 
     public ThreadStatus Status
     {
@@ -139,9 +123,12 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
             var description = HasSubtitle
                 ? $"{Title}, {Subtitle}"
                 : Title;
-            return IsActionEnabled
+            var keyedDescription = string.IsNullOrWhiteSpace(InputGlyph)
                 ? description
-                : $"{description}, unavailable";
+                : $"{InputGlyph}, {description}";
+            return IsActionEnabled
+                ? keyedDescription
+                : $"{keyedDescription}, unavailable";
         }
     }
 

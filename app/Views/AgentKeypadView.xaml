@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="clr-namespace:CodexController.Models"
+             xmlns:views="clr-namespace:CodexController.Views"
              mc:Ignorable="d"
              d:DesignHeight="360"
              d:DesignWidth="820"
@@ -38,15 +39,15 @@
                                         VerticalAlignment="Center"
                                         Style="{StaticResource Overlay.PhysicalKey}">
                                     <Grid>
-                                        <TextBlock x:Name="GlyphText"
-                                                   Margin="8,5,0,0"
-                                                   HorizontalAlignment="Left"
-                                                   VerticalAlignment="Top"
-                                                   Text="{Binding InputGlyph}"
-                                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                                   FontFamily="{StaticResource Font.Mono}"
-                                                   FontSize="12"
-                                                   FontWeight="{StaticResource Font.Weight.Medium}" />
+                                        <views:ControllerGlyphView x:Name="GlyphView"
+                                                                   Margin="5,2,0,0"
+                                                                   Glyph="{Binding InputGlyph}"
+                                                                   HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Top"
+                                                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                                                   FontFamily="{StaticResource Font.Mono}"
+                                                                   FontSize="12"
+                                                                   FontWeight="{StaticResource Font.Weight.Medium}" />
 
                                         <Ellipse x:Name="LedHalo"
                                                  Width="28"
@@ -202,7 +203,7 @@
                                 <Setter TargetName="Keycap"
                                         Property="BorderBrush"
                                         Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
-                                <Setter TargetName="GlyphText"
+                                <Setter TargetName="GlyphView"
                                         Property="Foreground"
                                         Value="{StaticResource Brush.Agent.Glyph}" />
                                 <DataTrigger.EnterActions>
@@ -248,25 +249,81 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Orientation="Horizontal"
-                            VerticalAlignment="Center">
-                    <Border Style="{StaticResource Overlay.ModifierBadge}"
-                            Margin="0,0,10,0">
-                        <TextBlock Text="{Binding ModifierGlyph}"
-                                   HorizontalAlignment="Center"
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <Border Style="{StaticResource Overlay.ModifierBadge}"
+                                Margin="0,0,10,0">
+                            <TextBlock Text="{Binding ModifierGlyph}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Agent.Glyph}"
+                                       FontFamily="{StaticResource Font.Mono}"
+                                       FontSize="12"
+                                       FontWeight="{StaticResource Font.Weight.Bold}" />
+                        </Border>
+                        <TextBlock Text="{Binding Title}"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Agent.Glyph}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontSize="12"
-                                   FontWeight="{StaticResource Font.Weight.Bold}" />
-                    </Border>
-                    <TextBlock Text="{Binding Title}"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="15"
-                               FontWeight="{StaticResource Font.Weight.Medium}"
-                               TextTrimming="CharacterEllipsis" />
-                </StackPanel>
+                                   Foreground="{StaticResource Brush.Text.Secondary}"
+                                   FontSize="15"
+                                   FontWeight="{StaticResource Font.Weight.Medium}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- The two center buttons vary most between controller
+                         families. Pair the live profile glyph with its
+                         standard name instead of asking users to recognize a
+                         tiny symbol in the slot grid. -->
+                    <StackPanel x:Name="MetaButtonLegend"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="View and Menu button guide">
+                        <Border Padding="7,3"
+                                Background="{StaticResource Brush.Bg.Sunken}"
+                                BorderBrush="{StaticResource Brush.Border.Subtle}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <StackPanel Orientation="Horizontal">
+                                <views:ControllerGlyphView Width="28"
+                                                           Glyph="{Binding Left.InputGlyph}"
+                                                           Foreground="{StaticResource Brush.Text.Secondary}"
+                                                           FontFamily="{StaticResource Font.Mono}"
+                                                           FontSize="10"
+                                                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                                <TextBlock Margin="4,0,0,0"
+                                           Text="View"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Tertiary}"
+                                           FontSize="10" />
+                            </StackPanel>
+                        </Border>
+                        <Border Margin="8,0,0,0"
+                                Padding="7,3"
+                                Background="{StaticResource Brush.Bg.Sunken}"
+                                BorderBrush="{StaticResource Brush.Border.Subtle}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <StackPanel Orientation="Horizontal">
+                                <views:ControllerGlyphView Width="28"
+                                                           Glyph="{Binding Right.InputGlyph}"
+                                                           Foreground="{StaticResource Brush.Text.Secondary}"
+                                                           FontFamily="{StaticResource Font.Mono}"
+                                                           FontSize="10"
+                                                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                                <TextBlock Margin="4,0,0,0"
+                                           Text="Menu"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Tertiary}"
+                                           FontSize="10" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
 
                 <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>

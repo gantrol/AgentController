@@ -156,6 +156,30 @@ public sealed class ControllerProfileRegistryTests
         Assert.Equal(
             "M4",
             flydigi.GetGlyph(LogicalInput.RightAuxiliary));
+        Assert.Equal(
+            "⧉",
+            xbox.GetGlyph(LogicalInput.View));
+        Assert.Equal(
+            "☰",
+            xbox.GetGlyph(LogicalInput.Menu));
+        Assert.Equal(
+            "−",
+            ultimate2.GetGlyph(LogicalInput.View));
+        Assert.Equal(
+            "+",
+            ultimate2.GetGlyph(LogicalInput.Menu));
+        Assert.Equal(
+            "−",
+            flydigi.GetGlyph(LogicalInput.View));
+        Assert.Equal(
+            "+",
+            flydigi.GetGlyph(LogicalInput.Menu));
+        Assert.Equal(
+            "View",
+            generic.GetGlyph(LogicalInput.View));
+        Assert.Equal(
+            "Menu",
+            generic.GetGlyph(LogicalInput.Menu));
         Assert.Equal(ControllerVisual.Xbox, ultimate2.Visual);
         Assert.Equal(ControllerVisual.Generic, generic.Visual);
         Assert.Equal(

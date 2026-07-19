@@ -84,6 +84,9 @@ public sealed class AgentKeypadViewDesignTests
             view.AgentMenuKey,
         };
         Assert.Equal(6, controls.Length);
+        Assert.Equal(
+            Visibility.Visible,
+            view.MetaButtonLegend.Visibility);
 
         foreach (var control in controls)
         {
@@ -105,6 +108,32 @@ public sealed class AgentKeypadViewDesignTests
                 titlePosition.X > keyPosition.X + keycap.ActualWidth,
                 "Each Agent title must appear beside its status key.");
         }
+
+        var glyphViews = FindVisualChildren<ControllerGlyphView>(view)
+            .ToArray();
+        var metaGlyphs = glyphViews
+            .Select(glyph => glyph.Glyph)
+            .ToArray();
+        Assert.Equal(2, metaGlyphs.Count(glyph => glyph == "⧉"));
+        Assert.Equal(2, metaGlyphs.Count(glyph => glyph == "☰"));
+        Assert.All(
+            glyphViews.Where(glyph => glyph.Glyph == "⧉"),
+            glyph =>
+            {
+                Assert.Equal(Visibility.Visible, glyph.ViewIcon.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    glyph.FallbackGlyphText.Visibility);
+            });
+        Assert.All(
+            glyphViews.Where(glyph => glyph.Glyph == "☰"),
+            glyph =>
+            {
+                Assert.Equal(Visibility.Visible, glyph.MenuIcon.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    glyph.FallbackGlyphText.Visibility);
+            });
 
         WritePreviewFromEnvironment(
             view,
@@ -129,15 +158,17 @@ public sealed class AgentKeypadViewDesignTests
             .ToArray();
         var positionGlyphs = FindVisualChildren<TextBlock>(commandView)
             .Where(element =>
-                element.Name == "PositionGlyph" &&
-                element.Visibility == Visibility.Visible)
+                element.Name == "PositionGlyph")
             .Select(element => element.Text)
             .ToArray();
 
         Assert.Equal(6, keycaps.Length);
         Assert.Equal(6, titles.Length);
-        Assert.Equal(["↑", "→", "↓", "←"], positionGlyphs);
+        Assert.Empty(positionGlyphs);
         Assert.Equal(Visibility.Visible, commandView.LearningPositionGuide.Visibility);
+        Assert.Single(
+            FindVisualChildren<Canvas>(commandView),
+            element => element.Name == "FaceButtonDiagram");
         foreach (var (keycap, title) in keycaps.Zip(titles))
         {
             Assert.InRange(keycap.ActualWidth, 57.5, 58.5);
@@ -389,13 +420,15 @@ public sealed class AgentKeypadViewDesignTests
                 Item(
                     "agent-5",
                     RadialMenuSlotPosition.Left,
-                    "View",
+                    BuiltInControllerProfiles.Xbox.GetGlyph(
+                        LogicalInput.View),
                     "规划项目未来架构",
                     ThreadStatus.Error),
                 Item(
                     "agent-6",
                     RadialMenuSlotPosition.Right,
-                    "Menu",
+                    BuiltInControllerProfiles.Xbox.GetGlyph(
+                        LogicalInput.Menu),
                     "更新 README 文档",
                     ThreadStatus.Unassigned),
             ],
@@ -451,7 +484,8 @@ public sealed class AgentKeypadViewDesignTests
             ],
             RadialMenuDisplayMode.Learning,
             isLearningCueReady: true,
-            subtitle: "L3 cancel");
+            subtitle: "L3 cancel",
+            learningGuideLabel: "ABXY face-button layout");
     }
 
     private static RadialMenuState CreateTurnPreviewState()
@@ -489,7 +523,8 @@ public sealed class AgentKeypadViewDesignTests
             ],
             RadialMenuDisplayMode.Learning,
             isLearningCueReady: true,
-            subtitle: "Release RT to close");
+            subtitle: "Release RT to close",
+            learningGuideLabel: "ABXY face-button layout");
     }
 
     private static RadialMenuItemState ActionItem(

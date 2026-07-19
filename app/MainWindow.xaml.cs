@@ -571,41 +571,48 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        // The right stick is the gamepad projection of Micro's upper-left
-        // encoder, not an independent Model/Effort/Speed state machine. Use
-        // the dominant axis as one signed detent stream so horizontal and
-        // vertical controller habits both produce the same physical control.
-        var useHorizontalEncoderAxis =
-            rightGesture.HorizontalMagnitude >=
-            rightGesture.VerticalMagnitude;
-        var encoderDirection = useHorizontalEncoderAxis
-            ? rightGesture.HorizontalDirection
-            : rightGesture.VerticalDirection;
-        var encoderMagnitude = useHorizontalEncoderAxis
-            ? rightGesture.HorizontalMagnitude
-            : rightGesture.VerticalMagnitude;
+        // Preserve the gamepad's two-dimensional intent around the Micro
+        // encoder. Vertical movement traverses rows in an owned composer
+        // surface; horizontal movement adjusts or enters the current row.
+        // Never merge the axes: doing so turned a left push into ENC_CC and
+        // made it appear to move right in Codex.
         _controllerInteraction.RepeatAnalogAxis(
-            "right-encoder",
-            encoderDirection,
-            encoderMagnitude,
+            "right-y",
+            dialContextActive
+                ? rightGesture.VerticalDirection
+                : 0,
+            dialContextActive
+                ? rightGesture.VerticalMagnitude
+                : 0,
             virtualDialDeadZone,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
             direction =>
             {
-                if (dialContextActive)
+                var navigation =
+                    VirtualDialInputPolicy.ResolveVerticalNavigation(
+                        direction,
+                        isMenuActive: true);
+                if (navigation is { } resolved)
                 {
-                    QueueVirtualDialNavigation(
-                        direction > 0
-                            ? ComposerDialNavigation.Up
-                            : ComposerDialNavigation.Down);
+                    QueueVirtualDialNavigation(resolved);
                 }
-                else
+            });
+        _controllerInteraction.RepeatAnalogAxis(
+            "right-x",
+            rightGesture.HorizontalDirection,
+            rightGesture.HorizontalMagnitude,
+            virtualDialDeadZone,
+            _settings.RepeatDelayMs,
+            _settings.RepeatIntervalMs,
+            direction =>
+            {
+                var navigation =
+                    VirtualDialInputPolicy.ResolveHorizontalNavigation(
+                        direction);
+                if (navigation is { } resolved)
                 {
-                    QueueVirtualDialNavigation(
-                        direction > 0
-                            ? ComposerDialNavigation.Right
-                            : ComposerDialNavigation.Left);
+                    QueueVirtualDialNavigation(resolved);
                 }
             });
     }
@@ -1321,7 +1328,10 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.LeftStickPress)} 取消",
                     $"{Glyph(LogicalInput.LeftStickPress)} cancel"),
-                interactionPhase: _radialLayers.InteractionPhase),
+                interactionPhase: _radialLayers.InteractionPhase,
+                learningGuideLabel: RadialText(
+                    "ABXY 面键位置",
+                    "ABXY face-button layout")),
             RadialMenuLayerKind.Turn => new RadialMenuState(
                 layer,
                 RadialText("运行中操作", "Active turn"),
@@ -1333,7 +1343,10 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     "松开 RT 关闭",
                     "Release RT to close"),
-                interactionPhase: _radialLayers.InteractionPhase),
+                interactionPhase: _radialLayers.InteractionPhase,
+                learningGuideLabel: RadialText(
+                    "ABXY 面键位置",
+                    "ABXY face-button layout")),
             RadialMenuLayerKind.Action => new RadialMenuState(
                 layer,
                 RadialText("动作面板", "Action panel"),
@@ -1345,7 +1358,10 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} 关闭",
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} close"),
-                interactionPhase: _radialLayers.InteractionPhase),
+                interactionPhase: _radialLayers.InteractionPhase,
+                learningGuideLabel: RadialText(
+                    "ABXY 面键位置",
+                    "ABXY face-button layout")),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(layer),
                 layer,

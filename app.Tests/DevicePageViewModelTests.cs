@@ -71,7 +71,7 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Move to turn the Micro encoder · tap RS to press it · hold RS for Agent Controller settings",
+            "Up/down selects a control · left/right adjusts it · tap RS to confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -211,7 +211,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Micro encoder · Codex owns navigation",
+            "Micro control · ↑↓ select · ←→ adjust",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -248,7 +248,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Micro 旋钮 · 由 Codex 解释当前导航",
+            "Micro 控制 · ↑↓ 选择控件 · ←→ 调整当前项",
             viewModel.RightModeValue);
     }
 
@@ -266,13 +266,13 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: true);
 
         Assert.Equal(
-            "Micro menu active · move the stick to turn · A Select · B Close",
+            "Micro menu active · ↑↓ select a control · ←→ adjust it · A Select · B Close",
             viewModel.RightStickHint);
 
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Move to turn the Micro encoder · tap RS to press it · hold RS for Agent Controller settings",
+            "Up/down selects a control · left/right adjusts it · tap RS to confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
     }
 

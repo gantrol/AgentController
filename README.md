@@ -34,7 +34,7 @@ I directed Codex to build a prototype. Two hours later it worked; another day we
 
 - Press **Menu** (☰ on an Xbox controller, also called Start or `+` on some gamepads) to wake or foreground Codex when needed.
 - Use the **left stick** to walk the task tree: up/down moves between siblings, right enters a project, and left returns to the parent level. Press **A** to open a task. Click **L3** to cycle between pinned tasks, pinned projects, projects, and projectless tasks.
-- The **right stick is the Codex Micro upper-left encoder**. Stick motion produces clockwise/counter-clockwise detents; Codex `composer-navigation` decides whether those detents traverse composer tools, Model, Effort, Speed, or an open menu. Tap **R3** to press the encoder; hold it to open Agent Controller settings. Agent Controller no longer guesses the current model-menu state.
+- The **right stick extends the Codex Micro upper-left encoder**. Up/down emits `ENC_CW / ENC_CC` to traverse controls such as Advanced, Fast, and the Power slider; left/right keeps its literal screen direction to adjust or enter the current control. Tap **R3** to press the encoder, or hold it for Agent Controller settings. The two axes are never collapsed into one detent stream.
 - Hold **LT** to dictate and release it to stop.
 - Press **X** to send.
 - To clear the composer, press **Y**, then **A** twice to confirm.
@@ -102,7 +102,7 @@ The v0.7.0-hotfix Windows package is self-contained and does not require a separ
 | B | Close a menu or undo recent navigation when applicable; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
 | Y | Open the action panel. |
 | D-pad ↑ / ↓ | Previous / next Q&A turn; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
-| Right stick | Emit clockwise/counter-clockwise Micro encoder detents. Codex's active encoder mode and official bridge interpret them; there is no separate Simple/Advanced stick state machine. |
+| Right stick | Up/down selects controls through Micro encoder detents; left/right adjusts the current control in the same screen direction. Codex still owns traversal, with no separate Simple/Advanced stick state machine. |
 | R3 tap / hold | Tap to press the Micro encoder and open, enter, or confirm the current item. Hold for 500 ms to open Agent Controller settings. |
 | LB / RB tap | Open the previous / next available task. |
 | LT hold | Start push-to-talk dictation; release to finish. |

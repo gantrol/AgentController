@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:models="clr-namespace:CodexController.Models"
+             xmlns:views="clr-namespace:CodexController.Views"
              mc:Ignorable="d"
              d:DesignHeight="350"
              d:DesignWidth="820"
@@ -42,35 +42,14 @@
                             VerticalAlignment="Center"
                             Style="{StaticResource Overlay.PhysicalKey}">
                         <Grid>
-                            <TextBlock x:Name="PositionGlyph"
-                                       Margin="7,4,0,0"
-                                       Text="{Binding PhysicalPositionGlyph}"
-                                       HorizontalAlignment="Left"
-                                       VerticalAlignment="Top"
-                                       Foreground="{StaticResource Brush.Text.Tertiary}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="10">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasPhysicalPositionGlyph}"
-                                                         Value="False">
-                                                <Setter Property="Visibility"
-                                                        Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock x:Name="GlyphText"
-                                       Text="{Binding InputGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Primary}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="14"
-                                       FontWeight="{StaticResource Font.Weight.Medium}" />
+                            <views:ControllerGlyphView x:Name="GlyphView"
+                                                       Glyph="{Binding InputGlyph}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Brush.Text.Primary}"
+                                                       FontFamily="{StaticResource Font.Mono}"
+                                                       FontSize="14"
+                                                       FontWeight="{StaticResource Font.Weight.Medium}" />
                         </Grid>
                     </Border>
 
@@ -146,9 +125,9 @@
                     <Setter TargetName="Keycap"
                             Property="BorderBrush"
                             Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
-                    <Setter TargetName="GlyphText"
-                            Property="Foreground"
-                            Value="{StaticResource Brush.Agent.Glyph}" />
+                        <Setter TargetName="GlyphView"
+                                Property="Foreground"
+                                Value="{StaticResource Brush.Agent.Glyph}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -231,52 +210,89 @@
                 <Border x:Name="LearningPositionGuide"
                         Grid.Row="3"
                         Margin="3,0,3,10"
-                        Padding="10,6"
+                        Padding="12,7"
                         Background="{StaticResource Brush.Bg.Sunken}"
                         BorderBrush="{StaticResource Brush.Border.Subtle}"
                         BorderThickness="1"
                         CornerRadius="10">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding DisplayMode}"
-                                             Value="{x:Static models:RadialMenuDisplayMode.Learning}">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
                     <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
                                 Orientation="Horizontal">
-                        <TextBlock Text="↑"
-                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
-                        <TextBlock Margin="4,0,18,0"
-                                   Text="{Binding Top.InputGlyph}"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
-                        <TextBlock Text="→"
-                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
-                        <TextBlock Margin="4,0,18,0"
-                                   Text="{Binding Right.InputGlyph}"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
-                        <TextBlock Text="↓"
-                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
-                        <TextBlock Margin="4,0,18,0"
-                                   Text="{Binding Bottom.InputGlyph}"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
-                        <TextBlock Text="←"
-                                   Foreground="{StaticResource Brush.Text.Tertiary}" />
-                        <TextBlock Margin="4,0,0,0"
-                                   Text="{Binding Left.InputGlyph}"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
+                        <TextBlock Margin="0,0,16,0"
+                                   Text="{Binding LearningGuideLabel}"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Text.Tertiary}"
+                                   FontSize="11"
+                                   FontWeight="{StaticResource Font.Weight.Medium}" />
+                        <Canvas x:Name="FaceButtonDiagram"
+                                Width="78"
+                                Height="48"
+                                AutomationProperties.Name="{Binding LearningGuideLabel}">
+                            <Border Canvas.Left="28"
+                                    Canvas.Top="0"
+                                    Width="22"
+                                    Height="22"
+                                    Background="{StaticResource Brush.Overlay.MicroKey}"
+                                    BorderBrush="{StaticResource Brush.Border.Strong}"
+                                    BorderThickness="1"
+                                    CornerRadius="11">
+                                <TextBlock Text="{Binding Top.InputGlyph}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Secondary}"
+                                           FontFamily="{StaticResource Font.Mono}"
+                                           FontSize="10"
+                                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                            </Border>
+                            <Border Canvas.Left="56"
+                                    Canvas.Top="13"
+                                    Width="22"
+                                    Height="22"
+                                    Background="{StaticResource Brush.Overlay.MicroKey}"
+                                    BorderBrush="{StaticResource Brush.Border.Strong}"
+                                    BorderThickness="1"
+                                    CornerRadius="11">
+                                <TextBlock Text="{Binding Right.InputGlyph}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Secondary}"
+                                           FontFamily="{StaticResource Font.Mono}"
+                                           FontSize="10"
+                                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                            </Border>
+                            <Border Canvas.Left="28"
+                                    Canvas.Top="26"
+                                    Width="22"
+                                    Height="22"
+                                    Background="{StaticResource Brush.Overlay.MicroKey}"
+                                    BorderBrush="{StaticResource Brush.Border.Strong}"
+                                    BorderThickness="1"
+                                    CornerRadius="11">
+                                <TextBlock Text="{Binding Bottom.InputGlyph}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Secondary}"
+                                           FontFamily="{StaticResource Font.Mono}"
+                                           FontSize="10"
+                                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                            </Border>
+                            <Border Canvas.Left="0"
+                                    Canvas.Top="13"
+                                    Width="22"
+                                    Height="22"
+                                    Background="{StaticResource Brush.Overlay.MicroKey}"
+                                    BorderBrush="{StaticResource Brush.Border.Strong}"
+                                    BorderThickness="1"
+                                    CornerRadius="11">
+                                <TextBlock Text="{Binding Left.InputGlyph}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Secondary}"
+                                           FontFamily="{StaticResource Font.Mono}"
+                                           FontSize="10"
+                                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                            </Border>
+                        </Canvas>
                     </StackPanel>
                 </Border>
             </Grid>

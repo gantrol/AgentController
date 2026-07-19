@@ -221,6 +221,9 @@ public sealed class RadialMenuViewModelTests
         Assert.Contains(
             "No approval request",
             viewModel.Bottom.AccessibleName);
+        Assert.StartsWith(
+            "A,",
+            viewModel.Bottom.AccessibleName);
         Assert.Contains(
             "unavailable",
             viewModel.Bottom.AccessibleName);
