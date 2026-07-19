@@ -29,6 +29,50 @@ public sealed class Win32InputTests
             CodexWindowActivator.ScoreCandidate(tool));
     }
 
+    [Fact]
+    public void ExplicitWindowAdvanceCyclesOnlyMainWindows()
+    {
+        var first = WindowCandidate(
+            handle: 1,
+            area: 2_000_000);
+        var second = WindowCandidate(
+            handle: 2,
+            area: 1_800_000);
+        var tool = WindowCandidate(
+            handle: 3,
+            area: 3_000_000,
+            hasOwner: true,
+            isToolWindow: true);
+        var ranked = new[] { first, second, tool };
+
+        Assert.Equal(
+            second,
+            CodexWindowActivator.SelectCandidate(
+                ranked,
+                first.Handle,
+                advanceCurrentWindow: true));
+        Assert.Equal(
+            first,
+            CodexWindowActivator.SelectCandidate(
+                ranked,
+                second.Handle,
+                advanceCurrentWindow: true));
+    }
+
+    [Fact]
+    public void OrdinaryActivationNeverCyclesForegroundWindow()
+    {
+        var first = WindowCandidate(handle: 1, area: 2_000_000);
+        var second = WindowCandidate(handle: 2, area: 1_800_000);
+
+        Assert.Equal(
+            first,
+            CodexWindowActivator.SelectCandidate(
+                [first, second],
+                first.Handle,
+                advanceCurrentWindow: false));
+    }
+
     [Theory]
     [InlineData(0x25)]
     [InlineData(0x26)]
@@ -65,4 +109,18 @@ public sealed class Win32InputTests
                 virtualKey,
                 keyUp: true));
     }
+
+    private static CodexWindowCandidate WindowCandidate(
+        long handle,
+        long area,
+        bool hasOwner = false,
+        bool isToolWindow = false) =>
+        new(
+            new nint(handle),
+            checked((uint)handle),
+            "Codex",
+            "Chrome_WidgetWin_1",
+            hasOwner,
+            isToolWindow,
+            area);
 }

@@ -105,6 +105,9 @@ internal static partial class Win32Input
     public static bool FocusCodex() =>
         CodexWindowActivator.TryActivate();
 
+    public static bool FocusNextCodexWindow() =>
+        CodexWindowActivator.TryActivateNext();
+
     public static bool FocusCodexAndWait(int timeoutMs = 420)
     {
         if (IsCodexForeground())

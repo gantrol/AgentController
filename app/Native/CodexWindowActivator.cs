@@ -40,20 +40,78 @@ internal static class CodexWindowActivator
     internal static bool TryFindMainWindow(
         out CodexWindowCandidate candidate)
     {
-        candidate = FindCandidates()
-            .OrderByDescending(ScoreCandidate)
+        candidate = RankCandidates(FindCandidates())
             .FirstOrDefault();
         return candidate.Handle != nint.Zero;
     }
 
-    internal static bool TryActivate()
+    internal static bool TryActivate() =>
+        TryActivateCore(advanceCurrentWindow: false);
+
+    internal static bool TryActivateNext() =>
+        TryActivateCore(advanceCurrentWindow: true);
+
+    private static bool TryActivateCore(bool advanceCurrentWindow)
     {
-        if (!TryFindMainWindow(out var candidate))
+        var candidates = RankCandidates(FindCandidates());
+        if (candidates.Count == 0)
         {
             return false;
         }
 
-        if (GetForegroundWindow() == candidate.Handle)
+        var foreground = GetForegroundWindow();
+        var candidate = SelectCandidate(
+            candidates,
+            foreground,
+            advanceCurrentWindow);
+        return ActivateCandidate(candidate, foreground);
+    }
+
+    internal static CodexWindowCandidate SelectCandidate(
+        IReadOnlyList<CodexWindowCandidate> rankedCandidates,
+        nint foreground,
+        bool advanceCurrentWindow)
+    {
+        if (rankedCandidates.Count == 0)
+        {
+            return default;
+        }
+
+        var primary = rankedCandidates[0];
+        if (!advanceCurrentWindow)
+        {
+            return primary;
+        }
+
+        var cycle = rankedCandidates
+            .Where(candidate =>
+                !candidate.IsToolWindow &&
+                !candidate.HasOwner)
+            .ToArray();
+        if (cycle.Length < 2)
+        {
+            return primary;
+        }
+
+        var currentIndex = Array.FindIndex(
+            cycle,
+            candidate => candidate.Handle == foreground);
+        return currentIndex < 0
+            ? primary
+            : cycle[(currentIndex + 1) % cycle.Length];
+    }
+
+    private static IReadOnlyList<CodexWindowCandidate> RankCandidates(
+        IEnumerable<CodexWindowCandidate> candidates) =>
+        candidates
+            .OrderByDescending(ScoreCandidate)
+            .ToArray();
+
+    private static bool ActivateCandidate(
+        CodexWindowCandidate candidate,
+        nint foreground)
+    {
+        if (foreground == candidate.Handle)
         {
             return true;
         }
@@ -74,7 +132,7 @@ internal static class CodexWindowActivator
         }
 
         var currentThread = GetCurrentThreadId();
-        var foreground = GetForegroundWindow();
+        foreground = GetForegroundWindow();
         var foregroundThread = foreground == nint.Zero
             ? 0
             : GetWindowThreadProcessId(foreground, out _);

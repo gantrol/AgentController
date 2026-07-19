@@ -10,6 +10,13 @@ public sealed class CodexCommandService
 
     public bool WakeCodex()
     {
+        if (
+            Win32Input.IsCodexForeground() &&
+            Win32Input.FocusNextCodexWindow())
+        {
+            return true;
+        }
+
         if (Win32Input.FocusCodexAndWait(timeoutMs: 650))
         {
             return true;
