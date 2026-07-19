@@ -10,6 +10,7 @@ internal enum CodexCompatibilityDisposition
 {
     Incompatible,
     Unreviewed,
+    Changed,
     Reviewed,
 }
 
@@ -113,9 +114,11 @@ internal sealed class CodexCompatibilityProbe
             "app.asar");
         if (!File.Exists(asarPath))
         {
-            return Incompatible(
+            return new CodexCompatibilityResult(
+                CodexCompatibilityDisposition.Unreviewed,
                 build,
-                "Codex app.asar could not be located for read-only fingerprinting.",
+                "unverified",
+                "Codex package layout changed and app.asar was not found; continuing in advisory mode.",
                 package.Value.PackageRoot);
         }
 
@@ -131,9 +134,11 @@ internal sealed class CodexCompatibilityProbe
                     InvalidDataException or
                     JsonException)
             {
-                return Incompatible(
+                return new CodexCompatibilityResult(
+                    CodexCompatibilityDisposition.Unreviewed,
                     build,
-                    $"Compatibility fingerprint could not be inspected: {exception.Message}",
+                    "unverified",
+                    $"Compatibility fingerprint could not be inspected; continuing in advisory mode: {exception.Message}",
                     package.Value.PackageRoot);
             }
 
@@ -156,9 +161,11 @@ internal sealed class CodexCompatibilityProbe
                 observed[expected.Key] = hash;
                 if (!hash.Equals(expected.Value, StringComparison.OrdinalIgnoreCase))
                 {
-                    return Incompatible(
+                    return new CodexCompatibilityResult(
+                        CodexCompatibilityDisposition.Changed,
                         build,
-                        $"Codex Micro fingerprint mismatch: {expected.Key}",
+                        "changed",
+                        $"Reviewed Codex Micro file changed; continuing in advisory mode: {expected.Key}",
                         package.Value.PackageRoot);
                 }
             }
@@ -182,9 +189,11 @@ internal sealed class CodexCompatibilityProbe
                 InvalidDataException or
                 JsonException)
         {
-            return Incompatible(
+            return new CodexCompatibilityResult(
+                CodexCompatibilityDisposition.Changed,
                 build,
-                $"Compatibility fingerprint could not be verified: {exception.Message}",
+                "unverified",
+                $"Compatibility fingerprint could not be verified; continuing in advisory mode: {exception.Message}",
                 package.Value.PackageRoot);
         }
     }

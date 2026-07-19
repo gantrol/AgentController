@@ -62,6 +62,11 @@ internal sealed class VirtualMicroBroker : IDisposable
         return SubmitAsync(reports, $"tap {key}");
     }
 
+    public Task<MicroSendResult> WakeLightingAsync() =>
+        SubmitAsync(
+            CodexLightingWakeInstruction.Encode(),
+            "lighting wake (ignored ACT11 release)");
+
     public async Task<MicroSendResult> SetKeyAsync(
         string key,
         bool pressed)
@@ -263,4 +268,16 @@ internal sealed class VirtualMicroBroker : IDisposable
                 "Codex compatibility and the virtual HID connection must both be ready.");
         }
     }
+}
+
+internal static class CodexLightingWakeInstruction
+{
+    // Codex's Micro service treats every HID report as lighting activity, but
+    // its bridge explicitly ignores ACT11 because the physical double keycap
+    // is represented by ACT10. A release cannot leave held input behind.
+    public const string Key = "ACT11";
+    public const int Action = 0;
+
+    public static IReadOnlyList<byte[]> Encode() =>
+        MicroRpcCodec.EncodeHid(Key, Action);
 }

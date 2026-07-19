@@ -3,27 +3,17 @@ using CodexMicro.Protocol;
 namespace CodexMicro.Desktop.Services;
 
 /// <summary>
-/// Keeps the screen simulator illuminated when Codex temporarily switches the
-/// physical-device lighting model off after its inactivity timeout. The all-off
-/// report is still acknowledged by the protocol layer; it is only suppressed
-/// from replacing the last useful presentation snapshot.
+/// Tracks the last real lighting frame while distinguishing Codex's physical-
+/// device inactivity frame. The first all-off frame in each inactivity episode
+/// requests one harmless HID wake event; no screen-only color is invented.
 /// </summary>
 internal sealed class SlotLightingPresentationTracker
 {
-    private const int ScreenIdleColor = 0x9EBDFF;
     private ulong? _connectionEpoch;
     private long _lastSequence;
+    private bool _allOffEpisode;
 
-    public SlotLightingPresentationTracker()
-    {
-        VisibleSnapshot = CreateScreenIdleSnapshot(new SlotLightingSnapshot(
-            0,
-            DateTimeOffset.MinValue,
-            []));
-        IsInactivityLightingSuppressed = true;
-    }
-
-    public SlotLightingSnapshot VisibleSnapshot { get; private set; }
+    public SlotLightingSnapshot? VisibleSnapshot { get; private set; }
 
     public bool IsInactivityLightingSuppressed { get; private set; }
 
@@ -36,16 +26,17 @@ internal sealed class SlotLightingPresentationTracker
 
         _connectionEpoch = connectionEpoch;
         _lastSequence = 0;
-        IsInactivityLightingSuppressed =
-            HasVisibleLighting(VisibleSnapshot);
+        _allOffEpisode = false;
+        VisibleSnapshot = null;
+        IsInactivityLightingSuppressed = false;
     }
 
-    public bool Observe(SlotLightingSnapshot snapshot)
+    public SlotLightingPresentationUpdate Observe(SlotLightingSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         if (snapshot.Sequence <= _lastSequence)
         {
-            return false;
+            return new(false, false);
         }
 
         _lastSequence = snapshot.Sequence;
@@ -53,18 +44,19 @@ internal sealed class SlotLightingPresentationTracker
         {
             VisibleSnapshot = snapshot;
             IsInactivityLightingSuppressed = false;
-            return true;
+            _allOffEpisode = false;
+            return new(true, false);
         }
 
-        if (HasVisibleLighting(VisibleSnapshot))
+        var shouldWakeLighting = !_allOffEpisode;
+        _allOffEpisode = true;
+        if (VisibleSnapshot is null || !HasVisibleLighting(VisibleSnapshot))
         {
-            IsInactivityLightingSuppressed = true;
-            return true;
+            VisibleSnapshot = snapshot;
         }
 
-        VisibleSnapshot = CreateScreenIdleSnapshot(snapshot);
         IsInactivityLightingSuppressed = true;
-        return true;
+        return new(true, shouldWakeLighting);
     }
 
     public static bool IsLit(SlotLighting lighting) =>
@@ -74,21 +66,8 @@ internal sealed class SlotLightingPresentationTracker
 
     private static bool HasVisibleLighting(SlotLightingSnapshot snapshot) =>
         snapshot.Slots.Any(IsLit);
-
-    private static SlotLightingSnapshot CreateScreenIdleSnapshot(
-        SlotLightingSnapshot source) => new(
-            source.Sequence,
-            source.ObservedAt,
-            Enumerable.Range(0, 6)
-                .Select(slotId => new SlotLighting(
-                    slotId,
-                    ScreenIdleColor,
-                    1,
-                    1,
-                    0,
-                    false,
-                    false,
-                    true))
-                .ToArray(),
-            source.MappingKind);
 }
+
+internal readonly record struct SlotLightingPresentationUpdate(
+    bool Accepted,
+    bool ShouldWakeLighting);

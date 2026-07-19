@@ -70,6 +70,7 @@ public partial class MainWindow : Window
     private bool _dialSelectionFeedbackRunning;
     private bool _encoderStepPumpRunning;
     private bool _dialSurfaceMayBeMounting;
+    private bool _lightingWakePending;
     private long _dialSurfaceNotBeforeTimestamp;
     private CodexMenuSelection? _cachedDialSelection;
     private bool _windowClosed;
@@ -263,11 +264,14 @@ public partial class MainWindow : Window
                 _compatibility.IsReviewed ? "#9EBDFF" : "#FFD66E",
                 _compatibility.IsReviewed
                     ? $"Codex {_compatibility.Build} · 已验证\n{_compatibility.Fingerprint}"
-                    : $"Codex {_compatibility.Build} · 未审核，兼容模式\n{_compatibility.Detail}");
+                    : _compatibility.Disposition is CodexCompatibilityDisposition.Changed
+                        ? $"Codex {_compatibility.Build} · 指纹有变化，继续连接\n{_compatibility.Detail}"
+                        : $"Codex {_compatibility.Build} · 未审核，继续连接\n{_compatibility.Detail}");
             try
             {
                 var info = _broker.Connect(_compatibility);
                 _slotLightingPresentation.BeginConnection(info.ConnectionEpoch);
+                RefreshAgentSlotPresentation();
                 _transportName = info.TransportName;
                 SetLed(DriverLed, "#B8B98B", $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16}");
                 SetLed(ActivityLed, "#B8B98B", "HID / RPC 已就绪");
@@ -1536,7 +1540,8 @@ public partial class MainWindow : Window
     {
         _ = Dispatcher.InvokeAsync(() =>
         {
-            if (!_slotLightingPresentation.Observe(snapshot))
+            var update = _slotLightingPresentation.Observe(snapshot);
+            if (!update.Accepted)
             {
                 return;
             }
@@ -1550,9 +1555,51 @@ public partial class MainWindow : Window
                 DriverLed,
                 "虚拟 HID",
                 _slotLightingPresentation.IsInactivityLightingSuppressed
-                    ? $"{_transportName} · Codex 空闲照明已暂停 · 屏幕保留最近灯色 · 连接正常"
+                    ? $"{_transportName} · Codex 已请求节能熄灯 · 正在自动恢复真实灯色"
                     : $"{_transportName} · Agent 状态已同步 · {activeSlots} 个活动槽位");
+
+            if (update.ShouldWakeLighting)
+            {
+                _ = WakeCodexLightingAsync();
+            }
         });
+    }
+
+    private async Task WakeCodexLightingAsync()
+    {
+        if (_lightingWakePending || !_broker.IsReady)
+        {
+            return;
+        }
+
+        _lightingWakePending = true;
+        try
+        {
+            var result = await _broker.WakeLightingAsync();
+            if (result.Disposition is MicroSendDisposition.NotSent or
+                MicroSendDisposition.Rejected)
+            {
+                SetHelp(
+                    DriverLed,
+                    "虚拟 HID",
+                    $"{_transportName} · 自动恢复灯光未送达 · {result.Detail}");
+            }
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+                ObjectDisposedException or
+                Win32Exception or
+                IOException)
+        {
+            SetHelp(
+                DriverLed,
+                "虚拟 HID",
+                $"{_transportName} · 自动恢复灯光失败 · {exception.Message}");
+        }
+        finally
+        {
+            _lightingWakePending = false;
+        }
     }
 
     private void AgentRosterObserver_RosterChanged(

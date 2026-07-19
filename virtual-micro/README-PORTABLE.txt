@@ -1,4 +1,4 @@
-Codex Micro Simulator v1.0.1 - Windows x64 portable application
+Codex Micro Simulator v1.0.2 - Windows x64 portable application
 ================================================================
 
 This archive contains the self-contained desktop application only. It does not
@@ -20,14 +20,15 @@ Run:
 2. Extract this entire archive to a normal writable directory.
 3. Run CodexMicroSimulator.exe as a normal, non-administrator user.
 
-Codex builds not yet present in the reviewed fingerprint list are indicated by
-the first yellow status LED and may continue in compatibility mode. A known
-build whose reviewed files no longer match is still blocked.
+Codex builds not yet present in the reviewed fingerprint list, changed reviewed
+files, and unavailable fingerprints are indicated by the first yellow status
+LED. They continue in advisory compatibility mode instead of being blocked.
 
-The screen simulator retains its most recent valid Agent lighting when Codex
-sends the physical device's inactivity all-off frame. If Codex is already idle
-at startup, a neutral blue screen-only fallback remains illuminated. This does
-not change the HID protocol or connection state.
+When Codex sends the physical device's inactivity all-off frame, the simulator
+immediately sends one ACT11 release. Codex treats it as lighting activity while
+its current Micro bridge explicitly ignores it as a business action. The next
+real lighting frame replaces the display. No neutral-blue lighting is invented
+at startup, and repeated all-off frames do not create a wake-event storm.
 
 This independent experiment is not affiliated with, authorized by, or endorsed
 by OpenAI, Codex, or Work Louder.

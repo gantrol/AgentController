@@ -8,7 +8,8 @@ public sealed class CodexCompatibilityResultTests
     [Theory]
     [InlineData(0, false, false)]
     [InlineData(1, true, false)]
-    [InlineData(2, true, true)]
+    [InlineData(2, true, false)]
+    [InlineData(3, true, true)]
     public void DispositionControlsConnectionAndReviewState(
         int dispositionValue,
         bool isCompatible,
