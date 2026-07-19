@@ -98,6 +98,10 @@ webview/assets/codex-micro-signals-DPWNMrvO.js
 
 ### 5. 当前项目对应实现
 
+- [公开设计索引](README.md)
+- [架构与输入链路](architecture-and-input-flow.md)
+- [手柄操作列表](controller-operations.md)
+- [Codex Micro 指令参考](codex-micro-command-reference.md)
 - [v0.4a 语义与频率规范](../docs/interaction-spec-v0.4-controller-mapping.md)
 - [v0.4b 实体手柄映射](../docs/interaction-spec-v0.4b-physical-controller-mapping.md)
 - [v0.7 当前手柄指令清单](controller-command-reference-v0.7.md)

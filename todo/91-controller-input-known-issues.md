@@ -29,10 +29,137 @@
 - 右摇杆模拟 Micro 左上角旋钮的完整交互，不再维持另一套“简易/高级模型控制”状态机。
 - 上/下是选择轴：在 composer 中遍历 Advanced、Fast、Power 等控件；在弹出菜单或模型列表中按视觉顺序移动高亮。每个重复档只允许产生一个 `ENC_CW` / `ENC_CC act=2`。
 - 左/右是操作轴：按实际屏幕方向调整当前控件；对可进入的菜单，右进入/打开、左退出/返回。左/右不得产生 ENC 档位。
-- R3 只表示旋钮按压/长按，不得被解释为方向动作；教程必须说明 R3 是“垂直按下右摇杆帽”。
+- R3 短按表示旋钮按压，长按打开 Agent Controller 设置；二者都不得被解释为方向动作，且长按必须抑制同一次手势的短按。教程必须说明 R3 是“垂直按下右摇杆帽”。
 - 菜单打开后必须有可见选择或可验证 readback。只有“菜单已打开”而没有当前项身份，不算导航成功。
 - Micro 驱动返回 `Accepted`、`OutcomeUnknown` 或 `Rejected` 后不得再注入第二套 UIA/键盘动作；只有明确 `NotSent` 才允许降级。
 - neutral、key-up 和 PTT release 不能被模拟量合并丢弃；断连时只释放该输入源持有的状态。
+
+## 右摇杆到 Codex 的端到端 UML
+
+### 当前实际链路（问题基线）
+
+当前实现不是一条纯 Micro 链路，而是根据菜单状态在 Micro、原生方向键和 UIA 之间切换：
+
+```mermaid
+flowchart LR
+    subgraph PAD["物理手柄"]
+        A["右摇杆<br/>RightX / RightY"]
+    end
+
+    subgraph INPUT["Agent Controller 输入层"]
+        B["XInputService<br/>每 16 ms 轮询<br/>XInput / WGI / Raw HID"]
+        C["ControllerStateBuffer<br/>合并模拟量快照"]
+        D["UI Dispatcher<br/>ProcessControllerState"]
+        E{"输入门禁<br/>Bridge / 前台 / LT / Radial<br/>等待回中"}
+        F["StickGestureRouter<br/>死区 + 主轴判定<br/>锁轴直到回中"]
+        G["AxisRepeater<br/>right-x / right-y"]
+        H["VirtualDialInputPolicy<br/>Up / Down / Left / Right"]
+        I["pending navigation<br/>异步 Pump"]
+    end
+
+    subgraph ROUTE["当前 Composer 路由"]
+        J["CodexComposerService<br/>DialNavigate"]
+        K{"菜单状态与方向"}
+        L["菜单打开 + 上/下<br/>SendEncoderSteps"]
+        M["菜单打开 + 左/右<br/>发送原生方向键"]
+        N["菜单关闭 + 左/右<br/>DialStep"]
+        O["MicroInputService<br/>ENC_CW / ENC_CC<br/>act = 2"]
+        P["Legacy fallback<br/>UIA 控件探测 / 聚焦"]
+    end
+
+    subgraph DEVICE["Windows Micro 设备平面"]
+        Q["MicroRpcCodec<br/>v.oai.hid + LF<br/>64-byte Report 0x06/0x02"]
+        R["VhfMicroReportTransport<br/>sequence + IOCTL_SUBMIT_INPUT"]
+        S["VHF source driver<br/>VhfReadReportSubmit"]
+        T["Windows HID stack<br/>虚拟 vendor HID"]
+    end
+
+    subgraph CODEX["Codex Desktop 私有接收链"]
+        U["主进程<br/>codex-micro-service<br/>监听 HID"]
+        V["Renderer<br/>codex-micro-bridge<br/>映射 Micro 事件"]
+        W["Composer / Popup<br/>移动高亮或调整控件"]
+    end
+
+    A --> B --> C --> D --> E
+    E -->|"允许"| F --> G --> H --> I --> J --> K
+    E -->|"阻止"| X["丢弃或等待 neutral"]
+
+    K -->|"打开 + 上/下"| L --> O
+    K -->|"打开 + 左/右"| M --> W
+    K -->|"关闭 + 左/右"| N --> O
+    K -->|"关闭 + 上/下"| Y["当前无动作 / unsupported"]
+
+    L -->|"仅 NotSent"| M
+    N -->|"仅 NotSent"| P --> W
+    O --> Q --> R --> S --> T --> U --> V --> W
+```
+
+### 当前轴语义冲突
+
+菜单状态会改变哪个物理轴被转换成 `ENC_*`，所以“上下、左右混淆”不一定只来自摇杆斜向噪声：
+
+```mermaid
+flowchart LR
+    Y["右摇杆上/下"] -->|"菜单打开"| E1["ENC_CW / ENC_CC"]
+    X["右摇杆左/右"] -->|"菜单关闭时 DialStep"| E2["ENC_CW / ENC_CC"]
+    E1 --> SAME["同一个 Micro Encoder 命令入口"]
+    E2 --> SAME
+```
+
+### 目标原生 Micro 时序
+
+右摇杆上/下固定表示 Micro 旋钮旋转；路由不得读取或猜测 Codex popup 来改变轴语义：
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    actor User as 用户
+    participant Pad as 实体手柄
+    participant Input as Controller Input
+    participant Gesture as PhysicalGestureEngine
+    participant Projection as Micro Projection
+    participant Broker as Micro Broker
+    participant Codec as Micro Codec
+    participant Driver as KMDF/VHF Driver
+    participant HID as Windows HID
+    participant Service as codex-micro-service
+    participant Bridge as codex-micro-bridge
+    participant Composer as Codex Composer
+
+    User->>Pad: 右摇杆向上
+    Pad->>Input: RightY 超过 engage threshold
+    Input->>Gesture: 原始快照 + deviceId + timestamp
+    Gesture->>Gesture: 锁定 Vertical 轴
+    Gesture->>Projection: EncoderStep(+1)
+
+    Projection->>Broker: MicroControlIntent + epoch + sequence
+    Broker->>Codec: 编码 ENC_CW, act=2
+    Codec-->>Broker: 64-byte Report, ID 0x06 / Channel 0x02
+    Broker->>Driver: IOCTL SubmitInput(batch)
+    Driver->>HID: VhfReadReportSubmit
+    HID->>Service: HID input report
+    Service->>Bridge: Micro encoder event
+    Bridge->>Composer: composer-navigation 向上选择
+    Composer-->>User: 可见高亮移动
+
+    Note over Broker,Composer: Transport Accepted 只证明驱动接收；可见高亮或 readback 才证明操作生效
+
+    User->>Pad: 摇杆完全回中
+    Pad->>Gesture: neutral
+    Gesture->>Gesture: 释放 Vertical ownership
+```
+
+目标映射固定如下：
+
+| 手柄动作 | 类型化意图 | Codex 最终输入 |
+| --- | --- | --- |
+| 右摇杆上 | `EncoderStep(+1)` | `ENC_CW, act=2` |
+| 右摇杆下 | `EncoderStep(-1)` | `ENC_CC, act=2` |
+| R3 短按 | `EncoderPress` | `ENC` down/up |
+| R3 长按 | `OpenAgentControllerSettings` | 本地应用动作；不发送 `ENC`，并抑制同一次短按 |
+| 右摇杆左/右 | `CurrentControlLeft / CurrentControlRight` | 独立导航 executor；绝不转换成 `ENC_*` |
+| 回中 | `Neutral` | 释放轴 ownership，不得被快照合并丢失 |
 
 ## 仍待确认的根因
 

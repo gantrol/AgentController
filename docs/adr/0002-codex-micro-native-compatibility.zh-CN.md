@@ -148,9 +148,10 @@ tests/
 | LT 按住说话 | `ACT10` key down；松开 key up | 不再调用 UIA 录音按钮；断连必须释放。可选双击锁定也发送真实两次按下/释放时序。 |
 | X 发送 | 当前布局中已验证为 Codex/Send 的 Command slot；官方默认是 `ACT12` | 映射未知时不猜 ACT12；提示恢复默认布局或使用明确的语义降级。 |
 | Fork / Fast / Approve / Decline | 当前布局中对应 Command slot；默认分别为 ACT09、ACT06、ACT07、ACT08 | 高风险确认仍由 Application 安全策略控制，HID 只负责最后一次物理动作。 |
-| 右摇杆横向重复 | `ENC_CC` / `ENC_CW`，`act=2` | 默认进入 `composer-navigation`，让 Codex 自己遍历 Model、Effort、Speed 和其他 Composer 控件，不再探测弹窗。 |
+| 右摇杆纵向重复 | 向上为 `ENC_CW`、向下为 `ENC_CC`，`act=2` | 默认进入 `composer-navigation`，让 Codex 自己遍历 Model、Effort、Speed 和其他 Composer 控件，不再探测弹窗。 |
+| 右摇杆横向重复 | 不发送 `ENC_*`；生成 `CurrentControlLeft / CurrentControlRight` | 保持实际屏幕方向，调整当前控件；右进入/打开、左退出/返回。它是手柄扩展操作，必须使用独立且可验证的导航 executor，绝不能复用 Micro 旋钮档位。 |
 | R3 短按 | `ENC` down/up | 打开或确认当前 Composer 控件。 |
-| R3 长按 | `ENC` down，超过官方 500 ms 阈值后 up | 打开 Codex Micro 设置；参考实现用 650 ms 留调度余量。 |
+| R3 长按 | 不发送 `ENC`；生成 `OpenAgentControllerSettings` | 打开 Agent Controller 自身设置，并抑制同一次手势的短按；Micro 设置由独立入口负责。 |
 | RB + 右摇杆 | 连续 `v.oai.rad(a,d)`；释放或回中发送 `d=0` | 提供真实 Micro analog；只有越过激活阈值才触发，允许合并中间帧但绝不丢 neutral。 |
 | B 在 Micro 菜单打开时 | 邻近旋钮的取消 Agent Key | 只有当前构建和槽位已验证才发送；三秒 Stop 仍是 App Server `turn/interrupt`。 |
 | 选中六个 Micro Agent slot 之一并按 A | 对应 `AG00..AG05` 的真实 tap/double-tap | 单击只切换，双击 350 ms 内切换并前置 Codex；任务名必须有独立 roster 证据。 |
