@@ -3239,7 +3239,7 @@ public partial class MainWindow : Window
 
                 if (
                     _currentControlIntents.PendingNavigation is
-                        { } navigation &&
+                    { } navigation &&
                     CanExecuteCurrentControlIntent(navigation))
                 {
                     CancelPendingComposerSelection();
