@@ -29,4 +29,16 @@ public sealed class NonActivatingWindowTests
         Assert.False(handled);
         Assert.Equal(IntPtr.Zero, result);
     }
+
+    [Fact]
+    public void ExtendedStyleAlwaysIncludesNoActivate()
+    {
+        const long existingStyle = 0x00040000L;
+
+        var updated = NonActivatingWindow.AddNoActivateStyle(existingStyle);
+
+        Assert.Equal(
+            existingStyle | NonActivatingWindow.WsExNoActivate,
+            updated);
+    }
 }

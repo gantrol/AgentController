@@ -41,4 +41,28 @@ public sealed class CodexMenuSelectionObserverTests
 
         Assert.Equal("3 / 3  ·  Confirm", selection.DisplayText);
     }
+
+    [Theory]
+    [InlineData("Ask for approval", "Ask for approval")]
+    [InlineData(
+        "Approve for me Only ask for actions detected as potentially unsafe",
+        "Approve for me")]
+    [InlineData(
+        "Full access Unrestricted access to the internet and any file on your computer",
+        "Full access")]
+    public void MatchApprovalOptionAcceptsCodexAccessibleDescriptions(
+        string accessibleName,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            CodexMenuSelectionObserver.MatchApprovalOption(accessibleName));
+    }
+
+    [Fact]
+    public void MatchApprovalOptionRejectsComposerControls()
+    {
+        Assert.Null(CodexMenuSelectionObserver.MatchApprovalOption("Model 5.6 Sol"));
+    }
+
 }

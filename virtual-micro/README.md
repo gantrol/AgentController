@@ -28,6 +28,16 @@ An independent Windows desktop simulator for Codex Micro:
 - A compact live capsule beside the encoder mirrors the focused Codex item as
   `position / count · label`, including model options and the Full access
   confirmation buttons. Accessibility is read-only; every action remains HID.
+- Encoder input never waits for accessibility feedback. Wheel and drag packets
+  are reduced to a bounded net intent (at most three pending detents), opposite
+  motion cancels queued motion, and stale history is discarded before a press;
+  intents older than 180 ms and backlog accumulated during a stalled send are
+  discarded. Accessibility remains an asynchronous, read-only status display.
+- Hovering an Agent key shows `project › task title` when Codex's local recent
+  task index can be matched to the default `recent` slot source. This UI-only observer reads
+  `~/.codex/session_index.jsonl` and `.codex-global-state.json`; VHF lighting
+  remains the independent source of slot state and neither file is modified.
+  Non-recent sources stay generically labelled unless their mapping is locally provable.
 - The lower-left black knob is the only Codex Micro settings entry. Its left
   click sends the real 650 ms `ENC` hold used by Codex to navigate to
   `/settings/codex-micro`; its right click reconnects the virtual HID.

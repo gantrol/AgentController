@@ -77,6 +77,7 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 | 语音键 | 按住/松开 | 分别发送 `ACT10` 按下和释放，保持 Codex PTT 时序 |
 | 左上旋钮 | 滚轮或上下拖动 | 按离散步进顺序发送 `ENC_CW` / `ENC_CC` |
 | 左上旋钮 | 短按 | 发送一次 `ENC` 按下/释放，打开或确认 Codex 当前高亮项 |
+| 左上旋钮 | 权限模式选择面中旋转 | 继续通过官方 Micro bridge 发送 `ENC_CW` / `ENC_CC`，遍历 Ask for approval、Approve for me 与 Full access |
 | 左上旋钮 | Full access 确认框中旋转 | 通过受限 VHF 键盘子设备发送 Shift+Tab / Tab，移动确认按钮焦点 |
 | 左上旋钮 | Full access 确认框中短按 | 通过受限 VHF 键盘子设备发送 Enter，确认当前按钮 |
 | 左上旋钮 | 右键 | 不执行操作；设置入口不与选择旋钮复用 |
@@ -98,6 +99,10 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 可访问性树中的可见菜单及焦点项，按屏幕顺序计算“序号 / 总数”，并在白色旋钮旁
 显示 2.4 秒的轻量胶囊；观察结果不执行点击。检测到 Full access 原生确认框时，
 旋钮才切换到上述受限 VHF 键盘 collection，确认框关闭后立即恢复 `ENC_*`。
+旋钮输入与可访问性反馈完全解耦：滚轮和拖动只保留最多三个待处理净刻度，反向
+输入会抵消尚未发送的历史，按下确认会先清空积压。发送泵以 24 ms 最小间隔逐个
+交付 VHF 步进；超过 180 ms 的输入与一次卡顿发送期间产生的积压直接丢弃，
+不会在恢复后补发。菜单位置观察仅异步更新顶部胶囊。
 
 设置入口使用真实硬件的编码器长按语义：当前 Codex 桥在按下 500 ms 后直接
 导航到 `/settings/codex-micro`。模拟器保持 650 ms 后释放，并且不再追加会把
@@ -135,6 +140,12 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 所有交互控件使用统一的非抢焦点悬停卡片。卡片第一行显示控件标题，第二部分
 显示当前 Codex 映射、鼠标操作和实时状态；动作键、旋钮模式、摇杆方向以及
 Agent 槽位状态变化时同步更新。相同内容写入自动化名称和帮助文本。
+Agent 键第一行优先显示“所属项目 › 会话标题”：项目与标题由独立的只读观察器
+从 `~/.codex/session_index.jsonl` 和 `.codex-global-state.json` 匹配最近六个本地
+任务；只有官方默认 `recent` 来源可本地证明时才合并。`pinned`、`priority` 或
+`custom` 来源没有对应证明时保留通用槽位标题。VHF `v.oai.thstatus` 仍只负责槽位颜色和效果。
+匹配不到时同样保留通用槽位标题，
+不会把推测写回 Codex，也不改变 `SlotOnly` 协议。
 每次白色旋钮移动后，顶部胶囊同步显示当前项序号、总数和名称，避免模型或权限
 菜单只能盲选。
 

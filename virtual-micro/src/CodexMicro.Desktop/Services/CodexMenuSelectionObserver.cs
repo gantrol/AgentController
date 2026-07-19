@@ -9,6 +9,7 @@ namespace CodexMicro.Desktop.Services;
 internal enum CodexSelectionSurface
 {
     Menu,
+    Approval,
     Dialog,
 }
 
@@ -55,11 +56,6 @@ internal sealed class CodexMenuSelectionObserver
         return lastResult;
     }
 
-    public Task<CodexMenuSelection?> ObserveCurrentAsync(
-        string? packageRoot,
-        CancellationToken cancellationToken = default) =>
-        Task.Run(() => TryObserve(packageRoot), cancellationToken);
-
     internal static string Format(CodexMenuSelection selection)
     {
         var item = NormalizeLabel(selection.ItemName);
@@ -74,9 +70,35 @@ internal sealed class CodexMenuSelectionObserver
             return "确认权限  ·  转动选择";
         }
 
+        if (selection.Surface == CodexSelectionSurface.Approval)
+        {
+            return "权限模式  ·  转动选择";
+        }
+
         return string.IsNullOrWhiteSpace(menu)
             ? "转动旋钮选择"
             : $"转动选择  ·  {menu}";
+    }
+
+    internal static string? MatchApprovalOption(string value)
+    {
+        var normalized = NormalizeLabel(value);
+        foreach (var option in new[]
+                 {
+                     "Ask for approval",
+                     "Approve for me",
+                     "Full access",
+                 })
+        {
+            if (normalized.StartsWith(
+                option,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return option;
+            }
+        }
+
+        return null;
     }
 
     private static CodexMenuSelection? TryObserve(string? packageRoot)
@@ -106,17 +128,25 @@ internal sealed class CodexMenuSelectionObserver
                 var menus = window.FindAll(
                     TreeScope.Descendants,
                     menuCondition);
+                var windowHasVisibleMenu = false;
                 for (var menuIndex = 0; menuIndex < menus.Count; menuIndex++)
                 {
                     if (TryReadMenu(menus[menuIndex]) is { } candidate)
                     {
                         candidates.Add(candidate);
+                        windowHasVisibleMenu = true;
                     }
                 }
 
                 if (TryReadDialog(window) is { } dialog)
                 {
                     candidates.Add(dialog);
+                }
+
+                if (!windowHasVisibleMenu &&
+                    TryReadApprovalSurface(window) is { } approval)
+                {
+                    candidates.Add(approval);
                 }
             }
 
@@ -129,6 +159,17 @@ internal sealed class CodexMenuSelectionObserver
             if (dialogCandidate is not null)
             {
                 return dialogCandidate.Selection;
+            }
+
+            var approvalCandidate = candidates
+                .Where(candidate =>
+                    candidate.Selection.Surface == CodexSelectionSurface.Approval)
+                .OrderByDescending(candidate => candidate.Selection.Position > 0)
+                .ThenBy(candidate => candidate.Area)
+                .FirstOrDefault();
+            if (approvalCandidate is not null)
+            {
+                return approvalCandidate.Selection;
             }
 
             var focused = candidates
@@ -294,6 +335,134 @@ internal sealed class CodexMenuSelectionObserver
             Math.Max(1, right - left));
     }
 
+    private static MenuCandidate? TryReadApprovalSurface(
+        AutomationElement window)
+    {
+        var header = window.FindFirst(
+            TreeScope.Descendants,
+            new PropertyCondition(
+                AutomationElement.NameProperty,
+                "How should ChatGPT actions be approved?"));
+        if (header is null ||
+            SafeRead(() => header.Current.IsOffscreen, true))
+        {
+            return null;
+        }
+
+        var actionableControls = new OrCondition(
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.Button),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.MenuItem),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.RadioButton),
+            new PropertyCondition(
+                AutomationElement.ControlTypeProperty,
+                ControlType.ListItem));
+        var descendants = window.FindAll(
+            TreeScope.Descendants,
+            actionableControls);
+        var controls = new List<ApprovalControlCandidate>(descendants.Count);
+        for (var index = 0; index < descendants.Count; index++)
+        {
+            var element = descendants[index];
+            var name = MatchApprovalOption(
+                SafeRead(() => element.Current.Name, string.Empty));
+            if (name is null)
+            {
+                continue;
+            }
+
+            var rectangle = SafeRead(
+                () => element.Current.BoundingRectangle,
+                System.Windows.Rect.Empty);
+            if (rectangle.IsEmpty ||
+                rectangle.Width <= 0 ||
+                rectangle.Height <= 0 ||
+                SafeRead(() => element.Current.IsOffscreen, true))
+            {
+                continue;
+            }
+
+            controls.Add(new ApprovalControlCandidate(
+                name,
+                SafeRead(() => element.Current.HasKeyboardFocus, false),
+                rectangle.Top,
+                rectangle.Left,
+                rectangle.Right,
+                rectangle.Bottom));
+        }
+
+        return TryCreateApprovalCandidate(controls);
+    }
+
+    private static MenuCandidate? TryCreateApprovalCandidate(
+        IReadOnlyList<ApprovalControlCandidate> controls)
+    {
+        var ask = controls
+            .Where(control => control.Name == "Ask for approval")
+            .OrderBy(control => control.Top)
+            .FirstOrDefault();
+        if (ask is null)
+        {
+            return null;
+        }
+
+        var approve = controls
+            .Where(control =>
+                control.Name == "Approve for me" &&
+                control.Top > ask.Top)
+            .OrderBy(control => control.Top)
+            .FirstOrDefault();
+        if (approve is null)
+        {
+            return null;
+        }
+
+        // There can be a second "Full access" element for the composer
+        // trigger below the popup. The first one following "Approve for me"
+        // is the actual option in the approval surface.
+        var fullAccess = controls
+            .Where(control =>
+                control.Name == "Full access" &&
+                control.Top > approve.Top)
+            .OrderBy(control => control.Top)
+            .FirstOrDefault();
+        if (fullAccess is null)
+        {
+            return null;
+        }
+
+        var items = new[] { ask, approve, fullAccess };
+        var focusedIndex = Array.FindIndex(
+            items,
+            static item => item.HasKeyboardFocus);
+        var selection = focusedIndex >= 0
+            ? new CodexMenuSelection(
+                "Approval mode",
+                items[focusedIndex].Name,
+                focusedIndex + 1,
+                items.Length,
+                CodexSelectionSurface.Approval)
+            : new CodexMenuSelection(
+                "Approval mode",
+                string.Empty,
+                0,
+                items.Length,
+                CodexSelectionSurface.Approval);
+        var left = items.Min(item => item.Left);
+        var top = items.Min(item => item.Top);
+        var right = items.Max(item => item.Right);
+        var bottom = items.Max(item => item.Bottom);
+        return new MenuCandidate(
+            selection,
+            top,
+            Math.Max(1, (right - left) * (bottom - top)));
+    }
+
     private static bool IsCodexProcess(
         int processId,
         string? packageRoot,
@@ -363,4 +532,12 @@ internal sealed class CodexMenuSelectionObserver
         bool HasKeyboardFocus,
         double Top,
         double Left);
+
+    private sealed record ApprovalControlCandidate(
+        string Name,
+        bool HasKeyboardFocus,
+        double Top,
+        double Left,
+        double Right,
+        double Bottom);
 }

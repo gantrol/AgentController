@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -20,6 +21,11 @@ namespace CodexMicro.Desktop;
 
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan EncoderStepInterval =
+        TimeSpan.FromMilliseconds(24);
+    private static readonly TimeSpan EncoderIntentMaximumAge =
+        TimeSpan.FromMilliseconds(180);
+
     private readonly record struct JoystickReport(
         double Angle,
         double Distance,
@@ -28,8 +34,10 @@ public partial class MainWindow : Window
     private readonly CodexCompatibilityProbe _compatibilityProbe = new();
     private readonly VirtualMicroBroker _broker = new();
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
+    private readonly CodexAgentRosterObserver _agentRosterObserver = new();
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
     private readonly DialGestureTracker _dialGesture = new();
+    private readonly EncoderStepAccumulator _encoderSteps = new(3);
     private readonly SemaphoreSlim _encoderInputGate = new(1, 1);
     private readonly System.Windows.Threading.DispatcherTimer
         _dialSelectionHideTimer = new()
@@ -55,9 +63,15 @@ public partial class MainWindow : Window
     private long _dialInputSequence;
     private long _dialWheelRouteSequence;
     private long _lastSlotLightingSequence;
+    private SlotLightingSnapshot? _latestSlotLighting;
+    private CodexAgentRosterSnapshot? _latestAgentRoster;
     private int _dialSelectionFeedbackVersion;
     private int _dialSelectionHudVersion;
     private bool _dialSelectionFeedbackRunning;
+    private bool _encoderStepPumpRunning;
+    private bool _dialSurfaceMayBeMounting;
+    private long _dialSurfaceNotBeforeTimestamp;
+    private CodexMenuSelection? _cachedDialSelection;
     private bool _windowClosed;
     private Point _joystickDragOrigin;
     private string? _joystickActiveDirection;
@@ -108,6 +122,7 @@ public partial class MainWindow : Window
         _broker.StateChanged += Broker_StateChanged;
         _broker.SlotLightingObserved += Broker_SlotLightingObserved;
         _layoutObserver.LayoutChanged += LayoutObserver_LayoutChanged;
+        _agentRosterObserver.RosterChanged += AgentRosterObserver_RosterChanged;
         _dialSelectionHideTimer.Tick += DialSelectionHideTimer_Tick;
         InitializeHoverHelp();
         ApplyLayout(_layoutObserver.Current);
@@ -170,6 +185,9 @@ public partial class MainWindow : Window
         }
 
         _layoutObserver.Start();
+        _agentRosterObserver.Start();
+        _latestAgentRoster = _agentRosterObserver.Current;
+        RefreshAgentSlotPresentation();
         await ConnectAsync();
     }
 
@@ -194,6 +212,7 @@ public partial class MainWindow : Window
     private void Window_Closed(object? sender, EventArgs e)
     {
         _windowClosed = true;
+        _encoderSteps.Clear();
         _dialSelectionFeedbackVersion++;
         _dialSelectionHideTimer.Stop();
         _dialSelectionHideTimer.Tick -= DialSelectionHideTimer_Tick;
@@ -210,6 +229,8 @@ public partial class MainWindow : Window
         _joystickReportQueue.Clear();
         _layoutObserver.LayoutChanged -= LayoutObserver_LayoutChanged;
         _layoutObserver.Dispose();
+        _agentRosterObserver.RosterChanged -= AgentRosterObserver_RosterChanged;
+        _agentRosterObserver.Dispose();
         _broker.Dispose();
     }
 
@@ -493,9 +514,7 @@ public partial class MainWindow : Window
                 var update = _dialGesture.Move(localY);
                 if (update.Steps != 0)
                 {
-                    _ = RunDialInputSafelyAsync(
-                        () => SendEncoderStepsAsync(update.Steps),
-                        "旋钮拖动");
+                    EnqueueEncoderSteps(update.Steps, "旋钮拖动");
                 }
 
                 break;
@@ -514,23 +533,22 @@ public partial class MainWindow : Window
         }
     }
 
-    private void QueueDialWheelDelta(int delta) =>
-        _ = RunDialInputSafelyAsync(
-            async () =>
-            {
-                if (!_broker.IsReady)
-                {
-                    await EnsureReadyFeedbackAsync();
-                    return;
-                }
+    private void QueueDialWheelDelta(int delta)
+    {
+        if (!_broker.IsReady)
+        {
+            _ = RunDialInputSafelyAsync(
+                EnsureReadyFeedbackAsync,
+                "旋钮滚轮");
+            return;
+        }
 
-                var steps = _dialGesture.AddWheelDelta(delta);
-                if (steps != 0)
-                {
-                    await SendEncoderStepsAsync(steps);
-                }
-            },
-            "旋钮滚轮");
+        var steps = _dialGesture.AddWheelDelta(delta);
+        if (steps != 0)
+        {
+            EnqueueEncoderSteps(steps, "旋钮滚轮");
+        }
+    }
 
     private void Dial_PreviewMouseLeftButtonDown(
         object sender,
@@ -571,9 +589,7 @@ public partial class MainWindow : Window
         var update = _dialGesture.Move(e.GetPosition(DialButton).Y);
         if (update.Steps != 0)
         {
-            _ = RunDialInputSafelyAsync(
-                () => SendEncoderStepsAsync(update.Steps),
-                "旋钮拖动");
+            EnqueueEncoderSteps(update.Steps, "旋钮拖动");
         }
     }
 
@@ -616,68 +632,139 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task SendEncoderStepsAsync(int steps)
+    private void EnqueueEncoderSteps(int steps, string operation)
+    {
+        _encoderSteps.Add(steps, Stopwatch.GetTimestamp());
+        if (_encoderStepPumpRunning || _encoderSteps.Pending == 0)
+        {
+            return;
+        }
+
+        StartEncoderStepPump(operation);
+    }
+
+    private void StartEncoderStepPump(string operation)
+    {
+        _encoderStepPumpRunning = true;
+        _ = RunDialInputSafelyAsync(
+            PumpEncoderStepsAsync,
+            operation);
+    }
+
+    private async Task PumpEncoderStepsAsync()
+    {
+        try
+        {
+            while (!_windowClosed)
+            {
+                var intent = _encoderSteps.TakeNext(
+                    Stopwatch.GetTimestamp(),
+                    ToStopwatchTicks(EncoderIntentMaximumAge));
+                if (intent is null)
+                {
+                    return;
+                }
+
+                var sendStarted = Stopwatch.GetTimestamp();
+                await SendEncoderStepAsync(intent.Value);
+                if (Stopwatch.GetTimestamp() - sendStarted >
+                    ToStopwatchTicks(EncoderIntentMaximumAge))
+                {
+                    // Do not replay pointer input accumulated while a driver
+                    // call or another encoder action was stalled.
+                    _encoderSteps.Clear();
+                }
+
+                if (_encoderSteps.Pending != 0)
+                {
+                    await Task.Delay(EncoderStepInterval);
+                }
+            }
+        }
+        finally
+        {
+            _encoderStepPumpRunning = false;
+            if (!_windowClosed && _encoderSteps.Pending != 0)
+            {
+                StartEncoderStepPump("旋钮合并输入");
+            }
+        }
+    }
+
+    private async Task SendEncoderStepAsync(EncoderStepIntent intent)
     {
         await _encoderInputGate.WaitAsync();
         try
         {
-            var clockwise = steps > 0;
-            for (var index = 0; index < Math.Abs(steps); index++)
+            if (_dialSurfaceMayBeMounting)
             {
-                var surface = await ObserveCurrentDialSurfaceAsync();
-                var routesDialog = surface is
+                _dialSurfaceMayBeMounting = false;
+                var remainingTicks =
+                    _dialSurfaceNotBeforeTimestamp - Stopwatch.GetTimestamp();
+                if (remainingTicks > 0)
                 {
-                    Surface: CodexSelectionSurface.Dialog,
-                };
-                Exception? animationError = null;
-                try
-                {
-                    AnimateDialStep(clockwise);
+                    await Task.Delay(TimeSpan.FromSeconds(
+                        (double)remainingTicks / Stopwatch.Frequency));
                 }
-                catch (Exception exception)
-                {
-                    animationError = exception;
-                }
+            }
 
-                var result = await RunActionAsync(
-                    routesDialog
-                        ? () => _broker.TapDialogKeyAsync(
-                            VhfKeyboardKey.Tab,
-                            shift: clockwise)
-                        : () => _broker.StepEncoderAsync(clockwise),
-                    routesDialog
-                        ? clockwise
-                            ? "确认框向上选择 · VHF Shift+Tab"
-                            : "确认框向下选择 · VHF Tab"
-                        : clockwise
-                            ? "向上选择 · ENC_CW"
-                            : "向下选择 · ENC_CC");
-                if (result is not null && result.Value.Disposition is
-                    MicroSendDisposition.Accepted or
-                    MicroSendDisposition.OutcomeUnknown)
-                {
-                    var sequence = ++_dialInputSequence;
-                    AutomationProperties.SetItemStatus(
-                        DialButton,
-                        $"{(routesDialog
-                            ? clockwise ? "VHF Shift+Tab" : "VHF Tab"
-                            : clockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}");
-                    QueueDialSelectionFeedback();
-                }
+            if (Stopwatch.GetTimestamp() - intent.InputTimestamp >
+                ToStopwatchTicks(EncoderIntentMaximumAge))
+            {
+                return;
+            }
 
-                if (animationError is not null)
-                {
-                    SetLed(ActivityLed, "#FFD66E", "旋钮动画已跳过");
-                    SetStatus(
-                        $"VHF 事件已继续交付；旋钮动画已跳过：{animationError.Message}");
-                }
+            var step = intent.Direction;
+            var clockwise = step > 0;
+            var routesDialog = _cachedDialSelection is
+            {
+                Surface: CodexSelectionSurface.Dialog,
+            };
+            Exception? animationError = null;
+            try
+            {
+                AnimateDialStep(clockwise);
+            }
+            catch (Exception exception)
+            {
+                animationError = exception;
+            }
 
-                if (result is null || result.Value.Disposition is
-                    MicroSendDisposition.NotSent or
-                    MicroSendDisposition.Rejected)
-                {
-                    break;
-                }
+            Func<Task<MicroSendResult>> sendStep = routesDialog
+                ? () => _broker.TapDialogKeyAsync(
+                    VhfKeyboardKey.Tab,
+                    shift: clockwise)
+                : () => _broker.StepEncoderAsync(clockwise);
+            var stepLabel = routesDialog
+                ? clockwise
+                    ? "确认框向上选择 · VHF Shift+Tab"
+                    : "确认框向下选择 · VHF Tab"
+                : clockwise
+                    ? "向上选择 · ENC_CW"
+                    : "向下选择 · ENC_CC";
+            var result = await RunActionAsync(sendStep, stepLabel);
+            if (result is not null && result.Value.Disposition is
+                MicroSendDisposition.Accepted or
+                MicroSendDisposition.OutcomeUnknown)
+            {
+                var sequence = ++_dialInputSequence;
+                AutomationProperties.SetItemStatus(
+                    DialButton,
+                    $"{(routesDialog
+                        ? clockwise ? "VHF Shift+Tab" : "VHF Tab"
+                        : clockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}");
+                QueueDialSelectionFeedback();
+            }
+            else
+            {
+                _encoderSteps.Clear();
+            }
+
+            if (animationError is not null)
+            {
+                SetLed(ActivityLed, "#FFD66E", "旋钮动画已跳过");
+                SetStatus(
+                    $"VHF 事件已继续交付；旋钮动画已跳过：{animationError.Message}");
             }
         }
         finally
@@ -688,11 +775,11 @@ public partial class MainWindow : Window
 
     private async Task TapEncoderAsync()
     {
+        _encoderSteps.Clear();
         await _encoderInputGate.WaitAsync();
         try
         {
-            var surface = await ObserveCurrentDialSurfaceAsync();
-            var routesDialog = surface is
+            var routesDialog = _cachedDialSelection is
             {
                 Surface: CodexSelectionSurface.Dialog,
             };
@@ -707,6 +794,12 @@ public partial class MainWindow : Window
                 MicroSendDisposition.Accepted or
                 MicroSendDisposition.OutcomeUnknown)
             {
+                _cachedDialSelection = null;
+                if (!routesDialog)
+                {
+                    MarkDialSurfaceMayBeMounting();
+                }
+
                 QueueDialSelectionFeedback();
             }
         }
@@ -716,24 +809,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<CodexMenuSelection?> ObserveCurrentDialSurfaceAsync()
+    private void MarkDialSurfaceMayBeMounting()
     {
-        try
-        {
-            return await _menuSelectionObserver.ObserveCurrentAsync(
-                _compatibility?.PackageRoot);
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or
-                System.Runtime.InteropServices.COMException or
-                ElementNotAvailableException)
-        {
-            AutomationProperties.SetItemStatus(
-                DialButton,
-                $"当前选择面读取已跳过 · {exception.Message}");
-            return null;
-        }
+        _dialSurfaceMayBeMounting = true;
+        _dialSurfaceNotBeforeTimestamp = Stopwatch.GetTimestamp() +
+            checked((long)(Stopwatch.Frequency * 0.08));
     }
+
+    private static long ToStopwatchTicks(TimeSpan duration) =>
+        checked((long)(duration.TotalSeconds * Stopwatch.Frequency));
 
     internal void AnimateDialStep(bool clockwise)
     {
@@ -790,6 +874,7 @@ public partial class MainWindow : Window
                     return;
                 }
 
+                _cachedDialSelection = selection;
                 if (selection is { } current)
                 {
                     ShowDialSelectionFeedback(current.DisplayText);
@@ -1318,7 +1403,11 @@ public partial class MainWindow : Window
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
         _windowSource = PresentationSource.FromVisual(this) as HwndSource;
-        _windowSource?.AddHook(WindowMessageHook);
+        if (_windowSource is not null)
+        {
+            NonActivatingWindow.ApplyNoActivateStyle(_windowSource.Handle);
+            _windowSource.AddHook(WindowMessageHook);
+        }
     }
 
     private IntPtr WindowMessageHook(
@@ -1450,52 +1539,66 @@ public partial class MainWindow : Window
             }
 
             _lastSlotLightingSequence = snapshot.Sequence;
-            for (var slotId = 0; slotId < _agentKeys.Length; slotId++)
-            {
-                _agentKeys[slotId].BorderBrush = new SolidColorBrush(
-                    Color.FromArgb(0, 0x8D, 0xB5, 0xFF));
-                SetHelp(
-                    _agentKeys[slotId],
-                    $"Agent 槽位 {slotId + 1}",
-                    $"AG{slotId:00} · 空闲 · 单击切换到该槽位。");
-            }
+            _latestSlotLighting = snapshot;
+            RefreshAgentSlotPresentation();
 
-            var activeSlots = 0;
-            foreach (var slot in snapshot.Slots)
-            {
-                if (slot.SlotId is < 0 or >= 6)
-                {
-                    continue;
-                }
-
-                var active = slot.Color != 0 && slot.Brightness > 0;
-                if (active)
-                {
-                    activeSlots++;
-                }
-
-                var color = !active
-                    ? Color.FromArgb(0, 0x8D, 0xB5, 0xFF)
-                    : Color.FromRgb(
-                        (byte)(slot.Color >> 16),
-                        (byte)(slot.Color >> 8),
-                        (byte)slot.Color);
-                _agentKeys[slot.SlotId].BorderBrush = new SolidColorBrush(color);
-                SetHelp(
-                    _agentKeys[slot.SlotId],
-                    $"Agent 槽位 {slot.SlotId + 1}",
-                    $"AG{slot.SlotId:00} · " +
-                    (active
-                        ? $"活动 · #{slot.Color:X6} · effect {slot.Effect}"
-                        : "空闲") +
-                    " · 单击切换到该槽位。");
-            }
+            var activeSlots = snapshot.Slots.Count(slot =>
+                slot.SlotId is >= 0 and < 6 &&
+                slot.Color != 0 &&
+                slot.Brightness > 0);
 
             SetHelp(
                 DriverLed,
                 "虚拟 HID",
                 $"{_transportName} · Agent 状态已同步 · {activeSlots} 个活动槽位");
         });
+    }
+
+    private void AgentRosterObserver_RosterChanged(
+        object? sender,
+        CodexAgentRosterSnapshot snapshot)
+    {
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            _latestAgentRoster = snapshot;
+            RefreshAgentSlotPresentation();
+        });
+    }
+
+    private void RefreshAgentSlotPresentation()
+    {
+        var lightingBySlot = _latestSlotLighting?.Slots
+            .Where(slot => slot.SlotId is >= 0 and < 6)
+            .ToDictionary(slot => slot.SlotId) ?? [];
+
+        for (var slotId = 0; slotId < _agentKeys.Length; slotId++)
+        {
+            lightingBySlot.TryGetValue(slotId, out var lighting);
+            var active = lighting is not null &&
+                lighting.Color != 0 &&
+                lighting.Brightness > 0;
+            var color = !active
+                ? Color.FromArgb(0, 0x8D, 0xB5, 0xFF)
+                : Color.FromRgb(
+                    (byte)(lighting!.Color >> 16),
+                    (byte)(lighting.Color >> 8),
+                    (byte)lighting.Color);
+            _agentKeys[slotId].BorderBrush = new SolidColorBrush(color);
+
+            var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
+            var title = rosterEntry?.DisplayTitle ?? $"Agent 槽位 {slotId + 1}";
+            var state = active
+                ? $"活动 · #{lighting!.Color:X6} · effect {lighting.Effect}"
+                : "空闲";
+            var localMatch = rosterEntry is null
+                ? string.Empty
+                : "\n项目与标题来自 Codex 本地最近任务索引。";
+            SetHelp(
+                _agentKeys[slotId],
+                title,
+                $"Agent 槽位 {slotId + 1} · AG{slotId:00} · {state} · 单击切换。" +
+                localMatch);
+        }
     }
 
     private void LayoutObserver_LayoutChanged(
@@ -1644,7 +1747,10 @@ public partial class MainWindow : Window
         string title,
         string detail)
     {
-        var content = new StackPanel();
+        var content = new StackPanel
+        {
+            MaxWidth = 360,
+        };
         content.Children.Add(new TextBlock
         {
             Text = title,
