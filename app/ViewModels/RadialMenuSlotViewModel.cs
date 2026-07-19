@@ -90,7 +90,10 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
     public LogicalInput? LogicalInput
     {
         get => _logicalInput;
-        private set => SetProperty(ref _logicalInput, value);
+        private set
+        {
+            SetProperty(ref _logicalInput, value);
+        }
     }
 
     public ThreadStatus Status
@@ -120,9 +123,12 @@ public sealed class RadialMenuSlotViewModel : ObservableObject
             var description = HasSubtitle
                 ? $"{Title}, {Subtitle}"
                 : Title;
-            return IsActionEnabled
+            var keyedDescription = string.IsNullOrWhiteSpace(InputGlyph)
                 ? description
-                : $"{description}, unavailable";
+                : $"{InputGlyph}, {description}";
+            return IsActionEnabled
+                ? keyedDescription
+                : $"{keyedDescription}, unavailable";
         }
     }
 

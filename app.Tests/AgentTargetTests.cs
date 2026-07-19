@@ -88,14 +88,6 @@ public sealed class AgentTargetTests
     }
 
     [Fact]
-    public void DeepLinkAdapterPreservesInvalidThreadGuard()
-    {
-        var target = new CodexAgentTarget(new CodexCommandService());
-
-        Assert.False(target.DeepLinks!.OpenThread(" "));
-    }
-
-    [Fact]
     public void ShortcutAdapterPreservesBridgeSafetyGate()
     {
         var target = new CodexAgentTarget(new CodexCommandService());
@@ -127,7 +119,8 @@ public sealed class AgentTargetTests
     {
         var target = new TestAgentTarget("shortcut-agent", "Shortcut");
         var snapshot = target.WorkspaceOrEmpty().LoadSnapshot();
-        var sidebar = target.SidebarOrUnavailable().GoBack(new());
+        var sidebar = target.SidebarOrUnavailable().RestoreDisclosure(
+            new ProjectDisclosureLease("Project", projectIsPinned: false));
         var composer = await target
             .ComposerOrUnavailable()
             .SelectAsync(

@@ -69,9 +69,6 @@ public static class AgentCapabilityFallbacks
 
         public string? TryGetCurrentThreadTitle() => null;
 
-        public SidebarAutomationResult GoBack(AppSettings settings) =>
-            Failed();
-
         public SidebarAutomationResult RestoreDisclosure(
             ProjectDisclosureLease lease) =>
             Failed();
@@ -145,12 +142,6 @@ public static class AgentCapabilityFallbacks
                 false,
                 Error: CapabilityUnavailable));
 
-        public Task<ComposerAutomationResult> ScrollConversationAsync(
-            ConversationBoundary boundary,
-            AppSettings settings,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(Failed());
-
         public string? TryReadComposerButtonName() => null;
 
         public string? TryReadDispatchButtonName() => null;
@@ -190,12 +181,6 @@ public static class AgentCapabilityFallbacks
 
         public ComposerDialResult DialCancel(AppSettings settings) =>
             DialFailed();
-
-        public ComposerAutomationResult Submit(AppSettings settings) =>
-            Failed();
-
-        public ComposerAutomationResult Clear(AppSettings settings) =>
-            Failed();
 
         public ComposerAutomationResult Cancel(AppSettings settings) =>
             Failed();

@@ -1,4 +1,5 @@
 using CodexController.Controllers;
+using CodexController.Services;
 
 namespace CodexController.Tests;
 
@@ -23,20 +24,48 @@ public sealed class VirtualDialInputPolicyTests
     }
 
     [Theory]
-    [InlineData(true, 1, true)]
-    [InlineData(true, -1, true)]
-    [InlineData(false, 1, false)]
-    [InlineData(false, -1, false)]
-    [InlineData(true, 0, false)]
-    public void QueuesOnlyTheInitialDialDetent(
-        bool horizontalStarted,
+    [InlineData(-1, ComposerDialNavigation.Left)]
+    [InlineData(1, ComposerDialNavigation.Right)]
+    public void HorizontalMotionKeepsItsLiteralScreenDirection(
         int direction,
-        bool expected)
+        ComposerDialNavigation expected)
     {
         Assert.Equal(
             expected,
-            VirtualDialInputPolicy.ShouldQueueStep(
-                horizontalStarted,
-                direction));
+            VirtualDialInputPolicy.ResolveHorizontalNavigation(direction));
+    }
+
+    [Fact]
+    public void NeutralHorizontalMotionDoesNotNavigate()
+    {
+        Assert.Null(
+            VirtualDialInputPolicy.ResolveHorizontalNavigation(0));
+    }
+
+    [Theory]
+    [InlineData(-1, ComposerDialNavigation.Down)]
+    [InlineData(1, ComposerDialNavigation.Up)]
+    public void VerticalMotionTraversesAnOpenComposerSurface(
+        int direction,
+        ComposerDialNavigation expected)
+    {
+        Assert.Equal(
+            expected,
+            VirtualDialInputPolicy.ResolveVerticalNavigation(
+                direction,
+                isMenuActive: true));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void VerticalMotionIsInertWithoutAnOpenComposerSurface(
+        int direction)
+    {
+        Assert.Null(
+            VirtualDialInputPolicy.ResolveVerticalNavigation(
+                direction,
+                isMenuActive: false));
     }
 }

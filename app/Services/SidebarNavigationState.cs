@@ -221,49 +221,6 @@ public sealed class SidebarNavigationState
         SelectedIndex = -1;
     }
 
-    public SidebarNavigationWheelState? BuildWheelState(
-        IReadOnlyList<SidebarEntry> entries,
-        Func<SidebarScope, string> scopeLabel)
-    {
-        ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(scopeLabel);
-        var current = SelectedEntry(entries);
-        if (current is null)
-        {
-            return null;
-        }
-
-        SidebarNavigationWheelItem CreateItem(
-            SidebarEntry entry,
-            bool crossesBoundary) =>
-            new(
-                entry.Title,
-                entry.NavigationScope,
-                scopeLabel(entry.NavigationScope),
-                crossesBoundary);
-
-        var previous = SelectedIndex > 0
-            ? entries[SelectedIndex - 1]
-            : null;
-        var next = SelectedIndex + 1 < entries.Count
-            ? entries[SelectedIndex + 1]
-            : null;
-        return new(
-            previous is null
-                ? null
-                : CreateItem(
-                    previous,
-                    previous.NavigationScope != current.NavigationScope),
-            CreateItem(current, crossesBoundary: false),
-            next is null
-                ? null
-                : CreateItem(
-                    next,
-                    next.NavigationScope != current.NavigationScope),
-            SelectedIndex + 1,
-            entries.Count);
-    }
-
     public static CodexThread? FindCurrentThread(
         CodexSnapshot snapshot,
         string? currentTitle)

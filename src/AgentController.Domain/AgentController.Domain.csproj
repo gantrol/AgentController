@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AgentController.Domain</AssemblyName>
+    <RootNamespace>AgentController.Domain</RootNamespace>
+  </PropertyGroup>
+</Project>

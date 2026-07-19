@@ -34,7 +34,7 @@ I directed Codex to build a prototype. Two hours later it worked; another day we
 
 - Press **Menu** (☰ on an Xbox controller, also called Start or `+` on some gamepads) to wake or foreground Codex when needed.
 - Use the **left stick** to walk the task tree: up/down moves between siblings, right enters a project, and left returns to the parent level. Press **A** to open a task. Click **L3** to cycle between pinned tasks, pinned projects, projects, and projectless tasks.
-- Use the **right stick** for the current model controls. Simple mode adjusts Power with left/right and selects Standard/Fast with up/down; tap **R3** to open the official model list and choose models such as 5.6 Sol Max. Advanced mode—which is still rough in the current Codex UI—switches between Model, Effort, and Speed with left/right, then changes the selected option with up/down.
+- The **right stick extends the Codex Micro upper-left encoder**. Up/down emits `ENC_CW / ENC_CC` to traverse controls such as Advanced, Fast, and the Power slider; left/right keeps its literal screen direction to adjust or enter the current control. Tap **R3** to press the encoder, or hold it for Agent Controller settings. The two axes are never collapsed into one detent stream.
 - Hold **LT** to dictate and release it to stop.
 - Press **X** to send.
 - To clear the composer, press **Y**, then **A** twice to confirm.
@@ -47,6 +47,8 @@ That is enough for controller-first vibe coding.
 The first public version was tested with an 8BitDo Ultimate 2, an Xbox Series controller, and a Flydigi Vader 4 Pro. A community report also confirmed that an inexpensive GameSir controller connected without trouble. Other XInput-compatible controllers should work, but have not all been validated end to end.
 
 And the six Agent keys from Codex Micro? Hold **LB**, then use the four D-pad directions, View (⧉), or Menu (☰) to choose one of the six visible Agent slots.
+
+If the controller shorthand is unfamiliar, the dashboard now includes an interactive guide for Basics, Tap Y, Hold LB, Hold RT, Hold RB, and stick presses. Click a tab or press the matching control to switch the lesson. L3/R3 are also labeled as LS/RS and animated as vertical stick-cap presses—not downward stick movement.
 
 ### Codex Micro desktop simulator: a second route
 
@@ -102,9 +104,8 @@ The v0.7.0-hotfix Windows package is self-contained and does not require a separ
 | B | Close a menu or undo recent navigation when applicable; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
 | Y | Open the action panel. |
 | D-pad ↑ / ↓ | Previous / next Q&A turn; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
-| Right stick (Simple) | ← / → steps the live Power control; ↑ selects Standard; ↓ selects Fast. |
-| Right stick (Advanced) | ← / → selects Model, Effort, or Speed; ↑ / ↓ chooses an option actually exposed by the current account and model. |
-| R3 tap / hold | In Simple mode, tap to open the official model list, use directions to select, A to confirm, and B/R3 to close. Advanced mode opens the full settings menu. Hold for 500 ms to open Agent Controller settings. |
+| Right stick | Up/down selects controls through Micro encoder detents; left/right adjusts the current control in the same screen direction. Codex still owns traversal, with no separate Simple/Advanced stick state machine. |
+| R3 tap / hold | Tap to press the Micro encoder and open, enter, or confirm the current item. Hold for 500 ms to open Agent Controller settings. |
 | LB / RB tap | Open the previous / next available task. |
 | LT hold | Start push-to-talk dictation; release to finish. |
 
@@ -151,15 +152,15 @@ That work would require a dedicated adapter with its own task discovery, command
 
 ### Build from source
 
-Install the .NET 9 SDK, then run:
+Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 18 or newer; Visual Studio 2022 cannot load the SDK selected by `global.json`. Then run:
 
 ```powershell
-dotnet build app/AgentController.csproj -c Release
-dotnet test app.Tests/AgentController.Tests.csproj -c Release
+dotnet build AgentController.sln -c Release
+dotnet test AgentController.sln -c Release
 ./scripts/package-release.ps1 -Version 0.7.0-hotfix
 ```
 
-Build output is written to `app/bin/Release/net9.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
+Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
 
 To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
 
@@ -184,7 +185,7 @@ Key paths in the repository are:
 - `scripts/` — reproducible Release packaging;
 - `docs/` — interaction specifications and active design/consultation notes;
 - `public/docs/` — user-facing command references, release notes, and experimental plans;
-- `todo.md` — roadmap and validation notes.
+- `todo/` — roadmap organized by major workstream; start with [`todo/README.md`](todo/README.md).
 
 ### Credits
 

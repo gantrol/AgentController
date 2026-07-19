@@ -1,13 +1,13 @@
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Windows.Automation;
 using CodexController.Agents;
 using CodexController.Models;
 using CodexController.Native;
 using CodexController.Services.Micro;
+using static CodexController.Services.CodexAutomationLocator;
+using static CodexController.Services.CodexComposerDialProbe;
+using static CodexController.Services.CodexComposerStateVerifier;
 
 [assembly: InternalsVisibleTo("AgentController.Tests")]
 
@@ -20,34 +20,20 @@ public enum ComposerSettingKind
     Speed,
 }
 
-public sealed record ComposerModelOption(
-    string Slug,
-    string DisplayName,
-    IReadOnlyList<string> Efforts);
-
-public sealed class ComposerCatalog
+public enum ComposerAutomationChannel
 {
-    public required IReadOnlyList<ComposerModelOption> Models { get; init; }
-    public required int InitialModelIndex { get; init; }
-    public required string InitialEffort { get; init; }
-    public required string InitialSpeed { get; init; }
-
-    public IReadOnlyList<string> EffortsForModel(int modelIndex)
-    {
-        if (Models.Count == 0)
-        {
-            return [];
-        }
-
-        var safeIndex = Math.Clamp(modelIndex, 0, Models.Count - 1);
-        return Models[safeIndex].Efforts;
-    }
+    Unknown,
+    UiAutomation,
+    KeyboardInput,
+    MicroHid,
 }
 
 public sealed record ComposerAutomationResult(
     bool Succeeded,
     string? Error = null,
-    string? ErrorDetail = null)
+    string? ErrorDetail = null,
+    ComposerAutomationChannel Channel = ComposerAutomationChannel.Unknown,
+    bool StateVerified = false)
 {
     public AgentAutomationError? Failure =>
         Error is null
@@ -116,6 +102,8 @@ public sealed partial class CodexComposerService
     private readonly ComposerDialCursor _dialCursor = new();
     private readonly ComposerShortcutHealth _powerShortcutHealth = new();
     private readonly ComposerShortcutHealth _speedShortcutHealth = new();
+    private readonly CodexComposerCatalogService _catalog;
+    private readonly CodexComposerAutomationExecutor _commands;
     private readonly MicroInputService _microInput;
     private readonly Func<string, bool> _sendShortcut;
     private readonly Func<ushort, bool> _sendKey;
@@ -168,6 +156,9 @@ public sealed partial class CodexComposerService
             throw new ArgumentNullException(nameof(sendShortcut));
         _sendKey = sendKey ??
             throw new ArgumentNullException(nameof(sendKey));
+        _commands = new CodexComposerAutomationExecutor(_sendShortcut);
+        _catalog = new CodexComposerCatalogService(
+            TryReadComposerButtonName);
     }
 
     /// <summary>
@@ -254,6 +245,29 @@ public sealed partial class CodexComposerService
         if (gate is not null)
         {
             return gate;
+        }
+
+        var micro = _microInput.SendEncoderSteps(delta);
+        if (micro is
+            MicroReportSendResult.Accepted or
+            MicroReportSendResult.OutcomeUnknown)
+        {
+            return new(
+                true,
+                "Codex Micro",
+                IsMenuOpen: _dialMenuOpen,
+                MenuWasPresent: _dialMenuOpen);
+        }
+
+        if (micro == MicroReportSendResult.Rejected)
+        {
+            return new(
+                false,
+                _dialControlName,
+                IsMenuOpen: _dialMenuOpen,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "micro.encoder-rejected",
+                MenuWasPresent: _dialMenuOpen);
         }
 
         lock (_dialSync)
@@ -514,6 +528,39 @@ public sealed partial class CodexComposerService
         {
             if (_dialMenuOpen)
             {
+                if (navigation is
+                    ComposerDialNavigation.Up or
+                    ComposerDialNavigation.Down)
+                {
+                    var micro = _microInput.SendEncoderSteps(
+                        navigation == ComposerDialNavigation.Up
+                            ? 1
+                            : -1);
+                    if (micro is
+                        MicroReportSendResult.Accepted or
+                        MicroReportSendResult.OutcomeUnknown)
+                    {
+                        return new(
+                            true,
+                            _dialControlName ?? "Codex Micro",
+                            IsMenuOpen: true,
+                            MenuWasPresent: true);
+                    }
+
+                    if (micro == MicroReportSendResult.Rejected)
+                    {
+                        return new(
+                            false,
+                            _dialControlName,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .InputInjectionFailed,
+                            ErrorDetail: "micro.encoder-rejected",
+                            MenuWasPresent: true);
+                    }
+                }
+
                 if (
                     !ComposerDialNativeInputPolicy.TryGetNavigationKey(
                         navigation,
@@ -923,6 +970,41 @@ public sealed partial class CodexComposerService
 
     public ComposerDialResult DialPress(AppSettings settings)
     {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        var micro = _microInput.SendEncoderPress();
+        if (micro is
+            MicroReportSendResult.Accepted or
+            MicroReportSendResult.OutcomeUnknown)
+        {
+            lock (_dialSync)
+            {
+                _dialMenuOpen = true;
+                _dialControlName ??= "Codex Micro";
+            }
+
+            return new(
+                true,
+                _dialControlName,
+                IsMenuOpen: true,
+                MenuWasPresent: true);
+        }
+
+        if (micro == MicroReportSendResult.Rejected)
+        {
+            return new(
+                false,
+                _dialControlName,
+                IsMenuOpen: _dialMenuOpen,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "micro.encoder-rejected",
+                MenuWasPresent: _dialMenuOpen);
+        }
+
         return DialPressCore(
             settings,
             DialActivationIntent.OpenOnly);
@@ -934,6 +1016,38 @@ public sealed partial class CodexComposerService
         if (gate is not null)
         {
             return gate;
+        }
+
+        var micro = _microInput.SendEncoderPress();
+        if (micro is
+            MicroReportSendResult.Accepted or
+            MicroReportSendResult.OutcomeUnknown)
+        {
+            lock (_dialSync)
+            {
+                _dialMenuOpen = true;
+                _dialControlName ??= "Codex Micro";
+            }
+
+            // Encoder delivery cannot prove whether Codex opened a submenu
+            // or committed a leaf. Keep ownership until explicit B/Escape so
+            // the next stick frame never leaks into another input context.
+            return new(
+                true,
+                _dialControlName,
+                IsMenuOpen: true,
+                MenuWasPresent: true);
+        }
+
+        if (micro == MicroReportSendResult.Rejected)
+        {
+            return new(
+                false,
+                _dialControlName,
+                IsMenuOpen: _dialMenuOpen,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "micro.encoder-rejected",
+                MenuWasPresent: _dialMenuOpen);
         }
 
         lock (_dialSync)
@@ -1618,8 +1732,10 @@ public sealed partial class CodexComposerService
                     Thread.Sleep(NativePickerRefocusSettleMs);
                 }
 
+                // AG00 is the first physical Agent key, not Escape. Codex
+                // Micro exposes no general-purpose Escape control, so menu
+                // dismissal remains an owned native-key fallback.
                 var sent =
-                    _microInput.TryDismissOpenMenu() ||
                     _sendKey(ComposerDialNativeInputPolicy.EscapeKey);
                 if (!sent)
                 {
@@ -1811,45 +1927,7 @@ public sealed partial class CodexComposerService
         }
     }
 
-    public ComposerCatalog LoadCatalog()
-    {
-        var codexHome = ResolveCodexHome();
-        var models = LoadModels(Path.Combine(codexHome, "models_cache.json"));
-        var preferences = ReadConfig(Path.Combine(codexHome, "config.toml"));
-        var buttonName = TryReadComposerButtonName();
-        if (models.Count == 0)
-        {
-            return new ComposerCatalog
-            {
-                Models = [],
-                InitialModelIndex = 0,
-                InitialEffort = string.Empty,
-                InitialSpeed = FindSpeed(
-                    buttonName,
-                    preferences.ServiceTier),
-            };
-        }
-
-        var modelIndex = FindModelIndex(
-            models,
-            buttonName,
-            preferences.ModelSlug);
-        var modelEfforts = models[modelIndex].Efforts;
-        var effort = FindEffort(
-            modelEfforts,
-            buttonName,
-            EffortLabel(preferences.Effort));
-
-        return new ComposerCatalog
-        {
-            Models = models,
-            InitialModelIndex = modelIndex,
-            InitialEffort = effort,
-            InitialSpeed = FindSpeed(
-                buttonName,
-                preferences.ServiceTier),
-        };
-    }
+    public ComposerCatalog LoadCatalog() => _catalog.LoadCatalog();
 
     public Task<ComposerAutomationResult> SelectAsync(
         ComposerSettingKind kind,
@@ -1949,15 +2027,11 @@ public sealed partial class CodexComposerService
     public Task<ComposerAutomationResult> ScrollConversationAsync(
         ConversationBoundary boundary,
         AppSettings settings,
-        CancellationToken cancellationToken)
-    {
-        return Task.Run(
-            () => ScrollConversationCore(
-                boundary,
-                settings,
-                cancellationToken),
+        CancellationToken cancellationToken) =>
+        _commands.ScrollConversationAsync(
+            boundary,
+            settings,
             cancellationToken);
-    }
 
     public string? TryReadComposerButtonName()
     {
@@ -1976,741 +2050,47 @@ public sealed partial class CodexComposerService
         }
     }
 
-    public string? TryReadDispatchButtonName()
-    {
-        try
-        {
-            var context = FindCodexWindow();
-            if (context is null)
-            {
-                return null;
-            }
+    public string? TryReadDispatchButtonName() =>
+        _commands.TryReadDispatchButtonName();
 
-            return FindVisibleNamedButton(
-                    context.Value.Window,
-                    [
-                        "Steer",
-                        "Steer current turn",
-                        "Queue",
-                        "Queue next turn",
-                        "Send",
-                        "Send message",
-                        "Submit",
-                        "Submit prompt",
-                        "加入当前运行",
-                        "排到下一轮",
-                        "发送",
-                        "提交",
-                    ])
-                ?.Current.Name;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    public bool IsComposerActionAvailable(params string[] actionNames)
-    {
-        try
-        {
-            var context = FindCodexWindow();
-            return
-                context is not null &&
-                FindVisibleNamedButton(
-                    context.Value.Window,
-                    actionNames) is not null;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public bool IsComposerActionAvailable(params string[] actionNames) =>
+        _commands.IsComposerActionAvailable(actionNames);
 
     public ComposerAutomationResult InvokeComposerAction(
         AppSettings settings,
-        params string[] actionNames)
-    {
-        if (!settings.BridgeEnabled)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.BridgeSafePreview);
-        }
+        params string[] actionNames) =>
+        _commands.InvokeComposerAction(settings, actionNames);
 
-        if (
-            settings.OnlyWhenCodexForeground &&
-            !Win32Input.IsCodexForeground())
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AgentNotForeground);
-        }
-
-        try
-        {
-            var context = FindCodexWindow();
-            if (context is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.AgentWindowNotFound);
-            }
-
-            var targets = actionNames
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Select(name => name.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase);
-            foreach (var target in targets)
-            {
-                AutomationElement? button;
-                try
-                {
-                    button = context.Value.Window.FindFirst(
-                        TreeScope.Descendants,
-                        new AndCondition(
-                            new PropertyCondition(
-                                AutomationElement.ControlTypeProperty,
-                                ControlType.Button),
-                            new PropertyCondition(
-                                AutomationElement.NameProperty,
-                                target,
-                                PropertyConditionFlags.IgnoreCase)));
-                    if (button is null)
-                    {
-                        continue;
-                    }
-
-                    if (
-                        !button.Current.IsEnabled ||
-                        button.Current.IsOffscreen ||
-                        button.Current.BoundingRectangle.IsEmpty)
-                    {
-                        continue;
-                    }
-                }
-                catch (ElementNotAvailableException)
-                {
-                    continue;
-                }
-
-                if (
-                    !button.TryGetCurrentPattern(
-                        InvokePattern.Pattern,
-                        out var patternObject) ||
-                    patternObject is not InvokePattern pattern)
-                {
-                    continue;
-                }
-
-                pattern.Invoke();
-                return new(true);
-            }
-
-            return new(
-                false,
-                AgentAutomationErrorCodes.ElementNotFound,
-                $"action:{string.Join("|", actionNames)}");
-        }
-        catch (Exception exception)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.Unexpected,
-                exception.Message);
-        }
-    }
+    internal static ComposerAutomationResult UiAutomationSucceeded(
+        bool stateVerified = false) =>
+        ComposerAutomationResults.UiAutomationSucceeded(stateVerified);
 
     public Task<ComposerAutomationResult> InvokeComposerActionAsync(
         AppSettings settings,
         int timeoutMs,
         CancellationToken cancellationToken,
-        params string[] actionNames)
-    {
-        return Task.Run(() =>
-        {
-            var deadline = Environment.TickCount64 + timeoutMs;
-            ComposerAutomationResult result;
-            do
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                result = InvokeComposerAction(settings, actionNames);
-                if (result.Succeeded)
-                {
-                    return result;
-                }
+        params string[] actionNames) =>
+        _commands.InvokeComposerActionAsync(
+            settings,
+            timeoutMs,
+            cancellationToken,
+            actionNames);
 
-                if (AgentAutomationErrorCodes.IsImmediateFailure(
-                        result.Error))
-                {
-                    return result;
-                }
+    public ComposerAutomationResult SubmitComposer(
+        AppSettings settings) =>
+        _commands.SubmitComposer(settings);
 
-                Thread.Sleep(45);
-            }
-            while (Environment.TickCount64 < deadline);
+    public ComposerAutomationResult ClearComposer(
+        AppSettings settings) =>
+        _commands.ClearComposer(settings);
 
-            return result;
-        }, cancellationToken);
-    }
+    public ComposerAutomationResult StopCurrentTurn(
+        AppSettings settings) =>
+        _commands.StopCurrentTurn(settings);
 
-    private static ComposerAutomationResult ScrollConversationCore(
-        ConversationBoundary boundary,
-        AppSettings settings,
-        CancellationToken cancellationToken)
-    {
-        if (!settings.BridgeEnabled)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.BridgeSafePreview);
-        }
-
-        if (
-            settings.OnlyWhenCodexForeground &&
-            !Win32Input.IsCodexForeground())
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AgentNotForeground);
-        }
-
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var context = FindCodexWindow();
-            if (context is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.AgentWindowNotFound);
-            }
-
-            var editor = FindComposerEditor(context.Value.Window);
-            var scroll = FindConversationScrollPattern(
-                context.Value.Window,
-                editor);
-            if (scroll is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.ElementNotFound,
-                    "conversation-scroll");
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (
-                !scroll.Value.Pattern.Current.VerticallyScrollable ||
-                scroll.Value.Pattern.Current.VerticalViewSize >= 99.5)
-            {
-                return new(true);
-            }
-
-            var target = boundary == ConversationBoundary.Top
-                ? 0d
-                : 100d;
-            scroll.Value.Pattern.SetScrollPercent(
-                ScrollPattern.NoScroll,
-                target);
-            var deadline = Environment.TickCount64 + 500;
-            do
-            {
-                Thread.Sleep(30);
-                cancellationToken.ThrowIfCancellationRequested();
-                var current =
-                    scroll.Value.Pattern.Current.VerticalScrollPercent;
-                if (
-                    current == ScrollPattern.NoScroll ||
-                    Math.Abs(current - target) <= 1.5)
-                {
-                    return new(true);
-                }
-            }
-            while (Environment.TickCount64 < deadline);
-
-            return new(
-                false,
-                AgentAutomationErrorCodes.ElementUnsupported,
-                "conversation-scroll-not-verified");
-        }
-        catch (OperationCanceledException)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.OperationCanceled);
-        }
-        catch (ElementNotAvailableException)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AutomationStale,
-                "conversation-scroll");
-        }
-        catch (InvalidOperationException)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.ElementUnsupported,
-                "conversation-scroll");
-        }
-        catch (Exception exception)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.Unexpected,
-                exception.Message);
-        }
-    }
-
-    private static (AutomationElement Element, ScrollPattern Pattern)?
-        FindConversationScrollPattern(
-            AutomationElement window,
-            AutomationElement? editor)
-    {
-        System.Windows.Rect? editorBounds = null;
-        try
-        {
-            if (editor is not null)
-            {
-                editorBounds = editor.Current.BoundingRectangle;
-            }
-        }
-        catch (ElementNotAvailableException)
-        {
-            editorBounds = null;
-        }
-
-        (AutomationElement Element, ScrollPattern Pattern)? best = null;
-        var bestScore = double.NegativeInfinity;
-        var candidates = window.FindAll(
-            TreeScope.Descendants,
-            Condition.TrueCondition);
-        foreach (AutomationElement candidate in candidates)
-        {
-            try
-            {
-                var bounds = candidate.Current.BoundingRectangle;
-                if (
-                    candidate.Current.IsOffscreen ||
-                    bounds.IsEmpty ||
-                    bounds.Width < 280 ||
-                    bounds.Height < 180 ||
-                    !candidate.TryGetCurrentPattern(
-                        ScrollPattern.Pattern,
-                        out var patternObject) ||
-                    patternObject is not ScrollPattern pattern)
-                {
-                    continue;
-                }
-
-                var score = bounds.Height;
-                if (
-                    editorBounds is { } composer &&
-                    !composer.IsEmpty)
-                {
-                    var overlap = Math.Max(
-                        0,
-                        Math.Min(bounds.Right, composer.Right) -
-                        Math.Max(bounds.Left, composer.Left));
-                    var overlapRatio = overlap /
-                        Math.Max(1, Math.Min(bounds.Width, composer.Width));
-                    if (
-                        overlapRatio < 0.45 ||
-                        bounds.Top >= composer.Top)
-                    {
-                        continue;
-                    }
-
-                    score += overlapRatio * 1200;
-                    score -= Math.Abs(bounds.Bottom - composer.Top) * 0.08;
-                }
-
-                if (pattern.Current.VerticallyScrollable)
-                {
-                    score += 1600;
-                }
-
-                if (score <= bestScore)
-                {
-                    continue;
-                }
-
-                best = (candidate, pattern);
-                bestScore = score;
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Continue with the remaining live accessibility elements.
-            }
-        }
-
-        return best;
-    }
-
-    public ComposerAutomationResult SubmitComposer(AppSettings settings)
-    {
-        if (!settings.BridgeEnabled)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.BridgeSafePreview);
-        }
-
-        if (
-            settings.OnlyWhenCodexForeground &&
-            !Win32Input.IsCodexForeground())
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AgentNotForeground);
-        }
-
-        try
-        {
-            // Codex 26.707.12708.0 maps Mod-Enter directly to the composer
-            // submit command for every composerEnterBehavior value. On
-            // Windows, Mod is Control. This intentionally bypasses UIA,
-            // custom keybindings, and the optional Micro bridge.
-            if (!_sendShortcut(NativeSubmitShortcut))
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    NativeSubmitShortcut);
-            }
-
-            return new(true);
-        }
-        catch (Exception exception)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.Unexpected,
-                exception.Message);
-        }
-    }
-
-    public ComposerAutomationResult ClearComposer(AppSettings settings)
-    {
-        if (!settings.BridgeEnabled)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.BridgeSafePreview);
-        }
-
-        if (
-            settings.OnlyWhenCodexForeground &&
-            !Win32Input.IsCodexForeground())
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AgentNotForeground);
-        }
-
-        try
-        {
-            var context = FindCodexWindow();
-            if (context is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.AgentWindowNotFound);
-            }
-
-            var editor = FindComposerEditor(context.Value.Window);
-            if (editor is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.ElementNotFound,
-                    "composer-editor");
-            }
-
-            var text = ReadComposerText(editor);
-            if (text is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.ElementUnsupported,
-                    "composer-text-read");
-            }
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.ComposerEmpty);
-            }
-
-            if (
-                !Win32Input.IsCodexForeground() &&
-                !Win32Input.FocusCodexAndWait())
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.FocusRejected,
-                    "composer-editor");
-            }
-
-            editor.SetFocus();
-            Thread.Sleep(35);
-            var clearedThroughValuePattern = false;
-            if (
-                editor.TryGetCurrentPattern(
-                    ValuePattern.Pattern,
-                    out var valueObject) &&
-                valueObject is ValuePattern valuePattern &&
-                !valuePattern.Current.IsReadOnly)
-            {
-                try
-                {
-                    valuePattern.SetValue(string.Empty);
-                    clearedThroughValuePattern = true;
-                }
-                catch (InvalidOperationException)
-                {
-                    // Chromium contenteditable nodes commonly expose a
-                    // read-like ValuePattern while rejecting SetValue.
-                }
-            }
-
-            if (
-                !clearedThroughValuePattern &&
-                (
-                    !Win32Input.SendShortcut("Ctrl+A") ||
-                    !Win32Input.SendKey(0x08)
-                ))
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    "Ctrl+A,Backspace");
-            }
-
-            return WaitForComposerTextToClear(editor, timeoutMs: 280)
-                ? new(true)
-                : new(
-                    false,
-                    AgentAutomationErrorCodes.ElementUnsupported,
-                    "composer-clear-not-verified");
-        }
-        catch (ElementNotAvailableException)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AutomationStale,
-                "composer-editor");
-        }
-        catch (Exception exception)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.Unexpected,
-                exception.Message);
-        }
-    }
-
-    public ComposerAutomationResult CancelComposer(AppSettings settings)
-    {
-        if (!settings.BridgeEnabled)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.BridgeSafePreview);
-        }
-
-        if (
-            settings.OnlyWhenCodexForeground &&
-            !Win32Input.IsCodexForeground())
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.AgentNotForeground);
-        }
-
-        try
-        {
-            var context = FindCodexWindow();
-            if (context is null)
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.AgentWindowNotFound);
-            }
-
-            var namedCancel = InvokeNamedButton(
-                context.Value.Window,
-                ["Stop", "Cancel", "Cancel request"]);
-            if (namedCancel.Succeeded)
-            {
-                return namedCancel;
-            }
-
-            var editor = FindComposerEditor(context.Value.Window);
-            if (editor is not null)
-            {
-                editor.SetFocus();
-                Thread.Sleep(45);
-            }
-            else if (!Win32Input.FocusCodexAndWait())
-            {
-                return new(
-                    false,
-                    AgentAutomationErrorCodes.FocusRejected,
-                    "composer-editor");
-            }
-
-            return Win32Input.SendKey(0x1B)
-                ? new(true)
-                : new(
-                    false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    "Escape");
-        }
-        catch (Exception exception)
-        {
-            return new(
-                false,
-                AgentAutomationErrorCodes.Unexpected,
-                exception.Message);
-        }
-    }
-
-    private static string? ReadComposerText(AutomationElement editor)
-    {
-        if (
-            editor.TryGetCurrentPattern(
-                TextPattern.Pattern,
-                out var textObject) &&
-            textObject is TextPattern textPattern)
-        {
-            return textPattern.DocumentRange.GetText(-1);
-        }
-
-        if (
-            editor.TryGetCurrentPattern(
-                ValuePattern.Pattern,
-                out var valueObject) &&
-            valueObject is ValuePattern valuePattern)
-        {
-            return valuePattern.Current.Value;
-        }
-
-        return null;
-    }
-
-    private static bool WaitForComposerTextToClear(
-        AutomationElement editor,
-        int timeoutMs)
-    {
-        var deadline = Environment.TickCount64 + timeoutMs;
-        do
-        {
-            if (IsComposerEditorEmpty(editor))
-            {
-                return true;
-            }
-
-            var text = ReadComposerText(editor);
-            if (IsComposerTextEffectivelyEmpty(text))
-            {
-                return true;
-            }
-
-            Thread.Sleep(24);
-        }
-        while (Environment.TickCount64 < deadline);
-
-        return
-            IsComposerEditorEmpty(editor) ||
-            IsComposerTextEffectivelyEmpty(ReadComposerText(editor));
-    }
-
-    private static bool IsComposerTextEffectivelyEmpty(string? text)
-    {
-        if (text is null)
-        {
-            return false;
-        }
-
-        return string.IsNullOrWhiteSpace(
-            text
-                .Replace("\u200B", string.Empty, StringComparison.Ordinal)
-                .Replace("\uFEFF", string.Empty, StringComparison.Ordinal)
-                .Replace("\uFFFC", string.Empty, StringComparison.Ordinal));
-    }
-
-    private static ComposerAutomationResult InvokeNamedButton(
-        AutomationElement window,
-        IReadOnlyCollection<string> actionNames)
-    {
-        var button = FindVisibleNamedButton(window, actionNames);
-        if (
-            button is not null &&
-            button.TryGetCurrentPattern(
-                InvokePattern.Pattern,
-                out var patternObject) &&
-            patternObject is InvokePattern pattern)
-        {
-            try
-            {
-                pattern.Invoke();
-                return new(true);
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Chromium replaced the button between discovery and invoke.
-            }
-        }
-
-        return new(
-            false,
-            AgentAutomationErrorCodes.ElementNotFound,
-            $"action:{string.Join("|", actionNames)}");
-    }
-
-    private static AutomationElement? FindVisibleNamedButton(
-        AutomationElement window,
-        IReadOnlyCollection<string> actionNames)
-    {
-        var targets = actionNames
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(NormalizeChoice)
-            .ToHashSet(StringComparer.Ordinal);
-        if (targets.Count == 0)
-        {
-            return null;
-        }
-
-        var buttons = window.FindAll(
-            TreeScope.Descendants,
-            new PropertyCondition(
-                AutomationElement.ControlTypeProperty,
-                ControlType.Button));
-        foreach (AutomationElement button in buttons)
-        {
-            try
-            {
-                if (
-                    !button.Current.IsEnabled ||
-                    button.Current.IsOffscreen ||
-                    button.Current.BoundingRectangle.IsEmpty ||
-                    !targets.Contains(NormalizeChoice(button.Current.Name)))
-                {
-                    continue;
-                }
-
-                return button;
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Continue looking if Chromium replaced a button mid-query.
-            }
-        }
-
-        return null;
-    }
+    public ComposerAutomationResult CancelComposer(
+        AppSettings settings) =>
+        _commands.CancelComposer(settings);
 
     private static bool? TryReadPlanModeState(AutomationElement window)
     {
@@ -2735,270 +2115,6 @@ public sealed partial class CodexComposerService
             window,
             PlanModeAutomationPolicy.IndicatorNames,
             editor);
-    }
-
-    private static AutomationElement? FindVisibleNamedButtonNearComposer(
-        AutomationElement window,
-        IReadOnlyCollection<string> actionNames,
-        AutomationElement? editor)
-    {
-        System.Windows.Rect? editorBounds = null;
-        try
-        {
-            if (editor is not null)
-            {
-                editorBounds = editor.Current.BoundingRectangle;
-            }
-        }
-        catch (ElementNotAvailableException)
-        {
-            editorBounds = null;
-        }
-
-        var targets = actionNames
-            .Select(NormalizeChoice)
-            .ToHashSet(StringComparer.Ordinal);
-        var buttons = window.FindAll(
-            TreeScope.Descendants,
-            new PropertyCondition(
-                AutomationElement.ControlTypeProperty,
-                ControlType.Button));
-        foreach (AutomationElement button in buttons)
-        {
-            try
-            {
-                var bounds = button.Current.BoundingRectangle;
-                if (
-                    !button.Current.IsEnabled ||
-                    button.Current.IsOffscreen ||
-                    bounds.IsEmpty ||
-                    !targets.Contains(
-                        NormalizeChoice(button.Current.Name)))
-                {
-                    continue;
-                }
-
-                if (
-                    editorBounds is not { } composer ||
-                    IsNearComposer(bounds, composer))
-                {
-                    return button;
-                }
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Continue if Chromium replaced the indicator mid-query.
-            }
-        }
-
-        return null;
-    }
-
-    private static bool IsNearComposer(
-        System.Windows.Rect candidate,
-        System.Windows.Rect composer)
-    {
-        var horizontalOverlap =
-            Math.Min(candidate.Right, composer.Right) -
-            Math.Max(candidate.Left, composer.Left);
-        return
-            horizontalOverlap > 0 &&
-            candidate.Top >= composer.Top - 16 &&
-            candidate.Top <= composer.Bottom + 120;
-    }
-
-    private static AutomationElement? FindComposerEditor(
-        AutomationElement window)
-    {
-        var groups = window.FindAll(
-            TreeScope.Descendants,
-            new PropertyCondition(
-                AutomationElement.ControlTypeProperty,
-                ControlType.Group));
-        foreach (AutomationElement group in groups)
-        {
-            try
-            {
-                var className = group.Current.ClassName ?? string.Empty;
-                if (
-                    group.Current.IsEnabled &&
-                    !group.Current.IsOffscreen &&
-                    !group.Current.BoundingRectangle.IsEmpty &&
-                    className
-                        .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                        .Contains("ProseMirror", StringComparer.Ordinal))
-                {
-                    return group;
-                }
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Continue looking for the live editor.
-            }
-        }
-
-        return null;
-    }
-
-    private static IReadOnlyList<DialControl> FindDialControls(
-        AutomationElement window)
-    {
-        var editor = FindComposerEditor(window);
-        if (editor is null)
-        {
-            return [];
-        }
-
-        System.Windows.Rect editorBounds;
-        try
-        {
-            editorBounds = editor.Current.BoundingRectangle;
-        }
-        catch (ElementNotAvailableException)
-        {
-            return [];
-        }
-
-        var composerRegion = new System.Windows.Rect(
-            editorBounds.Left - 80,
-            editorBounds.Top - 180,
-            editorBounds.Width + 160,
-            editorBounds.Height + 360);
-        var buttons = window.FindAll(
-            TreeScope.Descendants,
-            new PropertyCondition(
-                AutomationElement.ControlTypeProperty,
-                ControlType.Button));
-        var controls = new List<DialControl>();
-        foreach (AutomationElement button in buttons)
-        {
-            try
-            {
-                var name = button.Current.Name?.Trim() ?? string.Empty;
-                var className = button.Current.ClassName ?? string.Empty;
-                var bounds = button.Current.BoundingRectangle;
-                if (
-                    name.Length == 0 ||
-                    !button.Current.IsEnabled ||
-                    button.Current.IsOffscreen ||
-                    bounds.IsEmpty ||
-                    !composerRegion.IntersectsWith(bounds) ||
-                    !ComposerDialPolicy.HasComposerButtonClassToken(
-                        className) ||
-                    ComposerDialPolicy.HasClassToken(
-                        className,
-                        "aspect-square") ||
-                    !ComposerDialActionPolicy.IsPickerControl(name) ||
-                    !CanOpenDialControl(
-                        button,
-                        className,
-                        out var allowInvoke,
-                        out var supportsExpandCollapse))
-                {
-                    continue;
-                }
-
-                var automationId =
-                    button.Current.AutomationId?.Trim() ?? string.Empty;
-                var stableKey = automationId.Length > 0
-                    ? $"id:{automationId}"
-                    : $"name:{NormalizeChoice(name)}";
-                controls.Add(new DialControl(
-                    stableKey,
-                    name,
-                    bounds.Left,
-                    bounds.Top,
-                    bounds.Width,
-                    bounds.Height,
-                    ComposerDialActionPolicy.PickerControlPriority(
-                        supportsExpandCollapse,
-                        allowInvoke),
-                    allowInvoke,
-                    button));
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Chromium may replace one composer button mid-query.
-            }
-        }
-
-        return controls
-            .OrderBy(control => control.Priority)
-            .ThenBy(control => control.Left)
-            .ThenBy(control => control.Top)
-            .ToArray();
-    }
-
-    private static bool CanOpenDialControl(
-        AutomationElement element,
-        string className,
-        out bool allowInvoke,
-        out bool supportsExpandCollapse)
-    {
-        allowInvoke = false;
-        supportsExpandCollapse = false;
-        if (
-            element.TryGetCurrentPattern(
-                ExpandCollapsePattern.Pattern,
-                out _))
-        {
-            supportsExpandCollapse = true;
-            return true;
-        }
-
-        bool isKeyboardFocusable;
-        try
-        {
-            isKeyboardFocusable =
-                element.Current.IsKeyboardFocusable;
-        }
-        catch (ElementNotAvailableException)
-        {
-            return false;
-        }
-
-        allowInvoke =
-            ComposerDialPolicy.IsConservativeInvokeTrigger(
-                className,
-                isKeyboardFocusable) &&
-            element.TryGetCurrentPattern(
-                InvokePattern.Pattern,
-                out _);
-        return allowInvoke;
-    }
-
-    private static bool TryOpenDialControl(
-        AutomationElement element,
-        bool allowInvoke)
-    {
-        if (
-            element.TryGetCurrentPattern(
-                ExpandCollapsePattern.Pattern,
-                out var expandObject) &&
-            expandObject is ExpandCollapsePattern expand)
-        {
-            if (
-                expand.Current.ExpandCollapseState !=
-                ExpandCollapseState.Expanded)
-            {
-                expand.Expand();
-            }
-
-            return true;
-        }
-
-        if (
-            allowInvoke &&
-            element.TryGetCurrentPattern(
-                InvokePattern.Pattern,
-                out var invokeObject) &&
-            invokeObject is InvokePattern invoke)
-        {
-            invoke.Invoke();
-            return true;
-        }
-
-        return false;
     }
 
     private bool OwnsDialPopup(
@@ -4152,827 +3268,6 @@ public sealed partial class CodexComposerService
         return ProbeDialPopup(window, processId);
     }
 
-    private static DialPopupProbe ProbeDialPopup(
-        AutomationElement window,
-        int processId,
-        System.Windows.Rect? knownComposerRegion = null,
-        ComposerDialMenuContainerGeometry? knownTrigger = null)
-    {
-        var composerRegion =
-            knownComposerRegion ??
-            TryGetComposerPopupRegion(window);
-        var popupOptions = new List<DialPopupOptionCandidate>();
-        foreach (var root in FindDialPopupRoots(window, processId))
-        {
-            var rootKey = StableAutomationKey(
-                root.Element,
-                root.IsPopupWindow
-                    ? "popup-window"
-                    : "main-window");
-            var elements = new List<AutomationElement>();
-            try
-            {
-                elements.Add(root.Element);
-                elements.AddRange(
-                    root.Element.FindAll(
-                            TreeScope.Descendants,
-                            new OrCondition(
-                                new PropertyCondition(
-                                    AutomationElement.ControlTypeProperty,
-                                    ControlType.Menu),
-                                new PropertyCondition(
-                                    AutomationElement.ControlTypeProperty,
-                                    ControlType.List),
-                                new PropertyCondition(
-                                    AutomationElement.ControlTypeProperty,
-                                    ControlType.MenuItem),
-                                new PropertyCondition(
-                                    AutomationElement.ControlTypeProperty,
-                                    ControlType.ListItem),
-                                new PropertyCondition(
-                                    AutomationElement.ControlTypeProperty,
-                                    ControlType.DataItem),
-                                new PropertyCondition(
-                                    AutomationElement.ControlTypeProperty,
-                                    ControlType.Edit)))
-                        .Cast<AutomationElement>());
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var element in elements)
-            {
-                try
-                {
-                    var current = element.Current;
-                    var bounds = current.BoundingRectangle;
-                    var kind = DialPopupKind(current.ControlType);
-                    if (kind is null)
-                    {
-                        continue;
-                    }
-
-                    var nearComposer =
-                        composerRegion is { } region &&
-                        region.Contains(
-                            new System.Windows.Point(
-                                bounds.Left + bounds.Width / 2,
-                                bounds.Top + bounds.Height / 2));
-                    var hasPopupAncestor =
-                        HasPopupAncestor(
-                            element,
-                            root.Element,
-                            includeList:
-                                kind is
-                                    ComposerDialPopupElementKind.Edit or
-                                    ComposerDialPopupElementKind.OptionItem);
-                    var semanticSearch =
-                        kind == ComposerDialPopupElementKind.Edit &&
-                        ComposerDialPolicy.LooksLikeSearchEdit(
-                            current.Name,
-                            current.AutomationId,
-                            current.ClassName,
-                            current.HelpText);
-                    var evidence = new ComposerDialPopupEvidence(
-                        kind.Value,
-                        current.IsEnabled,
-                        current.IsOffscreen,
-                        bounds.IsEmpty,
-                        nearComposer,
-                        current.HasKeyboardFocus,
-                        current.IsKeyboardFocusable,
-                        root.IsPopupWindow,
-                        hasPopupAncestor,
-                        semanticSearch,
-                        element.TryGetCurrentPattern(
-                            SelectionPattern.Pattern,
-                            out _) ||
-                        element.TryGetCurrentPattern(
-                            SelectionItemPattern.Pattern,
-                            out _));
-                    if (!ComposerDialPolicy.IsPopupEvidence(evidence))
-                    {
-                        continue;
-                    }
-
-                    var name = current.Name?.Trim() ?? string.Empty;
-                    if (
-                        (
-                            kind is
-                                ComposerDialPopupElementKind.MenuItem or
-                                ComposerDialPopupElementKind.OptionItem
-                        ) &&
-                        name.Length > 0 &&
-                        ComposerDialActionPolicy.IsPickerControl(name) &&
-                        current.IsKeyboardFocusable &&
-                        TryGetDialPopupContainer(
-                            element,
-                            root.Element,
-                            out var containerKey,
-                            out var containerBounds))
-                    {
-                        var canExpand =
-                            element.TryGetCurrentPattern(
-                                ExpandCollapsePattern.Pattern,
-                                out _);
-                        var optionKey = StableAutomationKey(
-                            element,
-                            string.Join(
-                                ':',
-                                containerKey,
-                                kind.Value,
-                                NormalizeChoice(name),
-                                Math.Round(bounds.Left),
-                                Math.Round(bounds.Top)));
-                        popupOptions.Add(
-                            new DialPopupOptionCandidate(
-                                optionKey,
-                                name,
-                                rootKey,
-                                containerKey,
-                                containerBounds.Left,
-                                containerBounds.Top,
-                                containerBounds.Width,
-                                containerBounds.Height,
-                                bounds.Left,
-                                bounds.Top,
-                                bounds.Width,
-                                bounds.Height,
-                                current.HasKeyboardFocus,
-                                IsDialPopupOptionSelected(element),
-                                canExpand,
-                                element));
-                    }
-                }
-                catch (ElementNotAvailableException)
-                {
-                    // Chromium can replace popup nodes while they mount.
-                }
-            }
-        }
-
-        var allSurfaces =
-            BuildDialPopupSurfaces(popupOptions);
-        var triggerGeometries =
-            knownTrigger is { } trigger
-                ? [trigger]
-                : FindDialControls(window)
-                    .Select(control =>
-                        new ComposerDialMenuContainerGeometry(
-                            control.Left,
-                            control.Top,
-                            control.Width,
-                            control.Height))
-                    .ToArray();
-        var associatedSurfaceKeys =
-            ComposerDialMenuSelectionPolicy
-                .ResolveAssociatedSurfaceKeys(
-                    allSurfaces
-                        .Select(surface =>
-                            new ComposerDialMenuSurfaceGeometrySnapshot(
-                                surface.Key,
-                                ToContainerGeometry(
-                                    surface.Bounds)))
-                        .ToArray(),
-                    triggerGeometries);
-        var surfaces = allSurfaces
-            .Where(surface =>
-                associatedSurfaceKeys.Contains(surface.Key))
-            .ToArray();
-        var options = surfaces
-            .SelectMany(surface => surface.Options)
-            .ToArray();
-        var focusedOption = options
-            .FirstOrDefault(option =>
-                option.HasKeyboardFocus);
-        var focusedName =
-            focusedOption?.Name ??
-            TryReadFocusedPopupName(
-                processId,
-                composerRegion);
-        if (
-            focusedOption is null &&
-            !string.IsNullOrWhiteSpace(focusedName))
-        {
-            var normalizedFocusedName =
-                NormalizeChoice(focusedName);
-            var nameMatches = options
-                .Where(option =>
-                    string.Equals(
-                        NormalizeChoice(option.Name),
-                        normalizedFocusedName,
-                        StringComparison.Ordinal))
-                .Take(2)
-                .ToArray();
-            if (nameMatches.Length == 1)
-            {
-                focusedOption = nameMatches[0];
-            }
-        }
-
-        var isOpen = surfaces.Length > 0;
-        return new DialPopupProbe(
-            isOpen,
-            focusedOption?.Name ?? focusedName,
-            focusedOption?.Key,
-            string.Join(
-                '|',
-                surfaces
-                    .Select(surface =>
-                        string.Join(
-                            ':',
-                            surface.Key,
-                            Math.Round(surface.Bounds.Left),
-                            Math.Round(surface.Bounds.Top),
-                            Math.Round(surface.Bounds.Width),
-                            Math.Round(surface.Bounds.Height)))
-                    .Concat(options.Select(option =>
-                        string.Join(
-                            ':',
-                            option.Key,
-                            option.SurfaceKey,
-                            NormalizeChoice(option.Name))))
-                    .Order(StringComparer.Ordinal)),
-            surfaces,
-            options,
-            composerRegion);
-    }
-
-    private static IReadOnlyList<DialPopupSurface>
-        BuildDialPopupSurfaces(
-            IReadOnlyList<DialPopupOptionCandidate> candidates)
-    {
-        var surfaces = new List<DialPopupSurface>();
-        foreach (var rootGroup in candidates
-                     .GroupBy(
-                         candidate => candidate.RootKey,
-                         StringComparer.Ordinal))
-        {
-            var containers = rootGroup
-                .GroupBy(
-                    candidate => candidate.ContainerKey,
-                    StringComparer.Ordinal)
-                .Select(group =>
-                {
-                    var first = group.First();
-                    return new DialPopupContainer(
-                        group.Key,
-                        new(
-                            first.ContainerLeft,
-                            first.ContainerTop,
-                            first.ContainerWidth,
-                            first.ContainerHeight),
-                        group.ToArray());
-                })
-                .OrderBy(container => container.Bounds.Top)
-                .ThenBy(container => container.Bounds.Left)
-                .ToArray();
-            var clusters = new List<List<DialPopupContainer>>();
-            foreach (var container in containers)
-            {
-                var cluster = clusters.FirstOrDefault(candidate =>
-                    candidate.Any(existing =>
-                        ComposerDialMenuSelectionPolicy
-                            .SharesVisualSurface(
-                                ToContainerGeometry(
-                                    existing.Bounds),
-                                ToContainerGeometry(
-                                    container.Bounds))));
-                if (cluster is null)
-                {
-                    cluster = [];
-                    clusters.Add(cluster);
-                }
-
-                cluster.Add(container);
-            }
-
-            foreach (var cluster in clusters)
-            {
-                var orderedContainers = cluster
-                    .OrderBy(container =>
-                        container.Bounds.Top)
-                    .ThenBy(container =>
-                        container.Bounds.Left)
-                    .ToArray();
-                var surfaceKey = string.Join(
-                    ':',
-                    "surface",
-                    rootGroup.Key,
-                    orderedContainers[0].Key);
-                var options = orderedContainers
-                    .SelectMany(container =>
-                        container.Options)
-                    .GroupBy(
-                        option => option.Key,
-                        StringComparer.Ordinal)
-                    .Select(group =>
-                        group
-                            .OrderByDescending(option =>
-                                option.HasKeyboardFocus)
-                            .ThenByDescending(option =>
-                                option.IsSelected)
-                            .First())
-                    .OrderBy(option => option.Top)
-                    .ThenBy(option => option.Left)
-                    .Select(option =>
-                        new DialPopupOption(
-                            option.Key,
-                            option.Name,
-                            option.ContainerKey,
-                            surfaceKey,
-                            option.Left,
-                            option.Top,
-                            option.Width,
-                            option.Height,
-                            option.HasKeyboardFocus,
-                            option.IsSelected,
-                            option.CanExpand,
-                            option.Element))
-                    .ToArray();
-                surfaces.Add(
-                    new(
-                        surfaceKey,
-                        UnionBounds(
-                            orderedContainers.Select(
-                                container =>
-                                    container.Bounds)),
-                        options));
-            }
-        }
-
-        return surfaces
-            .OrderBy(surface => surface.Bounds.Top)
-            .ThenBy(surface => surface.Bounds.Left)
-            .ToArray();
-    }
-
-    private static ComposerDialMenuContainerGeometry
-        ToContainerGeometry(System.Windows.Rect bounds)
-    {
-        return new(
-            bounds.Left,
-            bounds.Top,
-            bounds.Width,
-            bounds.Height);
-    }
-
-    private static System.Windows.Rect UnionBounds(
-        IEnumerable<System.Windows.Rect> bounds)
-    {
-        var result = System.Windows.Rect.Empty;
-        foreach (var item in bounds)
-        {
-            result = result.IsEmpty
-                ? item
-                : System.Windows.Rect.Union(result, item);
-        }
-
-        return result;
-    }
-
-    private static string StableAutomationKey(
-        AutomationElement element,
-        string fallback)
-    {
-        try
-        {
-            var runtimeId = element.GetRuntimeId();
-            if (runtimeId is { Length: > 0 })
-            {
-                return $"rid:{string.Join('.', runtimeId)}";
-            }
-        }
-        catch
-        {
-            // The geometry fallback is scoped to one mounted popup.
-        }
-
-        return $"fallback:{fallback}";
-    }
-
-    private static bool IsDialPopupOptionSelected(
-        AutomationElement element)
-    {
-        try
-        {
-            if (
-                element.TryGetCurrentPattern(
-                    SelectionItemPattern.Pattern,
-                    out var selectionObject) &&
-                selectionObject is SelectionItemPattern selection &&
-                selection.Current.IsSelected)
-            {
-                return true;
-            }
-
-            var itemBounds = element.Current.BoundingRectangle;
-            if (itemBounds.IsEmpty)
-            {
-                return false;
-            }
-
-            var images = element.FindAll(
-                TreeScope.Descendants,
-                new PropertyCondition(
-                    AutomationElement.ControlTypeProperty,
-                    ControlType.Image));
-            foreach (AutomationElement image in images)
-            {
-                var bounds = image.Current.BoundingRectangle;
-                var className =
-                    image.Current.ClassName ?? string.Empty;
-                if (ComposerDialMenuSelectionPolicy
-                    .LooksLikeSelectionMarker(
-                        ToContainerGeometry(itemBounds),
-                        ToContainerGeometry(bounds),
-                        className))
-                {
-                    return true;
-                }
-            }
-        }
-        catch
-        {
-            return false;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetDialPopupContainer(
-        AutomationElement element,
-        AutomationElement root,
-        out string key,
-        out System.Windows.Rect bounds)
-    {
-        key = string.Empty;
-        bounds = System.Windows.Rect.Empty;
-        try
-        {
-            var walker = TreeWalker.ControlViewWalker;
-            var current = walker.GetParent(element);
-            for (
-                var depth = 0;
-                current is not null &&
-                depth < 16;
-                depth++)
-            {
-                var controlType = current.Current.ControlType;
-                if (
-                    controlType == ControlType.Menu ||
-                    controlType == ControlType.List)
-                {
-                    bounds = current.Current.BoundingRectangle;
-                    if (bounds.IsEmpty)
-                    {
-                        return false;
-                    }
-
-                    var runtimeId = current.GetRuntimeId();
-                    key = runtimeId is { Length: > 0 }
-                        ? string.Join('.', runtimeId)
-                        : string.Join(
-                            ':',
-                            controlType.ProgrammaticName,
-                            current.Current.Name,
-                            Math.Round(bounds.Left),
-                            Math.Round(bounds.Top));
-                    return true;
-                }
-
-                if (current.Equals(root))
-                {
-                    break;
-                }
-
-                current = walker.GetParent(current);
-            }
-        }
-        catch
-        {
-            return false;
-        }
-
-        return false;
-    }
-
-    private static System.Windows.Rect? TryGetComposerPopupRegion(
-        AutomationElement window)
-    {
-        var editor = FindComposerEditor(window);
-        if (editor is null)
-        {
-            return null;
-        }
-
-        try
-        {
-            var bounds = editor.Current.BoundingRectangle;
-            return new System.Windows.Rect(
-                bounds.Left - 160,
-                bounds.Top - 720,
-                bounds.Width + 320,
-                bounds.Height + 900);
-        }
-        catch (ElementNotAvailableException)
-        {
-            return null;
-        }
-    }
-
-    private static IReadOnlyList<DialPopupRoot> FindDialPopupRoots(
-        AutomationElement mainWindow,
-        int processId)
-    {
-        var roots = new List<DialPopupRoot>
-        {
-            new(mainWindow, IsPopupWindow: false),
-        };
-        try
-        {
-            var processWindows = AutomationElement.RootElement.FindAll(
-                TreeScope.Children,
-                new PropertyCondition(
-                    AutomationElement.ProcessIdProperty,
-                    processId));
-            foreach (AutomationElement processWindow in processWindows)
-            {
-                if (!processWindow.Equals(mainWindow))
-                {
-                    roots.Add(
-                        new(
-                            processWindow,
-                            IsPopupWindow: true));
-                }
-            }
-        }
-        catch
-        {
-            // The main window still provides the normal Electron popup tree.
-        }
-
-        return roots;
-    }
-
-    private static bool HasPopupAncestor(
-        AutomationElement element,
-        AutomationElement root,
-        bool includeList)
-    {
-        try
-        {
-            var walker = TreeWalker.ControlViewWalker;
-            var current = walker.GetParent(element);
-            for (
-                var depth = 0;
-                current is not null &&
-                depth < 16 &&
-                !current.Equals(root);
-                depth++)
-            {
-                var type = current.Current.ControlType;
-                if (
-                    type == ControlType.Menu ||
-                    type == ControlType.MenuItem ||
-                    (includeList && type == ControlType.List))
-                {
-                    return true;
-                }
-
-                current = walker.GetParent(current);
-            }
-        }
-        catch
-        {
-            // A focused localized Search edit is sufficient without ancestry.
-        }
-
-        return false;
-    }
-
-    private static string? TryReadFocusedPopupName(
-        int processId,
-        System.Windows.Rect? composerRegion)
-    {
-        try
-        {
-            var focused = AutomationElement.FocusedElement;
-            if (
-                focused is null ||
-                focused.Current.ProcessId != processId ||
-                focused.Current.IsOffscreen ||
-                focused.Current.BoundingRectangle.IsEmpty)
-            {
-                return null;
-            }
-
-            if (DialPopupKind(focused.Current.ControlType) is null)
-            {
-                return null;
-            }
-
-            var bounds = focused.Current.BoundingRectangle;
-            if (
-                composerRegion is not { } region ||
-                !region.Contains(
-                    new System.Windows.Point(
-                        bounds.Left + bounds.Width / 2,
-                        bounds.Top + bounds.Height / 2)))
-            {
-                return null;
-            }
-
-            var name = focused.Current.Name?.Trim();
-            return string.IsNullOrWhiteSpace(name) ? null : name;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static DialConfirmationDialog? FindDialConfirmation(
-        AutomationElement window)
-    {
-        AutomationElementCollection dialogs;
-        try
-        {
-            dialogs = window.FindAll(
-                TreeScope.Descendants,
-                new PropertyCondition(
-                    AutomationElement.ControlTypeProperty,
-                    ControlType.Window));
-        }
-        catch
-        {
-            return null;
-        }
-
-        foreach (AutomationElement dialog in dialogs)
-        {
-            try
-            {
-                var className =
-                    dialog.Current.ClassName ?? string.Empty;
-                if (
-                    dialog.Current.IsOffscreen ||
-                    dialog.Current.BoundingRectangle.IsEmpty ||
-                    !className.Contains(
-                        "codex-dialog",
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var confirmButton = FindVisibleNamedButton(
-                    dialog,
-                    ["Confirm", "确认"]);
-                var cancelButton = FindVisibleNamedButton(
-                    dialog,
-                    ["Cancel", "取消"]);
-                if (
-                    confirmButton is null ||
-                    cancelButton is null)
-                {
-                    continue;
-                }
-
-                var texts = dialog.FindAll(
-                    TreeScope.Descendants,
-                    new PropertyCondition(
-                        AutomationElement.ControlTypeProperty,
-                        ControlType.Text));
-                foreach (AutomationElement text in texts)
-                {
-                    string title;
-                    try
-                    {
-                        if (
-                            text.Current.IsOffscreen ||
-                            text.Current.BoundingRectangle.IsEmpty)
-                        {
-                            continue;
-                        }
-
-                        title = text.Current.Name?.Trim() ??
-                            string.Empty;
-                    }
-                    catch (ElementNotAvailableException)
-                    {
-                        continue;
-                    }
-
-                    if (IsFullAccessConfirmationTitle(title))
-                    {
-                        return new(
-                            title,
-                            confirmButton,
-                            cancelButton);
-                    }
-                }
-            }
-            catch (ElementNotAvailableException)
-            {
-                // Chromium may replace the dialog while it is being queried.
-            }
-        }
-
-        return null;
-    }
-
-    private static bool IsFullAccessConfirmationTitle(string title)
-    {
-        return
-            title.Contains(
-                "Full Access",
-                StringComparison.OrdinalIgnoreCase) ||
-            title.Contains(
-                "完全访问",
-                StringComparison.Ordinal) ||
-            title.Contains(
-                "完整访问",
-                StringComparison.Ordinal);
-    }
-
-    private static bool TryInvokeDialConfirmationButton(
-        AutomationElement button)
-    {
-        try
-        {
-            if (
-                !button.Current.IsEnabled ||
-                !button.TryGetCurrentPattern(
-                    InvokePattern.Pattern,
-                    out var patternObject) ||
-                patternObject is not InvokePattern pattern)
-            {
-                return false;
-            }
-
-            pattern.Invoke();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool WaitForDialConfirmationClosed(
-        AutomationElement window,
-        int timeoutMs)
-    {
-        var deadline = Environment.TickCount64 + timeoutMs;
-        do
-        {
-            if (FindDialConfirmation(window) is null)
-            {
-                return true;
-            }
-
-            Thread.Sleep(DialPopupPollIntervalMs);
-        }
-        while (Environment.TickCount64 < deadline);
-
-        return FindDialConfirmation(window) is null;
-    }
-
-    private static ComposerDialPopupElementKind? DialPopupKind(
-        ControlType type)
-    {
-        if (type == ControlType.Menu)
-        {
-            return ComposerDialPopupElementKind.Menu;
-        }
-
-        if (type == ControlType.List)
-        {
-            return ComposerDialPopupElementKind.ListBox;
-        }
-
-        if (type == ControlType.MenuItem)
-        {
-            return ComposerDialPopupElementKind.MenuItem;
-        }
-
-        if (
-            type == ControlType.ListItem ||
-            type == ControlType.DataItem)
-        {
-            return ComposerDialPopupElementKind.OptionItem;
-        }
-
-        if (type == ControlType.Edit)
-        {
-            return ComposerDialPopupElementKind.Edit;
-        }
-
-        return null;
-    }
-
     private static ComposerDialResult? ValidateInteractiveBridge(
         AppSettings settings)
     {
@@ -5011,77 +3306,6 @@ public sealed partial class CodexComposerService
         EnterSubmenu,
         SelectLeaf,
     }
-
-    private sealed record DialControl(
-        string Key,
-        string Name,
-        double Left,
-        double Top,
-        double Width,
-        double Height,
-        int Priority,
-        bool AllowInvoke,
-        AutomationElement Element);
-
-    private sealed record DialPopupRoot(
-        AutomationElement Element,
-        bool IsPopupWindow);
-
-    private sealed record DialPopupContainer(
-        string Key,
-        System.Windows.Rect Bounds,
-        IReadOnlyList<DialPopupOptionCandidate> Options);
-
-    private sealed record DialPopupOptionCandidate(
-        string Key,
-        string Name,
-        string RootKey,
-        string ContainerKey,
-        double ContainerLeft,
-        double ContainerTop,
-        double ContainerWidth,
-        double ContainerHeight,
-        double Left,
-        double Top,
-        double Width,
-        double Height,
-        bool HasKeyboardFocus,
-        bool IsSelected,
-        bool CanExpand,
-        AutomationElement Element);
-
-    private sealed record DialPopupOption(
-        string Key,
-        string Name,
-        string ContainerKey,
-        string SurfaceKey,
-        double Left,
-        double Top,
-        double Width,
-        double Height,
-        bool HasKeyboardFocus,
-        bool IsSelected,
-        bool CanExpand,
-        AutomationElement Element);
-
-    private sealed record DialConfirmationDialog(
-        string Title,
-        AutomationElement ConfirmButton,
-        AutomationElement CancelButton);
-
-    private sealed record DialPopupSurface(
-        string Key,
-        System.Windows.Rect Bounds,
-        IReadOnlyList<DialPopupOption> Options);
-
-    private sealed record DialPopupProbe(
-        bool IsOpen,
-        string? FocusedName,
-        string? FocusedOptionKey,
-        string Signature,
-        IReadOnlyList<DialPopupSurface> Surfaces,
-        IReadOnlyList<DialPopupOption> Options,
-        System.Windows.Rect? ComposerRegion);
 
     private sealed record OwnedDialSurface(
         string? ParentKey,
@@ -5340,34 +3564,6 @@ public sealed partial class CodexComposerService
         }
     }
 
-    private static string? TryReadComposerDraft(
-        AutomationElement editor)
-    {
-        if (IsComposerEditorEmpty(editor))
-        {
-            return string.Empty;
-        }
-
-        return ReadComposerText(editor);
-    }
-
-    private static bool IsComposerEditorEmpty(AutomationElement editor)
-    {
-        try
-        {
-            var trailingBreaks = editor.FindAll(
-                TreeScope.Children,
-                new PropertyCondition(
-                    AutomationElement.ClassNameProperty,
-                    "ProseMirror-trailingBreak"));
-            return trailingBreaks.Count > 0;
-        }
-        catch (ElementNotAvailableException)
-        {
-            return false;
-        }
-    }
-
     private static bool TryInsertPlanSlashQuery(
         AutomationElement window,
         int processId,
@@ -5477,69 +3673,6 @@ public sealed partial class CodexComposerService
 
         return false;
     }
-
-    private static bool WaitForComposerDraft(
-        AutomationElement window,
-        string expected,
-        int timeoutMs,
-        CancellationToken cancellationToken)
-    {
-        var deadline = Environment.TickCount64 + timeoutMs;
-        do
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var editor = FindComposerEditor(window);
-            if (
-                editor is not null &&
-                ComposerDraftEquals(
-                    TryReadComposerDraft(editor),
-                    expected))
-            {
-                return true;
-            }
-
-            Thread.Sleep(24);
-        }
-        while (Environment.TickCount64 < deadline);
-
-        return false;
-    }
-
-    private static bool HasInjectedPlanQuery(
-        string? actual,
-        string originalDraft)
-    {
-        if (actual is null)
-        {
-            return false;
-        }
-
-        var normalizedActual = NormalizeLineEndings(actual);
-        var normalizedDraft = NormalizeLineEndings(originalDraft);
-        return
-            string.Equals(
-                normalizedActual,
-                PlanModeAutomationPolicy.SlashCommandQuery +
-                    normalizedDraft,
-                StringComparison.Ordinal) ||
-            string.Equals(
-                normalizedActual,
-                "/" + normalizedDraft,
-                StringComparison.Ordinal);
-    }
-
-    private static bool ComposerDraftEquals(
-        string? actual,
-        string expected) =>
-        actual is not null &&
-        string.Equals(
-            NormalizeLineEndings(actual),
-            NormalizeLineEndings(expected),
-            StringComparison.Ordinal);
-
-    private static string NormalizeLineEndings(string value) =>
-        value.Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n');
 
     private static AutomationElement? WaitForPlanSlashCommand(
         AutomationElement window,
@@ -7440,71 +5573,6 @@ public sealed partial class CodexComposerService
         }
     }
 
-    private static (AutomationElement Window, int ProcessId)? FindCodexWindow()
-    {
-        foreach (var process in Process.GetProcessesByName("ChatGPT"))
-        {
-            if (process.MainWindowHandle == nint.Zero)
-            {
-                process.Dispose();
-                continue;
-            }
-
-            var processId = process.Id;
-            var handle = process.MainWindowHandle;
-            process.Dispose();
-            var window = AutomationElement.FromHandle(handle);
-            if (window is not null)
-            {
-                return (window, processId);
-            }
-        }
-
-        return null;
-    }
-
-    private static AutomationElement? FindComposerButton(
-        AutomationElement window)
-    {
-        var buttons = window.FindAll(
-            TreeScope.Descendants,
-            new PropertyCondition(
-                AutomationElement.ControlTypeProperty,
-                ControlType.Button));
-        foreach (AutomationElement button in buttons)
-        {
-            string name;
-            string className;
-            try
-            {
-                name = button.Current.Name?.Trim() ?? string.Empty;
-                className = button.Current.ClassName ?? string.Empty;
-                if (
-                    !button.Current.IsEnabled ||
-                    button.Current.IsOffscreen ||
-                    button.Current.BoundingRectangle.IsEmpty)
-                {
-                    continue;
-                }
-            }
-            catch (ElementNotAvailableException)
-            {
-                continue;
-            }
-
-            if (
-                name.Length > 0 &&
-                char.IsDigit(name[0]) &&
-                ComposerDialPolicy.HasComposerButtonClassToken(
-                    className))
-            {
-                return button;
-            }
-        }
-
-        return null;
-    }
-
     private static AutomationElement? WaitForMenuItem(
         AutomationElement window,
         int processId,
@@ -7910,228 +5978,6 @@ public sealed partial class CodexComposerService
         }
     }
 
-    private static IReadOnlyList<ComposerModelOption> LoadModels(string path)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            if (
-                !document.RootElement.TryGetProperty(
-                    "models",
-                    out var modelsElement) ||
-                modelsElement.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            var models = new List<(
-                ComposerModelOption Option,
-                int Priority,
-                int SourceOrder)>();
-            var sourceOrder = 0;
-            foreach (var model in modelsElement.EnumerateArray())
-            {
-                if (
-                    GetString(model, "visibility") != "list" ||
-                    GetString(model, "slug") is not { Length: > 0 } slug ||
-                    GetString(model, "display_name") is not { Length: > 0 }
-                        displayName)
-                {
-                    continue;
-                }
-
-                var efforts = new List<string>();
-                if (
-                    model.TryGetProperty(
-                        "supported_reasoning_levels",
-                        out var effortElement) &&
-                    effortElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var effort in effortElement.EnumerateArray())
-                    {
-                        var label = EffortLabel(GetString(effort, "effort"));
-                        if (
-                            label.Length > 0 &&
-                            !efforts.Contains(
-                                label,
-                                StringComparer.OrdinalIgnoreCase))
-                        {
-                            efforts.Add(label);
-                        }
-                    }
-                }
-
-                models.Add((
-                    new ComposerModelOption(
-                        slug,
-                        ModelLabel(displayName),
-                        efforts),
-                    GetInt(model, "priority") ?? int.MaxValue,
-                    sourceOrder++));
-            }
-
-            return models
-                .OrderBy(item => item.Priority)
-                .ThenBy(item => item.SourceOrder)
-                .Select(item => item.Option)
-                .ToArray();
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static ConfigPreferences ReadConfig(string path)
-    {
-        try
-        {
-            var text = File.ReadAllText(path);
-            return new(
-                MatchTomlString(text, "model"),
-                MatchTomlString(text, "model_reasoning_effort"),
-                MatchTomlString(text, "service_tier"));
-        }
-        catch
-        {
-            return new(null, null, null);
-        }
-    }
-
-    private static string? MatchTomlString(string text, string key)
-    {
-        var match = Regex.Match(
-            text,
-            $@"(?m)^\s*{Regex.Escape(key)}\s*=\s*[""']([^""']+)[""']");
-        return match.Success ? match.Groups[1].Value.Trim() : null;
-    }
-
-    private static int FindModelIndex(
-        IReadOnlyList<ComposerModelOption> models,
-        string? buttonName,
-        string? configuredSlug)
-    {
-        if (!string.IsNullOrWhiteSpace(buttonName))
-        {
-            var normalizedButton = NormalizeChoice(buttonName);
-            var match = models
-                .Select((model, index) => new
-                {
-                    Index = index,
-                    Length = NormalizeChoice(model.DisplayName).Length,
-                    Matches = normalizedButton.StartsWith(
-                        NormalizeChoice(model.DisplayName),
-                        StringComparison.Ordinal),
-                })
-                .Where(item => item.Matches)
-                .OrderByDescending(item => item.Length)
-                .FirstOrDefault();
-            if (match is not null)
-            {
-                return match.Index;
-            }
-        }
-
-        var configuredIndex = models
-            .Select((model, index) => new { model, index })
-            .FirstOrDefault(item =>
-                string.Equals(
-                    item.model.Slug,
-                    configuredSlug,
-                    StringComparison.OrdinalIgnoreCase))?.index;
-        return configuredIndex ?? 0;
-    }
-
-    private static string FindEffort(
-        IReadOnlyList<string> efforts,
-        string? buttonName,
-        string configuredEffort)
-    {
-        if (!string.IsNullOrWhiteSpace(buttonName))
-        {
-            var normalizedButton = NormalizeChoice(buttonName);
-            var fromButton = efforts
-                .OrderByDescending(value => value.Length)
-                .FirstOrDefault(value =>
-                    normalizedButton.EndsWith(
-                        NormalizeChoice(value),
-                        StringComparison.Ordinal));
-            if (fromButton is not null)
-            {
-                return fromButton;
-            }
-        }
-
-        return efforts.FirstOrDefault(value =>
-                   string.Equals(
-                       value,
-                       configuredEffort,
-                       StringComparison.OrdinalIgnoreCase))
-               ?? efforts.FirstOrDefault()
-               ?? string.Empty;
-    }
-
-    private static string FindSpeed(
-        string? buttonName,
-        string? configuredServiceTier)
-    {
-        if (!string.IsNullOrWhiteSpace(buttonName))
-        {
-            var normalized = NormalizeChoice(buttonName);
-            if (normalized.EndsWith("standard", StringComparison.Ordinal))
-            {
-                return "Standard";
-            }
-
-            if (normalized.EndsWith("fast", StringComparison.Ordinal))
-            {
-                return "Fast";
-            }
-        }
-
-        return string.Equals(
-            configuredServiceTier,
-            "priority",
-            StringComparison.OrdinalIgnoreCase)
-            ? "Fast"
-            : "Standard";
-    }
-
-    internal static string ModelLabel(string displayName)
-    {
-        var value = displayName.StartsWith(
-            "GPT-",
-            StringComparison.OrdinalIgnoreCase)
-            ? displayName[4..]
-            : displayName;
-        return value.Replace('-', ' ');
-    }
-
-    private static string EffortLabel(string? effort)
-    {
-        if (string.IsNullOrWhiteSpace(effort))
-        {
-            return string.Empty;
-        }
-
-        var raw = effort.Trim();
-        return raw.ToLowerInvariant() switch
-        {
-            "low" => "Light",
-            "medium" => "Medium",
-            "high" => "High",
-            "xhigh" => "Extra High",
-            _ => string.Join(
-                ' ',
-                raw.Split(
-                        ['_', '-'],
-                        StringSplitOptions.RemoveEmptyEntries)
-                    .Select(part =>
-                        char.ToUpperInvariant(part[0]) +
-                        part[1..].ToLowerInvariant())),
-        };
-    }
-
     private static bool IsEnabledMenuElement(AutomationElement element)
     {
         try
@@ -8155,48 +6001,8 @@ public sealed partial class CodexComposerService
         };
     }
 
-    private static string NormalizeChoice(string value)
-    {
-        return new string(
-            value
-                .Where(char.IsLetterOrDigit)
-                .Select(char.ToLowerInvariant)
-                .ToArray());
-    }
-
-    private static string? GetString(JsonElement element, string property)
-    {
-        return
-            element.TryGetProperty(property, out var value) &&
-            value.ValueKind == JsonValueKind.String
-                ? value.GetString()
-                : null;
-    }
-
-    private static int? GetInt(JsonElement element, string property)
-    {
-        return
-            element.TryGetProperty(property, out var value) &&
-            value.TryGetInt32(out var number)
-                ? number
-                : null;
-    }
-
-    private static string ResolveCodexHome()
-    {
-        var configured = Environment.GetEnvironmentVariable("CODEX_HOME");
-        return !string.IsNullOrWhiteSpace(configured)
-            ? configured
-            : Path.Combine(
-                Environment.GetFolderPath(
-                    Environment.SpecialFolder.UserProfile),
-                ".codex");
-    }
-
-    private sealed record ConfigPreferences(
-        string? ModelSlug,
-        string? Effort,
-        string? ServiceTier);
+    private static string NormalizeChoice(string value) =>
+        ComposerChoiceNormalizer.Normalize(value);
 }
 
 internal enum ComposerDialPopupElementKind

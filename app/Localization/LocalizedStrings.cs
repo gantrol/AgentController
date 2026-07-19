@@ -21,6 +21,8 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public AppLanguage Language => _localization.EffectiveLanguage;
+
     public string this[string key] => _localization.Catalog[key];
 
     public string AppTitle => Get(StringKeys.AppTitle);

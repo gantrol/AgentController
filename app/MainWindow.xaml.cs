@@ -5,11 +5,17 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using AgentController.Application.Actions;
+using AgentController.Application.Navigation;
+using AgentController.Domain.Actions;
+using AgentController.Platform.Windowing;
 using CodexController.Agents;
+using CodexController.Composition;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Presentation;
 using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 using CodexController.Services;
@@ -29,14 +35,6 @@ public partial class MainWindow : Window
         SidebarScope.Projects,
         SidebarScope.ProjectlessTasks,
     ];
-    private static readonly RightControlMode[] AdvancedComposerModes =
-    [
-        RightControlMode.Model,
-        RightControlMode.Reasoning,
-        RightControlMode.Speed,
-    ];
-    private static readonly TimeSpan SimpleModeUpgradePromptDuration =
-        TimeSpan.FromSeconds(30);
     private const ControllerButtons DialExclusiveFrozenButtons =
         RadialInputMap.FrozenBaseButtons &
         ~(
@@ -52,14 +50,17 @@ public partial class MainWindow : Window
     private readonly IAgentShortcuts _agentShortcuts;
     private readonly IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
-    private readonly AxisRepeater _axisRepeater;
-    private readonly StickGestureRouter _leftStickRouter;
-    private readonly StickGestureRouter _rightStickRouter;
+    private readonly ControllerInteractionCoordinator _controllerInteraction;
+    private readonly ControllerHoldCoordinator _controllerHolds;
+    private readonly RadialLayerCoordinator _radialLayers;
+    private readonly ActionDispatcher _actionDispatcher;
+    private readonly ThreadNavigationCoordinator _threadNavigation;
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
+    private readonly IForegroundApplication _foregroundApplication;
     private readonly DevicePageViewModel _devicePageViewModel;
     private readonly ConfigPageViewModel _configPageViewModel;
     private readonly SettingsPageViewModel _settingsPageViewModel;
@@ -71,26 +72,18 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
     private readonly DispatcherTimer _radialLearningTimer;
-    private readonly ControllerStateBuffer _controllerStateBuffer = new();
-    private readonly RadialMenuInteractionState _radialInteraction = new();
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
     private readonly SidebarNavigationDirectory _sidebarNavigationDirectory =
         new();
-    private readonly AnalogTriggerLatch _pushToTalkTrigger = new(
-        BridgeTimings.PushToTalkEngageThreshold,
-        BridgeTimings.PushToTalkReleaseThreshold);
     private readonly PushToTalkAutomationState _pushToTalkAutomation =
         new();
 
-    private AppSettings _settings = new();
+    private readonly AppSettings _settings;
     private CodexSnapshot _snapshot = new();
     private SidebarScope _scope = SidebarScope.Projects;
     private RightControlMode _rightMode = RightControlMode.Dial;
-    private ControllerButtons _previousButtons;
-    private ControllerButtons _previousPhysicalButtons;
-    private ControllerButtons _radialSuppressedButtons;
     private ControllerButtons _pushToTalkSuppressedButtons;
     private string? _selectedProjectPath;
     private bool _projectTasksPinnedOnly;
@@ -100,26 +93,18 @@ public partial class MainWindow : Window
     private SidebarReturnFrame? _sidebarReturnFrame;
     private ProjectDisclosureLease? _projectDisclosureLease;
     private bool _dictationInjected;
+    private ComposerAutomationChannel _dictationAutomationChannel =
+        ComposerAutomationChannel.Unknown;
     private string? _dictationInputGlyph;
-    private bool _radialLayerEngaged;
-    private bool _radialLayerCancelled;
-    private bool _radialActionTriggered;
-    private bool _radialPushToTalkActive;
-    private bool _actionPanelClearArmed;
-    private bool _rightTriggerCandidate;
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
     private bool _virtualDialMenuOpen;
-    private bool _simpleModelPickerOpen;
     private bool _modelPickerShortcutReady;
     private bool _virtualDialConfirmationPending;
     private bool _virtualDialOpenPending;
     private bool _virtualDialCancelRequested;
     private bool _virtualDialCleanupPending;
     private bool _dialInputReleasePending;
-    private bool _simpleModeUpgradePromptPending;
-    private string? _simpleModeUpgradePromptValue;
-    private string? _simpleModeUpgradeDeclinedKey;
     private bool _composerPickerMenuLikelyOpen;
     private bool _blockedPushToTalkHintShown;
     private bool _bridgeDisabledHintShown;
@@ -131,8 +116,6 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private long _leftNavigationBlockedUntil;
     private long _rightAdjustmentBlockedUntil;
-    private long _radialLayerStartedAt;
-    private long _simpleModeUpgradePromptExpiresAt;
     private CancellationTokenSource? _sidebarFocusCancellation;
     private ControllerState _latestControllerState;
     private ComposerCatalog? _composerCatalog;
@@ -140,32 +123,17 @@ public partial class MainWindow : Window
     private int _reasoningIndex;
     private int _speedIndex;
     private CancellationTokenSource? _composerPickerCancellation;
-    private CancellationTokenSource? _navigationConfirmCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
-    private CancellationTokenSource? _actionPanelConfirmationCancellation;
-    private CancellationTokenSource? _cancelHoldCancellation;
-    private CancellationTokenSource?
-        _conversationBoundaryHoldCancellation;
-    private ConversationBoundary? _conversationBoundaryHoldTarget;
-    private NavigationUndoState? _navigationUndo;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
-    private int _pendingSimplePowerSteps;
-    private int _simplePowerPumpRunning;
-    private int _pendingAdvancedSteps;
-    private int _advancedStepPumpRunning;
-    private ComposerSettingKind _pendingAdvancedKind;
-    private int _simpleSpeedHeldDirection;
     private int _virtualDialGeneration;
     private int _dictationPumpRunning;
     private Forms.NotifyIcon? _trayIcon;
     private System.Drawing.Icon? _trayIconImage;
     private OverlayWindow? _overlayWindow;
     private RadialMenuOverlayWindow? _radialMenuOverlayWindow;
-    private SidebarNavigationWheelOverlayWindow?
-        _sidebarNavigationWheelOverlayWindow;
-    private RadialMenuLayerKind? _radialLayer;
-    private string? _radialHighlightedItemId;
+    private SidebarNavigationMenuOverlayWindow?
+        _sidebarNavigationMenuOverlayWindow;
     private ControllerProfile _activeControllerProfile =
         BuiltInControllerProfiles.Generic;
 
@@ -175,24 +143,30 @@ public partial class MainWindow : Window
             _selectedProjectPath,
             _projectTasksPinnedOnly);
 
-    public MainWindow(AppServices services)
+    internal MainWindow(MainWindowDependencies dependencies)
     {
-        ArgumentNullException.ThrowIfNull(services);
-        _settingsService = services.Settings;
-        _activeAgent = services.ActiveAgent;
+        ArgumentNullException.ThrowIfNull(dependencies);
+        _settingsService = dependencies.Settings;
+        _settings = dependencies.CurrentSettings;
+        _activeAgent = dependencies.ActiveAgent;
+        _foregroundApplication = dependencies.ForegroundApplication;
         _workspaceReader = _activeAgent.WorkspaceOrEmpty();
         _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
         _composerAutomation = _activeAgent.ComposerOrUnavailable();
         _agentShortcuts = _activeAgent.Shortcuts;
         _keybindingProvisioner = _activeAgent.Keybindings;
-        _xInputService = services.Controller;
-        _axisRepeater = services.AxisRepeater;
-        _leftStickRouter = services.LeftStickRouter;
-        _rightStickRouter = services.RightStickRouter;
-        _bridgeEvents = services.BridgeEvents;
-        _localization = services.Localization;
-        _microInput = services.MicroInput;
-        _controllerProfiles = services.ControllerProfiles;
+        _xInputService = dependencies.Controller;
+        _controllerInteraction = dependencies.ControllerInteraction;
+        _controllerHolds = dependencies.ControllerHolds;
+        _radialLayers = dependencies.RadialLayers;
+        _actionDispatcher = dependencies.ActionDispatcher;
+        _threadNavigation = dependencies.ThreadNavigation;
+        _threadNavigation.NoticePublished +=
+            ThreadNavigation_NoticePublished;
+        _bridgeEvents = dependencies.BridgeEvents;
+        _localization = dependencies.Localization;
+        _microInput = dependencies.MicroInput;
+        _controllerProfiles = dependencies.ControllerProfiles;
         _configPageViewModel = new ConfigPageViewModel(
             OpenAgentShortcuts,
             () => SaveSettings(
@@ -205,9 +179,6 @@ public partial class MainWindow : Window
                 _localization.Strings.Get(
                     StringKeys.MessageSettingsSaved)),
             ChangeLanguage);
-        _settingsPageViewModel.PropertyChanged +=
-            SettingsPageViewModel_PropertyChanged;
-
         InitializeComponent();
         DataContext = _localization.Strings;
         ConfigPage.DataContext = _configPageViewModel;
@@ -230,7 +201,8 @@ public partial class MainWindow : Window
             RefreshDeviceData,
             scope => SetSidebarScope(
                 scope,
-                showFeedback: false));
+                showFeedback: false),
+            RefreshTutorialDispatch);
         DevicePage.DataContext = _devicePageViewModel;
         _feedbackPresenter.PropertyChanged +=
             FeedbackPresenter_PropertyChanged;
@@ -258,7 +230,6 @@ public partial class MainWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        _settings = _settingsService.Load();
         _localization.SetLanguage(_settings.Language);
         _localization.PropertyChanged +=
             Localization_PropertyChanged;
@@ -267,8 +238,8 @@ public partial class MainWindow : Window
         SetupTrayIcon();
         _overlayWindow = new OverlayWindow();
         _radialMenuOverlayWindow = new RadialMenuOverlayWindow();
-        _sidebarNavigationWheelOverlayWindow =
-            new SidebarNavigationWheelOverlayWindow();
+        _sidebarNavigationMenuOverlayWindow =
+            new SidebarNavigationMenuOverlayWindow();
 
         _bridgeEvents.Publish(BridgeEventKeys.AppReady);
         ConfigureCodexKeybindings();
@@ -292,7 +263,7 @@ public partial class MainWindow : Window
         object? sender,
         ControllerState state)
     {
-        if (_controllerStateBuffer.Enqueue(state))
+        if (_controllerInteraction.EnqueueState(state))
         {
             _ = Dispatcher.BeginInvoke(
                 ProcessBufferedControllerStates);
@@ -301,7 +272,7 @@ public partial class MainWindow : Window
 
     private void ProcessBufferedControllerStates()
     {
-        foreach (var state in _controllerStateBuffer.Drain())
+        foreach (var state in _controllerInteraction.DrainStates())
         {
             ProcessControllerState(state);
         }
@@ -375,8 +346,7 @@ public partial class MainWindow : Window
             }
 
             PauseControllerInput();
-            _previousButtons = ControllerButtons.None;
-            _previousPhysicalButtons = ControllerButtons.None;
+            _controllerInteraction.ClearButtonHistory();
             return;
         }
 
@@ -408,7 +378,7 @@ public partial class MainWindow : Window
             _blockedPushToTalkHintShown = false;
         }
 
-        _radialSuppressedButtons &= pressed;
+        _radialLayers.DrainSuppressedButtons(pressed);
         _pushToTalkSuppressedButtons &= pressed;
         if (!_settings.BridgeEnabled)
         {
@@ -418,23 +388,27 @@ public partial class MainWindow : Window
         }
 
         var radialModifierHeld =
-            _radialLayer is not null ||
+            _radialLayers.Layer is not null ||
             pressed.HasFlag(ControllerButtons.LeftShoulder) ||
             pressed.HasFlag(ControllerButtons.RightShoulder) ||
             state.RightTrigger >= RadialInputMap.TurnEngageThreshold;
         var wakeEligibleButtons =
-            pressed & ~_radialSuppressedButtons;
+            pressed & ~_radialLayers.SuppressedButtons;
         if (radialModifierHeld || IsVirtualDialContextActive)
         {
             wakeEligibleButtons &= ~ControllerButtons.Start;
         }
 
-        HandleButtonEdge(
-            wakeEligibleButtons,
-            ControllerButtons.Start,
-            onDown: WakeCodex);
+        if (
+            _controllerInteraction.BaseButtonTransition(
+                wakeEligibleButtons,
+                ControllerButtons.Start) ==
+            ControllerButtonTransition.Pressed)
+        {
+            WakeCodex();
+        }
 
-        var foreground = _activeAgent.Presence.IsForeground;
+        var foreground = _foregroundApplication.IsForeground;
         TryAutoArmController(foreground);
         var foregroundAllowsInput =
             ObserveCodexForeground(foreground);
@@ -454,8 +428,7 @@ public partial class MainWindow : Window
                 PauseControllerInput(state);
             }
 
-            _previousButtons = pressed;
-            _previousPhysicalButtons = pressed;
+            _controllerInteraction.CommitButtonHistory(pressed, pressed);
             return;
         }
 
@@ -465,8 +438,7 @@ public partial class MainWindow : Window
                 state,
                 foreground,
                 waitingForNeutral: true);
-            _previousButtons = pressed;
-            _previousPhysicalButtons = pressed;
+            _controllerInteraction.CommitButtonHistory(pressed, pressed);
             return;
         }
 
@@ -479,11 +451,8 @@ public partial class MainWindow : Window
                 _dialInputReleasePending = false;
                 // Preserve held-button history. Clearing it here turns a
                 // still-held B into a fresh edge that immediately cancels LT.
-                _previousButtons = pressed;
-                _previousPhysicalButtons = pressed;
-                _axisRepeater.Reset();
-                _leftStickRouter.Reset();
-                _rightStickRouter.Reset();
+                _controllerInteraction.CommitButtonHistory(pressed, pressed);
+                _controllerInteraction.ResetRouting();
             }
             else if (!IsControllerNeutral(state))
             {
@@ -493,23 +462,13 @@ public partial class MainWindow : Window
             else
             {
                 _dialInputReleasePending = false;
-                _previousButtons = ControllerButtons.None;
-                _previousPhysicalButtons = ControllerButtons.None;
-                _axisRepeater.Reset();
-                _leftStickRouter.Reset();
-                _rightStickRouter.Reset();
+                _controllerInteraction.ClearButtonHistory();
+                _controllerInteraction.ResetRouting();
             }
         }
 
-        if (ProcessSimpleModeUpgradePrompt(pressed))
-        {
-            return;
-        }
-
-        var physicalDownEdges =
-            pressed & ~_previousPhysicalButtons;
-        var physicalUpEdges =
-            _previousPhysicalButtons & ~pressed;
+        var physicalEdges =
+            _controllerInteraction.PhysicalEdges(pressed);
         // Dial automation owns the native picker state. Controller polling
         // must never synchronously walk the UIA tree.
         var dialContextActive = IsVirtualDialContextActive;
@@ -517,15 +476,15 @@ public partial class MainWindow : Window
         var pushToTalkTransition = UpdatePushToTalkTrigger(
             state.LeftTrigger,
             blocked: PushToTalkInputPolicy.ShouldBlockTrigger(
-                radialLayerActive: _radialLayer is not null));
+                radialLayerActive: _radialLayers.Layer is not null));
         var pushToTalkFrameActive =
-            _pushToTalkTrigger.BlocksBaseInput ||
+            _controllerInteraction.PushToTalkBlocksBaseInput ||
             pushToTalkTransition != AnalogTriggerTransition.None;
         if (pushToTalkTransition == AnalogTriggerTransition.Released)
         {
             _pushToTalkSuppressedButtons |= pressed;
         }
-        else if (_pushToTalkTrigger.BlocksBaseInput)
+        else if (_controllerInteraction.PushToTalkBlocksBaseInput)
         {
             _pushToTalkSuppressedButtons |=
                 PushToTalkInputPolicy.ButtonsToSuppress(pressed);
@@ -534,13 +493,14 @@ public partial class MainWindow : Window
         ControllerButtons frozenByContext;
         if (pushToTalkFrameActive)
         {
-            _rightTriggerCandidate = false;
+            _radialLayers.ClearRightTriggerCandidate();
             frozenByContext =
                 PushToTalkInputPolicy.FrozenBaseButtons;
         }
         else if (dialContextActive)
         {
-            if (_radialLayer is not null || _rightTriggerCandidate)
+            if (_radialLayers.Layer is not null ||
+                _radialLayers.IsRightTriggerCandidate)
             {
                 ResetRadialLayer(clearSuppression: false);
             }
@@ -559,109 +519,51 @@ public partial class MainWindow : Window
             CancelVirtualDialPressHold();
         }
 
-        var radialInputActive = _radialLayer is not null;
+        var radialInputActive = _radialLayers.Layer is not null;
         var basePressed =
             pressed &
             ~frozenByContext &
-            ~_radialSuppressedButtons &
+            ~_radialLayers.SuppressedButtons &
             ~_pushToTalkSuppressedButtons;
-        HandleButtonEdge(
+        var baseIntents = _controllerInteraction.ResolveBaseIntents(
             basePressed,
-            ControllerButtons.LeftThumb,
-            onDown: CycleRootSidebarScope);
-        if (
-            physicalDownEdges.HasFlag(ControllerButtons.RightThumb) &&
-            basePressed.HasFlag(ControllerButtons.RightThumb))
+            physicalEdges,
+            dialContextActive);
+        foreach (var intent in baseIntents)
         {
-            BeginVirtualDialPress();
+            ExecuteControllerInteractionIntent(intent);
         }
 
-        if (physicalUpEdges.HasFlag(ControllerButtons.RightThumb))
-        {
-            EndVirtualDialPress();
-        }
-
-        var conversationNavigation = ConversationTurnInputMap.Resolve(
-            basePressed & ~_previousButtons);
-        if (conversationNavigation != ConversationTurnInputAction.None)
-        {
-            NavigateConversationTurn(conversationNavigation);
-            BeginConversationBoundaryHold(conversationNavigation);
-        }
-
-        if (
-            physicalUpEdges.HasFlag(ControllerButtons.DPadUp) ||
-            physicalUpEdges.HasFlag(ControllerButtons.DPadDown))
-        {
-            EndConversationBoundaryHold(physicalUpEdges);
-        }
-
-        HandleButtonEdge(
+        _controllerInteraction.CommitButtonHistory(
             basePressed,
-            ControllerButtons.DPadLeft,
-            onDown: () =>
-            {
-                _leftStickRouter.RequireNeutral();
-                NavigateSidebarHorizontal(-1);
-            });
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.DPadRight,
-            onDown: () =>
-            {
-                _leftStickRouter.RequireNeutral();
-                NavigateSidebarHorizontal(1);
-            });
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.Y,
-            onDown: OpenActionPanel);
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.A,
-            onDown: dialContextActive
-                ? SelectVirtualDialOption
-                : OpenSelectedSidebarTask);
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.X,
-            onDown: SendPrompt);
-        HandleButtonEdge(
-            basePressed,
-            ControllerButtons.B,
-            onDown: BeginBaseCancelPress,
-            onUp: EndBaseCancelPress);
-        _previousButtons = basePressed;
-        _previousPhysicalButtons = pressed;
+            pressed);
 
         var deadZone = _settings.DeadZone;
         var virtualDialDeadZone =
             VirtualDialInputPolicy.ResolveDeadZone(
                 deadZone,
                 _activeControllerProfile.Tuning?.StickDeadZone);
-        var leftGesture = _leftStickRouter.Update(
+        var leftGesture = _controllerInteraction.UpdateLeftStick(
             state.LeftX,
             state.LeftY,
             deadZone,
-            invertVertical: true,
             blocked:
                 radialInputActive ||
                 dialContextActive ||
                 pushToTalkFrameActive ||
                 basePressed.HasFlag(ControllerButtons.LeftThumb) ||
                 Environment.TickCount64 < _leftNavigationBlockedUntil);
-        var rightGesture = _rightStickRouter.Update(
+        var rightGesture = _controllerInteraction.UpdateRightStick(
             state.RightX,
             state.RightY,
             virtualDialDeadZone,
-            invertVertical: false,
             blocked:
                 radialInputActive ||
                 pushToTalkFrameActive ||
                 basePressed.HasFlag(ControllerButtons.RightThumb) ||
                 Environment.TickCount64 < _rightAdjustmentBlockedUntil);
 
-        _axisRepeater.Update(
+        _controllerInteraction.RepeatAxis(
             "left-y",
             leftGesture.VerticalDirection,
             _settings.RepeatDelayMs,
@@ -671,88 +573,50 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        var advancedComposerDial = UsesAdvancedComposerDial;
-        if (
-            !dialContextActive &&
-            !advancedComposerDial &&
-            rightGesture.VerticalDirection == 0)
-        {
-            _simpleSpeedHeldDirection = 0;
-        }
-        if (!dialContextActive)
-        {
-            if (
-                advancedComposerDial &&
-                rightGesture.VerticalDirection == 0)
-            {
-                Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-            }
-            else if (
-                !advancedComposerDial &&
-                rightGesture.HorizontalDirection == 0)
-            {
-                Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-            }
-        }
-
-        _axisRepeater.UpdateAnalog(
+        // Preserve the gamepad's two-dimensional intent around the Micro
+        // encoder. Vertical movement traverses rows in an owned composer
+        // surface; horizontal movement adjusts or enters the current row.
+        // Never merge the axes: doing so turned a left push into ENC_CC and
+        // made it appear to move right in Codex.
+        _controllerInteraction.RepeatAnalogAxis(
             "right-y",
-            rightGesture.VerticalDirection,
-            rightGesture.VerticalMagnitude,
+            dialContextActive
+                ? rightGesture.VerticalDirection
+                : 0,
+            dialContextActive
+                ? rightGesture.VerticalMagnitude
+                : 0,
             virtualDialDeadZone,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
             direction =>
             {
-                if (dialContextActive)
+                var navigation =
+                    VirtualDialInputPolicy.ResolveVerticalNavigation(
+                        direction,
+                        isMenuActive: true);
+                if (navigation is { } resolved)
                 {
-                    QueueVirtualDialNavigation(
-                        direction > 0
-                            ? ComposerDialNavigation.Up
-                            : ComposerDialNavigation.Down);
-                }
-                else
-                {
-                    if (advancedComposerDial)
-                    {
-                        QueueAdvancedPickerNavigation(
-                            direction > 0
-                                ? ComposerDialNavigation.Up
-                                : ComposerDialNavigation.Down);
-                    }
-                    else
-                    {
-                        AdjustSimpleSpeed(direction);
-                    }
+                    QueueVirtualDialNavigation(resolved);
                 }
             });
-        _axisRepeater.UpdateAnalog(
+        _controllerInteraction.RepeatAnalogAxis(
             "right-x",
-            !dialContextActive && !advancedComposerDial
-                ? rightGesture.HorizontalDirection
-                : 0,
+            rightGesture.HorizontalDirection,
             rightGesture.HorizontalMagnitude,
             virtualDialDeadZone,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
-            QueueSimplePowerStep);
-        if (rightGesture.HorizontalStarted)
-        {
-            if (dialContextActive)
+            direction =>
             {
-                QueueVirtualDialNavigation(
-                    rightGesture.HorizontalDirection > 0
-                        ? ComposerDialNavigation.Right
-                        : ComposerDialNavigation.Left);
-            }
-            else if (advancedComposerDial)
-            {
-                QueueAdvancedPickerNavigation(
-                    rightGesture.HorizontalDirection > 0
-                        ? ComposerDialNavigation.Right
-                        : ComposerDialNavigation.Left);
-            }
-        }
+                var navigation =
+                    VirtualDialInputPolicy.ResolveHorizontalNavigation(
+                        direction);
+                if (navigation is { } resolved)
+                {
+                    QueueVirtualDialNavigation(resolved);
+                }
+            });
     }
 
     private bool IsVirtualDialContextActive =>
@@ -766,11 +630,6 @@ public partial class MainWindow : Window
         bool requiresConfirmation = false)
     {
         _virtualDialMenuOpen = isOpen;
-        if (!isOpen)
-        {
-            _simpleModelPickerOpen = false;
-        }
-
         _virtualDialConfirmationPending =
             isOpen && requiresConfirmation;
         UpdateVirtualDialContextPresentation();
@@ -786,11 +645,8 @@ public partial class MainWindow : Window
     private void DrainControllerFrame(ControllerButtons pressed)
     {
         CancelConversationBoundaryHold();
-        _previousButtons = pressed;
-        _previousPhysicalButtons = pressed;
-        _axisRepeater.Reset();
-        _leftStickRouter.RequireNeutral();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.CommitButtonHistory(pressed, pressed);
+        _controllerInteraction.RequireNeutralRouting();
     }
 
     private void BeginVirtualDialReleaseDrain()
@@ -803,186 +659,157 @@ public partial class MainWindow : Window
             0);
         CancelVirtualDialPressHold();
         ResetRadialLayer(clearSuppression: false);
-        _axisRepeater.Reset();
-        _leftStickRouter.RequireNeutral();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireNeutralRouting();
     }
 
     private ControllerButtons ProcessRadialInput(ControllerState state)
     {
-        var pressed = state.Buttons;
-        var downEdges = pressed & ~_previousPhysicalButtons;
-        var upEdges = _previousPhysicalButtons & ~pressed;
+        var update = _radialLayers.ProcessFrame(
+            state,
+            _controllerInteraction.PhysicalEdges(state.Buttons),
+            Environment.TickCount64);
+        ApplyRadialLayerUpdate(update);
+        return update.FrozenButtons;
+    }
 
-        if (_radialLayer is null)
+    private void ApplyRadialLayerUpdate(RadialLayerUpdate update)
+    {
+        var effects = update.Effects;
+        _devicePageViewModel.UpdateTutorialLayer(
+            _radialLayers.Layer,
+            _radialLayers.IsEngaged,
+            _radialLayers.IsCancelled);
+        if (effects.HasFlag(RadialLayerEffect.StopLearningTimer))
         {
-            if (
-                !_rightTriggerCandidate &&
-                RadialInputMap.IsTurnCandidate(state.RightTrigger))
-            {
-                _rightTriggerCandidate = true;
-            }
-
-            if (_rightTriggerCandidate)
-            {
-                if (
-                    state.RightTrigger <=
-                    RadialInputMap.TurnCandidateReleaseThreshold)
-                {
-                    _radialSuppressedButtons |=
-                        pressed &
-                        RadialInputMap.FrozenTurnCandidateButtons;
-                    _rightTriggerCandidate = false;
-                    return RadialInputMap.FrozenTurnCandidateButtons;
-                }
-
-                if (
-                    RadialInputMap.CanAcceptTurnAction(
-                        state.RightTrigger))
-                {
-                    _rightTriggerCandidate = false;
-                    BeginRadialLayer(RadialMenuLayerKind.Turn);
-                }
-                else
-                {
-                    return RadialInputMap.FrozenTurnCandidateButtons;
-                }
-            }
-            else if (
-                downEdges.HasFlag(ControllerButtons.RightShoulder))
-            {
-                BeginRadialLayer(RadialMenuLayerKind.Command);
-            }
-            else if (
-                downEdges.HasFlag(ControllerButtons.LeftShoulder))
-            {
-                BeginRadialLayer(RadialMenuLayerKind.Agent);
-            }
+            _radialLearningTimer.Stop();
         }
 
-        if (_radialLayer is not { } layer)
+        if (effects.HasFlag(RadialLayerEffect.StartLearningTimer))
         {
-            return ControllerButtons.None;
+            _radialLearningTimer.Start();
         }
 
-        if (
-            layer == RadialMenuLayerKind.Agent &&
-            !pressed.HasFlag(ControllerButtons.LeftShoulder))
-        {
-            CompleteShoulderLayer(
-                direction: -1,
-                pressed);
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (
-            layer == RadialMenuLayerKind.Command &&
-            !pressed.HasFlag(ControllerButtons.RightShoulder))
-        {
-            CompleteShoulderLayer(
-                direction: 1,
-                pressed);
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (
-            layer == RadialMenuLayerKind.Turn &&
-            upEdges.HasFlag(ControllerButtons.B))
+        if (effects.HasFlag(RadialLayerEffect.EndBaseCancelPress))
         {
             EndBaseCancelPress();
         }
 
-        if (
-            layer == RadialMenuLayerKind.Turn &&
-            state.RightTrigger <=
-                RadialInputMap.TurnReleaseThreshold)
+        if (effects.HasFlag(RadialLayerEffect.StopDictationPhysical))
         {
-            EndRadialLayer(pressed);
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (
-            layer == RadialMenuLayerKind.Command &&
-            _radialPushToTalkActive &&
-            upEdges.HasFlag(ControllerButtons.Back))
-        {
-            _radialPushToTalkActive = false;
             StopDictation(physicalRelease: true);
         }
 
-        if (_radialPushToTalkActive)
+        if (effects.HasFlag(RadialLayerEffect.StopDictationSynthetic))
         {
-            return RadialInputMap.FrozenBaseButtons;
+            StopDictation(physicalRelease: false);
         }
 
-        if (_radialLayerCancelled)
+        if (effects.HasFlag(RadialLayerEffect.HideMenu))
         {
-            return RadialInputMap.FrozenBaseButtons;
+            _radialMenuOverlayWindow?.HideMenu();
         }
 
-        var action = RadialInputMap.Resolve(layer, downEdges);
-        if (action == RadialInputAction.None)
+        if (effects.HasFlag(RadialLayerEffect.RefreshMenu))
         {
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (action == RadialInputAction.Cancel)
-        {
-            if (layer == RadialMenuLayerKind.Action)
-            {
-                CloseActionPanel(pressed);
-                return RadialInputMap.FrozenBaseButtons;
-            }
-
-            CancelRadialLayer();
-            return RadialInputMap.FrozenBaseButtons;
-        }
-
-        if (KeepsRadialOpenForFollowUp(action))
-        {
-            _radialActionTriggered = true;
-            _radialLayerEngaged = true;
-            _radialLearningTimer.Stop();
-            _radialHighlightedItemId = RadialActionId(action);
             RefreshRadialMenu();
-            ExecuteRadialAction(action);
-            return RadialInputMap.FrozenBaseButtons;
         }
 
-        var actionId = RadialActionId(action);
-        if (!_radialInteraction.TryAcceptInput(actionId))
+        if (effects.HasFlag(RadialLayerEffect.RefreshAgentData))
         {
-            return RadialInputMap.FrozenBaseButtons;
+            RefreshCodexData(preserveSelection: true);
         }
 
-        _radialActionTriggered = true;
-        _radialLayerEngaged = true;
-        _radialLearningTimer.Stop();
-        _radialHighlightedItemId = actionId;
-        var actionTitle =
-            _radialMenuOverlayWindow?.AcknowledgeInputAndFade(actionId) ??
-            RadialText("轮盘指令", "Radial command");
-        ShowFeedback(
-            actionTitle,
-            RadialText(
-                "已接收，等待 Codex 响应…",
-                "Received. Waiting for Codex…"));
-        Pulse(strength: 0.18);
-        _radialInteraction.TryBeginWaiting();
-        _ = ExecuteRadialActionAfterAcknowledgementAsync(action);
-        return RadialInputMap.FrozenBaseButtons;
+        if (effects.HasFlag(RadialLayerEffect.PresentCanceled))
+        {
+            ShowFeedback(
+                RadialText("组合层", "Chord layer"),
+                RadialText(
+                    "已取消；松开修饰键后返回基础层。",
+                    "Canceled. Release the modifier to return to Base."));
+            Pulse(strength: 0.1);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.ActionPanelOpened))
+        {
+            ShowFeedback(
+                RadialText("动作面板", "Action panel"),
+                RadialText(
+                    "按手柄图中的实体键执行 · B 或 Y 关闭",
+                    "Press a mapped controller button · B or Y closes"));
+            Pulse(strength: 0.16);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.ActionPanelClosed))
+        {
+            ShowFeedback(
+                RadialText("动作面板", "Action panel"),
+                RadialText("已关闭。", "Closed."));
+            Pulse(strength: 0.08);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.OpenPreviousTask))
+        {
+            OpenAdjacentAgentTask(-1);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.OpenNextTask))
+        {
+            OpenAdjacentAgentTask(1);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.ExecuteFollowUpAction))
+        {
+            ExecuteRadialAction(update.Action);
+        }
+
+        if (effects.HasFlag(RadialLayerEffect.AcknowledgeAction))
+        {
+            var actionId =
+                _radialLayers.HighlightedItemId ??
+                RadialInputMap.ActionId(
+                    update.Action,
+                    _radialLayers.Layer);
+            var actionTitle =
+                _radialMenuOverlayWindow?.AcknowledgeInputAndFade(actionId) ??
+                RadialText("轮盘指令", "Radial command");
+            ShowFeedback(
+                actionTitle,
+                RadialText(
+                    "已接收，等待 Codex 响应…",
+                    "Received. Waiting for Codex…"));
+            Pulse(strength: 0.18);
+            _ = ExecuteRadialActionAfterAcknowledgementAsync(update.Action);
+        }
     }
 
-    private bool KeepsRadialOpenForFollowUp(
-        RadialInputAction action)
+    private void PromoteRadialLearningCue()
     {
-        return
-            action == RadialInputAction.PushToTalk ||
-            action == RadialInputAction.BeginStopHold ||
-            (
-                action == RadialInputAction.ClearComposer &&
-                !_actionPanelClearArmed
-            );
+        ApplyRadialLayerUpdate(
+            _radialLayers.PromoteLearningCue(
+                _latestControllerState.Buttons));
+    }
+
+    private void OpenActionPanel()
+    {
+        ApplyRadialLayerUpdate(
+            _radialLayers.ToggleActionPanel(
+                _latestControllerState.Buttons,
+                Environment.TickCount64));
+    }
+
+    private void EndRadialLayer(ControllerButtons pressed)
+    {
+        ApplyRadialLayerUpdate(_radialLayers.End(pressed));
+    }
+
+    private void ResetRadialLayer(
+        bool clearSuppression,
+        bool preserveInputAcknowledgement = false)
+    {
+        ApplyRadialLayerUpdate(
+            _radialLayers.Reset(
+                clearSuppression,
+                preserveInputAcknowledgement));
     }
 
     private async Task ExecuteRadialActionAfterAcknowledgementAsync(
@@ -992,185 +819,6 @@ public partial class MainWindow : Window
         // automation or deep-link handling begins on the UI thread.
         await Dispatcher.Yield(DispatcherPriority.Background);
         ExecuteRadialAction(action);
-    }
-
-    private void BeginRadialLayer(RadialMenuLayerKind layer)
-    {
-        if (_radialLayer is not null)
-        {
-            return;
-        }
-
-        _radialLayer = layer;
-        _rightTriggerCandidate = false;
-        _radialLayerStartedAt = Environment.TickCount64;
-        _radialLayerEngaged =
-            layer is
-                RadialMenuLayerKind.Turn or
-                RadialMenuLayerKind.Action;
-        _radialLayerCancelled = false;
-        _radialActionTriggered = false;
-        _radialPushToTalkActive = false;
-        _radialHighlightedItemId = null;
-        _radialInteraction.Reset();
-
-        _radialLearningTimer.Stop();
-        if (
-            layer is
-                RadialMenuLayerKind.Agent or
-                RadialMenuLayerKind.Command)
-        {
-            _radialLearningTimer.Start();
-        }
-
-        RefreshRadialMenu();
-        if (layer == RadialMenuLayerKind.Agent)
-        {
-            RefreshCodexData(preserveSelection: true);
-        }
-    }
-
-    private void PromoteRadialLearningCue()
-    {
-        _radialLearningTimer.Stop();
-        if (
-            _radialLayer is not
-                (RadialMenuLayerKind.Agent or
-                 RadialMenuLayerKind.Command) ||
-            _radialLayerCancelled)
-        {
-            return;
-        }
-
-        var buttons = _latestControllerState.Buttons;
-        var modifierStillHeld =
-            _radialLayer == RadialMenuLayerKind.Agent
-                ? buttons.HasFlag(ControllerButtons.LeftShoulder)
-                : buttons.HasFlag(ControllerButtons.RightShoulder);
-        if (!modifierStillHeld)
-        {
-            return;
-        }
-
-        _radialLayerEngaged = true;
-        RefreshRadialMenu();
-    }
-
-    private void CompleteShoulderLayer(
-        int direction,
-        ControllerButtons pressed)
-    {
-        var elapsed =
-            Environment.TickCount64 - _radialLayerStartedAt;
-        var shouldMoveTask =
-            !_radialLayerEngaged &&
-            !_radialLayerCancelled &&
-            !_radialActionTriggered &&
-            elapsed < RadialInputMap.LearningDelayMs;
-        EndRadialLayer(pressed);
-        if (shouldMoveTask)
-        {
-            OpenAdjacentAgentTask(direction);
-        }
-    }
-
-    private void CancelRadialLayer()
-    {
-        _radialLayerCancelled = true;
-        _radialActionTriggered = true;
-        _radialLearningTimer.Stop();
-        if (_radialPushToTalkActive)
-        {
-            _radialPushToTalkActive = false;
-            StopDictation(physicalRelease: false);
-        }
-
-        _radialMenuOverlayWindow?.HideMenu();
-        ShowFeedback(
-            RadialText("组合层", "Chord layer"),
-            RadialText(
-                "已取消；松开修饰键后返回基础层。",
-                "Canceled. Release the modifier to return to Base."));
-        Pulse(strength: 0.1);
-    }
-
-    private void OpenActionPanel()
-    {
-        if (_radialLayer == RadialMenuLayerKind.Action)
-        {
-            CloseActionPanel(_latestControllerState.Buttons);
-            return;
-        }
-
-        if (_radialLayer is not null)
-        {
-            return;
-        }
-
-        BeginRadialLayer(RadialMenuLayerKind.Action);
-        ShowFeedback(
-            RadialText("动作面板", "Action panel"),
-            RadialText(
-                "按手柄图中的实体键执行 · B 或 Y 关闭",
-                "Press a mapped controller button · B or Y closes"));
-        Pulse(strength: 0.16);
-    }
-
-    private void CloseActionPanel(ControllerButtons pressed)
-    {
-        _radialSuppressedButtons |=
-            pressed & RadialInputMap.FrozenBaseButtons;
-        ResetRadialLayer(clearSuppression: false);
-        ShowFeedback(
-            RadialText("动作面板", "Action panel"),
-            RadialText("已关闭。", "Closed."));
-        Pulse(strength: 0.08);
-    }
-
-    private void EndRadialLayer(ControllerButtons pressed)
-    {
-        _radialSuppressedButtons |=
-            pressed & RadialInputMap.FrozenBaseButtons;
-        ResetRadialLayer(
-            clearSuppression: false,
-            preserveInputAcknowledgement: true);
-    }
-
-    private void ResetRadialLayer(
-        bool clearSuppression,
-        bool preserveInputAcknowledgement = false)
-    {
-        var allowAcknowledgementToFinish =
-            preserveInputAcknowledgement &&
-            _radialInteraction.Phase ==
-                RadialMenuInteractionPhase.WaitingForResponse;
-        _radialLearningTimer.Stop();
-        if (_radialPushToTalkActive)
-        {
-            _radialPushToTalkActive = false;
-            StopDictation(physicalRelease: false);
-        }
-
-        _radialLayer = null;
-        _rightTriggerCandidate = false;
-        _radialLayerEngaged = false;
-        _radialLayerCancelled = false;
-        _radialActionTriggered = false;
-        _radialLayerStartedAt = 0;
-        _radialHighlightedItemId = null;
-        _radialInteraction.Reset();
-        _actionPanelClearArmed = false;
-        _actionPanelConfirmationCancellation?.Cancel();
-        _actionPanelConfirmationCancellation = null;
-        if (clearSuppression)
-        {
-            _radialSuppressedButtons = ControllerButtons.None;
-        }
-
-        if (!allowAcknowledgementToFinish)
-        {
-            _radialMenuOverlayWindow?.HideMenu();
-        }
     }
 
     private void ExecuteRadialAction(RadialInputAction action)
@@ -1188,80 +836,42 @@ public partial class MainWindow : Window
                 ExecuteFastToggle();
                 break;
             case RadialInputAction.Approve:
-                ExecuteNamedRadialAction(
-                    RadialText("接受更改", "Approve changes"),
-                    "Approve",
-                    "Accept",
-                    "Accept changes",
-                    "Allow",
-                    "Allow once",
-                    "Continue");
+                ConfirmOrApproveAction();
                 break;
             case RadialInputAction.Decline:
-                ExecuteNamedRadialAction(
+                _ = ExecuteUiCommandActionAsync(
+                    ApprovalActionContract.DeclineId,
                     RadialText("拒绝更改", "Decline changes"),
-                    "Decline",
-                    "Reject",
-                    "Reject changes",
-                    "Deny");
+                    "controller.radial.command.decline",
+                    "radial.command");
                 break;
             case RadialInputAction.Fork:
-                if (TryExecuteMicroInput(
-                        _microInput.TryForkThread,
-                        RadialText("分支任务", "Fork task")))
-                {
-                    break;
-                }
-
-                if (_agentShortcuts.Execute(
-                        _settings.ForkShortcut,
-                        _settings))
-                {
-                    var forkTitle =
-                        RadialText("分支任务", "Fork task");
-                    ClearNavigationUndo();
-                    AddEvent(
-                        $"{forkTitle} · {_settings.ForkShortcut}");
-                    Pulse();
-                    break;
-                }
-
-                ExecuteNamedRadialAction(
-                    RadialText("分支任务", "Fork task"),
-                    "Fork",
-                    "Fork task",
-                    "Fork thread",
-                    "Branch",
-                    "Branch task",
-                    "Continue in new task");
+                ExecuteForkAction();
                 break;
             case RadialInputAction.PushToTalk:
-                if (!_radialPushToTalkActive)
+                if (_radialLayers.TryStartPushToTalk())
                 {
-                    _radialPushToTalkActive = true;
                     StartDictation(Glyph(LogicalInput.View));
                 }
                 break;
             case RadialInputAction.Dispatch:
-                SendPrompt(Glyph(LogicalInput.Menu));
+                SendPrompt(
+                    Glyph(LogicalInput.Menu),
+                    "controller.radial.dispatch");
                 break;
             case RadialInputAction.Steer:
-                ExecuteNamedRadialAction(
+                _ = ExecuteUiCommandActionAsync(
+                    TurnActionContract.SteerId,
                     RadialText("加入当前运行", "Steer current turn"),
-                    "Steer",
-                    "Steer current turn",
-                    "Add to current turn",
-                    "加入当前运行",
-                    "加入当前轮次");
+                    "controller.radial.turn.steer",
+                    "radial.turn");
                 break;
             case RadialInputAction.Queue:
-                ExecuteNamedRadialAction(
+                _ = ExecuteUiCommandActionAsync(
+                    TurnActionContract.QueueId,
                     RadialText("排到下一轮", "Queue next turn"),
-                    "Queue",
-                    "Queue next turn",
-                    "Send next",
-                    "排到下一轮",
-                    "排入下一轮");
+                    "controller.radial.turn.queue",
+                    "radial.turn");
                 break;
             case RadialInputAction.BeginStopHold:
                 BeginCancelHold();
@@ -1270,19 +880,22 @@ public partial class MainWindow : Window
                 ExecuteNewTaskAction();
                 break;
             case RadialInputAction.NavigateForward:
-                ExecuteActionPanelShortcut(
+                _ = ExecuteActionPanelActionAsync(
+                    NavigationActionContract.ForwardId,
                     RadialText("前进", "Forward"),
-                    "Ctrl+]");
+                    "controller.radial.action-panel.forward");
                 break;
             case RadialInputAction.ToggleSidebar:
-                ExecuteActionPanelShortcut(
+                _ = ExecuteActionPanelActionAsync(
+                    SidebarActionContract.ToggleId,
                     RadialText("切换侧边栏", "Toggle sidebar"),
-                    "Ctrl+B");
+                    "controller.radial.action-panel.toggle-sidebar");
                 break;
             case RadialInputAction.NavigateBack:
-                ExecuteActionPanelShortcut(
+                _ = ExecuteActionPanelActionAsync(
+                    NavigationActionContract.BackId,
                     RadialText("后退", "Back"),
-                    "Ctrl+[");
+                    "controller.radial.action-panel.back");
                 break;
             case RadialInputAction.ClearComposer:
                 ConfirmOrClearComposer();
@@ -1294,111 +907,130 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExecuteActionPanelShortcut(
+    private async Task ExecuteActionPanelActionAsync(
+        ActionId actionId,
         string title,
-        string shortcut)
+        string controlId)
     {
-        var executed = _agentShortcuts.Execute(
-            shortcut,
-            _settings);
+        var result = await TryExecuteActionAsync(
+            actionId,
+            "controller.active",
+            controlId,
+            "radial.action-panel",
+            actionId.Value,
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
         EndRadialLayer(_latestControllerState.Buttons);
         AddEvent(
             title +
             ExecutionSuffix(
-                executed,
-                executed
-                    ? null
-                    : AgentAutomationErrorCodes.InputInjectionFailed,
-                shortcut));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            executed
+            succeeded
                 ? _localization.Strings.Get(
                     StringKeys.MessageExecuted)
-                : ExecutionFailureLabel(
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    shortcut));
-        Pulse(strength: executed ? 0.2 : 0.1);
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.2 : 0.1);
     }
 
     private void ConfirmOrClearComposer()
     {
-        if (!_actionPanelClearArmed)
-        {
-            _actionPanelClearArmed = true;
-            _radialHighlightedItemId = "action-clear";
-            RefreshRadialMenu();
-            ShowFeedback(
-                RadialText("清空当前输入", "Clear current input"),
+        var title = RadialText(
+            "清空当前输入",
+            "Clear current input");
+        if (!ConfirmRadialAction(
+                RadialInputAction.ClearComposer,
+                title,
                 RadialText(
-                    "再次按 A 确认 · B 取消",
-                    "Press A again to confirm · B cancels"));
-            Pulse(strength: 0.12);
-            ScheduleActionPanelClearDisarm();
+                    $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认 · " +
+                    $"{Glyph(LogicalInput.FaceEast)} 取消",
+                    $"Press {Glyph(LogicalInput.FaceSouth)} again " +
+                    $"to confirm · {Glyph(LogicalInput.FaceEast)} cancels")))
+        {
             return;
         }
 
-        _actionPanelConfirmationCancellation?.Cancel();
-        _actionPanelConfirmationCancellation = null;
-        var result = _composerAutomation.Clear(_settings);
+        _ = ClearComposerAsync();
+    }
+
+    private void ConfirmOrApproveAction()
+    {
+        var title = RadialText("接受更改", "Approve changes");
+        if (!ConfirmRadialAction(
+                RadialInputAction.Approve,
+                title,
+                RadialText(
+                    $"再次按 {Glyph(LogicalInput.FaceSouth)} 确认 · " +
+                    $"松开 {Glyph(LogicalInput.RightShoulder)} 取消",
+                    $"Press {Glyph(LogicalInput.FaceSouth)} again " +
+                    $"to confirm · release " +
+                    $"{Glyph(LogicalInput.RightShoulder)} to cancel")))
+        {
+            return;
+        }
+
+        _ = ExecuteUiCommandActionAsync(
+            ApprovalActionContract.AcceptId,
+            title,
+            "controller.radial.command.approve",
+            "radial.command",
+            ActionSafetyLevel.HighRisk);
+    }
+
+    private bool ConfirmRadialAction(
+        RadialInputAction action,
+        string title,
+        string confirmationPrompt)
+    {
+        if (_radialLayers.TryConfirmAction(
+                action,
+                RadialInputMap.ActionId(
+                    action,
+                    _radialLayers.Layer),
+                TimeSpan.FromSeconds(2.5),
+                RefreshRadialMenu))
+        {
+            return true;
+        }
+
+        RefreshRadialMenu();
+        ShowFeedback(title, confirmationPrompt);
+        Pulse(strength: 0.12);
+        return false;
+    }
+
+    private async Task ClearComposerAsync()
+    {
+        var result = await TryExecuteActionAsync(
+            ComposerActionContract.ClearId,
+            "controller.active",
+            "controller.radial.clear-composer",
+            "radial.action-panel",
+            "composer.clear",
+            ActionSafetyLevel.ConfirmationRequired)
+            .ConfigureAwait(true);
+
         EndRadialLayer(_latestControllerState.Buttons);
+        var succeeded = result?.Outcome == ActionOutcome.Succeeded;
         var title = RadialText(
             "清空当前输入",
             "Clear current input");
         AddEvent(
             title +
             ExecutionSuffix(
-                result.Succeeded,
-                result.Error,
-                result.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            result.Succeeded
+            succeeded
                 ? RadialText("已清空。", "Cleared.")
-                : ExecutionFailureLabel(
-                    result.Error,
-                    result.ErrorDetail));
-        Pulse(strength: result.Succeeded ? 0.2 : 0.1);
-    }
-
-    private void ScheduleActionPanelClearDisarm()
-    {
-        _actionPanelConfirmationCancellation?.Cancel();
-        var cancellation = new CancellationTokenSource();
-        _actionPanelConfirmationCancellation = cancellation;
-        _ = DisarmActionPanelClearAsync(cancellation);
-    }
-
-    private async Task DisarmActionPanelClearAsync(
-        CancellationTokenSource cancellation)
-    {
-        try
-        {
-            await Task.Delay(
-                TimeSpan.FromSeconds(2.5),
-                cancellation.Token);
-            if (
-                cancellation.IsCancellationRequested ||
-                !ReferenceEquals(
-                    _actionPanelConfirmationCancellation,
-                    cancellation))
-            {
-                return;
-            }
-
-            _actionPanelClearArmed = false;
-            _radialHighlightedItemId = null;
-            _actionPanelConfirmationCancellation = null;
-            RefreshRadialMenu();
-        }
-        catch (OperationCanceledException)
-        {
-            // A different action or panel close owns the current state.
-        }
-        finally
-        {
-            cancellation.Dispose();
-        }
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.2 : 0.1);
     }
 
     private void OpenAgentSlot(int slotIndex)
@@ -1416,10 +1048,12 @@ public partial class MainWindow : Window
         }
 
         SelectVisibleThread(thread.Id);
-        OpenThreadNow(
+        _ = OpenThreadAsync(
             thread.Id,
             thread.Title,
-            thread.NativeTitle ?? thread.Title);
+            thread.NativeTitle ?? thread.Title,
+            deviceId: "controller.active",
+            controlId: "controller.radial.agent-slot");
     }
 
     private void OpenAdjacentAgentTask(int direction)
@@ -1474,10 +1108,12 @@ public partial class MainWindow : Window
               tasks.Count;
         var next = tasks[nextIndex];
         SelectVisibleThread(next.ThreadId!);
-        OpenThreadNow(
+        _ = OpenThreadAsync(
             next.ThreadId!,
             next.Title,
-            next.NativeTitle ?? next.Title);
+            next.NativeTitle ?? next.Title,
+            deviceId: "controller.active",
+            controlId: "controller.radial.navigate");
     }
 
     private void SelectVisibleThread(string threadId)
@@ -1503,8 +1139,6 @@ public partial class MainWindow : Window
     private void ExecuteFastToggle()
     {
         CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
         var previousSpeedIndex = _speedIndex;
         var fast = previousSpeedIndex == 0;
         _speedIndex = fast ? 1 : 0;
@@ -1515,8 +1149,7 @@ public partial class MainWindow : Window
         var menuWasLikelyOpen =
             _composerPickerMenuLikelyOpen ||
             IsVirtualDialContextActive;
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: true);
+        var cancellation = BeginComposerPickerAutomation();
         _ = SetSimpleSpeedAsync(
             fast,
             menuWasLikelyOpen,
@@ -1525,110 +1158,141 @@ public partial class MainWindow : Window
             _localization.Strings.ConfigToggleFast);
     }
 
-    private void ExecuteNamedRadialAction(
+    private async Task ExecuteUiCommandActionAsync(
+        ActionId actionId,
         string title,
-        params string[] actionNames)
+        string controlId,
+        string context,
+        ActionSafetyLevel safetyLevel = ActionSafetyLevel.Routine)
     {
-        var result = _composerAutomation.InvokeAction(
-            _settings,
-            actionNames);
-        if (result.Succeeded)
+        var result = await TryExecuteActionAsync(
+            actionId,
+            "controller.active",
+            controlId,
+            context,
+            actionId.Value,
+            safetyLevel)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         AddEvent(
             title +
             ExecutionSuffix(
-                result.Succeeded,
-                result.Error,
-                result.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            result.Succeeded
+            succeeded
                 ? RadialText("已执行。", "Executed.")
-                : ExecutionFailureLabel(result.Error));
-        Pulse(strength: result.Succeeded ? 0.22 : 0.1);
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.22 : 0.1);
     }
 
-    private bool TryExecuteMicroInput(
-        Func<bool> execute,
-        string title)
+    private void ExecuteForkAction()
     {
-        if (
-            !_settings.BridgeEnabled ||
-            (
-                _settings.OnlyWhenCodexForeground &&
-                !_activeAgent.Presence.IsForeground
-            ) ||
-            !execute())
+        _ = ExecuteForkActionAsync();
+    }
+
+    private async Task ExecuteForkActionAsync()
+    {
+        var isTurnLayer =
+            _radialLayers.Layer == RadialMenuLayerKind.Turn;
+        var result = await TryExecuteActionAsync(
+            ForkThreadActionContract.Id,
+            "controller.active",
+            isTurnLayer
+                ? "controller.radial.turn.fork"
+                : "controller.radial.command.fork",
+            isTurnLayer ? "radial.turn" : "radial.command",
+            "thread.fork",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var title = RadialText("分支任务", "Fork task");
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
-            return false;
+            _threadNavigation.ClearUndo();
         }
 
-        ClearNavigationUndo();
-        AddEvent($"{title} · Micro HID");
-        Pulse();
-        return true;
+        var evidenceCode = result?.Evidence.FirstOrDefault()?.Code;
+        var fastPath = evidenceCode switch
+        {
+            "thread.fork.micro-requested" => "Micro HID",
+            "thread.fork.shortcut-sent" => _settings.ForkShortcut,
+            _ => null,
+        };
+        if (succeeded && !string.IsNullOrWhiteSpace(fastPath))
+        {
+            AddEvent($"{title} · {fastPath}");
+            Pulse();
+            return;
+        }
+
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                succeeded,
+                result?.ErrorCode));
+        ShowFeedback(
+            title,
+            succeeded
+                ? RadialText("已执行。", "Executed.")
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.22 : 0.1);
     }
 
     private void ExecuteNewTaskAction()
     {
+        _ = ExecuteNewTaskActionAsync();
+    }
+
+    private async Task ExecuteNewTaskActionAsync()
+    {
         var title = RadialText("新建任务", "New task");
-        var result = _composerAutomation.InvokeAction(
-            _settings,
-            "New task",
-            "New Task",
-            "New chat",
-            "New Chat",
-            "新建任务",
-            "新对话");
-        var usedShortcut = false;
-        if (
-            !result.Succeeded &&
-            string.Equals(
-                result.Error,
-                AgentAutomationErrorCodes.ElementNotFound,
-                StringComparison.Ordinal))
-        {
-            usedShortcut = true;
-            var shortcutSucceeded =
-                _agentShortcuts.Execute("Ctrl+N", _settings);
-            result = shortcutSucceeded
-                ? new ComposerAutomationResult(true)
-                : new ComposerAutomationResult(
-                    false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    "Ctrl+N");
-        }
+        var result = await TryExecuteActionAsync(
+            CreateThreadActionContract.Id,
+            "controller.active",
+            "controller.radial.new-task",
+            "radial.action-panel",
+            "thread.create",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
 
         EndRadialLayer(_latestControllerState.Buttons);
-        if (result.Succeeded)
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         AddEvent(
             title +
             ExecutionSuffix(
-                result.Succeeded,
-                result.Error,
-                usedShortcut ? "Ctrl+N" : result.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             title,
-            result.Succeeded
+            succeeded
                 ? _localization.Strings.Get(StringKeys.MessageExecuted)
-                : ExecutionFailureLabel(
-                    result.Error,
-                    result.ErrorDetail));
-        Pulse(strength: result.Succeeded ? 0.22 : 0.1);
+                : ExecutionFailureLabel(result?.ErrorCode));
+        Pulse(strength: succeeded ? 0.22 : 0.1);
     }
 
     private void RefreshRadialMenu()
     {
         if (
-            _radialLayer is not { } layer ||
-            _radialLayerCancelled ||
+            _radialLayers.Layer is not { } layer ||
+            _radialLayers.IsCancelled ||
             _radialMenuOverlayWindow is null)
         {
             _radialMenuOverlayWindow?.HideMenu();
@@ -1653,11 +1317,11 @@ public partial class MainWindow : Window
                 BuildAgentRadialItems(),
                 mode,
                 isLayerEngaged: true,
-                isLearningCueReady: _radialLayerEngaged,
+                isLearningCueReady: _radialLayers.IsEngaged,
                 subtitle: RadialText(
                     "虚拟 Codex Micro 小键盘 · 按对应键切换",
                     "Virtual Codex Micro keypad · Press a mapped key to switch"),
-                interactionPhase: _radialInteraction.Phase,
+                interactionPhase: _radialLayers.InteractionPhase,
                 agentKeypad: BuildAgentKeypadPresentation()),
             RadialMenuLayerKind.Command => new RadialMenuState(
                 layer,
@@ -1666,11 +1330,14 @@ public partial class MainWindow : Window
                 BuildCommandRadialItems(),
                 mode,
                 isLayerEngaged: true,
-                isLearningCueReady: _radialLayerEngaged,
+                isLearningCueReady: _radialLayers.IsEngaged,
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.LeftStickPress)} 取消",
                     $"{Glyph(LogicalInput.LeftStickPress)} cancel"),
-                interactionPhase: _radialInteraction.Phase),
+                interactionPhase: _radialLayers.InteractionPhase,
+                learningGuideLabel: RadialText(
+                    "ABXY 面键位置",
+                    "ABXY face-button layout")),
             RadialMenuLayerKind.Turn => new RadialMenuState(
                 layer,
                 RadialText("运行中操作", "Active turn"),
@@ -1682,7 +1349,10 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     "松开 RT 关闭",
                     "Release RT to close"),
-                interactionPhase: _radialInteraction.Phase),
+                interactionPhase: _radialLayers.InteractionPhase,
+                learningGuideLabel: RadialText(
+                    "ABXY 面键位置",
+                    "ABXY face-button layout")),
             RadialMenuLayerKind.Action => new RadialMenuState(
                 layer,
                 RadialText("动作面板", "Action panel"),
@@ -1694,7 +1364,10 @@ public partial class MainWindow : Window
                 subtitle: RadialText(
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} 关闭",
                     $"{Glyph(LogicalInput.FaceEast)} / {Glyph(LogicalInput.FaceNorth)} close"),
-                interactionPhase: _radialInteraction.Phase),
+                interactionPhase: _radialLayers.InteractionPhase,
+                learningGuideLabel: RadialText(
+                    "ABXY 面键位置",
+                    "ABXY face-button layout")),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(layer),
                 layer,
@@ -1740,121 +1413,51 @@ public partial class MainWindow : Window
         BuildCommandRadialItems()
     {
         var dispatch = ResolveDispatchDisplay();
-        return
-        [
-            RadialItem(
-                "command-fast",
-                RadialMenuSlotPosition.Top,
-                LogicalInput.FaceNorth,
-                _localization.Strings.ConfigToggleFast),
-            RadialItem(
-                "command-decline",
-                RadialMenuSlotPosition.Right,
-                LogicalInput.FaceEast,
-                RadialText("拒绝更改", "Decline changes")),
-            RadialItem(
-                "command-approve",
-                RadialMenuSlotPosition.Bottom,
-                LogicalInput.FaceSouth,
-                RadialText("接受更改", "Approve changes")),
-            RadialItem(
-                "command-fork",
-                RadialMenuSlotPosition.Left,
-                LogicalInput.FaceWest,
-                RadialText("分支任务", "Fork task")),
-            RadialItem(
-                "command-ptt",
-                RadialMenuSlotPosition.CenterLeft,
-                LogicalInput.View,
-                _localization.Strings.ConfigDictation,
-                RadialText("按住说话", "Hold to talk")),
-            RadialItem(
-                "command-dispatch",
-                RadialMenuSlotPosition.CenterRight,
-                LogicalInput.Menu,
-                dispatch.Label,
-                dispatch.Description),
-        ];
+        _devicePageViewModel.UpdateTutorialDispatch(dispatch);
+        return ControllerLayerPresentationFactory.Command(
+                _localization.EffectiveLanguage,
+                new ControllerCommandPresentationOptions(
+                    _localization.Strings.ConfigToggleFast,
+                    _localization.Strings.ConfigDictation,
+                    dispatch.Label,
+                    dispatch.Description,
+                    Glyph(LogicalInput.FaceSouth),
+                    _radialLayers.IsConfirmationPending(
+                        RadialInputAction.Approve)))
+            .Select(RadialItem)
+            .ToArray();
     }
 
     private IReadOnlyList<RadialMenuItemState>
         BuildTurnRadialItems()
     {
-        var contextual = RadialText(
-            "仅在 Codex 显示对应操作时可用",
-            "Available only when Codex shows the matching action");
-        return
-        [
-            RadialItem(
-                "turn-queue",
-                RadialMenuSlotPosition.Top,
-                LogicalInput.FaceNorth,
-                RadialText("排到下一轮", "Queue next turn"),
-                contextual),
-            RadialItem(
-                "turn-stop",
-                RadialMenuSlotPosition.Right,
-                LogicalInput.FaceEast,
-                RadialText("停止", "Stop"),
-                RadialText("长按 3 秒", "Hold for 3 seconds")),
-            RadialItem(
-                "turn-fork",
-                RadialMenuSlotPosition.Bottom,
-                LogicalInput.FaceSouth,
-                RadialText("分支任务", "Fork task")),
-            RadialItem(
-                "turn-steer",
-                RadialMenuSlotPosition.Left,
-                LogicalInput.FaceWest,
-                RadialText("加入当前运行", "Steer current turn"),
-                contextual),
-        ];
+        return ControllerLayerPresentationFactory.Turn(
+                _localization.EffectiveLanguage)
+            .Select(RadialItem)
+            .ToArray();
     }
 
     private IReadOnlyList<RadialMenuItemState>
         BuildActionRadialItems()
     {
-        return
-        [
-            RadialItem(
-                "action-new-task",
-                RadialMenuSlotPosition.Top,
-                LogicalInput.DPadUp,
-                RadialText("新建任务", "New task")),
-            RadialItem(
-                "action-forward",
-                RadialMenuSlotPosition.Right,
-                LogicalInput.DPadRight,
-                RadialText("前进", "Forward")),
-            RadialItem(
-                "action-sidebar",
-                RadialMenuSlotPosition.Bottom,
-                LogicalInput.DPadDown,
-                RadialText("切换侧边栏", "Toggle sidebar")),
-            RadialItem(
-                "action-back",
-                RadialMenuSlotPosition.Left,
-                LogicalInput.DPadLeft,
-                RadialText("后退", "Back")),
-            RadialItem(
-                "action-clear",
-                RadialMenuSlotPosition.CenterLeft,
-                LogicalInput.FaceSouth,
-                RadialText("清空当前输入", "Clear current input"),
-                _actionPanelClearArmed
-                    ? RadialText(
-                        "再次按 A 确认",
-                        "Press A again to confirm")
-                    : RadialText(
-                        "需要二次确认",
-                        "Requires confirmation")),
-            RadialItem(
-                "action-project",
-                RadialMenuSlotPosition.CenterRight,
-                LogicalInput.FaceWest,
-                RadialText("项目上下文", "Project context")),
-        ];
+        return ControllerLayerPresentationFactory.Action(
+                _localization.EffectiveLanguage,
+                new ControllerActionPresentationOptions(
+                    Glyph(LogicalInput.FaceSouth),
+                    _radialLayers.IsConfirmationPending(
+                        RadialInputAction.ClearComposer)))
+            .Select(RadialItem)
+            .ToArray();
     }
+
+    private RadialMenuItemState RadialItem(
+        ControllerLayerItemPresentation item) =>
+        RadialItem(
+            item.Id,
+            item.Position,
+            item.Input,
+            item.Title,
+            item.Description);
 
     private RadialMenuItemState RadialItem(
         string id,
@@ -1877,7 +1480,7 @@ public partial class MainWindow : Window
                 isHighlighted ||
                 string.Equals(
                     id,
-                    _radialHighlightedItemId,
+                    _radialLayers.HighlightedItemId,
                     StringComparison.Ordinal),
             logicalInput: input,
             status: status);
@@ -1972,37 +1575,9 @@ public partial class MainWindow : Window
             DispatchFollowUpBehavior.Unknown);
     }
 
-    private string RadialActionId(RadialInputAction action)
-    {
-        var slot = RadialInputMap.AgentSlotIndex(action);
-        if (slot >= 0)
-        {
-            return $"agent-slot-{slot + 1}";
-        }
-
-        return action switch
-        {
-            RadialInputAction.ToggleFast => "command-fast",
-            RadialInputAction.Approve => "command-approve",
-            RadialInputAction.Decline => "command-decline",
-            RadialInputAction.Fork when
-                _radialLayer == RadialMenuLayerKind.Turn =>
-                "turn-fork",
-            RadialInputAction.Fork => "command-fork",
-            RadialInputAction.PushToTalk => "command-ptt",
-            RadialInputAction.Dispatch => "command-dispatch",
-            RadialInputAction.Steer => "turn-steer",
-            RadialInputAction.Queue => "turn-queue",
-            RadialInputAction.BeginStopHold => "turn-stop",
-            RadialInputAction.NewTask => "action-new-task",
-            RadialInputAction.NavigateForward => "action-forward",
-            RadialInputAction.ToggleSidebar => "action-sidebar",
-            RadialInputAction.NavigateBack => "action-back",
-            RadialInputAction.ClearComposer => "action-clear",
-            RadialInputAction.ProjectContext => "action-project",
-            _ => string.Empty,
-        };
-    }
+    private void RefreshTutorialDispatch() =>
+        _devicePageViewModel.UpdateTutorialDispatch(
+            ResolveDispatchDisplay());
 
     private string RadialText(string zhCn, string enUs)
     {
@@ -2011,21 +1586,53 @@ public partial class MainWindow : Window
             : enUs;
     }
 
-    private void HandleButtonEdge(
-        ControllerButtons current,
-        ControllerButtons button,
-        Action onDown,
-        Action? onUp = null)
+    private void ExecuteControllerInteractionIntent(
+        ControllerInteractionIntent intent)
     {
-        var isPressed = current.HasFlag(button);
-        var wasPressed = _previousButtons.HasFlag(button);
-        if (isPressed && !wasPressed)
+        switch (intent.Kind)
         {
-            onDown();
-        }
-        else if (!isPressed && wasPressed)
-        {
-            onUp?.Invoke();
+            case ControllerInteractionIntentKind.CycleRootSidebarScope:
+                CycleRootSidebarScope();
+                break;
+            case ControllerInteractionIntentKind.BeginVirtualDialPress:
+                BeginVirtualDialPress();
+                break;
+            case ControllerInteractionIntentKind.EndVirtualDialPress:
+                EndVirtualDialPress();
+                break;
+            case ControllerInteractionIntentKind.NavigateConversationTurn:
+                NavigateConversationTurn(intent.ConversationAction);
+                BeginConversationBoundaryHold(intent.ConversationAction);
+                break;
+            case ControllerInteractionIntentKind.EndConversationBoundaryHold:
+                EndConversationBoundaryHold(intent.ReleasedButtons);
+                break;
+            case ControllerInteractionIntentKind.NavigateSidebarHorizontal:
+                _controllerInteraction.RequireLeftStickNeutral();
+                NavigateSidebarHorizontal(intent.Direction);
+                break;
+            case ControllerInteractionIntentKind.OpenActionPanel:
+                OpenActionPanel();
+                break;
+            case ControllerInteractionIntentKind.SelectVirtualDialOption:
+                SelectVirtualDialOption();
+                break;
+            case ControllerInteractionIntentKind.OpenSelectedSidebarTask:
+                OpenSelectedSidebarTask(
+                    deviceId: "controller.active",
+                    controlId: "controller.face.south");
+                break;
+            case ControllerInteractionIntentKind.SendPrompt:
+                SendPrompt();
+                break;
+            case ControllerInteractionIntentKind.BeginBaseCancelPress:
+                BeginBaseCancelPress();
+                break;
+            case ControllerInteractionIntentKind.EndBaseCancelPress:
+                EndBaseCancelPress();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(intent));
         }
     }
 
@@ -2049,7 +1656,8 @@ public partial class MainWindow : Window
                 "codex.wake"));
         try
         {
-            var woke = await Task.Run(_activeAgent.Presence.Wake);
+            var woke = await Task.Run(
+                _foregroundApplication.TryActivate);
             if (!woke)
             {
                 _controllerSession.Lock();
@@ -2069,9 +1677,7 @@ public partial class MainWindow : Window
             }
 
             _controllerSession.Arm();
-            _axisRepeater.Reset();
-            _leftStickRouter.RequireNeutral();
-            _rightStickRouter.RequireNeutral();
+            _controllerInteraction.RequireNeutralRouting();
             _leftNavigationBlockedUntil =
                 Environment.TickCount64 + BridgeTimings.WakeInputGuardMs;
             _rightAdjustmentBlockedUntil =
@@ -2132,9 +1738,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        _axisRepeater.Reset();
-        _leftStickRouter.RequireNeutral();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireNeutralRouting();
         _bridgeEvents.Publish(
             BridgeEventKeys.ControllerArmed,
             parameters: new Dictionary<string, string>
@@ -2168,9 +1772,7 @@ public partial class MainWindow : Window
                 state is null ||
                 !IsControllerNeutral(state.Value));
 
-        _axisRepeater.Reset();
-        _leftStickRouter.Reset();
-        _rightStickRouter.Reset();
+        _controllerInteraction.ResetRouting();
     }
 
     private bool TryResumeControllerInput(ControllerState state)
@@ -2183,11 +1785,8 @@ public partial class MainWindow : Window
 
         if (!wasActive)
         {
-            _previousButtons = ControllerButtons.None;
-            _previousPhysicalButtons = ControllerButtons.None;
-            _axisRepeater.Reset();
-            _leftStickRouter.Reset();
-            _rightStickRouter.Reset();
+            _controllerInteraction.ClearButtonHistory();
+            _controllerInteraction.ResetRouting();
             ResetVirtualDialInput(closeMenu: false);
             ResetPushToTalk(stopDictation: true);
         }
@@ -2214,7 +1813,7 @@ public partial class MainWindow : Window
 
     private void NavigateSidebarHorizontal(int direction)
     {
-        _leftStickRouter.RequireNeutral();
+        _controllerInteraction.RequireLeftStickNeutral();
         _leftNavigationBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
         var entry = DevicePage.SelectedEntry;
@@ -2249,12 +1848,19 @@ public partial class MainWindow : Window
     private void NavigateConversationTurn(
         ConversationTurnInputAction action)
     {
-        var shortcut = ConversationTurnInputMap.ShortcutFor(action);
-        if (shortcut is null)
+        var actionId = ConversationTurnInputMap.ActionIdFor(action);
+        if (actionId is null)
         {
             return;
         }
 
+        _ = NavigateConversationTurnAsync(action, actionId.Value);
+    }
+
+    private async Task NavigateConversationTurnAsync(
+        ConversationTurnInputAction action,
+        ActionId actionId)
+    {
         var title = action ==
             ConversationTurnInputAction.PreviousUserMessage
                 ? RadialText(
@@ -2263,160 +1869,117 @@ public partial class MainWindow : Window
                 : RadialText(
                     "下一条用户消息",
                     "Next user message");
-        var executed = _agentShortcuts.Execute(shortcut, _settings);
+        var result = await TryExecuteActionAsync(
+            actionId,
+            "controller.active",
+            action == ConversationTurnInputAction.PreviousUserMessage
+                ? "controller.dpad.up"
+                : "controller.dpad.down",
+            "conversation.navigation",
+            actionId.Value,
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
         AddEvent(
             title +
-            (executed
+            (succeeded
                 ? $" · {_localization.Strings.Get(
                     StringKeys.MessageShortcutSent)}"
                 : ExecutionSuffix(
                     false,
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    shortcut)));
-        if (!executed)
+                    result?.ErrorCode)));
+        if (!succeeded)
         {
             ShowFeedback(
                 title,
-                ExecutionFailureLabel(
-                    AgentAutomationErrorCodes.InputInjectionFailed,
-                    shortcut));
+                ExecutionFailureLabel(result?.ErrorCode));
         }
 
-        Pulse(strength: executed ? 0.16 : 0.1);
+        Pulse(strength: succeeded ? 0.16 : 0.1);
     }
 
     private void BeginConversationBoundaryHold(
         ConversationTurnInputAction action)
     {
-        CancelConversationBoundaryHold();
-        var boundary =
-            ConversationBoundaryHoldPolicy.ResolveBoundary(action);
-        var cancellation = new CancellationTokenSource();
-        _conversationBoundaryHoldTarget = boundary;
-        _conversationBoundaryHoldCancellation = cancellation;
-        _ = PromoteConversationBoundaryHoldAsync(
-            boundary,
-            cancellation);
+        _controllerHolds.BeginConversationBoundary(
+            action,
+            BridgeTimings.ConversationTopHoldMs,
+            BridgeTimings.ConversationBottomHoldMs,
+            CanContinueConversationBoundaryHold,
+            ExecuteConversationBoundaryHoldAsync);
     }
 
     private void EndConversationBoundaryHold(
         ControllerButtons releasedButtons)
     {
-        if (_conversationBoundaryHoldTarget is not { } boundary)
-        {
-            return;
-        }
-
-        var button =
-            ConversationBoundaryHoldPolicy.ResolveButton(boundary);
-        if (releasedButtons.HasFlag(button))
-        {
-            CancelConversationBoundaryHold();
-        }
+        _controllerHolds.EndConversationBoundary(releasedButtons);
     }
 
-    private async Task PromoteConversationBoundaryHoldAsync(
-        ConversationBoundary boundary,
-        CancellationTokenSource cancellation)
+    private async Task ExecuteConversationBoundaryHoldAsync(
+        ConversationBoundary boundary)
     {
-        try
+        var actionId = boundary == ConversationBoundary.Top
+            ? ConversationActionContract.ScrollTopId
+            : ConversationActionContract.ScrollBottomId;
+        var result = await TryExecuteActionAsync(
+                actionId,
+                "controller.active",
+                boundary == ConversationBoundary.Top
+                    ? "controller.dpad.up.hold"
+                    : "controller.dpad.down.hold",
+                "conversation.navigation",
+                actionId.Value,
+                ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+        var succeeded = result?.Outcome == ActionOutcome.Succeeded;
+        var title = boundary == ConversationBoundary.Top
+            ? RadialText("已置顶", "Jumped to top")
+            : RadialText("已置底", "Jumped to bottom");
+        AddEvent(
+            title +
+            ExecutionSuffix(
+                succeeded,
+                result?.ErrorCode));
+        if (!succeeded)
         {
-            var holdMs =
-                ConversationBoundaryHoldPolicy.ResolveHoldMilliseconds(
-                    boundary,
-                    BridgeTimings.ConversationTopHoldMs,
-                    BridgeTimings.ConversationBottomHoldMs);
-            await Task.Delay(holdMs, cancellation.Token)
-                .ConfigureAwait(true);
-            if (!CanContinueConversationBoundaryHold(
-                    boundary,
-                    cancellation))
-            {
-                return;
-            }
-
-            _conversationBoundaryHoldCancellation = null;
-            _conversationBoundaryHoldTarget = null;
-            var result = await _composerAutomation
-                .ScrollConversationAsync(
-                    boundary,
-                    _settings,
-                    CancellationToken.None)
-                .ConfigureAwait(true);
-            var title = boundary == ConversationBoundary.Top
-                ? RadialText("已置顶", "Jumped to top")
-                : RadialText("已置底", "Jumped to bottom");
-            AddEvent(
-                title +
-                ExecutionSuffix(
-                    result.Succeeded,
-                    result.Error,
-                    result.ErrorDetail));
-            if (!result.Succeeded)
-            {
-                ShowFeedback(
-                    title,
-                    ExecutionFailureLabel(
-                        result.Error,
-                        result.ErrorDetail));
-            }
-
-            Pulse(strength: result.Succeeded ? 0.18 : 0.1);
+            ShowFeedback(
+                title,
+                ExecutionFailureLabel(result?.ErrorCode));
         }
-        catch (OperationCanceledException)
-        {
-            // Releasing the D-pad before the threshold keeps turn navigation.
-        }
-        finally
-        {
-            if (ReferenceEquals(
-                    _conversationBoundaryHoldCancellation,
-                    cancellation))
-            {
-                _conversationBoundaryHoldCancellation = null;
-                _conversationBoundaryHoldTarget = null;
-            }
 
-            cancellation.Dispose();
-        }
+        Pulse(strength: succeeded ? 0.18 : 0.1);
     }
 
     private bool CanContinueConversationBoundaryHold(
-        ConversationBoundary boundary,
-        CancellationTokenSource cancellation)
+        ConversationBoundary boundary)
     {
         var state = _xInputService.LastState;
         var button =
             ConversationBoundaryHoldPolicy.ResolveButton(boundary);
         return
-            ReferenceEquals(
-                _conversationBoundaryHoldCancellation,
-                cancellation) &&
-            !cancellation.IsCancellationRequested &&
             state.IsConnected &&
             state.Buttons.HasFlag(button) &&
             _settings.BridgeEnabled &&
             _controllerSession.IsActive &&
-            _radialLayer is null &&
+            _radialLayers.Layer is null &&
             !IsVirtualDialContextActive &&
-            !_pushToTalkTrigger.BlocksBaseInput &&
+            !_controllerInteraction.PushToTalkBlocksBaseInput &&
             (
                 !_settings.OnlyWhenCodexForeground ||
-                _activeAgent.Presence.IsForeground
+                _foregroundApplication.IsForeground
             );
     }
 
     private void CancelConversationBoundaryHold()
     {
-        var cancellation = _conversationBoundaryHoldCancellation;
-        _conversationBoundaryHoldCancellation = null;
-        _conversationBoundaryHoldTarget = null;
-        cancellation?.Cancel();
+        _controllerHolds.CancelConversationBoundary();
     }
 
     private void CycleRootSidebarScope()
     {
-        _leftStickRouter.RequireNeutral();
+        _controllerInteraction.RequireLeftStickNeutral();
         _leftNavigationBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
         var rootScope = _scope == SidebarScope.ProjectTasks
@@ -2542,7 +2105,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenSelectedSidebarTask()
+    private void OpenSelectedSidebarTask(
+        string deviceId,
+        string controlId)
     {
         var entry = DevicePage.SelectedEntry;
         switch (SidebarNavigationIntentResolver.ResolvePrimary(entry))
@@ -2568,10 +2133,12 @@ public partial class MainWindow : Window
                 return;
         }
 
-        OpenThreadNow(
+        _ = OpenThreadAsync(
             entry!.ThreadId!,
             entry.Title,
-            entry.NativeTitle ?? entry.Title);
+            entry.NativeTitle ?? entry.Title,
+            deviceId,
+            controlId);
     }
 
     private void ActivateSelectedSidebarEntryFromPointer()
@@ -2582,7 +2149,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpenSelectedSidebarTask();
+        OpenSelectedSidebarTask(
+            deviceId: "desktop.pointer",
+            controlId: "pointer.primary");
     }
 
     private void EnterProjectTasks(
@@ -2797,7 +2366,7 @@ public partial class MainWindow : Window
                 out var entry) ||
             entry is null)
         {
-            ShowSidebarNavigationWheel();
+            ShowSidebarNavigationMenu();
             return;
         }
 
@@ -2806,7 +2375,7 @@ public partial class MainWindow : Window
             entry,
             deferFocus: true,
             showToast: false);
-        ShowSidebarNavigationWheel();
+        ShowSidebarNavigationMenu();
     }
 
     private void SelectSidebarIndex(int index)
@@ -2848,20 +2417,83 @@ public partial class MainWindow : Window
         Pulse();
     }
 
-    private void ShowSidebarNavigationWheel()
+    private void ShowSidebarNavigationMenu()
     {
         if (!_settings.ShowOverlay)
         {
             return;
         }
 
-        var wheel = ActiveSidebarNavigation.BuildWheelState(
-            _sidebarEntries,
-            SidebarWheelScopeLabel);
-        if (wheel is not null)
+        var rootNavigation = _sidebarNavigationDirectory.Root;
+        IReadOnlyList<SidebarEntry> rootEntries;
+        string? selectedRootId;
+        IReadOnlyList<SidebarEntry>? childEntries = null;
+        string? selectedChildId = null;
+        string? childTitle = null;
+        var childIsActive = false;
+
+        if (_scope == SidebarScope.ProjectTasks)
         {
-            _sidebarNavigationWheelOverlayWindow?.ShowState(wheel);
+            rootEntries = rootNavigation.FrozenEntries.Count > 0
+                ? rootNavigation.FrozenEntries
+                : _workspaceReader.BuildUnifiedEntries(_snapshot);
+            var disclosedProject = rootEntries.FirstOrDefault(entry =>
+                entry.IsProject &&
+                string.Equals(
+                    entry.ProjectPath,
+                    _selectedProjectPath,
+                    StringComparison.OrdinalIgnoreCase));
+            selectedRootId = disclosedProject?.Id ??
+                             rootNavigation.SelectedEntry(rootEntries)?.Id;
+            childEntries = _sidebarEntries;
+            selectedChildId = ActiveSidebarNavigation
+                .SelectedEntry(_sidebarEntries)?.Id;
+            childTitle = disclosedProject?.Title ??
+                         CurrentSidebarProjectName() ??
+                         ScopeLabel(SidebarScope.ProjectTasks);
+            childIsActive = true;
         }
+        else
+        {
+            rootEntries = _sidebarEntries;
+            var selectedRoot = rootNavigation.SelectedEntry(rootEntries);
+            selectedRootId = selectedRoot?.Id;
+            if (selectedRoot is { IsProject: true } &&
+                !string.IsNullOrWhiteSpace(selectedRoot.ProjectPath))
+            {
+                childEntries = _workspaceReader.BuildEntries(
+                    _snapshot,
+                    SidebarScope.ProjectTasks,
+                    selectedRoot.ProjectPath);
+                selectedChildId = _projectTaskCursorIds.GetValueOrDefault(
+                    selectedRoot.ProjectPath);
+                childTitle = selectedRoot.Title;
+            }
+        }
+
+        if (rootEntries.Count == 0)
+        {
+            return;
+        }
+
+        var menu = SidebarNavigationMenuProjector.Project(
+            rootEntries,
+            selectedRootId,
+            SidebarMenuScopeLabel,
+            childEntries,
+            selectedChildId,
+            childTitle,
+            childIsActive);
+        _sidebarNavigationMenuOverlayWindow?.ShowState(menu with
+        {
+            Title = RadialText("侧边栏", "Sidebar"),
+            NavigateGlyph = Glyph(LogicalInput.LeftStick),
+            NavigateHint = RadialText("移动", "Move"),
+            CycleScopeGlyph = Glyph(LogicalInput.LeftStickPress),
+            CycleScopeHint = RadialText("区域", "Region"),
+            OpenGlyph = Glyph(LogicalInput.FaceSouth),
+            OpenHint = RadialText("打开", "Open"),
+        });
     }
 
     private void FocusCodexSidebarEntry(
@@ -2989,20 +2621,29 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenThreadNow(
+    private async Task OpenThreadAsync(
         string threadId,
         string threadTitle,
-        string nativeThreadTitle)
+        string nativeThreadTitle,
+        string deviceId,
+        string controlId)
     {
-        if (
-            _settings.OnlyWhenCodexForeground &&
-            !_activeAgent.Presence.IsForeground &&
-            !IsActive)
+        var result = await _threadNavigation.OpenAsync(
+            new ThreadOpenRequest(
+                threadId,
+                threadTitle,
+                nativeThreadTitle,
+                deviceId,
+                controlId,
+                IsActive))
+            .ConfigureAwait(true);
+
+        if (result.Outcome == ThreadOpenOutcome.BlockedByForeground)
         {
             return;
         }
 
-        if (!_workspaceReader.IsThreadAvailable(threadId))
+        if (result.Outcome == ThreadOpenOutcome.ThreadUnavailable)
         {
             AddEvent(_localization.Strings.Get(
                 StringKeys.MessageTaskUnavailableSkipped));
@@ -3010,14 +2651,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        ClearNavigationUndo();
-        var previousTitle = _sidebarAutomation.TryGetCurrentThreadTitle();
-        if (_activeAgent.DeepLinks?.OpenThread(threadId) == true)
+        if (result.Outcome == ThreadOpenOutcome.Requested)
         {
-            RegisterNavigationUndo(
-                threadTitle,
-                nativeThreadTitle,
-                previousTitle);
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageOpeningThread,
                 threadTitle));
@@ -3034,156 +2669,144 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RegisterNavigationUndo(
-        string threadTitle,
-        string nativeThreadTitle,
-        string? previousTitle)
+    private async Task<ActionResult?> TryExecuteActionAsync(
+        ActionId actionId,
+        string deviceId,
+        string controlId,
+        string context,
+        string idempotencyScope,
+        ActionSafetyLevel safetyLevel,
+        IReadOnlyDictionary<string, string>? parameters = null)
     {
-        if (
-            string.IsNullOrWhiteSpace(nativeThreadTitle) ||
-            string.Equals(
-                previousTitle,
-                nativeThreadTitle,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var matchingTitles = _snapshot.Threads.Count(thread =>
-            string.Equals(
-                thread.NativeTitle ?? thread.Title,
-                nativeThreadTitle,
-                StringComparison.Ordinal));
-        if (matchingTitles != 1)
-        {
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoUnavailableUnique,
-                threadTitle));
-            return;
-        }
-
-        var state = new NavigationUndoState(
-            threadTitle,
-            nativeThreadTitle,
-            previousTitle);
-        _navigationUndo = state;
-        var cancellation = new CancellationTokenSource();
-        _navigationConfirmCancellation = cancellation;
-        _ = ConfirmNavigationUndoAsync(state, cancellation);
-    }
-
-    private async Task ConfirmNavigationUndoAsync(
-        NavigationUndoState state,
-        CancellationTokenSource cancellation)
-    {
-        var consecutiveMatches = 0;
-        var deadline =
-            Environment.TickCount64 +
-            BridgeTimings.NavigationConfirmTimeoutMs;
         try
         {
-            while (Environment.TickCount64 < deadline)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                var currentTitle = await Task.Run(
-                        _sidebarAutomation.TryGetCurrentThreadTitle,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                if (
-                    string.Equals(
-                        currentTitle,
-                        state.TargetNativeTitle,
-                        StringComparison.Ordinal))
+            return await _actionDispatcher.ExecuteAsync(
+                actionId,
+                deviceId,
+                controlId,
+                context,
+                idempotencyScope,
+                safetyLevel,
+                parameters).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Localized feedback remains a presentation concern during migration.
+            return null;
+        }
+    }
+
+    private void ThreadNavigation_NoticePublished(
+        object? sender,
+        ThreadNavigationNotice notice)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke(new Action(
+                () => PresentThreadNavigationNotice(notice)));
+            return;
+        }
+
+        PresentThreadNavigationNotice(notice);
+    }
+
+    private void PresentThreadNavigationNotice(
+        ThreadNavigationNotice notice)
+    {
+        var undoGlyph = Glyph(LogicalInput.FaceEast);
+        switch (notice.Kind)
+        {
+            case ThreadNavigationNoticeKind.UndoUnavailableNonUnique:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoUnavailableUnique,
+                    notice.TargetDisplayTitle));
+                break;
+            case ThreadNavigationNoticeKind.ArrivalConfirmed:
+                if (_scope == SidebarScope.ProjectlessTasks)
                 {
-                    consecutiveMatches++;
-                    if (consecutiveMatches >= 2)
-                    {
-                        if (!ReferenceEquals(_navigationUndo, state))
-                        {
-                            return;
-                        }
-
-                        state.Confirmed = true;
-                        state.ExpiresAt =
-                            DateTimeOffset.UtcNow +
-                            BridgeTimings.NavigationUndoWindow;
-                        if (_scope == SidebarScope.ProjectlessTasks)
-                        {
-                            RefreshCodexData(preserveSelection: true);
-                        }
-
-                        if (state.UndoRequested)
-                        {
-                            ExecuteNavigationUndo(state);
-                            return;
-                        }
-
-                        var undoGlyph = Glyph(LogicalInput.FaceEast);
-                        AddEvent(_localization.Strings.Format(
-                            StringKeys.MessageOpenedUndoAvailable,
-                            state.TargetDisplayTitle,
-                            undoGlyph));
-                        ShowFeedback(
-                            _localization.Strings.Get(
-                                StringKeys.MessageOpenedTask),
-                            _localization.Strings.Format(
-                                StringKeys.MessageUndoWithinSeconds,
-                                state.TargetDisplayTitle,
-                                (int)BridgeTimings
-                                    .NavigationUndoWindow.TotalSeconds,
-                                undoGlyph));
-                        return;
-                    }
+                    RefreshCodexData(preserveSelection: true);
                 }
-                else
-                {
-                    consecutiveMatches = 0;
-                }
-
-                await Task.Delay(
-                        BridgeTimings.NavigationConfirmPollMs,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-            }
-
-            if (ReferenceEquals(_navigationUndo, state))
-            {
-                _navigationUndo = null;
+                break;
+            case ThreadNavigationNoticeKind.UndoAvailable:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageOpenedUndoAvailable,
+                    notice.TargetDisplayTitle,
+                    undoGlyph));
+                ShowFeedback(
+                    _localization.Strings.Get(
+                        StringKeys.MessageOpenedTask),
+                    _localization.Strings.Format(
+                        StringKeys.MessageUndoWithinSeconds,
+                        notice.TargetDisplayTitle,
+                        (int)BridgeTimings
+                            .NavigationUndoWindow.TotalSeconds,
+                        undoGlyph));
+                break;
+            case ThreadNavigationNoticeKind.UndoQueued:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoQueued,
+                    undoGlyph));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    _localization.Strings.Get(
+                        StringKeys.MessageUndoAfterOpen));
+                Pulse(strength: 0.12);
+                break;
+            case ThreadNavigationNoticeKind.UndoUnavailableUnconfirmed:
                 AddEvent(_localization.Strings.Format(
                     StringKeys.MessageUndoUnavailableUnconfirmed,
-                    state.TargetDisplayTitle));
-                if (state.UndoRequested)
+                    notice.TargetDisplayTitle));
+                if (notice.UndoWasRequested)
                 {
                     ShowFeedback(
                         _localization.Strings.Format(
                             StringKeys.MessageButtonUndo,
-                            Glyph(LogicalInput.FaceEast)),
+                            undoGlyph),
                         _localization.Strings.Get(
                             StringKeys.MessageUndoUnconfirmed));
                 }
-            }
+                break;
+            case ThreadNavigationNoticeKind.UndoPageChanged:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoPageChanged,
+                    undoGlyph));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    _localization.Strings.Get(
+                        StringKeys.MessageUndoPageChangedDetail));
+                Pulse(strength: 0.12);
+                break;
+            case ThreadNavigationNoticeKind.UndoSucceeded:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoSucceeded,
+                    undoGlyph,
+                    notice.TargetDisplayTitle));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    _localization.Strings.Format(
+                        StringKeys.MessageReturnedToPreviousTask,
+                        notice.TargetDisplayTitle));
+                Pulse(strength: 0.18);
+                break;
+            case ThreadNavigationNoticeKind.UndoFailed:
+                AddEvent(_localization.Strings.Format(
+                    StringKeys.MessageUndoFailed,
+                    undoGlyph,
+                    ExecutionFailureLabel(notice.ErrorCode)));
+                ShowFeedback(
+                    _localization.Strings.Format(
+                        StringKeys.MessageButtonUndo,
+                        undoGlyph),
+                    ExecutionFailureLabel(notice.ErrorCode));
+                Pulse(strength: 0.12);
+                break;
         }
-        catch (OperationCanceledException)
-        {
-            // A newer navigation or an intentional command invalidated this frame.
-        }
-        finally
-        {
-            if (ReferenceEquals(_navigationConfirmCancellation, cancellation))
-            {
-                _navigationConfirmCancellation = null;
-            }
-
-            cancellation.Dispose();
-        }
-    }
-
-    private void ClearNavigationUndo()
-    {
-        _navigationUndo = null;
-        var cancellation = _navigationConfirmCancellation;
-        _navigationConfirmCancellation = null;
-        cancellation?.Cancel();
     }
 
     private void BeginVirtualDialPress()
@@ -3199,7 +2822,7 @@ public partial class MainWindow : Window
         }
 
         CancelPendingComposerSelection();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.RequireRightStickNeutral();
         _rightStickPressHeld = true;
         _rightStickHoldTriggered = false;
         _rightStickPressCancellation?.Cancel();
@@ -3283,37 +2906,8 @@ public partial class MainWindow : Window
 
     private void HandleComposerDialShortPress()
     {
-        _rightStickRouter.RequireNeutral();
-        if (IsVirtualDialContextActive)
-        {
-            _ = CloseVirtualDialMenuAsync(showFeedback: false);
-            return;
-        }
-
-        if (_composerPickerMenuLikelyOpen)
-        {
-            // Simple mode leaves the picker informational; R3 toggles it
-            // closed without ever having owned the right stick.
-            CloseComposerPickerOnly();
-            return;
-        }
-
-        var view = ComposerPickerViewPolicy.ResolveEntryView(
-            UsesAdvancedComposerDial);
-        if (
-            view == ComposerPickerView.Model &&
-            !_modelPickerShortcutReady)
-        {
-            PresentAdvancedPickerMenuResult(
-                new ComposerPickerResult(
-                    false,
-                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
-                    ErrorDetail:
-                        "composer-model-picker-keybinding-conflict"));
-            return;
-        }
-
-        _ = OpenComposerPickerAsync(view);
+        _controllerInteraction.RequireRightStickNeutral();
+        _ = PressVirtualDialAsync();
     }
 
     private void QueueVirtualDialNavigation(
@@ -3337,36 +2931,6 @@ public partial class MainWindow : Window
 
         CancelPendingComposerSelection();
         StartVirtualDialNavigationPump();
-    }
-
-    private void QueueAdvancedPickerNavigation(
-        ComposerDialNavigation navigation)
-    {
-        if (
-            _virtualDialCancelRequested ||
-            _virtualDialCleanupPending ||
-            _dialInputReleasePending)
-        {
-            return;
-        }
-
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            (int)navigation);
-        if (_virtualDialOpenPending)
-        {
-            return;
-        }
-
-        if (_virtualDialMenuOpen)
-        {
-            StartVirtualDialNavigationPump();
-            return;
-        }
-
-        _ = OpenComposerPickerAsync(
-            ComposerPickerView.Advanced,
-            startPendingDialNavigation: true);
     }
 
     private void StartVirtualDialNavigationPump()
@@ -3497,8 +3061,6 @@ public partial class MainWindow : Window
     private async Task SelectVirtualDialOptionAsync()
     {
         CancelPendingComposerSelection();
-        var selectedFromSimpleModelPicker =
-            _simpleModelPickerOpen;
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
@@ -3517,14 +3079,6 @@ public partial class MainWindow : Window
         if (result.Succeeded && !result.IsMenuOpen)
         {
             _composerPickerMenuLikelyOpen = false;
-            if (selectedFromSimpleModelPicker)
-            {
-                await Task.Delay(
-                        BridgeTimings.ComposerFallbackSettleMs)
-                    .ConfigureAwait(true);
-                InitializeComposerControls();
-            }
-
             BeginVirtualDialReleaseDrain();
         }
     }
@@ -3534,7 +3088,7 @@ public partial class MainWindow : Window
         if (
             _dictationInjected ||
             _pushToTalkAutomation.WantsDictation ||
-            _pushToTalkTrigger.BlocksBaseInput)
+            _controllerInteraction.PushToTalkBlocksBaseInput)
         {
             CancelAction();
             return;
@@ -3553,16 +3107,14 @@ public partial class MainWindow : Window
         }
 
         var hasPendingLocalAction =
-            _composerPickerCancellation is not null ||
-            Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
-            Volatile.Read(ref _pendingAdvancedSteps) != 0;
+            _composerPickerCancellation is not null;
         if (hasPendingLocalAction)
         {
             CancelAction();
             return;
         }
 
-        if (TryHandleNavigationUndo())
+        if (_threadNavigation.TryRequestUndo())
         {
             return;
         }
@@ -3577,91 +3129,28 @@ public partial class MainWindow : Window
 
     private void BeginCancelHold()
     {
-        if (_cancelHoldCancellation is not null)
-        {
-            return;
-        }
-
-        var cancellation = new CancellationTokenSource();
-        _cancelHoldCancellation = cancellation;
-        _ = RunCancelHoldAsync(cancellation);
+        _controllerHolds.BeginCancelHold(
+            BridgeTimings.CancelHoldMs,
+            CanContinueCancelHold,
+            remaining =>
+            {
+                ShowCancelHoldCountdown(remaining);
+                Pulse(strength: 0.06);
+            },
+            StopCurrentTurn);
     }
 
-    private async Task RunCancelHoldAsync(
-        CancellationTokenSource cancellation)
-    {
-        var startedAt = Environment.TickCount64;
-        var lastRemaining = -1;
-        try
-        {
-            while (true)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                if (!CanContinueCancelHold(cancellation))
-                {
-                    return;
-                }
-
-                var elapsed = Environment.TickCount64 - startedAt;
-                if (CancelHoldCountdownPolicy.IsComplete(
-                        elapsed,
-                        BridgeTimings.CancelHoldMs))
-                {
-                    break;
-                }
-
-                var remaining =
-                    CancelHoldCountdownPolicy.RemainingSeconds(
-                        elapsed,
-                        BridgeTimings.CancelHoldMs);
-                if (remaining != lastRemaining)
-                {
-                    lastRemaining = remaining;
-                    ShowCancelHoldCountdown(remaining);
-                    Pulse(strength: 0.06);
-                }
-
-                await Task.Delay(80, cancellation.Token)
-                    .ConfigureAwait(true);
-            }
-
-            if (!CanContinueCancelHold(cancellation))
-            {
-                return;
-            }
-
-            _cancelHoldCancellation = null;
-            StopCurrentTurn();
-        }
-        catch (OperationCanceledException)
-        {
-            // Releasing B, losing the session, or closing the app disarms it.
-        }
-        finally
-        {
-            if (ReferenceEquals(_cancelHoldCancellation, cancellation))
-            {
-                _cancelHoldCancellation = null;
-            }
-
-            cancellation.Dispose();
-        }
-    }
-
-    private bool CanContinueCancelHold(
-        CancellationTokenSource cancellation)
+    private bool CanContinueCancelHold()
     {
         var state = _xInputService.LastState;
         return
-            ReferenceEquals(_cancelHoldCancellation, cancellation) &&
-            !cancellation.IsCancellationRequested &&
             state.IsConnected &&
             state.Buttons.HasFlag(ControllerButtons.B) &&
             _settings.BridgeEnabled &&
             _controllerSession.IsActive &&
             (
                 !_settings.OnlyWhenCodexForeground ||
-                _activeAgent.Presence.IsForeground
+                _foregroundApplication.IsForeground
             );
     }
 
@@ -3680,14 +3169,11 @@ public partial class MainWindow : Window
 
     private void CancelBaseCancelHold(bool showFeedback)
     {
-        var cancellation = _cancelHoldCancellation;
-        if (cancellation is null)
+        if (!_controllerHolds.CancelBaseCancelHold())
         {
             return;
         }
 
-        _cancelHoldCancellation = null;
-        cancellation.Cancel();
         if (showFeedback)
         {
             _overlayWindow?.ShowMessage(
@@ -3720,7 +3206,9 @@ public partial class MainWindow : Window
 
     private void CancelActionOrDialMenu()
     {
-        if (_dictationInjected || _pushToTalkTrigger.BlocksBaseInput)
+        if (
+            _dictationInjected ||
+            _controllerInteraction.PushToTalkBlocksBaseInput)
         {
             CancelAction();
             return;
@@ -3847,9 +3335,7 @@ public partial class MainWindow : Window
                 failure);
             AddEvent(
                 VirtualDialEventText(failure, result));
-            if (
-                !UsesAdvancedComposerDial &&
-                ShouldShowVirtualDialFailure(result))
+            if (ShouldShowVirtualDialFailure(result))
             {
                 ShowFeedback(
                     _localization.Strings.VirtualDial,
@@ -3967,23 +3453,6 @@ public partial class MainWindow : Window
         };
     }
 
-    private void PresentVirtualDialProbeFailure(
-        ComposerDialResult result)
-    {
-        var failure = ExecutionFailureLabel(
-            result.Error,
-            result.ErrorDetail);
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
-            failure);
-        AddEvent(
-            $"{_localization.Strings.VirtualDial} · {failure}");
-        ShowFeedback(
-            _localization.Strings.VirtualDial,
-            failure);
-        Pulse(strength: 0.08);
-    }
-
     private void ResetVirtualDialInput(bool closeMenu)
     {
         var hadPendingOpen = _virtualDialOpenPending;
@@ -4017,7 +3486,7 @@ public partial class MainWindow : Window
             closeMenu &&
             hadOpenMenu &&
             _settings.BridgeEnabled &&
-            _activeAgent.Presence.IsForeground)
+            _foregroundApplication.IsForeground)
         {
             _ = CloseVirtualDialMenuAsync(showFeedback: false);
         }
@@ -4031,40 +3500,6 @@ public partial class MainWindow : Window
         _rightStickPressCancellation = null;
         cancellation?.Cancel();
     }
-
-    private void SwitchRightControlMode(
-        int direction,
-        string? source = null)
-    {
-        CancelPendingComposerSelection();
-        _rightAdjustmentBlockedUntil =
-            Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        var values = AdvancedComposerModes;
-        var current = Array.IndexOf(values, _rightMode);
-        if (current < 0)
-        {
-            current = 0;
-        }
-        var next =
-            (current + Math.Sign(direction) + values.Length) %
-            values.Length;
-        _rightMode = values[next];
-        UpdateRightModeUi();
-        var gesture =
-            source ??
-            _localization.Strings.Format(
-                StringKeys.MessageRightStickGesture,
-                Arrow(direction, horizontal: true));
-        AddEvent($"{gesture} · {ModeLabel(_rightMode)}");
-        ShowFeedback(
-            _localization.Strings.Get(
-                StringKeys.MessageRightStickMode),
-            ModeLabel(_rightMode));
-        Pulse();
-    }
-
-    private bool UsesAdvancedComposerDial =>
-        ComposerDialModes.IsAdvanced(_settings.ComposerDialMode);
 
     private string CurrentPowerSelectionDisplay()
     {
@@ -4089,179 +3524,10 @@ public partial class MainWindow : Window
                 efforts.Count - 1)]}";
     }
 
-    private void ApplyComposerDialMode(bool forceReset)
+    private void InitializeMicroEncoderPresentation()
     {
-        var useAdvanced = UsesAdvancedComposerDial;
-        if (useAdvanced && _simpleModeUpgradePromptPending)
-        {
-            ClearSimpleModeUpgradePrompt();
-        }
-
-        if (forceReset)
-        {
-            CancelPendingComposerSelection();
-            ResetVirtualDialInput(closeMenu: true);
-            _rightStickRouter.RequireNeutral();
-            _rightMode = useAdvanced
-                ? RightControlMode.Model
-                : RightControlMode.Dial;
-        }
-        else if (useAdvanced && _rightMode == RightControlMode.Dial)
-        {
-            _rightMode = RightControlMode.Model;
-        }
-        else if (!useAdvanced && _rightMode != RightControlMode.Dial)
-        {
-            _rightMode = RightControlMode.Dial;
-        }
-
+        _rightMode = RightControlMode.Dial;
         UpdateRightModeUi();
-    }
-
-    private void QueueSimplePowerStep(int direction)
-    {
-        if (direction == 0)
-        {
-            return;
-        }
-
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        QueueBoundedStep(
-            ref _pendingSimplePowerSteps,
-            direction);
-        if (
-            Interlocked.CompareExchange(
-                ref _simplePowerPumpRunning,
-                1,
-                0) == 0)
-        {
-            _ = PumpSimplePowerStepsAsync();
-        }
-    }
-
-    private async Task PumpSimplePowerStepsAsync()
-    {
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: false);
-        try
-        {
-            while (!cancellation.IsCancellationRequested)
-            {
-                // Drain the whole accumulated batch so a fast repeater
-                // cannot outrun the serialized automation consumer; the
-                // service applies the signed step count in one pass.
-                var steps = Interlocked.Exchange(
-                    ref _pendingSimplePowerSteps,
-                    0);
-                if (steps == 0)
-                {
-                    break;
-                }
-
-                var pickerMenuLikelyOpen =
-                    _composerPickerMenuLikelyOpen ||
-                    IsVirtualDialContextActive;
-                var result = await RunComposerPickerAutomationAsync(
-                        token => _composerAutomation.StepSimplePowerAsync(
-                            steps,
-                            allowShortcutFastPath:
-                                !pickerMenuLikelyOpen,
-                            _settings,
-                            token),
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                if (
-                    cancellation.IsCancellationRequested ||
-                    result.Error ==
-                        AgentAutomationErrorCodes.OperationCanceled)
-                {
-                    break;
-                }
-
-                PresentSimplePickerResult(
-                    _localization.Strings.Model,
-                    result);
-                if (!result.Succeeded)
-                {
-                    Interlocked.Exchange(
-                        ref _pendingSimplePowerSteps,
-                        0);
-                    break;
-                }
-
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer Simple picker action owns the menu now.
-        }
-        catch (Exception exception)
-        {
-            PresentSimplePickerResult(
-                _localization.Strings.Model,
-                new ComposerPickerResult(
-                    false,
-                    Error: AgentAutomationErrorCodes.Unexpected,
-                    ErrorDetail: exception.Message));
-        }
-        finally
-        {
-            CompleteComposerPickerAutomation(cancellation);
-            Volatile.Write(ref _simplePowerPumpRunning, 0);
-            if (
-                Volatile.Read(ref _pendingSimplePowerSteps) != 0 &&
-                Interlocked.CompareExchange(
-                    ref _simplePowerPumpRunning,
-                    1,
-                    0) == 0)
-            {
-                _ = PumpSimplePowerStepsAsync();
-            }
-        }
-    }
-
-    private void AdjustSimpleSpeed(int direction)
-    {
-        direction = Math.Sign(direction);
-        var fast =
-            SimpleSpeedInputPolicy.ResolveFastTarget(direction);
-        if (
-            !fast.HasValue ||
-            direction == _simpleSpeedHeldDirection)
-        {
-            return;
-        }
-
-        _simpleSpeedHeldDirection = direction;
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        var previousSpeedIndex = _speedIndex;
-        var targetSpeedIndex = fast.Value ? 1 : 0;
-        if (previousSpeedIndex == targetSpeedIndex)
-        {
-            _devicePageViewModel.UpdateRightModeValue(
-                SpeedLabel(_speedIndex));
-            return;
-        }
-
-        _speedIndex = targetSpeedIndex;
-        _devicePageViewModel.UpdateRightModeValue(
-            _localization.Strings.Format(
-                StringKeys.MessageApplyingValue,
-                SpeedLabel(_speedIndex)));
-        var menuWasLikelyOpen =
-            _composerPickerMenuLikelyOpen ||
-            IsVirtualDialContextActive;
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: true);
-        _ = SetSimpleSpeedAsync(
-            fast.Value,
-            menuWasLikelyOpen,
-            previousSpeedIndex,
-            cancellation,
-            _localization.Strings.Speed);
     }
 
     private async Task SetSimpleSpeedAsync(
@@ -4326,145 +3592,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task OpenComposerPickerAsync(
-        ComposerPickerView view,
-        bool startPendingDialNavigation = false)
+    private CancellationTokenSource BeginComposerPickerAutomation()
     {
-        var ownsNativeNavigation =
-            view is ComposerPickerView.Advanced or
-                ComposerPickerView.Model;
-        var simpleModelPicker =
-            view == ComposerPickerView.Model;
-        if (ownsNativeNavigation)
-        {
-            if (_virtualDialOpenPending)
-            {
-                return;
-            }
-
-            if (_virtualDialMenuOpen)
-            {
-                if (startPendingDialNavigation)
-                {
-                    StartVirtualDialNavigationPump();
-                }
-
-                return;
-            }
-
-            _virtualDialOpenPending = true;
-            _virtualDialCancelRequested = false;
-            _devicePageViewModel.UpdateRightMode(
-                RightControlMode.Dial,
-                RadialText("正在打开…", "Opening…"));
-        }
-
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: true);
-        try
-        {
-            var result = await RunComposerPickerAutomationAsync(
-                    token => _composerAutomation.OpenPickerAsync(
-                        view,
-                        _settings,
-                        token),
-                    cancellation.Token)
-                .ConfigureAwait(true);
-            if (
-                cancellation.IsCancellationRequested ||
-                result.Error == AgentAutomationErrorCodes.OperationCanceled)
-            {
-                return;
-            }
-
-            if (ownsNativeNavigation)
-            {
-                _virtualDialOpenPending = false;
-                SetVirtualDialMenuOpen(
-                    result.Succeeded && result.IsMenuOpen);
-                _simpleModelPickerOpen =
-                    simpleModelPicker &&
-                    result.Succeeded &&
-                    result.IsMenuOpen;
-                PresentAdvancedPickerMenuResult(result);
-                if (
-                    result.Succeeded &&
-                    result.IsMenuOpen &&
-                    !_virtualDialCancelRequested &&
-                    Volatile.Read(ref _pendingDialNavigation) != 0)
-                {
-                    StartVirtualDialNavigationPump();
-                }
-                else if (!result.Succeeded)
-                {
-                    Interlocked.Exchange(
-                        ref _pendingDialNavigation,
-                        0);
-                }
-
-                return;
-            }
-
-            PresentSimplePickerResult(
-                _localization.Strings.Model,
-                result);
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer Simple picker action owns the menu now.
-        }
-        catch (Exception exception)
-        {
-            var result = new ComposerPickerResult(
-                false,
-                Error: AgentAutomationErrorCodes.Unexpected,
-                ErrorDetail: exception.Message);
-            if (ownsNativeNavigation)
-            {
-                PresentAdvancedPickerMenuResult(result);
-            }
-            else
-            {
-                PresentSimplePickerResult(
-                    _localization.Strings.Model,
-                    result);
-            }
-        }
-        finally
-        {
-            if (ownsNativeNavigation)
-            {
-                _virtualDialOpenPending = false;
-            }
-
-            CompleteComposerPickerAutomation(cancellation);
-        }
-    }
-
-    private void PresentAdvancedPickerMenuResult(
-        ComposerPickerResult result)
-    {
-        ObserveComposerPickerMenu(result);
-        var value = result.Succeeded
-            ? result.Value ?? _localization.Strings.ComposerDialReady
-            : SimplePickerFailureLabel(result);
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
-            value);
-        AddEvent($"{_localization.Strings.VirtualDial} · {value}");
-        Pulse(strength: result.Succeeded ? 0.16 : 0.08);
-    }
-
-    private CancellationTokenSource BeginComposerPickerAutomation(
-        bool clearPendingPowerSteps)
-    {
-        if (clearPendingPowerSteps)
-        {
-            Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        }
-
         var cancellation = new CancellationTokenSource();
         var previous = Interlocked.Exchange(
             ref _composerPickerCancellation,
@@ -4485,9 +3614,6 @@ public partial class MainWindow : Window
 
     private void CancelComposerPickerAutomation()
     {
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        _simpleSpeedHeldDirection = 0;
         var cancellation = Interlocked.Exchange(
             ref _composerPickerCancellation,
             null);
@@ -4512,135 +3638,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BeginSimpleModeUpgradePrompt(
-        string sourceTitle,
-        string? modelValue)
-    {
-        if (_simpleModeUpgradePromptPending)
-        {
-            return;
-        }
-
-        _simpleModeUpgradePromptPending = true;
-        _simpleModeUpgradePromptValue = modelValue;
-        _simpleModeUpgradePromptExpiresAt =
-            Environment.TickCount64 +
-            (long)SimpleModeUpgradePromptDuration.TotalMilliseconds;
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        _simpleSpeedHeldDirection = 0;
-        _axisRepeater.Reset();
-        _rightStickRouter.RequireNeutral();
-
-        var modelLabel = string.IsNullOrWhiteSpace(modelValue)
-            ? RadialText("当前模型", "The current model")
-            : modelValue.Trim();
-        var promptTitle = RadialText(
-            $"{modelLabel} 不支持简易 Power",
-            $"{modelLabel} does not support Simple Power");
-        var prompt = RadialText(
-            $"是否改为高级模式？{Glyph(LogicalInput.FaceSouth)} 切换 · {Glyph(LogicalInput.FaceEast)} 保持简易模式（Speed 仍可用）",
-            $"Switch to Advanced mode? {Glyph(LogicalInput.FaceSouth)} switch · {Glyph(LogicalInput.FaceEast)} keep Simple (Speed still works)");
-        _devicePageViewModel.UpdateRightModeValue(prompt);
-        AddEvent($"{sourceTitle} · {promptTitle} · {prompt}");
-        _overlayWindow?.ShowMessage(
-            promptTitle,
-            prompt,
-            SimpleModeUpgradePromptDuration);
-        Pulse(strength: 0.12);
-    }
-
-    private bool ProcessSimpleModeUpgradePrompt(
-        ControllerButtons pressed)
-    {
-        if (!_simpleModeUpgradePromptPending)
-        {
-            return false;
-        }
-
-        var downEdges = pressed & ~_previousPhysicalButtons;
-        var choice =
-            SimpleModeCompatibilityPrompt.ResolveChoice(downEdges);
-        if (
-            choice ==
-            SimpleModeCompatibilityChoice.SwitchToAdvanced)
-        {
-            SwitchSimpleModePromptToAdvanced();
-        }
-        else if (
-            choice ==
-            SimpleModeCompatibilityChoice.KeepSimple)
-        {
-            KeepSimpleModeFromPrompt(timedOut: false);
-        }
-        else if (
-            Environment.TickCount64 >=
-            _simpleModeUpgradePromptExpiresAt)
-        {
-            KeepSimpleModeFromPrompt(timedOut: true);
-        }
-
-        DrainControllerFrame(pressed);
-        return true;
-    }
-
-    private void SwitchSimpleModePromptToAdvanced()
-    {
-        _simpleModeUpgradeDeclinedKey = null;
-        _settingsPageViewModel.ComposerDialMode =
-            ComposerDialModes.Advanced;
-        SaveSettings(RadialText(
-            "已切换为高级模式",
-            "Switched to Advanced mode"));
-
-        var title = RadialText(
-            "已切换为高级模式",
-            "Advanced mode enabled");
-        var detail = RadialText(
-            "右摇杆左右切换 Model / Effort / Speed，上下调整选项。",
-            "Move the right stick left / right for Model, Effort, or Speed; up / down changes its option.");
-        _overlayWindow?.ShowMessage(
-            title,
-            detail,
-            TimeSpan.FromMilliseconds(1800));
-        Pulse(strength: 0.24);
-    }
-
-    private void KeepSimpleModeFromPrompt(bool timedOut)
-    {
-        // Remember the declined selection so the same model does not
-        // re-prompt on every Power flick; Standard/Fast keep working.
-        _simpleModeUpgradeDeclinedKey =
-            SimpleModeCompatibilityPrompt.SuppressionKey(
-                _simpleModeUpgradePromptValue);
-        ClearSimpleModeUpgradePrompt();
-        var title = timedOut
-            ? RadialText("未切换模式", "No mode change")
-            : RadialText("保持简易模式", "Keeping Simple mode");
-        var detail = RadialText(
-            "当前模型的简易 Power 不可用；Standard / Fast 仍可切换。",
-            "Simple Power is unavailable for the current model; Standard / Fast still work.");
-        _devicePageViewModel.UpdateRightModeValue(detail);
-        AddEvent($"{title} · {detail}");
-        _overlayWindow?.ShowMessage(
-            title,
-            detail,
-            TimeSpan.FromMilliseconds(1800));
-        Pulse(strength: 0.08);
-    }
-
-    private void ClearSimpleModeUpgradePrompt()
-    {
-        _simpleModeUpgradePromptPending = false;
-        _simpleModeUpgradePromptValue = null;
-        _simpleModeUpgradePromptExpiresAt = 0;
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        _simpleSpeedHeldDirection = 0;
-        _rightAdjustmentBlockedUntil =
-            Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        _axisRepeater.Reset();
-        _rightStickRouter.RequireNeutral();
-    }
-
     private void PresentSimplePickerResult(
         string title,
         ComposerPickerResult result)
@@ -4648,16 +3645,6 @@ public partial class MainWindow : Window
         ObserveComposerPickerMenu(result);
         if (!result.Succeeded)
         {
-            if (
-                SimpleModeCompatibilityPrompt.ShouldOfferAdvanced(
-                    UsesAdvancedComposerDial,
-                    result,
-                    _simpleModeUpgradeDeclinedKey))
-            {
-                BeginSimpleModeUpgradePrompt(title, result.Value);
-                return;
-            }
-
             var failure = SimplePickerFailureLabel(result);
             _devicePageViewModel.UpdateRightModeValue(failure);
             AddEvent($"{title} · {failure}");
@@ -4703,12 +3690,12 @@ public partial class MainWindow : Window
                     "Power did not change; it may be at this account's lowest level or the UI may still be updating"),
             "composer-picker-view:simple" =>
                 RadialText(
-                    "当前模型与档位不提供简易 Power；Standard / Fast 仍可切换，也可改用高级模式",
-                    "The current model and effort do not provide Simple Power; Standard / Fast still work, or switch to Advanced mode"),
+                    "当前 Codex 界面未提供这个降级操作；可用 Micro 旋钮打开官方菜单",
+                    "The current Codex UI does not expose this fallback action; use the Micro encoder to open the official menu"),
             "composer-picker-view:advanced" =>
                 RadialText(
-                    "无法切换到当前账户的高级模型菜单",
-                    "Could not switch to the Advanced model picker for the current account"),
+                    "无法打开当前账户的官方模型菜单",
+                    "Could not open the official model menu for the current account"),
             "composer-model-picker-keybinding-conflict" =>
                 RadialText(
                     "模型选择快捷键未就绪或有冲突；请检查设置并重启 Codex",
@@ -4735,156 +3722,6 @@ public partial class MainWindow : Window
         };
     }
 
-    private void QueueAdvancedPickerStep(int direction)
-    {
-        if (direction == 0)
-        {
-            return;
-        }
-
-        var kind = _rightMode switch
-        {
-            RightControlMode.Model => ComposerSettingKind.Model,
-            RightControlMode.Reasoning => ComposerSettingKind.Effort,
-            RightControlMode.Speed => ComposerSettingKind.Speed,
-            _ => (ComposerSettingKind?)null,
-        };
-        if (!kind.HasValue)
-        {
-            return;
-        }
-
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        _pendingAdvancedKind = kind.Value;
-        QueueBoundedStep(ref _pendingAdvancedSteps, direction);
-        if (
-            Interlocked.CompareExchange(
-                ref _advancedStepPumpRunning,
-                1,
-                0) == 0)
-        {
-            _ = PumpAdvancedPickerStepsAsync();
-        }
-    }
-
-    private async Task PumpAdvancedPickerStepsAsync()
-    {
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: false);
-        try
-        {
-            while (!cancellation.IsCancellationRequested)
-            {
-                var pending = Volatile.Read(ref _pendingAdvancedSteps);
-                if (pending == 0)
-                {
-                    break;
-                }
-
-                var direction = Math.Sign(pending);
-                Interlocked.Add(ref _pendingAdvancedSteps, -direction);
-                var kind = _pendingAdvancedKind;
-                var result = await RunComposerPickerAutomationAsync(
-                        token => _composerAutomation.StepAdvancedAsync(
-                            kind,
-                            direction,
-                            _settings,
-                            token),
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                if (
-                    cancellation.IsCancellationRequested ||
-                    result.Error ==
-                        AgentAutomationErrorCodes.OperationCanceled)
-                {
-                    break;
-                }
-
-                PresentAdvancedPickerResult(kind, result);
-                if (!result.Succeeded)
-                {
-                    Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-                    break;
-                }
-
-                ClearNavigationUndo();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer picker action owns the menu now.
-        }
-        catch (Exception exception)
-        {
-            PresentAdvancedPickerResult(
-                _pendingAdvancedKind,
-                new ComposerPickerResult(
-                    false,
-                    Error: AgentAutomationErrorCodes.Unexpected,
-                    ErrorDetail: exception.Message));
-        }
-        finally
-        {
-            CompleteComposerPickerAutomation(cancellation);
-            Volatile.Write(ref _advancedStepPumpRunning, 0);
-            if (
-                Volatile.Read(ref _pendingAdvancedSteps) != 0 &&
-                Interlocked.CompareExchange(
-                    ref _advancedStepPumpRunning,
-                    1,
-                    0) == 0)
-            {
-                _ = PumpAdvancedPickerStepsAsync();
-            }
-        }
-    }
-
-    private void PresentAdvancedPickerResult(
-        ComposerSettingKind kind,
-        ComposerPickerResult result)
-    {
-        ObserveComposerPickerMenu(result);
-        var title = ComposerKindLabel(kind);
-        if (!result.Succeeded)
-        {
-            var failure = result.ErrorDetail switch
-            {
-                "composer-advanced-upper-boundary" =>
-                    RadialText(
-                        "已到当前菜单实际提供的最高一项",
-                        "Already at the highest option in the live menu"),
-                "composer-advanced-lower-boundary" =>
-                    RadialText(
-                        "已到当前菜单实际提供的最低一项",
-                        "Already at the lowest option in the live menu"),
-                var detail when detail?.StartsWith(
-                    "composer-advanced-readback:",
-                    StringComparison.Ordinal) == true =>
-                    RadialText(
-                        "界面没有确认这次选择，未更新本地状态",
-                        "The UI did not confirm this selection; local state was not advanced"),
-                _ => SimplePickerFailureLabel(result),
-            };
-            _devicePageViewModel.UpdateRightModeValue(failure);
-            AddEvent($"{title} · {failure}");
-            ShowComposerPickerOverlayIfNeeded(
-                title,
-                failure,
-                result);
-            Pulse(strength: 0.1);
-            return;
-        }
-
-        var value = ComposerTargetLabel(
-            kind,
-            result.Value ?? string.Empty);
-        _devicePageViewModel.UpdateRightModeValue(value);
-        AddEvent($"{title} · {value}");
-        ShowComposerPickerOverlayIfNeeded(title, value, result);
-        Pulse(strength: 0.18);
-    }
-
     private void ObserveComposerPickerMenu(
         ComposerPickerResult result)
     {
@@ -4895,25 +3732,6 @@ public partial class MainWindow : Window
         else if (result.Succeeded)
         {
             _composerPickerMenuLikelyOpen = false;
-        }
-    }
-
-    private static void QueueBoundedStep(
-        ref int pending,
-        int direction)
-    {
-        direction = Math.Sign(direction);
-        while (direction != 0)
-        {
-            var current = Volatile.Read(ref pending);
-            var next = Math.Clamp(current + direction, -2, 2);
-            if (Interlocked.CompareExchange(
-                    ref pending,
-                    next,
-                    current) == current)
-            {
-                return;
-            }
         }
     }
 
@@ -4935,7 +3753,8 @@ public partial class MainWindow : Window
         double value,
         bool blocked)
     {
-        var transition = _pushToTalkTrigger.Update(value, blocked);
+        var transition =
+            _controllerInteraction.UpdatePushToTalk(value, blocked);
         if (transition == AnalogTriggerTransition.Pressed)
         {
             StartDictation(Glyph(LogicalInput.LeftTrigger));
@@ -5015,7 +3834,8 @@ public partial class MainWindow : Window
 
     private void ResetPushToTalk(bool stopDictation)
     {
-        var wasPressed = _pushToTalkTrigger.CancelUntilReleased();
+        var wasPressed =
+            _controllerInteraction.CancelPushToTalkUntilReleased();
         _pushToTalkSuppressedButtons = ControllerButtons.None;
         if (
             stopDictation &&
@@ -5112,15 +3932,21 @@ public partial class MainWindow : Window
                     {
                         var result =
                             await ExecuteDictationAutomationAsync(
+                                    microPressed: true,
                                     BridgeTimings.DictationStartTimeoutMs,
                                     PushToTalkAutomationPolicy
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
-                                        .StartActionNames)
+                                        .StartActionNames,
+                                    ComposerAutomationChannel.Unknown)
                                 .ConfigureAwait(true);
                         _pushToTalkAutomation.Complete(
                             action,
                             result.Executed);
+                        _dictationAutomationChannel =
+                            _pushToTalkAutomation.IsDictating
+                                ? result.Automation.Channel
+                                : ComposerAutomationChannel.Unknown;
                         _dictationInjected =
                             _pushToTalkAutomation.IsDictating;
                         DevicePage.SetVoiceHalo(
@@ -5130,16 +3956,22 @@ public partial class MainWindow : Window
                     }
                     case PushToTalkAutomationAction.StopDictation:
                     {
+                        var sessionChannel =
+                            _dictationAutomationChannel;
                         var result =
                             await ExecuteDictationAutomationAsync(
+                                    microPressed: false,
                                     BridgeTimings.DictationStopTimeoutMs,
                                     PushToTalkAutomationPolicy
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
-                                        .StopActionNames)
+                                        .StopActionNames,
+                                    _dictationAutomationChannel)
                                 .ConfigureAwait(true);
                         var stopped =
                             result.Executed ||
+                            sessionChannel !=
+                                ComposerAutomationChannel.MicroHid &&
                             _composerAutomation.IsActionAvailable(
                                 PushToTalkAutomationPolicy
                                     .StartActionNames
@@ -5147,6 +3979,12 @@ public partial class MainWindow : Window
                         _pushToTalkAutomation.Complete(
                             action,
                             stopped);
+                        if (!_pushToTalkAutomation.IsDictating)
+                        {
+                            _dictationAutomationChannel =
+                                ComposerAutomationChannel.Unknown;
+                        }
+
                         _dictationInjected =
                             _pushToTalkAutomation.IsDictating;
                         DevicePage.SetVoiceHalo(
@@ -5169,6 +4007,8 @@ public partial class MainWindow : Window
                 !_pushToTalkAutomation.WantsDictation &&
                 !_pushToTalkAutomation.IsDictating)
             {
+                _dictationAutomationChannel =
+                    ComposerAutomationChannel.Unknown;
                 _dictationInputGlyph = null;
                 DevicePage.SetVoiceHalo(active: false);
             }
@@ -5194,8 +4034,8 @@ public partial class MainWindow : Window
         _virtualDialCancelRequested = false;
         _virtualDialCleanupPending = false;
         SetVirtualDialMenuOpen(false);
-        _axisRepeater.Reset();
-        _rightStickRouter.RequireNeutral();
+        _controllerInteraction.ResetRepeats();
+        _controllerInteraction.RequireRightStickNeutral();
 
         var closeTask = RunVirtualDialAutomationAsync(
             () => _composerAutomation.DialCancel(_settings));
@@ -5228,10 +4068,69 @@ public partial class MainWindow : Window
 
     private async Task<DictationAutomationExecution>
         ExecuteDictationAutomationAsync(
+            bool microPressed,
             int timeoutMs,
             bool allowShortcutFallback,
-            IReadOnlyList<string> actionNames)
+            IReadOnlyList<string> actionNames,
+            ComposerAutomationChannel requiredChannel)
     {
+        var microSession =
+            requiredChannel == ComposerAutomationChannel.MicroHid;
+        var mayStartMicroSession =
+            requiredChannel == ComposerAutomationChannel.Unknown &&
+            _settings.BridgeEnabled &&
+            (
+                !_settings.OnlyWhenCodexForeground ||
+                _foregroundApplication.IsForeground
+            );
+        if (microSession || mayStartMicroSession)
+        {
+            var micro = _microInput.SendPushToTalk(microPressed);
+            if (
+                microSession &&
+                !microPressed &&
+                micro == MicroReportSendResult.NotSent)
+            {
+                await Task.Delay(
+                        BridgeTimings.MicroReleaseRetryDelayMs)
+                    .ConfigureAwait(true);
+                micro = _microInput.SendPushToTalk(pressed: false);
+            }
+
+            if (micro is
+                MicroReportSendResult.Accepted or
+                MicroReportSendResult.OutcomeUnknown)
+            {
+                return new(
+                    true,
+                    new ComposerAutomationResult(
+                        true,
+                        Channel: ComposerAutomationChannel.MicroHid));
+            }
+
+            if (micro == MicroReportSendResult.Rejected)
+            {
+                return new(
+                    false,
+                    new ComposerAutomationResult(
+                        false,
+                        AgentAutomationErrorCodes.Unexpected,
+                        "micro.input-rejected",
+                        ComposerAutomationChannel.MicroHid));
+            }
+
+            if (microSession)
+            {
+                return new(
+                    false,
+                    new ComposerAutomationResult(
+                        false,
+                        AgentAutomationErrorCodes.InputInjectionFailed,
+                        "micro.input-not-sent",
+                        ComposerAutomationChannel.MicroHid));
+            }
+        }
+
         using var cancellation = new CancellationTokenSource();
         var automationTask = _composerAutomation.InvokeActionAsync(
             _settings,
@@ -5274,6 +4173,12 @@ public partial class MainWindow : Window
                         _settings.DictationShortcut,
                         _settings))
                 .ConfigureAwait(true);
+            if (fallback)
+            {
+                automation = new(
+                    true,
+                    Channel: ComposerAutomationChannel.KeyboardInput);
+            }
         }
 
         return new(
@@ -5306,7 +4211,7 @@ public partial class MainWindow : Window
             _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
         if (result.Executed)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
         else
         {
@@ -5374,15 +4279,35 @@ public partial class MainWindow : Window
 
     private void SendPrompt()
     {
-        SendPrompt(Glyph(LogicalInput.FaceWest));
+        SendPrompt(
+            Glyph(LogicalInput.FaceWest),
+            "controller.face.west");
     }
 
-    private void SendPrompt(string sendGlyph)
+    private void SendPrompt(string sendGlyph, string controlId)
     {
-        var automation = _composerAutomation.Submit(_settings);
-        if (automation.Succeeded)
+        _ = SendPromptAsync(sendGlyph, controlId);
+    }
+
+    private async Task SendPromptAsync(
+        string sendGlyph,
+        string controlId)
+    {
+        var result = await TryExecuteActionAsync(
+            ComposerActionContract.SubmitId,
+            "controller.active",
+            controlId,
+            "composer.input",
+            "composer.submit",
+            ActionSafetyLevel.Routine)
+            .ConfigureAwait(true);
+
+        var succeeded = result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified;
+        if (succeeded)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
         }
 
         AddEvent(
@@ -5390,17 +4315,14 @@ public partial class MainWindow : Window
                 StringKeys.MessageSendPrompt,
                 sendGlyph) +
             ExecutionSuffix(
-                automation.Succeeded,
-                automation.Error,
-                automation.ErrorDetail));
+                succeeded,
+                result?.ErrorCode));
         ShowFeedback(
             _localization.Strings.ControlSend(sendGlyph),
-            automation.Succeeded
+            succeeded
                 ? _localization.Strings.Get(
                     StringKeys.MessageSent)
-                : ExecutionFailureLabel(
-                    automation.Error,
-                    automation.ErrorDetail));
+                : ExecutionFailureLabel(result?.ErrorCode));
         Pulse(strength: 0.28);
     }
 
@@ -5409,9 +4331,9 @@ public partial class MainWindow : Window
         if (
             _dictationInjected ||
             _pushToTalkAutomation.WantsDictation ||
-            _pushToTalkTrigger.BlocksBaseInput)
+            _controllerInteraction.PushToTalkBlocksBaseInput)
         {
-            _pushToTalkTrigger.CancelUntilReleased();
+            _controllerInteraction.CancelPushToTalkUntilReleased();
             _pushToTalkSuppressedButtons |=
                 _latestControllerState.Buttons &
                 ~ControllerButtons.B;
@@ -5424,7 +4346,7 @@ public partial class MainWindow : Window
 
             _pushToTalkAutomation.RequestStop();
             EnsurePushToTalkAutomationPump();
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
             var cancelGlyph = Glyph(LogicalInput.FaceEast);
             AddEvent(
                 _localization.Strings.Format(
@@ -5441,9 +4363,7 @@ public partial class MainWindow : Window
         }
 
         var hadPendingSelection =
-            _composerPickerCancellation is not null ||
-            Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
-            Volatile.Read(ref _pendingAdvancedSteps) != 0;
+            _composerPickerCancellation is not null;
         CancelPendingSidebarFocus();
         CancelPendingComposerSelection();
         if (hadPendingSelection)
@@ -5462,7 +4382,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (TryHandleNavigationUndo())
+        if (_threadNavigation.TryRequestUndo())
         {
             return;
         }
@@ -5490,59 +4410,27 @@ public partial class MainWindow : Window
         Pulse(strength: 0.18);
     }
 
-    private bool TryHandleNavigationUndo()
-    {
-        if (_navigationUndo is not { } undo)
-        {
-            return false;
-        }
-
-        var action = NavigationUndoPressPolicy.Resolve(
-            undo.Confirmed,
-            undo.ExpiresAt,
-            DateTimeOffset.UtcNow);
-        if (
-            action ==
-                NavigationUndoPressAction.QueueUntilNavigationConfirms)
-        {
-            undo.UndoRequested = true;
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoQueued,
-                cancelGlyph));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonUndo,
-                    cancelGlyph),
-                _localization.Strings.Get(
-                    StringKeys.MessageUndoAfterOpen));
-            Pulse(strength: 0.12);
-            return true;
-        }
-
-        if (
-            action ==
-                NavigationUndoPressAction.ExpireAndBeginStopHold)
-        {
-            ClearNavigationUndo();
-            return false;
-        }
-
-        ExecuteNavigationUndo(undo);
-        return true;
-    }
-
     private void StopCurrentTurn()
     {
-        var automation = _composerAutomation.InvokeAction(
-            _settings,
-            "Stop",
-            "Cancel",
-            "Cancel request");
+        _ = StopCurrentTurnAsync();
+    }
+
+    private async Task StopCurrentTurnAsync()
+    {
+        var result = await TryExecuteActionAsync(
+            TurnActionContract.StopId,
+            "controller.active",
+            "controller.face.east.hold",
+            "turn.running",
+            "turn.stop",
+            ActionSafetyLevel.HighRisk)
+            .ConfigureAwait(true);
         var cancelGlyph = Glyph(LogicalInput.FaceEast);
-        if (automation.Succeeded)
+        if (result?.Outcome is
+            ActionOutcome.Succeeded or
+            ActionOutcome.AcceptedUnverified)
         {
-            ClearNavigationUndo();
+            _threadNavigation.ClearUndo();
             AddEvent(_localization.Strings.Format(
                 StringKeys.MessageCurrentOperationStopped,
                 cancelGlyph));
@@ -5562,84 +4450,14 @@ public partial class MainWindow : Window
                 cancelGlyph) +
             ExecutionSuffix(
                 false,
-                automation.Error,
-                automation.ErrorDetail));
+                result?.ErrorCode));
         ShowFeedback(
             _localization.Strings.Format(
                 StringKeys.MessageButtonCancel,
                 cancelGlyph),
             ExecutionFailureLabel(
-                automation.Error,
-                automation.ErrorDetail));
+                result?.ErrorCode));
         Pulse(strength: 0.18);
-    }
-
-    private void ExecuteNavigationUndo(NavigationUndoState undo)
-    {
-        if (!ReferenceEquals(_navigationUndo, undo))
-        {
-            return;
-        }
-
-        var currentTitle =
-            _sidebarAutomation.TryGetCurrentThreadTitle();
-        if (
-            !string.Equals(
-                currentTitle,
-                undo.TargetNativeTitle,
-                StringComparison.Ordinal))
-        {
-            ClearNavigationUndo();
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoPageChanged,
-                cancelGlyph));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonUndo,
-                    cancelGlyph),
-                _localization.Strings.Get(
-                    StringKeys.MessageUndoPageChangedDetail));
-            Pulse(strength: 0.12);
-            return;
-        }
-
-        var navigation =
-            _sidebarAutomation.GoBack(_settings);
-        if (navigation.Succeeded)
-        {
-            var target = undo.TargetDisplayTitle;
-            ClearNavigationUndo();
-            var cancelGlyph = Glyph(LogicalInput.FaceEast);
-            AddEvent(_localization.Strings.Format(
-                StringKeys.MessageUndoSucceeded,
-                cancelGlyph,
-                target));
-            ShowFeedback(
-                _localization.Strings.Format(
-                    StringKeys.MessageButtonUndo,
-                    cancelGlyph),
-                _localization.Strings.Format(
-                    StringKeys.MessageReturnedToPreviousTask,
-                    target));
-            Pulse(strength: 0.18);
-            return;
-        }
-
-        var undoGlyph = Glyph(LogicalInput.FaceEast);
-        AddEvent(_localization.Strings.Format(
-            StringKeys.MessageUndoFailed,
-            undoGlyph,
-            _localization.Strings.ErrorLabel(
-                navigation.Error,
-                navigation.ErrorDetail)));
-        ShowFeedback(
-            _localization.Strings.Format(
-                StringKeys.MessageButtonUndo,
-                undoGlyph),
-            ExecutionFailureLabel(
-                navigation.Error));
-        Pulse(strength: 0.12);
     }
 
     private void UpdateControllerVisual(ControllerState state)
@@ -5709,6 +4527,7 @@ public partial class MainWindow : Window
             strings,
             agentName,
             _activeControllerProfile);
+        RefreshTutorialDispatch();
         _configPageViewModel.UpdateContext(
             strings,
             agentName,
@@ -5801,7 +4620,7 @@ public partial class MainWindow : Window
             }
 
             UpdateLayerTabs();
-            if (_radialLayer == RadialMenuLayerKind.Agent)
+            if (_radialLayers.Layer == RadialMenuLayerKind.Agent)
             {
                 RefreshRadialMenu();
             }
@@ -6032,7 +4851,7 @@ public partial class MainWindow : Window
                 StringComparison.OrdinalIgnoreCase)
                 ? 1
                 : 0;
-        ApplyComposerDialMode(forceReset: false);
+        InitializeMicroEncoderPresentation();
     }
 
     private IReadOnlyList<string> CurrentEfforts()
@@ -6176,18 +4995,8 @@ public partial class MainWindow : Window
 
     private void SaveSettings(string eventText)
     {
-        var previousComposerDialMode =
-            ComposerDialModes.Normalize(
-                _settings.ComposerDialMode);
         ReadControlsIntoSettings();
         _settingsService.Save(_settings);
-        var composerDialModeChanged =
-            !string.Equals(
-                previousComposerDialMode,
-                ComposerDialModes.Normalize(
-                    _settings.ComposerDialMode),
-                StringComparison.Ordinal);
-        ApplyComposerDialMode(forceReset: composerDialModeChanged);
         ConfigureCodexKeybindings();
         RefreshRadialMenu();
         AddEvent(eventText);
@@ -6196,7 +5005,7 @@ public partial class MainWindow : Window
 
     private void UpdateCodexStatus()
     {
-        var foreground = _activeAgent.Presence.IsForeground;
+        var foreground = _foregroundApplication.IsForeground;
         TryAutoArmController(foreground);
         _ = ObserveCodexForeground(foreground);
 
@@ -6305,7 +5114,7 @@ public partial class MainWindow : Window
                     StringComparison.OrdinalIgnoreCase))?.Name;
     }
 
-    private string SidebarWheelScopeLabel(SidebarScope scope)
+    private string SidebarMenuScopeLabel(SidebarScope scope)
     {
         if (
             scope != SidebarScope.ProjectTasks ||
@@ -6334,7 +5143,7 @@ public partial class MainWindow : Window
         return mode switch
         {
             RightControlMode.Dial =>
-                _localization.Strings.SettingsComposerDialModeSimple,
+                _localization.Strings.VirtualDial,
             RightControlMode.Reasoning =>
                 _localization.Strings.ReasoningEffort,
             RightControlMode.Model => _localization.Strings.Model,
@@ -6376,7 +5185,7 @@ public partial class MainWindow : Window
 
         if (
             _settings.OnlyWhenCodexForeground &&
-            !_activeAgent.Presence.IsForeground)
+            !_foregroundApplication.IsForeground)
         {
             return _localization.Strings.Format(
                 StringKeys.MessageWaitingForAgentForeground,
@@ -6498,8 +5307,9 @@ public partial class MainWindow : Window
         if (!enabled)
         {
             PauseControllerInput(_xInputService.LastState);
-            _previousButtons = _xInputService.LastState.Buttons;
-            _previousPhysicalButtons = _xInputService.LastState.Buttons;
+            _controllerInteraction.CommitButtonHistory(
+                _xInputService.LastState.Buttons,
+                _xInputService.LastState.Buttons);
             _bridgeDisabledHintShown = true;
         }
         else
@@ -6526,35 +5336,6 @@ public partial class MainWindow : Window
         }
 
         UpdateCodexStatus();
-    }
-
-    private void SettingsPageViewModel_PropertyChanged(
-        object? sender,
-        PropertyChangedEventArgs e)
-    {
-        if (
-            _initializing ||
-            e.PropertyName !=
-            nameof(SettingsPageViewModel.ComposerDialMode))
-        {
-            return;
-        }
-
-        var next = ComposerDialModes.Normalize(
-            _settingsPageViewModel.ComposerDialMode);
-        if (string.Equals(
-                next,
-                ComposerDialModes.Normalize(
-                    _settings.ComposerDialMode),
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _settings.ComposerDialMode = next;
-        _settingsService.Save(_settings);
-        ApplyComposerDialMode(forceReset: true);
-        FooterStatusText.Text = ModeLabel(_rightMode);
     }
 
     private void RefreshDeviceData()
@@ -6603,7 +5384,9 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
-            OpenSelectedSidebarTask();
+            OpenSelectedSidebarTask(
+                deviceId: "desktop.keyboard",
+                controlId: "keyboard.enter");
             e.Handled = true;
             return;
         }
@@ -6726,8 +5509,12 @@ public partial class MainWindow : Window
         CancelPendingComposerSelection();
         _pushToTalkAutomation.Reset();
         _dictationInjected = false;
+        _dictationAutomationChannel =
+            ComposerAutomationChannel.Unknown;
         _dictationInputGlyph = null;
-        ClearNavigationUndo();
+        _threadNavigation.NoticePublished -=
+            ThreadNavigation_NoticePublished;
+        _threadNavigation.ClearUndo();
         _xInputService.StateChanged -= XInputService_StateChanged;
         _localization.PropertyChanged -=
             Localization_PropertyChanged;
@@ -6735,12 +5522,10 @@ public partial class MainWindow : Window
         _trayIconImage?.Dispose();
         _feedbackPresenter.PropertyChanged -=
             FeedbackPresenter_PropertyChanged;
-        _settingsPageViewModel.PropertyChanged -=
-            SettingsPageViewModel_PropertyChanged;
         _feedbackPresenter.Dispose();
         _overlayWindow?.Close();
         _radialMenuOverlayWindow?.Close();
-        _sidebarNavigationWheelOverlayWindow?.Close();
+        _sidebarNavigationMenuOverlayWindow?.Close();
 
         if (!_exitRequested)
         {
@@ -6748,26 +5533,6 @@ public partial class MainWindow : Window
             _ = Dispatcher.BeginInvoke(
                 System.Windows.Application.Current.Shutdown);
         }
-    }
-
-    private sealed class NavigationUndoState
-    {
-        public NavigationUndoState(
-            string targetDisplayTitle,
-            string targetNativeTitle,
-            string? previousTitle)
-        {
-            TargetDisplayTitle = targetDisplayTitle;
-            TargetNativeTitle = targetNativeTitle;
-            PreviousTitle = previousTitle;
-        }
-
-        public string TargetDisplayTitle { get; }
-        public string TargetNativeTitle { get; }
-        public string? PreviousTitle { get; }
-        public bool Confirmed { get; set; }
-        public bool UndoRequested { get; set; }
-        public DateTimeOffset? ExpiresAt { get; set; }
     }
 
     private sealed record SidebarReturnFrame(

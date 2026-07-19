@@ -1,6 +1,7 @@
 using CodexController.Services;
 using CodexController.Models;
 using CodexController.Services.Micro;
+using System.Text.Json;
 
 namespace CodexController.Tests;
 
@@ -137,5 +138,93 @@ public sealed class ComposerDialNativeInputPolicyTests
                 ComposerDialNativeInputPolicy.EscapeKey,
             ],
             keys);
+    }
+
+    [Fact]
+    public async Task OpenMenuKeepsHorizontalArrowsAndVerticalEncoderDetents()
+    {
+        using var transport = new RecordingTransport();
+        using var micro = new MicroInputService(transport);
+        var keys = new List<ushort>();
+        var service = new CodexComposerService(
+            micro,
+            _ => true,
+            key =>
+            {
+                keys.Add(key);
+                return true;
+            });
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+            ModelPickerShortcut = "Ctrl+Shift+M",
+        };
+
+        var opened = await service.OpenPickerAsync(
+            ComposerPickerView.Model,
+            settings,
+            CancellationToken.None);
+        var left = service.DialNavigate(
+            ComposerDialNavigation.Left,
+            settings);
+        var right = service.DialNavigate(
+            ComposerDialNavigation.Right,
+            settings);
+        var up = service.DialNavigate(
+            ComposerDialNavigation.Up,
+            settings);
+        var down = service.DialNavigate(
+            ComposerDialNavigation.Down,
+            settings);
+
+        Assert.True(opened.Succeeded);
+        Assert.All(
+            new[] { left, right, up, down },
+            result => Assert.True(result.Succeeded));
+        Assert.Equal(
+            [
+                ComposerDialNativeInputPolicy.LeftKey,
+                ComposerDialNativeInputPolicy.RightKey,
+            ],
+            keys);
+        Assert.Equal(
+            [("ENC_CW", 2), ("ENC_CC", 2)],
+            DecodeHidEvents(transport.Reports));
+    }
+
+    private static IReadOnlyList<(string Key, int Action)> DecodeHidEvents(
+        IReadOnlyList<byte[]> reports)
+    {
+        var events = new List<(string Key, int Action)>();
+        foreach (var report in reports)
+        {
+            using var json = JsonDocument.Parse(
+                MicroRpcCodec.DecodePayload(
+                    [(ReadOnlyMemory<byte>)report]));
+            var parameters = json.RootElement.GetProperty("p");
+            events.Add((
+                parameters.GetProperty("k").GetString()!,
+                parameters.GetProperty("act").GetInt32()));
+        }
+
+        return events;
+    }
+
+    private sealed class RecordingTransport : IMicroReportTransport
+    {
+        public List<byte[]> Reports { get; } = [];
+
+        public MicroTransportState State => MicroTransportState.Ready;
+
+        public MicroReportSendResult Send(IReadOnlyList<byte[]> reports)
+        {
+            Reports.AddRange(reports);
+            return MicroReportSendResult.Accepted;
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }

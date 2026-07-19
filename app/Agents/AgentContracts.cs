@@ -70,8 +70,6 @@ public interface ISidebarAutomation
 
     string? TryGetCurrentThreadTitle();
 
-    SidebarAutomationResult GoBack(AppSettings settings);
-
     SidebarAutomationResult RestoreDisclosure(
         ProjectDisclosureLease lease);
 
@@ -121,11 +119,6 @@ public interface IComposerAutomation
         AppSettings settings,
         CancellationToken cancellationToken);
 
-    Task<ComposerAutomationResult> ScrollConversationAsync(
-        ConversationBoundary boundary,
-        AppSettings settings,
-        CancellationToken cancellationToken);
-
     string? TryReadComposerButtonName();
 
     string? TryReadDispatchButtonName();
@@ -158,16 +151,11 @@ public interface IComposerAutomation
 
     ComposerDialResult DialCancel(AppSettings settings);
 
-    ComposerAutomationResult Submit(AppSettings settings);
-
-    ComposerAutomationResult Clear(AppSettings settings);
-
     ComposerAutomationResult Cancel(AppSettings settings);
 }
 
 public interface IDeepLinks
 {
-    bool OpenThread(string threadId);
     void OpenSettings();
     void OpenKeyboardShortcuts();
 }

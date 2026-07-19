@@ -1,3 +1,5 @@
+using AgentController.Application.Actions;
+using AgentController.Domain.Actions;
 using CodexController.Models;
 
 namespace CodexController.Controllers;
@@ -11,9 +13,6 @@ public enum ConversationTurnInputAction
 
 public static class ConversationTurnInputMap
 {
-    public const string PreviousShortcut = "Alt+Up";
-    public const string NextShortcut = "Alt+Down";
-
     public static ConversationTurnInputAction Resolve(
         ControllerButtons downEdges)
     {
@@ -30,14 +29,14 @@ public static class ConversationTurnInputMap
         return ConversationTurnInputAction.None;
     }
 
-    public static string? ShortcutFor(ConversationTurnInputAction action)
+    public static ActionId? ActionIdFor(ConversationTurnInputAction action)
     {
         return action switch
         {
             ConversationTurnInputAction.PreviousUserMessage =>
-                PreviousShortcut,
+                ConversationActionContract.PreviousUserMessageId,
             ConversationTurnInputAction.NextUserMessage =>
-                NextShortcut,
+                ConversationActionContract.NextUserMessageId,
             _ => null,
         };
     }

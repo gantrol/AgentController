@@ -64,7 +64,7 @@ public sealed class RadialMenuStateTests
     }
 
     [Fact]
-    public void WaitingForResponseKeepsWheelHidden()
+    public void WaitingForResponseKeepsMenuHidden()
     {
         var state = new RadialMenuState(
             RadialMenuLayerKind.Command,

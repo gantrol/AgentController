@@ -9,22 +9,22 @@ public sealed class ConversationTurnInputMapTests
     [InlineData(
         ControllerButtons.DPadUp,
         ConversationTurnInputAction.PreviousUserMessage,
-        "Alt+Up")]
+        "conversation.previous-user-message")]
     [InlineData(
         ControllerButtons.DPadDown,
         ConversationTurnInputAction.NextUserMessage,
-        "Alt+Down")]
+        "conversation.next-user-message")]
     public void MapsBaseDPadToCodexUserMessageNavigation(
         ControllerButtons downEdges,
         ConversationTurnInputAction expectedAction,
-        string expectedShortcut)
+        string expectedActionId)
     {
         var action = ConversationTurnInputMap.Resolve(downEdges);
 
         Assert.Equal(expectedAction, action);
         Assert.Equal(
-            expectedShortcut,
-            ConversationTurnInputMap.ShortcutFor(action));
+            expectedActionId,
+            ConversationTurnInputMap.ActionIdFor(action)?.Value);
     }
 
     [Fact]
@@ -36,6 +36,6 @@ public sealed class ConversationTurnInputMapTests
             ControllerButtons.A);
 
         Assert.Equal(ConversationTurnInputAction.None, action);
-        Assert.Null(ConversationTurnInputMap.ShortcutFor(action));
+        Assert.Null(ConversationTurnInputMap.ActionIdFor(action));
     }
 }

@@ -31,12 +31,12 @@ public sealed class ZhCatalog : DictionaryStringCatalog
 
             [StringKeys.ControlLeftStick] = "左摇杆",
             [StringKeys.ControlLeftStickHint] =
-                "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · {0} 切根区域",
+                "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · 按下左摇杆 {0}（L3）切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
             [StringKeys.ControlRightStickHint] =
-                "简易：← / → 调 Power、↑ Standard、↓ Fast · 高级：← / → 切控件、↑ / ↓ 调实际选项 · 单击 {0} 打开对应菜单 · 长按 {0} 设置",
+                "上下选择控件 · 左右调整当前控件 · 短按右摇杆 {0}（R3）确认 · 长按 {0} 打开 Agent Controller 设置",
             [StringKeys.ControlRightStickHintOpen] =
-                "模型选择器已打开 · ↑ / ↓ 选择 · {2} 确认 · {1} 关闭",
+                "Micro 菜单已打开 · ↑↓ 选择控件 · ←→ 调整当前控件 · {2} 确认 · {1} 关闭",
             [StringKeys.ControlRightStickHintConfirmation] =
                 "模型选择确认 · {2} 确认 · {1} 取消",
             [StringKeys.ControlPrimary] = "{0} · 打开任务",
@@ -59,17 +59,17 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "将 {0} 置于前台；前台控制会自动启用",
 
             [StringKeys.ComposerRightStickAdjustment] =
-                "右摇杆模型旋钮",
+                "右摇杆 Micro 旋钮",
             [StringKeys.ComposerAgentNotForeground] = "{0} 未在前台",
             [StringKeys.ComposerDialReady] =
-                "简易模式 · 实际 Power 与速度控件",
+                "Micro 控制 · ↑↓ 选择控件 · ←→ 调整当前项",
             [StringKeys.ComposerConnectController] =
                 "连接手柄后开始",
             [StringKeys.ComposerDialSettingsOpened] =
                 "已打开手柄设置",
             [StringKeys.ComposerDialCanceled] =
                 "已关闭当前选择器",
-            [StringKeys.TermVirtualDial] = "虚拟旋钮",
+            [StringKeys.TermVirtualDial] = "Micro 旋钮",
             [StringKeys.TermReasoningEffort] = "思考强度",
             [StringKeys.TermModel] = "模型",
             [StringKeys.TermSpeed] = "速度",
@@ -117,15 +117,15 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ 遵循本程序的稳定滚轮目录，并同步 {0} 原生侧边栏焦点，但不会自动打开对话。任务活动时间不会重排滚轮；→ 进入项目，← 退出项目，A 只打开任务。置顶与项目折叠互相独立。",
             [StringKeys.ConfigRightStickComposer] =
-                "右摇杆 · 模型旋钮",
-            [StringKeys.ConfigIncreaseDecrease] = "←→",
+                "右摇杆 · Micro 旋钮",
+            [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "简易模式用 ← / → 调整实际 Power，并按屏幕顺序用 ↑ 选择 Standard、↓ 选择 Fast；高级模式用 ← / → 切换模型、思考强度或速度，用 ↑ / ↓ 调整当前值",
+                "↑↓ 通过 Micro 旋钮档位遍历 Advanced、Fast、Power 等控件；←→ 保持屏幕方向并调整当前控件。",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "单击打开对应的简易或高级菜单；长按 500 ms 打开手柄设置",
+                "短按即按下 Micro 旋钮；长按 500 ms 打开 Agent Controller 设置",
             [StringKeys.ConfigSelectionBehavior] =
-                "旋钮只使用 Codex 针对当前账户和模型实际提供的选项。简易模式操作 Power 与速度；高级模式拆分模型、思考强度和速度，绝不会进入 Full access 或 Project 选择器。",
+                "Codex composer-navigation 持有控件遍历；手柄保留二维语义，不会再把左推误译成 ENC_CC 或把上下与左右合并。",
             [StringKeys.ConfigAgentShortcuts] = "{0} 快捷键",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "程序会安全追加降级绑定；新绑定在 {0} 重启后生效。",

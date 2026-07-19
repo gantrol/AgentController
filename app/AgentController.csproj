@@ -2,9 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
@@ -39,7 +37,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.18" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Override Microsoft.Data.Sqlite's vulnerable native SQLite payload while
+         retaining its tested managed provider/bundle surface. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\AgentController.Application\AgentController.Application.csproj" />
+    <ProjectReference Include="..\src\AgentController.Platform.Abstractions\AgentController.Platform.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

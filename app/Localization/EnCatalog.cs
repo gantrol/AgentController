@@ -32,12 +32,12 @@ public sealed class EnCatalog : DictionaryStringCatalog
 
             [StringKeys.ControlLeftStick] = "Left stick",
             [StringKeys.ControlLeftStickHint] =
-                "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · {0} changes root",
+                "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · press {0} (L3) to change root",
             [StringKeys.ControlRightStick] = "Right stick",
             [StringKeys.ControlRightStickHint] =
-                "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click {0} opens the picker · hold {0} Settings",
+                "Up/down selects a control · left/right adjusts it · tap {0} (R3) to confirm · hold {0} for Agent Controller settings",
             [StringKeys.ControlRightStickHintOpen] =
-                "Model picker active · ↑ / ↓ Move · {2} Select · {1} Close",
+                "Micro menu active · ↑↓ select a control · ←→ adjust it · {2} Select · {1} Close",
             [StringKeys.ControlRightStickHintConfirmation] =
                 "Model selection confirmation · {2} Confirm · {1} Cancel",
             [StringKeys.ControlPrimary] = "{0} · Open task",
@@ -62,18 +62,18 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Bring {0} to front; foreground control enables automatically",
 
             [StringKeys.ComposerRightStickAdjustment] =
-                "Right-stick model dial",
+                "Right-stick Micro encoder",
             [StringKeys.ComposerAgentNotForeground] =
                 "{0} is not in the foreground",
             [StringKeys.ComposerDialReady] =
-                "Simple mode · live Power and Speed controls",
+                "Micro control · ↑↓ select · ←→ adjust",
             [StringKeys.ComposerConnectController] =
                 "Connect a controller to begin",
             [StringKeys.ComposerDialSettingsOpened] =
                 "Controller settings opened",
             [StringKeys.ComposerDialCanceled] =
                 "Current picker closed",
-            [StringKeys.TermVirtualDial] = "Virtual dial",
+            [StringKeys.TermVirtualDial] = "Micro encoder",
             [StringKeys.TermReasoningEffort] = "Reasoning effort",
             [StringKeys.TermModel] = "Model",
             [StringKeys.TermSpeed] = "Speed",
@@ -123,15 +123,15 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ follows this app's stable wheel and syncs {0} sidebar focus without opening a conversation. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A opens tasks only. Pinning and project expansion remain independent.",
             [StringKeys.ConfigRightStickComposer] =
-                "Right stick · Model dial",
-            [StringKeys.ConfigIncreaseDecrease] = "←→",
+                "Right stick · Micro encoder",
+            [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
-                "Simple: ← / → steps the live Power control, ↑ selects Standard, and ↓ selects Fast in screen order. Advanced: ← / → changes Model, Effort, or Speed; ↑ / ↓ changes its value.",
+                "↑↓ uses Micro encoder detents to traverse Advanced, Fast, Power, and other controls; ←→ keeps its screen direction and adjusts the current control.",
             [StringKeys.ConfigModeSwitchGlyphs] = "{0} / {1}",
             [StringKeys.ConfigModeSwitchDescription] =
-                "Click opens the matching Simple or Advanced picker; hold for 500 ms to open controller settings",
+                "Tap presses the Micro encoder; hold for 500 ms to open Agent Controller settings",
             [StringKeys.ConfigSelectionBehavior] =
-                "The dial uses only options currently exposed by Codex for this account and model. Simple drives Power and Speed; Advanced separates Model, Effort, and Speed. It never enters Full access or Project selectors.",
+                "Codex composer-navigation owns control traversal; the gamepad keeps two-dimensional intent and never merges left/right with up/down.",
             [StringKeys.ConfigAgentShortcuts] = "{0} shortcuts",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "The app safely appends fallback bindings; new bindings take effect after {0} restarts.",

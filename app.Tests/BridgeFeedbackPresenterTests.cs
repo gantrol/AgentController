@@ -133,7 +133,7 @@ public sealed class BridgeFeedbackPresenterTests
             new RecordingOverlayPresenter(),
             context);
 
-        await Task.Run(() =>
+        await RunOnDedicatedThread(() =>
             hub.Publish(
                 BridgeEventKeys.ControllerConnected,
                 parameters: Parameters(("value", "connected"))));
@@ -156,7 +156,7 @@ public sealed class BridgeFeedbackPresenterTests
             new RecordingOverlayPresenter(),
             context);
 
-        await Task.Run(() =>
+        await RunOnDedicatedThread(() =>
             hub.Publish(
                 BridgeEventKeys.ControllerPaused,
                 parameters: Parameters(("value", "paused"))));
@@ -260,6 +260,29 @@ public sealed class BridgeFeedbackPresenterTests
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.Ordinal);
+    }
+
+    private static Task RunOnDedicatedThread(Action action)
+    {
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        })
+        {
+            IsBackground = true,
+        };
+        thread.Start();
+        return completion.Task;
     }
 
     private sealed class TestFormatter : IBridgeFeedbackFormatter

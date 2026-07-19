@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CodexController.Controllers;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 using CodexController.ViewModels;
 
@@ -68,10 +69,10 @@ public sealed class DevicePageViewModelTests
         Assert.Equal("Y", viewModel.ProjectGlyph);
         Assert.Equal("+", viewModel.WakeGlyph);
         Assert.Equal(
-            "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
+            "↑↓ Move focus · → Enter project · ← Exit project · A Open task · press LS (L3) to change root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
+            "Up/down selects a control · left/right adjusts it · tap RS (R3) to confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -167,7 +168,7 @@ public sealed class DevicePageViewModelTests
             BuiltInControllerProfiles.Generic);
 
         Assert.Equal(RightControlMode.Dial, viewModel.RightMode);
-        Assert.Equal("简易模式", viewModel.RightModeLabel);
+        Assert.Equal("Micro 旋钮", viewModel.RightModeLabel);
 
         viewModel.UpdateRightMode(
             RightControlMode.Model,
@@ -211,7 +212,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Simple mode · live Power and Speed controls",
+            "Micro control · ↑↓ select · ←→ adjust",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -248,7 +249,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "简易模式 · 实际 Power 与速度控件",
+            "Micro 控制 · ↑↓ 选择控件 · ←→ 调整当前项",
             viewModel.RightModeValue);
     }
 
@@ -266,13 +267,13 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: true);
 
         Assert.Equal(
-            "Model picker active · ↑ / ↓ Move · A Select · B Close",
+            "Micro menu active · ↑↓ select a control · ←→ adjust it · A Select · B Close",
             viewModel.RightStickHint);
 
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
+            "Up/down selects a control · left/right adjusts it · tap RS (R3) to confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
     }
 
@@ -387,6 +388,58 @@ public sealed class DevicePageViewModelTests
         Assert.True(viewModel.IsAgentStatusActive);
     }
 
+    [Fact]
+    public void DashboardTutorialObservesStickPressesButNotRawShoulders()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.UpdateContext(
+            new LocalizationService(AppLanguage.EnUs).Strings,
+            "Codex",
+            BuiltInControllerProfiles.Xbox);
+
+        viewModel.UpdateControllerState(
+            ConnectedState(
+                "Tests",
+                ControllerButtons.RightShoulder));
+
+        Assert.Equal(
+            ControllerTutorialMode.Overview,
+            viewModel.Tutorial.Mode);
+
+        viewModel.UpdateControllerState(ConnectedState("Tests"));
+        viewModel.UpdateControllerState(
+            ConnectedState(
+                "Tests",
+                ControllerButtons.RightThumb));
+
+        Assert.Equal(
+            ControllerTutorialMode.StickPress,
+            viewModel.Tutorial.Mode);
+    }
+
+    [Fact]
+    public void MicroMenuHintRefreshPreservesLiveTutorialDispatch()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.UpdateContext(
+            new LocalizationService(AppLanguage.EnUs).Strings,
+            "Codex",
+            BuiltInControllerProfiles.Xbox);
+        viewModel.UpdateTutorialDispatch(new DispatchDisplay(
+            DispatchDisplayKind.Queue,
+            "Queue next turn",
+            "Runs after the current turn"));
+
+        viewModel.UpdateVirtualDialMenuState(isOpen: true);
+        viewModel.Tutorial.SelectCommandCommand.Execute(null);
+
+        Assert.Contains(
+            viewModel.Tutorial.Items,
+            item =>
+                item.Title == "Queue next turn" &&
+                item.Description == "Runs after the current turn");
+    }
+
     private static DevicePageViewModel CreateViewModel()
     {
         return new DevicePageViewModel(
@@ -397,14 +450,16 @@ public sealed class DevicePageViewModelTests
             _ => { });
     }
 
-    private static ControllerState ConnectedState(string backend)
+    private static ControllerState ConnectedState(
+        string backend,
+        ControllerButtons buttons = ControllerButtons.None)
     {
         return new ControllerState(
             true,
             0,
             1,
             backend,
-            ControllerButtons.None,
+            buttons,
             0,
             0,
             0,

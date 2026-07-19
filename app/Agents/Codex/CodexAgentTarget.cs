@@ -212,11 +212,6 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _sidebar.TryGetCurrentThreadTitle();
         }
 
-        public SidebarAutomationResult GoBack(AppSettings settings)
-        {
-            return _sidebar.GoBack(settings);
-        }
-
         public SidebarAutomationResult RestoreDisclosure(
             ProjectDisclosureLease lease)
         {
@@ -325,17 +320,6 @@ public sealed class CodexAgentTarget : IAgentTarget
                 cancellationToken);
         }
 
-        public Task<ComposerAutomationResult> ScrollConversationAsync(
-            ConversationBoundary boundary,
-            AppSettings settings,
-            CancellationToken cancellationToken)
-        {
-            return _composer.ScrollConversationAsync(
-                boundary,
-                settings,
-                cancellationToken);
-        }
-
         public string? TryReadComposerButtonName()
         {
             return _composer.TryReadComposerButtonName();
@@ -409,16 +393,6 @@ public sealed class CodexAgentTarget : IAgentTarget
             return _composer.DialCancel(settings);
         }
 
-        public ComposerAutomationResult Submit(AppSettings settings)
-        {
-            return _composer.SubmitComposer(settings);
-        }
-
-        public ComposerAutomationResult Clear(AppSettings settings)
-        {
-            return _composer.ClearComposer(settings);
-        }
-
         public ComposerAutomationResult Cancel(AppSettings settings)
         {
             return _composer.CancelComposer(settings);
@@ -427,11 +401,6 @@ public sealed class CodexAgentTarget : IAgentTarget
 
     private sealed class DeepLinkAdapter : IDeepLinks
     {
-        public bool OpenThread(string threadId)
-        {
-            return CodexCommandService.OpenThread(threadId);
-        }
-
         public void OpenSettings()
         {
             CodexCommandService.OpenCodexSettings();

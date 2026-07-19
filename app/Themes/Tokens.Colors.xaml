@@ -25,6 +25,9 @@
     <Color x:Key="Color.Amber.600">#A56A1C</Color>
     <Color x:Key="Color.Red.600">#9E4A43</Color>
     <Color x:Key="Color.Red.100">#F1E6E4</Color>
+    <Color x:Key="Color.Lavender.100">#F0F1FF</Color>
+    <Color x:Key="Color.Lavender.300">#C7CCFA</Color>
+    <Color x:Key="Color.Lavender.600">#6873C7</Color>
 
     <SolidColorBrush x:Key="Brush.Bg.Canvas"
                      Color="{StaticResource Color.Canvas.0}"
@@ -135,6 +138,20 @@
                      po:Freeze="True" />
     <SolidColorBrush x:Key="Brush.Overlay.Progress.Track"
                      Color="#55FFFFFF"
+                     po:Freeze="True" />
+
+    <!-- Micro-inspired Agent panel. Status colors remain independent from selection. -->
+    <SolidColorBrush x:Key="Brush.Agent.Row.Fill"
+                     Color="#DFFFFFFF"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Agent.Row.Selected"
+                     Color="{StaticResource Color.Lavender.100}"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Agent.Row.SelectedBorder"
+                     Color="{StaticResource Color.Lavender.300}"
+                     po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.Agent.Glyph"
+                     Color="{StaticResource Color.Lavender.600}"
                      po:Freeze="True" />
 
     <!-- Codex Micro-compatible task status lights. -->

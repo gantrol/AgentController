@@ -3,9 +3,10 @@ using CodexController.Models;
 namespace CodexController.Controllers;
 
 /// <summary>
-/// Keeps the stable Agent slot order while placing each shortcut beside the
-/// controller control it represents. View/Menu occupy the upper side sectors;
-/// D-pad left/right occupy the lower side sectors.
+/// Keeps the stable two-column Micro grid order: Up/Right, Down/Left, then
+/// View/Menu. The final row uses the controller family's live glyphs and an
+/// explicit View/Menu legend so those center buttons are not mistaken for
+/// D-pad directions.
 /// </summary>
 public static class AgentRadialSlotLayout
 {
