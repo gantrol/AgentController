@@ -35,6 +35,20 @@ internal static class CurrentControlActionPolicy
             return CurrentControlAction.Escape;
         }
 
+        // The official Micro bridge does not expose its composer highlight as
+        // keyboard focus in every Codex build. A verified closed observation
+        // therefore has no item name, but horizontal gamepad input must still
+        // preserve the literal on-screen direction. The executor keeps this
+        // fallback foreground-bound to Codex.
+        if (
+            readback.Surface == CodexMicroSurfaceKind.None &&
+            readback.SelectionVerified)
+        {
+            return navigation == ComposerDialNavigation.Left
+                ? CurrentControlAction.NativeLeft
+                : CurrentControlAction.NativeRight;
+        }
+
         if (!readback.SelectionVerified)
         {
             return CurrentControlAction.None;
@@ -158,7 +172,9 @@ internal sealed class CodexCurrentControlExecutor
 
             AutomationElement? focused = null;
             double? beforeValue = null;
-            if (action != CurrentControlAction.Escape)
+            if (
+                action != CurrentControlAction.Escape &&
+                readback.Surface != CodexMicroSurfaceKind.None)
             {
                 focused = AutomationElement.FocusedElement;
                 if (!MatchesExpectedFocus(

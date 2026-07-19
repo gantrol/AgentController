@@ -3058,14 +3058,9 @@ public partial class MainWindow : Window
 
     private bool CanExecuteCurrentControlIntent(
         ComposerDialNavigation navigation) =>
-        (
-            navigation == ComposerDialNavigation.Left &&
-            _microReadback.IsMenuOpen
-        ) ||
-        (
-            _microReadback.SelectionVerified &&
-            !string.IsNullOrWhiteSpace(_microReadback.ItemName)
-        );
+        CurrentControlActionPolicy.Resolve(
+            _microReadback,
+            navigation) != CurrentControlAction.None;
 
     private void StartVirtualDialNavigationPump()
     {

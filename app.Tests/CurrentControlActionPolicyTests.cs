@@ -62,6 +62,23 @@ public sealed class CurrentControlActionPolicyTests
                 navigation));
     }
 
+    [Theory]
+    [InlineData(ComposerDialNavigation.Left)]
+    [InlineData(ComposerDialNavigation.Right)]
+    public void VerifiedClosedSurfaceKeepsLiteralDirection(
+        ComposerDialNavigation navigation)
+    {
+        var expected = navigation == ComposerDialNavigation.Left
+            ? CurrentControlAction.NativeLeft
+            : CurrentControlAction.NativeRight;
+
+        Assert.Equal(
+            expected,
+            CurrentControlActionPolicy.Resolve(
+                CodexMicroReadback.Closed,
+                navigation));
+    }
+
     [Fact]
     public void RightDoesNotConfirmMenuLeaf()
     {
