@@ -34,7 +34,7 @@
 | RS-06 | state buffer 保留跨区、换向和完整 neutral；手势期间同时锁定轴与方向，回中后才重新判定 | `ControllerStateBufferTests`、`StickGestureRouterTests` | 待慢速、快速、斜向和未完全回中矩阵 |
 | RS-07 | encoder intent 有界合并且 180 ms 过期；横向 intent 绑定 generation 且 450 ms 过期；readback 合并请求，不再通过 cancellation 互相饿死；Broker 在应用启动时后台预热且失败重连退避 | `EncoderStepAccumulatorTests`、`CurrentControlIntentBufferTests`、`BrokerCoexistenceTests` | 待长期重复与“打开模型选择器后恢复”复验 |
 | LT-01 | PTT 改为 Micro-first down/up；release 不确定时补发一次；下一次 press 先恢复 neutral；断连/退出保留 release | `MicroRpcCodecTests`、`PushToTalkAutomationStateTests`、`ControllerStateBufferTests` | 待短按、口述、菜单、失焦、断连复验 |
-| SRC-01 | Agent Controller 与模拟器都改为 named-pipe client；唯一 Broker 独占 `CodexMicroVhfUm`、统一 sequence 和 output/RPC reader，按 client lease 中和，并缓存 request response 防止超时重放双发 | `BrokerCoexistenceTests`、`ClientInputStateTests`、`MicroDriverOwnershipRulesTests` | 双客户端 fake-driver 验收通过；真实驱动双进程仍待复验 |
+| SRC-01 | Agent Controller 与模拟器都改为 named-pipe client；唯一 Broker 独占 `CodexMicroVhfUm`、统一 sequence 和 output/RPC reader；重叠 held key 只投递第一次 down/最后一次 up；analog owner 释放时恢复最近仍活跃来源；缓存 request response 防止超时重放双发 | `BrokerCoexistenceTests`、`ClientInputStateTests`、`MicroInputBatchTests`、`MicroDriverOwnershipRulesTests` | 三客户端 fake-driver 仲裁验收通过；真实驱动双进程仍待复验 |
 
 分层提交：
 
@@ -47,9 +47,10 @@
 7. `38b42f8` — 单 Broker、多客户端 lease；
 8. `119a815` — 架构测试禁止桌面进程重新直接打开驱动；
 9. `750e653` — request response cache，重复非幂等请求不双发；
-10. `2465499` — 应用启动时后台预热 Broker，输入路径不承担首次连接等待。
+10. `2465499` — 应用启动时后台预热 Broker，输入路径不承担首次连接等待；
+11. `d2879ae` — 重叠 held key 引用合并与 analog 最近活跃 owner 恢复。
 
-当前自动化基线为主解决方案 786 项、`CodexMicro.Protocol` 5 项、`CodexMicro.Desktop` 44 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
+当前自动化基线为主解决方案 790 项、`CodexMicro.Protocol` 5 项、`CodexMicro.Desktop` 44 项，全部通过。这个结果只证明可重复的代码故障层已经被覆盖，不替代下方未勾选的实机矩阵。
 
 ## 不可变交互合同
 
@@ -227,7 +228,7 @@ sequenceDiagram
 | Session | encoder 有界合并；横向 intent 绑定 generation/TTL；readback 使用 coalescing gate |
 | Verification | popup visible 不等于成功；菜单必须有具体选择，横向必须匹配真实 focus，数值必须按预期方向变化 |
 | PTT | down/up、OutcomeUnknown、release retry、restart neutral 与断连清理进入同一状态机 |
-| Transport ownership | 单 Broker 独占 handle、sequence 与 output reader；客户端状态按 lease 隔离 |
+| Transport ownership | 单 Broker 独占 handle、sequence 与 output reader；客户端状态按 lease 隔离；同键引用合并，analog 按最近活跃 owner 恢复 |
 
 以下部分仍必须由实机记录确认，不能从自动化测试推断：
 
@@ -236,7 +237,7 @@ sequenceDiagram
 - 当前 Codex build 的菜单 selection、UIA focus 与可见高亮是否一致；不一致时 executor 是否确实拒绝发送。
 - popup 打开/关闭、失焦/恢复和鼠标先操作后，generation/TTL 是否阻止旧 intent 重放。
 - 当前 Codex build 对 Approve、Add files、模型列表、Advanced、Fast、Power 暴露的 readback 结构是否覆盖现有观察器。
-- 两个真实桌面进程是否都只连接 Broker，驱动 batch sequence 是否单调，output/RPC 是否只有一个 reader。
+- 两个真实桌面进程是否都只连接 Broker，驱动 batch sequence 是否单调，output/RPC 是否只有一个 reader；重叠 PTT 是否只有一次物理 down/up，analog 后来 owner 释放后是否恢复前一来源。
 
 ## 下一次排查必须采集的证据
 
@@ -260,7 +261,7 @@ sequenceDiagram
 - [ ] 覆盖 popup 打开/关闭、Codex 失焦/恢复、鼠标先打开菜单、R3 打开模型列表、菜单中途关闭。
 - [ ] 复现模型控制失活，并比较选择器打开前后完整状态快照；不得只记录“打开后恢复”。
 - [ ] 对 LT 覆盖短按、正常口述、菜单开关、失焦、断连，并确认 down/up 是否都到达每一层。
-- [ ] 单独连接实体控制器、单独连接模拟器、先后交换连接顺序、同时持续输入，验证 SRC-01 的 lease 与 sequence。
+- [ ] 单独连接实体控制器、单独连接模拟器、先后交换连接顺序、同时持续输入；重点复验同一 PTT 的重叠 down/up 与 analog owner 交接，验证 SRC-01 的 lease、恢复顺序与 sequence。
 - [ ] 至少在 Xbox Series、Flydigi Vader 4 Pro、8BitDo Ultimate 2 和当前支持的 Codex build 上保存实机结果。
 
 ## 完成门槛

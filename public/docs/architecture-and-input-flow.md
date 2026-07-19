@@ -83,7 +83,7 @@ sequenceDiagram
 6. 横向 Left/Right/Escape 在 Codex 仍为前台、可见选择与键盘焦点一致时才发送；RangeValue 控件还必须读回正确方向的数值变化；
 7. popup/readback 请求采用合并而非互相取消；旧 generation 或超时 intent 不得在后来打开的菜单中重放；
 8. LT 使用 Micro-first 的 down/up 状态机；不确定 release 会补发一次，下一次 press 会先恢复 neutral；
-9. Agent Controller 与 `virtual-micro` 都是同一当前用户 Broker 的客户端，桌面进程不再直接打开驱动；Agent Controller 启动时后台预热 Broker，输入线程不会承担最长约 3 秒的首次连接等待，失败连接有 2 秒退避。
+9. Agent Controller 与 `virtual-micro` 都是同一当前用户 Broker 的客户端，桌面进程不再直接打开驱动；Broker 合并重叠 held key，并按最近活跃顺序仲裁 analog；Agent Controller 启动时后台预热 Broker，输入线程不会承担最长约 3 秒的首次连接等待，失败连接有 2 秒退避。
 
 仍未完成的是实体手柄与真实 Codex build 的验收记录，以及覆盖原始输入到 readback 的可导出 correlation trace；自动化测试不能替代这两项。
 
@@ -135,12 +135,13 @@ flowchart LR
     Broker -->|"event cursor broadcast"| SimClient
 ```
 
-Broker 对每个客户端保存独立 `clientId`、心跳 lease、held key、PTT 和 analog 状态。正常 disconnect、客户端崩溃后的 lease expiry、Broker 退出都会执行 best-effort neutral；当另一客户端仍持有同一键或 analog 时，不发送会释放对方状态的 neutral。管道限定当前用户、帧长和 batch 数，并限制同时连接数；每个 lease 的 32 条有界 response cache 保证重复 request id 不会双发非幂等输入。驱动 handle、batch sequence 和 output/RPC reader 只有一份。
+Broker 对每个客户端保存独立 `clientId`、心跳 lease、held key、PTT 和 analog 状态。同一键被多个客户端同时按住时，只有第一个 down 和最后一个 up 到达驱动；中间的 down/up 只更新 lease。Analog 采用最近活跃者拥有物理输出的规则，当前 owner neutral 或退出时恢复最近一个仍活跃来源的角度与距离，而不是错误归零。正常 disconnect、客户端崩溃后的 lease expiry、Broker 退出都会执行 best-effort neutral。管道限定当前用户、帧长和 batch 数，并限制同时连接数；每个 lease 的 32 条有界 response cache 保证重复 request id 不会双发非幂等输入。驱动 handle、batch sequence 和 output/RPC reader 只有一份。
 
 自动回归覆盖：
 
 - 两个客户端交换连接顺序后共享同一 connection epoch，驱动只连接一次；
-- 一个客户端退出只释放自己的 held state；同键/同 analog 被另一客户端持有时不会误释放；
+- 多个客户端正常按住/松开同一键时，驱动只收到一次 down/up；客户端退出也只释放自己的 held state；
+- 三个 analog 来源依次接管并释放时，按最近活跃顺序逐层恢复，最后一个来源释放后才 neutral；
 - output/RPC 只有 Broker 读取，灯光状态同时广播给两个客户端；
 - 相同 request id + payload 重放只返回缓存 response；换 payload 复用同一 id 会被拒绝；
 - app、Broker、协议和模拟器测试通过后，仍必须执行 [`91-controller-input-known-issues.md`](../../todo/91-controller-input-known-issues.md) 中未勾选的实机矩阵。
