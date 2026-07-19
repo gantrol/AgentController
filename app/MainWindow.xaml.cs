@@ -85,6 +85,8 @@ public partial class MainWindow : Window
     private readonly PushToTalkAutomationState _pushToTalkAutomation =
         new();
     private readonly EncoderStepAccumulator _encoderSteps = new(3);
+    private readonly CodexMicroReadbackObserver _microReadbackObserver =
+        new();
 
     private readonly AppSettings _settings;
     private CodexSnapshot _snapshot = new();
@@ -130,6 +132,9 @@ public partial class MainWindow : Window
     private int _speedIndex;
     private CancellationTokenSource? _composerPickerCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
+    private CancellationTokenSource? _microReadbackCancellation;
+    private CodexMicroReadback _microReadback =
+        CodexMicroReadback.Closed;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
     private int _encoderStepPumpRunning;
@@ -2975,6 +2980,10 @@ public partial class MainWindow : Window
                     !_virtualDialCancelRequested)
                 {
                     PresentVirtualDialResult(result);
+                    if (result.Succeeded)
+                    {
+                        QueueMicroReadback();
+                    }
                 }
 
                 if (!result.Succeeded)
@@ -3142,6 +3151,81 @@ public partial class MainWindow : Window
         }
 
         PresentVirtualDialResult(result);
+        if (result.Succeeded)
+        {
+            QueueMicroReadback();
+        }
+    }
+
+    private void QueueMicroReadback()
+    {
+        var previous = _microReadbackCancellation;
+        var cancellation = new CancellationTokenSource();
+        _microReadbackCancellation = cancellation;
+        previous?.Cancel();
+        var generation = Volatile.Read(ref _virtualDialGeneration);
+        _ = ObserveMicroReadbackAsync(generation, cancellation);
+    }
+
+    private async Task ObserveMicroReadbackAsync(
+        int generation,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var readback = await _microReadbackObserver
+                .ObserveAsync(cancellation.Token)
+                .ConfigureAwait(true);
+            if (
+                cancellation.IsCancellationRequested ||
+                !ReferenceEquals(
+                    _microReadbackCancellation,
+                    cancellation) ||
+                generation !=
+                    Volatile.Read(ref _virtualDialGeneration))
+            {
+                return;
+            }
+
+            if (
+                readback.Surface == CodexMicroSurfaceKind.None &&
+                !readback.SelectionVerified)
+            {
+                return;
+            }
+
+            var menuWasOpen = _virtualDialMenuOpen;
+            _microReadback = readback;
+            SetVirtualDialMenuOpen(
+                readback.IsMenuOpen,
+                readback.Surface == CodexMicroSurfaceKind.Dialog);
+            if (!string.IsNullOrWhiteSpace(readback.DisplayText))
+            {
+                _devicePageViewModel.UpdateRightMode(
+                    RightControlMode.Dial,
+                    readback.DisplayText);
+            }
+
+            if (menuWasOpen && !readback.IsMenuOpen)
+            {
+                BeginVirtualDialReleaseDrain();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer Micro action owns readback.
+        }
+        finally
+        {
+            if (ReferenceEquals(
+                    _microReadbackCancellation,
+                    cancellation))
+            {
+                _microReadbackCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
     }
 
     private void SelectVirtualDialOption()
@@ -3176,7 +3260,11 @@ public partial class MainWindow : Window
         }
 
         PresentVirtualDialResult(result);
-        if (result.Succeeded && !result.IsMenuOpen)
+        if (result.Succeeded && !result.StateVerified)
+        {
+            QueueMicroReadback();
+        }
+        else if (result.Succeeded && !result.IsMenuOpen)
         {
             _composerPickerMenuLikelyOpen = false;
             BeginVirtualDialReleaseDrain();
@@ -3424,9 +3512,12 @@ public partial class MainWindow : Window
     {
         if (!result.Succeeded)
         {
-            SetVirtualDialMenuOpen(
-                result.IsMenuOpen,
-                result.RequiresConfirmation);
+            if (result.StateVerified)
+            {
+                SetVirtualDialMenuOpen(
+                    result.IsMenuOpen,
+                    result.RequiresConfirmation);
+            }
             var failure = VirtualDialFailureLabel(result);
             _devicePageViewModel.UpdateRightMode(
                 RightControlMode.Dial,
@@ -3444,9 +3535,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetVirtualDialMenuOpen(
-            result.IsMenuOpen,
-            result.RequiresConfirmation);
+        if (result.StateVerified)
+        {
+            SetVirtualDialMenuOpen(
+                result.IsMenuOpen,
+                result.RequiresConfirmation);
+        }
 
         _rightMode = RightControlMode.Dial;
         var value = string.IsNullOrWhiteSpace(result.ControlName)
@@ -3563,6 +3657,10 @@ public partial class MainWindow : Window
         _virtualDialOpenPending = false;
         _virtualDialCancelRequested = false;
         _dialInputReleasePending = false;
+        var readbackCancellation = _microReadbackCancellation;
+        _microReadbackCancellation = null;
+        readbackCancellation?.Cancel();
+        _microReadback = CodexMicroReadback.Closed;
         CancelVirtualDialPressHold();
         ClearPendingVirtualDialInput();
 

@@ -61,7 +61,8 @@ public sealed record ComposerDialResult(
     string? ErrorDetail = null,
     bool MenuWasPresent = false,
     bool RequiresConfirmation = false,
-    long? ElapsedMilliseconds = null);
+    long? ElapsedMilliseconds = null,
+    bool StateVerified = true);
 
 public enum ComposerDialNavigation
 {
@@ -256,7 +257,8 @@ public sealed partial class CodexComposerService
                 true,
                 "Codex Micro",
                 IsMenuOpen: _dialMenuOpen,
-                MenuWasPresent: _dialMenuOpen);
+                MenuWasPresent: _dialMenuOpen,
+                StateVerified: false);
         }
 
         if (micro == MicroReportSendResult.Rejected)
@@ -544,7 +546,8 @@ public sealed partial class CodexComposerService
                             true,
                             _dialControlName ?? "Codex Micro",
                             IsMenuOpen: true,
-                            MenuWasPresent: true);
+                            MenuWasPresent: true,
+                            StateVerified: false);
                     }
 
                     if (micro == MicroReportSendResult.Rejected)
@@ -987,15 +990,15 @@ public sealed partial class CodexComposerService
         {
             lock (_dialSync)
             {
-                _dialMenuOpen = true;
                 _dialControlName ??= "Codex Micro";
             }
 
             return new(
                 true,
                 _dialControlName,
-                IsMenuOpen: true,
-                MenuWasPresent: true);
+                IsMenuOpen: _dialMenuOpen,
+                MenuWasPresent: _dialMenuOpen,
+                StateVerified: false);
         }
 
         if (micro == MicroReportSendResult.Rejected)
@@ -1029,7 +1032,6 @@ public sealed partial class CodexComposerService
         {
             lock (_dialSync)
             {
-                _dialMenuOpen = true;
                 _dialControlName ??= "Codex Micro";
             }
 
@@ -1039,8 +1041,9 @@ public sealed partial class CodexComposerService
             return new(
                 true,
                 _dialControlName,
-                IsMenuOpen: true,
-                MenuWasPresent: true);
+                IsMenuOpen: _dialMenuOpen,
+                MenuWasPresent: _dialMenuOpen,
+                StateVerified: false);
         }
 
         if (micro == MicroReportSendResult.Rejected)

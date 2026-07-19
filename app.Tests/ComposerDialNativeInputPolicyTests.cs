@@ -218,6 +218,31 @@ public sealed class ComposerDialNativeInputPolicyTests
         Assert.Empty(transport.Reports);
     }
 
+    [Fact]
+    public void EncoderPressDoesNotInventAnOpenMenuWithoutReadback()
+    {
+        using var transport = new RecordingTransport();
+        using var micro = new MicroInputService(transport);
+        var service = new CodexComposerService(
+            micro,
+            _ => true,
+            _ => true);
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        var result = service.DialPress(settings);
+
+        Assert.True(result.Succeeded);
+        Assert.False(result.IsMenuOpen);
+        Assert.False(result.StateVerified);
+        Assert.Equal(
+            [("ENC", 1), ("ENC", 0)],
+            DecodeHidEvents(transport.Reports));
+    }
+
     private static IReadOnlyList<(string Key, int Action)> DecodeHidEvents(
         IReadOnlyList<byte[]> reports)
     {
