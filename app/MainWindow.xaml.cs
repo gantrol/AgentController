@@ -32,6 +32,8 @@ public partial class MainWindow : Window
         TimeSpan.FromMilliseconds(24);
     private static readonly TimeSpan EncoderIntentMaximumAge =
         TimeSpan.FromMilliseconds(180);
+    private static readonly TimeSpan CurrentControlIntentMaximumAge =
+        TimeSpan.FromMilliseconds(450);
 
     private static readonly SidebarScope[] RootSidebarScopes =
     [
@@ -136,7 +138,10 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _microReadbackCancellation;
     private CodexMicroReadback _microReadback =
         CodexMicroReadback.Closed;
-    private int _pendingDialNavigation;
+    private readonly CurrentControlIntentBuffer _currentControlIntents =
+        new();
+    private readonly CoalescingRequestGate _microReadbackRequests =
+        new();
     private int _dialPumpRunning;
     private int _encoderStepPumpRunning;
     private int _virtualDialGeneration;
@@ -665,7 +670,7 @@ public partial class MainWindow : Window
 
     private void ClearPendingVirtualDialInput()
     {
-        Interlocked.Exchange(ref _pendingDialNavigation, 0);
+        _currentControlIntents.Clear();
         _encoderSteps.Clear();
     }
 
@@ -3032,17 +3037,35 @@ public partial class MainWindow : Window
             return;
         }
 
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            (int)navigation);
+        _currentControlIntents.Offer(
+            navigation,
+            Volatile.Read(ref _virtualDialGeneration),
+            Stopwatch.GetTimestamp());
         if (_virtualDialOpenPending)
         {
+            return;
+        }
+
+        if (!CanExecuteCurrentControlIntent(navigation))
+        {
+            QueueMicroReadback();
             return;
         }
 
         CancelPendingComposerSelection();
         StartVirtualDialNavigationPump();
     }
+
+    private bool CanExecuteCurrentControlIntent(
+        ComposerDialNavigation navigation) =>
+        (
+            navigation == ComposerDialNavigation.Left &&
+            _microReadback.IsMenuOpen
+        ) ||
+        (
+            _microReadback.SelectionVerified &&
+            !string.IsNullOrWhiteSpace(_microReadback.ItemName)
+        );
 
     private void StartVirtualDialNavigationPump()
     {
@@ -3058,23 +3081,22 @@ public partial class MainWindow : Window
         {
             while (true)
             {
-                var navigationValue =
-                    Interlocked.Exchange(
-                        ref _pendingDialNavigation,
-                        0);
-                if (navigationValue == 0)
+                var generation =
+                    Volatile.Read(ref _virtualDialGeneration);
+                var intent = _currentControlIntents.Take(
+                    generation,
+                    Stopwatch.GetTimestamp(),
+                    ToStopwatchTicks(
+                        CurrentControlIntentMaximumAge));
+                if (intent is null)
                 {
                     return;
                 }
 
-                var navigation =
-                    (ComposerDialNavigation)navigationValue;
-                var generation =
-                    Volatile.Read(ref _virtualDialGeneration);
                 var result = await RunVirtualDialAutomationAsync(
                         () => _currentControlExecutor.Execute(
                             _microReadback,
-                            navigation))
+                            intent.Value.Navigation))
                     .ConfigureAwait(true);
                 if (
                     generation ==
@@ -3086,6 +3108,12 @@ public partial class MainWindow : Window
                     {
                         QueueMicroReadback();
                     }
+                    else if (result.ErrorDetail is
+                                 "dial-current-control-unverified" or
+                                 "dial-current-control-focus")
+                    {
+                        QueueMicroReadback();
+                    }
                 }
             }
         }
@@ -3093,8 +3121,7 @@ public partial class MainWindow : Window
         {
             Volatile.Write(ref _dialPumpRunning, 0);
             if (
-                Volatile.Read(
-                    ref _pendingDialNavigation) != 0 &&
+                _currentControlIntents.HasPending &&
                 Interlocked.Exchange(ref _dialPumpRunning, 1) == 0)
             {
                 _ = PumpVirtualDialStepsAsync();
@@ -3165,61 +3192,65 @@ public partial class MainWindow : Window
 
     private void QueueMicroReadback()
     {
-        var previous = _microReadbackCancellation;
-        var cancellation = new CancellationTokenSource();
-        _microReadbackCancellation = cancellation;
-        previous?.Cancel();
-        var generation = Volatile.Read(ref _virtualDialGeneration);
-        _ = ObserveMicroReadbackAsync(generation, cancellation);
+        if (_microReadbackRequests.Request())
+        {
+            StartMicroReadbackPump();
+        }
     }
 
-    private async Task ObserveMicroReadbackAsync(
+    private void StartMicroReadbackPump()
+    {
+        var cancellation = new CancellationTokenSource();
+        _microReadbackCancellation = cancellation;
+        var generation = Volatile.Read(ref _virtualDialGeneration);
+        _ = PumpMicroReadbackAsync(generation, cancellation);
+    }
+
+    private async Task PumpMicroReadbackAsync(
         int generation,
         CancellationTokenSource cancellation)
     {
         try
         {
-            var readback = await _microReadbackObserver
-                .ObserveAsync(cancellation.Token)
-                .ConfigureAwait(true);
-            if (
-                cancellation.IsCancellationRequested ||
-                !ReferenceEquals(
-                    _microReadbackCancellation,
-                    cancellation) ||
-                generation !=
-                    Volatile.Read(ref _virtualDialGeneration))
+            while (_microReadbackRequests.TryConsume())
             {
-                return;
-            }
+                var readback = await _microReadbackObserver
+                    .ObserveAsync(cancellation.Token)
+                    .ConfigureAwait(true);
+                if (
+                    cancellation.IsCancellationRequested ||
+                    !ReferenceEquals(
+                        _microReadbackCancellation,
+                        cancellation) ||
+                    generation !=
+                        Volatile.Read(ref _virtualDialGeneration))
+                {
+                    return;
+                }
 
-            if (
-                readback.Surface == CodexMicroSurfaceKind.None &&
-                !readback.SelectionVerified)
-            {
-                return;
-            }
+                if (
+                    readback.Surface == CodexMicroSurfaceKind.None &&
+                    !readback.SelectionVerified)
+                {
+                    readback = CodexMicroReadback.Closed;
+                }
 
-            var menuWasOpen = _virtualDialMenuOpen;
-            _microReadback = readback;
-            SetVirtualDialMenuOpen(
-                readback.IsMenuOpen,
-                readback.Surface == CodexMicroSurfaceKind.Dialog);
-            if (!string.IsNullOrWhiteSpace(readback.DisplayText))
-            {
-                _devicePageViewModel.UpdateRightMode(
-                    RightControlMode.Dial,
-                    readback.DisplayText);
-            }
+                ApplyMicroReadback(readback);
 
-            if (menuWasOpen && !readback.IsMenuOpen)
-            {
-                BeginVirtualDialReleaseDrain();
+                if (
+                    _currentControlIntents.PendingNavigation is
+                        { } navigation &&
+                    CanExecuteCurrentControlIntent(navigation))
+                {
+                    CancelPendingComposerSelection();
+                    StartVirtualDialNavigationPump();
+                }
             }
         }
         catch (OperationCanceledException)
         {
-            // A newer Micro action owns readback.
+            // A dial epoch reset owns cancellation. Ordinary refresh requests
+            // are coalesced and never cancel an in-flight observation.
         }
         finally
         {
@@ -3231,6 +3262,31 @@ public partial class MainWindow : Window
             }
 
             cancellation.Dispose();
+
+            if (_microReadbackRequests.Complete())
+            {
+                StartMicroReadbackPump();
+            }
+        }
+    }
+
+    private void ApplyMicroReadback(CodexMicroReadback readback)
+    {
+        var menuWasOpen = _virtualDialMenuOpen;
+        _microReadback = readback;
+        SetVirtualDialMenuOpen(
+            readback.IsMenuOpen,
+            readback.Surface == CodexMicroSurfaceKind.Dialog);
+        if (!string.IsNullOrWhiteSpace(readback.DisplayText))
+        {
+            _devicePageViewModel.UpdateRightMode(
+                RightControlMode.Dial,
+                readback.DisplayText);
+        }
+
+        if (menuWasOpen && !readback.IsMenuOpen)
+        {
+            BeginVirtualDialReleaseDrain();
         }
     }
 
@@ -3675,6 +3731,7 @@ public partial class MainWindow : Window
         _virtualDialOpenPending = false;
         _virtualDialCancelRequested = false;
         _dialInputReleasePending = false;
+        _microReadbackRequests.ClearPending();
         var readbackCancellation = _microReadbackCancellation;
         _microReadbackCancellation = null;
         readbackCancellation?.Cancel();
