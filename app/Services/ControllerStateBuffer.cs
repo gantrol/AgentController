@@ -49,13 +49,20 @@ public sealed class ControllerStateBuffer
     /// Adds a state and returns true when the caller should schedule a
     /// dispatcher drain. Further enqueues return false until Drain is called.
     /// </summary>
-    public bool Enqueue(ControllerState state)
+    public bool Enqueue(
+        ControllerState state,
+        double leftStickDeadZone = 0.42,
+        double rightStickDeadZone = 0.42)
     {
         lock (_sync)
         {
             if (
                 _states.Count > 0 &&
-                CanCoalesce(_states[^1], state))
+                CanCoalesce(
+                    _states[^1],
+                    state,
+                    leftStickDeadZone,
+                    rightStickDeadZone))
             {
                 _states[^1] = state;
             }
@@ -103,15 +110,33 @@ public sealed class ControllerStateBuffer
 
     private static bool CanCoalesce(
         ControllerState previous,
-        ControllerState next)
+        ControllerState next,
+        double leftStickDeadZone,
+        double rightStickDeadZone)
     {
         return
             previous.IsConnected == next.IsConnected &&
             previous.Buttons == next.Buttons &&
             LeftTriggerRegion(previous) ==
-                LeftTriggerRegion(next) &&
+            LeftTriggerRegion(next) &&
             RightTriggerRegion(previous) ==
-                RightTriggerRegion(next);
+                RightTriggerRegion(next) &&
+            StickGestureClassifier.Classify(
+                previous.LeftX,
+                previous.LeftY,
+                leftStickDeadZone) ==
+                StickGestureClassifier.Classify(
+                    next.LeftX,
+                    next.LeftY,
+                    leftStickDeadZone) &&
+            StickGestureClassifier.Classify(
+                previous.RightX,
+                previous.RightY,
+                rightStickDeadZone) ==
+                StickGestureClassifier.Classify(
+                    next.RightX,
+                    next.RightY,
+                    rightStickDeadZone);
     }
 
     private static int LeftTriggerRegion(ControllerState state)

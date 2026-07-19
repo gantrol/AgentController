@@ -263,7 +263,14 @@ public partial class MainWindow : Window
         object? sender,
         ControllerState state)
     {
-        if (_controllerInteraction.EnqueueState(state))
+        var virtualDialDeadZone =
+            VirtualDialInputPolicy.ResolveDeadZone(
+                _settings.DeadZone,
+                _activeControllerProfile.Tuning?.StickDeadZone);
+        if (_controllerInteraction.EnqueueState(
+                state,
+                _settings.DeadZone,
+                virtualDialDeadZone))
         {
             _ = Dispatcher.BeginInvoke(
                 ProcessBufferedControllerStates);

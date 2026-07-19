@@ -116,31 +116,60 @@ public sealed class ControllerStateBufferTests
         var buffer = new ControllerStateBuffer();
 
         buffer.Enqueue(State(
-            leftX: 0.10,
-            leftY: 0.20,
-            rightX: -0.10,
-            rightY: -0.20,
-            leftTrigger: 0.25,
-            rightTrigger: 0.20,
-            packet: 1));
-        buffer.Enqueue(State(
             leftX: 0.45,
             leftY: 0.65,
             rightX: -0.35,
             rightY: -0.55,
             leftTrigger: 0.25,
             rightTrigger: 0.20,
+            packet: 1));
+        buffer.Enqueue(State(
+            leftX: 0.55,
+            leftY: 0.75,
+            rightX: -0.45,
+            rightY: -0.65,
+            leftTrigger: 0.25,
+            rightTrigger: 0.20,
             packet: 2));
 
         var state = Assert.Single(buffer.Drain());
 
-        Assert.Equal(0.45, state.LeftX);
-        Assert.Equal(0.65, state.LeftY);
-        Assert.Equal(-0.35, state.RightX);
-        Assert.Equal(-0.55, state.RightY);
+        Assert.Equal(0.55, state.LeftX);
+        Assert.Equal(0.75, state.LeftY);
+        Assert.Equal(-0.45, state.RightX);
+        Assert.Equal(-0.65, state.RightY);
         Assert.Equal(0.25, state.LeftTrigger);
         Assert.Equal(0.20, state.RightTrigger);
         Assert.Equal(2u, state.PacketNumber);
+    }
+
+    [Fact]
+    public void PreservesNeutralBetweenOrthogonalRightStickGestures()
+    {
+        var buffer = new ControllerStateBuffer();
+
+        buffer.Enqueue(State(rightX: 0.9, packet: 1));
+        buffer.Enqueue(State(packet: 2));
+        buffer.Enqueue(State(rightY: 0.9, packet: 3));
+
+        var drained = buffer.Drain();
+
+        Assert.Equal([1u, 2u, 3u], drained.Select(x => x.PacketNumber));
+        Assert.Equal([0.9, 0, 0], drained.Select(x => x.RightX));
+        Assert.Equal([0, 0, 0.9], drained.Select(x => x.RightY));
+    }
+
+    [Fact]
+    public void PreservesFirstAxisWhenDirectionChangesWithoutNeutral()
+    {
+        var buffer = new ControllerStateBuffer();
+
+        buffer.Enqueue(State(rightX: 0.9, packet: 1));
+        buffer.Enqueue(State(rightY: 0.9, packet: 2));
+
+        Assert.Equal(
+            [1u, 2u],
+            buffer.Drain().Select(x => x.PacketNumber));
     }
 
     [Fact]

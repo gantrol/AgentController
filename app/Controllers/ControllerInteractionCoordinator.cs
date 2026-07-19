@@ -45,8 +45,14 @@ public sealed class ControllerInteractionCoordinator
     public bool PushToTalkBlocksBaseInput =>
         _pushToTalkTrigger.BlocksBaseInput;
 
-    public bool EnqueueState(ControllerState state) =>
-        _stateBuffer.Enqueue(state);
+    public bool EnqueueState(
+        ControllerState state,
+        double leftStickDeadZone = 0.42,
+        double rightStickDeadZone = 0.42) =>
+        _stateBuffer.Enqueue(
+            state,
+            leftStickDeadZone,
+            rightStickDeadZone);
 
     public ControllerState[] DrainStates() =>
         _stateBuffer.Drain();

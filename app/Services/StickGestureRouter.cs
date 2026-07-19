@@ -10,7 +10,7 @@ public readonly record struct StickGestureSample(
 public sealed class StickGestureRouter
 {
     private StickAxis _lockedAxis;
-    private int _horizontalDirection;
+    private int _lockedDirection;
     private bool _requiresNeutral;
 
     public StickGestureSample Update(
@@ -20,8 +20,8 @@ public sealed class StickGestureRouter
         bool invertVertical,
         bool blocked)
     {
-        var engageZone = Math.Clamp(deadZone, 0.10, 0.95);
-        var releaseZone = engageZone * 0.68;
+        var engageZone = StickGestureClassifier.EngageZone(deadZone);
+        var releaseZone = StickGestureClassifier.ReleaseZone(deadZone);
         var absX = Math.Abs(x);
         var absY = Math.Abs(y);
         var neutral = absX < releaseZone && absY < releaseZone;
@@ -29,7 +29,7 @@ public sealed class StickGestureRouter
         if (blocked)
         {
             _lockedAxis = StickAxis.None;
-            _horizontalDirection = 0;
+            _lockedDirection = 0;
             _requiresNeutral = !neutral;
             return default;
         }
@@ -40,7 +40,7 @@ public sealed class StickGestureRouter
             {
                 _requiresNeutral = false;
                 _lockedAxis = StickAxis.None;
-                _horizontalDirection = 0;
+                _lockedDirection = 0;
             }
 
             return default;
@@ -49,26 +49,31 @@ public sealed class StickGestureRouter
         if (neutral)
         {
             _lockedAxis = StickAxis.None;
-            _horizontalDirection = 0;
+            _lockedDirection = 0;
             return default;
         }
 
         if (_lockedAxis == StickAxis.None)
         {
-            if (absX >= engageZone && absX >= absY * 1.15)
+            if (
+                absX >= engageZone &&
+                absX >= absY * StickGestureClassifier.DominanceRatio)
             {
                 _lockedAxis = StickAxis.Horizontal;
-                _horizontalDirection = x > 0 ? 1 : -1;
+                _lockedDirection = Math.Sign(x);
                 return new(
                     0,
-                    _horizontalDirection,
+                    _lockedDirection,
                     HorizontalStarted: true,
                     HorizontalMagnitude: Math.Clamp(absX, 0, 1));
             }
 
-            if (absY >= engageZone && absY >= absX * 1.15)
+            if (
+                absY >= engageZone &&
+                absY >= absX * StickGestureClassifier.DominanceRatio)
             {
                 _lockedAxis = StickAxis.Vertical;
+                _lockedDirection = Math.Sign(y);
             }
             else
             {
@@ -83,9 +88,15 @@ public sealed class StickGestureRouter
                 return default;
             }
 
+            var direction = Math.Sign(x);
+            if (direction != _lockedDirection)
+            {
+                return default;
+            }
+
             return new(
                 0,
-                _horizontalDirection,
+                _lockedDirection,
                 HorizontalStarted: false,
                 HorizontalMagnitude: Math.Clamp(absX, 0, 1));
         }
@@ -95,7 +106,12 @@ public sealed class StickGestureRouter
             return default;
         }
 
-        var vertical = y > 0 ? 1 : -1;
+        var vertical = Math.Sign(y);
+        if (vertical != _lockedDirection)
+        {
+            return default;
+        }
+
         return new(
             invertVertical ? -vertical : vertical,
             0,
@@ -107,14 +123,14 @@ public sealed class StickGestureRouter
     {
         _requiresNeutral = true;
         _lockedAxis = StickAxis.None;
-        _horizontalDirection = 0;
+        _lockedDirection = 0;
     }
 
     public void Reset()
     {
         _requiresNeutral = false;
         _lockedAxis = StickAxis.None;
-        _horizontalDirection = 0;
+        _lockedDirection = 0;
     }
 
     private enum StickAxis
@@ -122,5 +138,62 @@ public sealed class StickGestureRouter
         None,
         Horizontal,
         Vertical,
+    }
+}
+
+internal enum StickGestureRegion
+{
+    Neutral,
+    Ambiguous,
+    HorizontalNegative,
+    HorizontalPositive,
+    VerticalNegative,
+    VerticalPositive,
+}
+
+internal static class StickGestureClassifier
+{
+    internal const double DominanceRatio = 1.15;
+
+    internal static double EngageZone(double deadZone) =>
+        Math.Clamp(deadZone, 0.10, 0.95);
+
+    internal static double ReleaseZone(double deadZone) =>
+        EngageZone(deadZone) * 0.68;
+
+    internal static StickGestureRegion Classify(
+        double x,
+        double y,
+        double deadZone)
+    {
+        var absX = Math.Abs(x);
+        var absY = Math.Abs(y);
+        if (
+            absX < ReleaseZone(deadZone) &&
+            absY < ReleaseZone(deadZone))
+        {
+            return StickGestureRegion.Neutral;
+        }
+
+        var engageZone = EngageZone(deadZone);
+        if (
+            absX >= engageZone &&
+            absX >= absY * DominanceRatio)
+        {
+            return x < 0
+                ? StickGestureRegion.HorizontalNegative
+                : StickGestureRegion.HorizontalPositive;
+        }
+
+        if (
+            absY >= engageZone &&
+            absY >= absX * DominanceRatio)
+        {
+            return y < 0
+                ? StickGestureRegion.VerticalNegative
+                : StickGestureRegion.VerticalPositive;
+        }
+
+        return StickGestureRegion.Ambiguous;
     }
 }
