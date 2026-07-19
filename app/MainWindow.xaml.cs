@@ -63,6 +63,7 @@ public partial class MainWindow : Window
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
+    private readonly CodexCurrentControlExecutor _currentControlExecutor;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
     private readonly IForegroundApplication _foregroundApplication;
@@ -178,6 +179,7 @@ public partial class MainWindow : Window
         _bridgeEvents = dependencies.BridgeEvents;
         _localization = dependencies.Localization;
         _microInput = dependencies.MicroInput;
+        _currentControlExecutor = new(_microInput);
         _controllerProfiles = dependencies.ControllerProfiles;
         _configPageViewModel = new ConfigPageViewModel(
             OpenAgentShortcuts,
@@ -3070,9 +3072,9 @@ public partial class MainWindow : Window
                 var generation =
                     Volatile.Read(ref _virtualDialGeneration);
                 var result = await RunVirtualDialAutomationAsync(
-                        () => _composerAutomation.DialNavigate(
-                            navigation,
-                            _settings))
+                        () => _currentControlExecutor.Execute(
+                            _microReadback,
+                            navigation))
                     .ConfigureAwait(true);
                 if (
                     generation ==
@@ -3080,6 +3082,10 @@ public partial class MainWindow : Window
                     !_virtualDialCancelRequested)
                 {
                     PresentVirtualDialResult(result);
+                    if (result.Succeeded)
+                    {
+                        QueueMicroReadback();
+                    }
                 }
             }
         }
@@ -3615,6 +3621,18 @@ public partial class MainWindow : Window
                 RadialText(
                     "Codex 未接收原生导航键，请确认窗口仍在前台",
                     "Codex did not receive the native navigation key; keep it in the foreground"),
+            "dial-current-control-unverified" =>
+                RadialText(
+                    "当前控件没有可验证高亮；先上下选择后再左右操作",
+                    "The current control has no verified highlight; select it with up/down first"),
+            "dial-current-control-focus" =>
+                RadialText(
+                    "当前高亮与 Codex 键盘焦点不一致，未发送左右动作",
+                    "The visible selection and Codex keyboard focus differ; no horizontal input was sent"),
+            "dial-current-control-no-change" =>
+                RadialText(
+                    "Codex 没有确认当前控件的数值变化",
+                    "Codex did not confirm a value change on the current control"),
             "dial-native-navigation-unverified" =>
                 RadialText(
                     "导航键已发送，但未能读回高亮项",
