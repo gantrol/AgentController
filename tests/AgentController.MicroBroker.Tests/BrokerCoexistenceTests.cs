@@ -196,6 +196,117 @@ public sealed class BrokerCoexistenceTests
     }
 
     [Fact]
+    public async Task SharedHeldKeyIsPressedAndReleasedOnceAcrossClients()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint();
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var controller = new MicroBrokerClient(
+            "controller",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        using var simulator = new MicroBrokerClient(
+            "simulator",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        _ = controller.Connect();
+        _ = simulator.Connect();
+
+        var firstPress = controller.Submit(
+            MicroRpcCodec.EncodeHid("ACT10", 1));
+        var sharedPress = simulator.Submit(
+            MicroRpcCodec.EncodeHid("ACT10", 1));
+        var firstRelease = controller.Submit(
+            MicroRpcCodec.EncodeHid("ACT10", 0));
+        var finalRelease = simulator.Submit(
+            MicroRpcCodec.EncodeHid("ACT10", 0));
+
+        Assert.Equal(MicroSendDisposition.Accepted, firstPress.Disposition);
+        Assert.Equal(MicroSendDisposition.Accepted, sharedPress.Disposition);
+        Assert.Equal(MicroSendDisposition.Accepted, firstRelease.Disposition);
+        Assert.Equal(MicroSendDisposition.Accepted, finalRelease.Disposition);
+        var messages = driver.Messages
+            .Where(message => message.Contains("\"k\":\"ACT10\""))
+            .ToArray();
+        Assert.Collection(
+            messages,
+            message => Assert.Contains("\"act\":1", message),
+            message => Assert.Contains("\"act\":0", message));
+
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
+    public async Task ReleasingAnalogOwnerRestoresMostRecentActiveClient()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint();
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var controller = new MicroBrokerClient(
+            "controller",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        using var simulator = new MicroBrokerClient(
+            "simulator",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        using var secondary = new MicroBrokerClient(
+            "secondary",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        _ = controller.Connect();
+        _ = secondary.Connect();
+        _ = simulator.Connect();
+
+        _ = controller.Submit(MicroRpcCodec.EncodeJoystick(0.25, 1));
+        _ = secondary.Submit(MicroRpcCodec.EncodeJoystick(0.5, 1));
+        _ = simulator.Submit(MicroRpcCodec.EncodeJoystick(0.75, 1));
+        _ = simulator.Submit(MicroRpcCodec.EncodeJoystick(0.75, 0));
+        _ = secondary.Submit(MicroRpcCodec.EncodeJoystick(0.5, 0));
+        _ = controller.Submit(MicroRpcCodec.EncodeJoystick(0.25, 0));
+
+        Assert.Collection(
+            driver.Messages,
+            message => AssertAnalog(message, 0.25, 1),
+            message => AssertAnalog(message, 0.5, 1),
+            message => AssertAnalog(message, 0.75, 1),
+            message => AssertAnalog(message, 0.5, 1),
+            message => AssertAnalog(message, 0.25, 1),
+            message => AssertAnalog(message, 0.25, 0));
+
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
     public async Task DuplicateRequestIdReturnsCachedResponseWithoutResending()
     {
         var suffix = Guid.NewGuid().ToString("N");
@@ -322,6 +433,16 @@ public sealed class BrokerCoexistenceTests
         return await BrokerWire.ReadAsync<BrokerResponse>(
             pipe,
             timeout.Token);
+    }
+
+    private static void AssertAnalog(
+        string message,
+        double angle,
+        double distance)
+    {
+        Assert.Contains("\"m\":\"v.oai.rad\"", message);
+        Assert.Contains($"\"a\":{angle}", message);
+        Assert.Contains($"\"d\":{distance}", message);
     }
 
     private sealed class FakeDriverEndpoint : IMicroDriverEndpoint

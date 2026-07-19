@@ -7,10 +7,10 @@ internal sealed class ClientInputState
 {
     private readonly MemoryStream _message = new();
     private readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
-    private double? _analogAngle;
+    private AnalogInputState? _analog;
 
     internal IReadOnlyCollection<string> HeldKeys => _heldKeys;
-    internal bool HasAnalog => _analogAngle.HasValue;
+    internal AnalogInputState? Analog => _analog;
     internal bool HoldsKey(string key) => _heldKeys.Contains(key);
 
     internal void Observe(IReadOnlyList<byte[]> reports)
@@ -53,9 +53,11 @@ internal sealed class ClientInputState
             }
         }
 
-        if (releaseAnalog && _analogAngle is { } angle)
+        if (releaseAnalog && _analog is { } analog)
         {
-            reports.AddRange(MicroRpcCodec.EncodeJoystick(angle, 0));
+            reports.AddRange(MicroRpcCodec.EncodeJoystick(
+                analog.Angle,
+                0));
         }
 
         return reports;
@@ -64,7 +66,7 @@ internal sealed class ClientInputState
     internal void Clear()
     {
         _heldKeys.Clear();
-        _analogAngle = null;
+        _analog = null;
         _message.SetLength(0);
     }
 
@@ -136,6 +138,14 @@ internal sealed class ClientInputState
             return;
         }
 
-        _analogAngle = distance > 0 ? Math.Clamp(angle, 0, 1) : null;
+        _analog = distance > 0
+            ? new(
+                Math.Clamp(angle, 0, 1),
+                Math.Clamp(distance, 0, 1))
+            : null;
     }
 }
+
+internal readonly record struct AnalogInputState(
+    double Angle,
+    double Distance);

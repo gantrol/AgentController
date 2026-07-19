@@ -27,6 +27,9 @@ public sealed class MicroBrokerHost : IDisposable
     private readonly object _inputSync = new();
     private readonly object _eventSync = new();
     private readonly Queue<BrokerEvent> _events = new();
+    private readonly Dictionary<Guid, long> _analogActivationOrder = [];
+    private Guid? _analogOwner;
+    private long _analogActivationSequence;
     private BrokerDriverInfo? _driverInfo;
     private long _eventSequence;
     private long _lastActivity = Environment.TickCount64;
@@ -262,10 +265,32 @@ public sealed class MicroBrokerHost : IDisposable
         {
             try
             {
-                result = _driver.Submit(reports);
+                var prepared = PrepareInput(client, reports);
+                if (prepared.Reports.Count == 0)
+                {
+                    result = new(
+                        MicroSendDisposition.Accepted,
+                        reports.Length,
+                        reports.Length,
+                        0,
+                        "Broker coalesced the input into existing client leases.");
+                }
+                else
+                {
+                    var physical = _driver.Submit(prepared.Reports);
+                    result = MapPreparedResult(
+                        physical,
+                        reports.Length,
+                        prepared.Reports.Count);
+                }
+
                 if (result.WasPossiblySent)
                 {
                     client.Observe(reports);
+                    _analogOwner = prepared.AnalogOwner;
+                    CommitAnalogLease(
+                        client.ClientId,
+                        prepared.AnalogMutation);
                 }
             }
             catch (Exception exception) when (
@@ -278,6 +303,152 @@ public sealed class MicroBrokerHost : IDisposable
         }
 
         return Success(request, client) with { Send = result };
+    }
+
+    private PreparedInput PrepareInput(
+        ClientLease client,
+        IReadOnlyList<byte[]> reports)
+    {
+        var messages = MicroInputBatch.Parse(reports);
+        var held = new HashSet<string>(
+            client.HeldKeys,
+            StringComparer.Ordinal);
+        var physical = new List<byte[]>(reports.Count);
+        var analogOwner = _analogOwner;
+        var analogMutation = AnalogLeaseMutation.None;
+
+        foreach (var message in messages)
+        {
+            if (message.Kind == MicroInputMessageKind.Hid)
+            {
+                var key = message.Key!;
+                if (message.Action == 2)
+                {
+                    physical.AddRange(message.Encode());
+                    continue;
+                }
+
+                var otherHolds = _clients.Values.Any(
+                    other => other.ClientId != client.ClientId &&
+                        other.HoldsKey(key));
+                if (message.Action == 1)
+                {
+                    var newlyHeld = held.Add(key);
+                    if (newlyHeld && !otherHolds)
+                    {
+                        physical.AddRange(message.Encode());
+                    }
+
+                    continue;
+                }
+
+                _ = held.Remove(key);
+                if (!otherHolds)
+                {
+                    physical.AddRange(message.Encode());
+                }
+
+                continue;
+            }
+
+            if (message.Distance > 0)
+            {
+                physical.AddRange(message.Encode());
+                analogOwner = client.ClientId;
+                analogMutation = AnalogLeaseMutation.Active;
+                continue;
+            }
+
+            analogMutation = AnalogLeaseMutation.Neutral;
+
+            if (analogOwner == client.ClientId)
+            {
+                var fallback = FindAnalogFallback(client.ClientId);
+                if (fallback is { } active)
+                {
+                    physical.AddRange(MicroRpcCodec.EncodeJoystick(
+                        active.State.Angle,
+                        active.State.Distance));
+                    analogOwner = active.ClientId;
+                }
+                else
+                {
+                    physical.AddRange(message.Encode());
+                    analogOwner = null;
+                }
+            }
+            else if (
+                analogOwner is null &&
+                FindAnalogFallback(client.ClientId) is null)
+            {
+                physical.AddRange(message.Encode());
+            }
+        }
+
+        return new(physical, analogOwner, analogMutation);
+    }
+
+    private AnalogLease? FindAnalogFallback(Guid excludedClientId)
+    {
+        foreach (var pair in _analogActivationOrder
+                     .Where(item => item.Key != excludedClientId)
+                     .OrderByDescending(item => item.Value))
+        {
+            if (
+                _clients.TryGetValue(pair.Key, out var client) &&
+                client.Analog is { } analog)
+            {
+                return new(client.ClientId, analog);
+            }
+        }
+
+        return null;
+    }
+
+    private void CommitAnalogLease(
+        Guid clientId,
+        AnalogLeaseMutation mutation)
+    {
+        switch (mutation)
+        {
+            case AnalogLeaseMutation.Active:
+                _analogActivationOrder[clientId] =
+                    ++_analogActivationSequence;
+                break;
+            case AnalogLeaseMutation.Neutral:
+                _analogActivationOrder.Remove(clientId);
+                break;
+        }
+    }
+
+    private static MicroSendResult MapPreparedResult(
+        MicroSendResult physical,
+        int clientReportCount,
+        int physicalReportCount)
+    {
+        if (clientReportCount == physicalReportCount)
+        {
+            return physical;
+        }
+
+        var detail =
+            $"Broker projected {clientReportCount} client reports to " +
+            $"{physicalReportCount} physical reports. {physical.Detail}";
+        return physical.Disposition switch
+        {
+            MicroSendDisposition.Accepted => new(
+                MicroSendDisposition.Accepted,
+                clientReportCount,
+                clientReportCount,
+                physical.NativeStatus,
+                detail),
+            _ => new(
+                physical.Disposition,
+                physical.AcceptedReports,
+                clientReportCount,
+                physical.NativeStatus,
+                detail),
+        };
     }
 
     private BrokerResponse Keyboard(
@@ -457,14 +628,36 @@ public sealed class MicroBrokerHost : IDisposable
     {
         lock (_inputSync)
         {
-            var releaseAnalog = !_clients.Values.Any(
-                other => other.ClientId != client.ClientId &&
-                    other.HasAnalog);
+            var ownsAnalog = _analogOwner == client.ClientId;
+            var fallback = ownsAnalog
+                ? FindAnalogFallback(client.ClientId)
+                : null;
             var reports = client.TakeNeutralReports(
                 key => !_clients.Values.Any(
                     other => other.ClientId != client.ClientId &&
                         other.HoldsKey(key)),
-                releaseAnalog);
+                releaseAnalog: ownsAnalog && fallback is null);
+            if (ownsAnalog)
+            {
+                if (fallback is { } active)
+                {
+                    reports =
+                    [
+                        .. reports,
+                        .. MicroRpcCodec.EncodeJoystick(
+                            active.State.Angle,
+                            active.State.Distance),
+                    ];
+                    _analogOwner = active.ClientId;
+                }
+                else
+                {
+                    _analogOwner = null;
+                }
+            }
+
+            _analogActivationOrder.Remove(client.ClientId);
+
             if (reports.Count == 0)
             {
                 return;
@@ -501,6 +694,22 @@ public sealed class MicroBrokerHost : IDisposable
             }
         }
     }
+
+    private sealed record PreparedInput(
+        IReadOnlyList<byte[]> Reports,
+        Guid? AnalogOwner,
+        AnalogLeaseMutation AnalogMutation);
+
+    private enum AnalogLeaseMutation
+    {
+        None,
+        Active,
+        Neutral,
+    }
+
+    private readonly record struct AnalogLease(
+        Guid ClientId,
+        AnalogInputState State);
 
     private static FileStream? TryAcquireInstanceLease(string path)
     {
@@ -637,13 +846,24 @@ public sealed class MicroBrokerHost : IDisposable
             }
         }
 
-        internal bool HasAnalog
+        internal IReadOnlyCollection<string> HeldKeys
         {
             get
             {
                 lock (_sync)
                 {
-                    return _input.HasAnalog;
+                    return _input.HeldKeys.ToArray();
+                }
+            }
+        }
+
+        internal AnalogInputState? Analog
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _input.Analog;
                 }
             }
         }
