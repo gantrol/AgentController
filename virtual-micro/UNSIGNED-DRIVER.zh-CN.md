@@ -2,7 +2,7 @@
 
 [English](./UNSIGNED-DRIVER.md)
 
-Release 资产 `CodexMicroVhfUm-v0.1.0-win-x64-UNSIGNED-DEVELOPER.zip` 是开发者产物，
+Release 资产 `CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` 是开发者产物，
 不是正式安装包。它提供预编译的 x64 UMDF2/VHF 二进制，方便审计者在不编译 C/C++
 的情况下检查并二次签名。
 

@@ -46,14 +46,14 @@
 
 ## 便携应用
 
-[`v0.1.0` 预发布版](../../../releases/tag/codex-micro-v0.1.0) 提供 self-contained
+[`v1.0.0` 正式版](../../../releases/tag/codex-micro-v1.0.0) 提供 self-contained
 Windows x64 便携应用和单独的未签名开发者驱动包。桌面应用不需要另外安装 .NET
 Runtime，也不会导入自签名根证书。未签名驱动包省掉 C/C++ 编译步骤，但安装前仍须
 在本机签名；完整顺序见 [`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
 
 ## 未签名开发者驱动包
 
-`CodexMicroVhfUm-v0.1.0-win-x64-UNSIGNED-DEVELOPER.zip` 包含预编译的 UMDF2 DLL、
+`CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` 包含预编译的 UMDF2 DLL、
 INF、未签名 catalog、原生 PnP 安装器、用于审计的相关源码，以及本机签名/安装脚本。
 包内没有证书或私钥，下载后不能把它当作正式生产驱动直接安装。
 

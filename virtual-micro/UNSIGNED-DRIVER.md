@@ -3,7 +3,7 @@
 [简体中文](./UNSIGNED-DRIVER.zh-CN.md)
 
 The Release asset named
-`CodexMicroVhfUm-v0.1.0-win-x64-UNSIGNED-DEVELOPER.zip` is a developer artifact,
+`CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` is a developer artifact,
 not a production installer. It contains prebuilt x64 UMDF2/VHF binaries so that
 reviewers can audit and re-sign the package without compiling C/C++.
 

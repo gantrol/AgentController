@@ -53,7 +53,7 @@ The complete visual, driver, interaction, and acceptance specification is in
 
 ## Portable desktop app
 
-The [`v0.1.0` prerelease](../../../releases/tag/codex-micro-v0.1.0) includes a
+The [`v1.0.0` release](../../../releases/tag/codex-micro-v1.0.0) includes a
 self-contained Windows x64 portable app and a separate unsigned developer
 driver package. The app does not require a separate .NET runtime and does not
 import a self-signed root certificate. The unsigned driver package saves the
@@ -62,7 +62,7 @@ C/C++ compilation step, but must be signed locally before installation. See
 
 ## Unsigned developer driver package
 
-`CodexMicroVhfUm-v0.1.0-win-x64-UNSIGNED-DEVELOPER.zip` contains the prebuilt
+`CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` contains the prebuilt
 UMDF2 DLL, INF, unsigned catalog, native PnP installer, source needed for audit,
 and the local signing/install script. It contains no certificate or private
 key and is not installable as a production driver in its downloaded state.

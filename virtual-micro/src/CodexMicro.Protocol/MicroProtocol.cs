@@ -14,7 +14,7 @@ public static class MicroProtocol
     public const ushort UsagePage = 0xFF00;
 
     public const string DeviceType = "project_2077";
-    public const string FirmwareVersion = "0.1.0-vhf-poc";
+    public const string FirmwareVersion = "1.0.0-vhf";
 }
 
 public enum MicroSendDisposition
