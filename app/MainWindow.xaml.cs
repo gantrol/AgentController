@@ -34,14 +34,6 @@ public partial class MainWindow : Window
         SidebarScope.Projects,
         SidebarScope.ProjectlessTasks,
     ];
-    private static readonly RightControlMode[] AdvancedComposerModes =
-    [
-        RightControlMode.Model,
-        RightControlMode.Reasoning,
-        RightControlMode.Speed,
-    ];
-    private static readonly TimeSpan SimpleModeUpgradePromptDuration =
-        TimeSpan.FromSeconds(30);
     private const ControllerButtons DialExclusiveFrozenButtons =
         RadialInputMap.FrozenBaseButtons &
         ~(
@@ -100,20 +92,18 @@ public partial class MainWindow : Window
     private SidebarReturnFrame? _sidebarReturnFrame;
     private ProjectDisclosureLease? _projectDisclosureLease;
     private bool _dictationInjected;
+    private ComposerAutomationChannel _dictationAutomationChannel =
+        ComposerAutomationChannel.Unknown;
     private string? _dictationInputGlyph;
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
     private bool _virtualDialMenuOpen;
-    private bool _simpleModelPickerOpen;
     private bool _modelPickerShortcutReady;
     private bool _virtualDialConfirmationPending;
     private bool _virtualDialOpenPending;
     private bool _virtualDialCancelRequested;
     private bool _virtualDialCleanupPending;
     private bool _dialInputReleasePending;
-    private bool _simpleModeUpgradePromptPending;
-    private string? _simpleModeUpgradePromptValue;
-    private string? _simpleModeUpgradeDeclinedKey;
     private bool _composerPickerMenuLikelyOpen;
     private bool _blockedPushToTalkHintShown;
     private bool _bridgeDisabledHintShown;
@@ -125,7 +115,6 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private long _leftNavigationBlockedUntil;
     private long _rightAdjustmentBlockedUntil;
-    private long _simpleModeUpgradePromptExpiresAt;
     private CancellationTokenSource? _sidebarFocusCancellation;
     private ControllerState _latestControllerState;
     private ComposerCatalog? _composerCatalog;
@@ -136,12 +125,6 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _rightStickPressCancellation;
     private int _pendingDialNavigation;
     private int _dialPumpRunning;
-    private int _pendingSimplePowerSteps;
-    private int _simplePowerPumpRunning;
-    private int _pendingAdvancedSteps;
-    private int _advancedStepPumpRunning;
-    private ComposerSettingKind _pendingAdvancedKind;
-    private int _simpleSpeedHeldDirection;
     private int _virtualDialGeneration;
     private int _dictationPumpRunning;
     private Forms.NotifyIcon? _trayIcon;
@@ -195,9 +178,6 @@ public partial class MainWindow : Window
                 _localization.Strings.Get(
                     StringKeys.MessageSettingsSaved)),
             ChangeLanguage);
-        _settingsPageViewModel.PropertyChanged +=
-            SettingsPageViewModel_PropertyChanged;
-
         InitializeComponent();
         DataContext = _localization.Strings;
         ConfigPage.DataContext = _configPageViewModel;
@@ -485,11 +465,6 @@ public partial class MainWindow : Window
             }
         }
 
-        if (ProcessSimpleModeUpgradePrompt(pressed))
-        {
-            return;
-        }
-
         var physicalEdges =
             _controllerInteraction.PhysicalEdges(pressed);
         // Dial automation owns the native picker state. Controller polling
@@ -596,34 +571,23 @@ public partial class MainWindow : Window
         {
             NavigateSidebarHorizontal(leftGesture.HorizontalDirection);
         }
-        var advancedComposerDial = UsesAdvancedComposerDial;
-        if (
-            !dialContextActive &&
-            !advancedComposerDial &&
-            rightGesture.VerticalDirection == 0)
-        {
-            _simpleSpeedHeldDirection = 0;
-        }
-        if (!dialContextActive)
-        {
-            if (
-                advancedComposerDial &&
-                rightGesture.VerticalDirection == 0)
-            {
-                Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-            }
-            else if (
-                !advancedComposerDial &&
-                rightGesture.HorizontalDirection == 0)
-            {
-                Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-            }
-        }
-
+        // The right stick is the gamepad projection of Micro's upper-left
+        // encoder, not an independent Model/Effort/Speed state machine. Use
+        // the dominant axis as one signed detent stream so horizontal and
+        // vertical controller habits both produce the same physical control.
+        var useHorizontalEncoderAxis =
+            rightGesture.HorizontalMagnitude >=
+            rightGesture.VerticalMagnitude;
+        var encoderDirection = useHorizontalEncoderAxis
+            ? rightGesture.HorizontalDirection
+            : rightGesture.VerticalDirection;
+        var encoderMagnitude = useHorizontalEncoderAxis
+            ? rightGesture.HorizontalMagnitude
+            : rightGesture.VerticalMagnitude;
         _controllerInteraction.RepeatAnalogAxis(
-            "right-y",
-            rightGesture.VerticalDirection,
-            rightGesture.VerticalMagnitude,
+            "right-encoder",
+            encoderDirection,
+            encoderMagnitude,
             virtualDialDeadZone,
             _settings.RepeatDelayMs,
             _settings.RepeatIntervalMs,
@@ -638,46 +602,12 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    if (advancedComposerDial)
-                    {
-                        QueueAdvancedPickerNavigation(
-                            direction > 0
-                                ? ComposerDialNavigation.Up
-                                : ComposerDialNavigation.Down);
-                    }
-                    else
-                    {
-                        AdjustSimpleSpeed(direction);
-                    }
+                    QueueVirtualDialNavigation(
+                        direction > 0
+                            ? ComposerDialNavigation.Right
+                            : ComposerDialNavigation.Left);
                 }
             });
-        _controllerInteraction.RepeatAnalogAxis(
-            "right-x",
-            !dialContextActive && !advancedComposerDial
-                ? rightGesture.HorizontalDirection
-                : 0,
-            rightGesture.HorizontalMagnitude,
-            virtualDialDeadZone,
-            _settings.RepeatDelayMs,
-            _settings.RepeatIntervalMs,
-            QueueSimplePowerStep);
-        if (rightGesture.HorizontalStarted)
-        {
-            if (dialContextActive)
-            {
-                QueueVirtualDialNavigation(
-                    rightGesture.HorizontalDirection > 0
-                        ? ComposerDialNavigation.Right
-                        : ComposerDialNavigation.Left);
-            }
-            else if (advancedComposerDial)
-            {
-                QueueAdvancedPickerNavigation(
-                    rightGesture.HorizontalDirection > 0
-                        ? ComposerDialNavigation.Right
-                        : ComposerDialNavigation.Left);
-            }
-        }
     }
 
     private bool IsVirtualDialContextActive =>
@@ -691,11 +621,6 @@ public partial class MainWindow : Window
         bool requiresConfirmation = false)
     {
         _virtualDialMenuOpen = isOpen;
-        if (!isOpen)
-        {
-            _simpleModelPickerOpen = false;
-        }
-
         _virtualDialConfirmationPending =
             isOpen && requiresConfirmation;
         UpdateVirtualDialContextPresentation();
@@ -1201,8 +1126,6 @@ public partial class MainWindow : Window
     private void ExecuteFastToggle()
     {
         CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
         var previousSpeedIndex = _speedIndex;
         var fast = previousSpeedIndex == 0;
         _speedIndex = fast ? 1 : 0;
@@ -1213,8 +1136,7 @@ public partial class MainWindow : Window
         var menuWasLikelyOpen =
             _composerPickerMenuLikelyOpen ||
             IsVirtualDialContextActive;
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: true);
+        var cancellation = BeginComposerPickerAutomation();
         _ = SetSimpleSpeedAsync(
             fast,
             menuWasLikelyOpen,
@@ -2557,22 +2479,76 @@ public partial class MainWindow : Window
             return;
         }
 
-        var menu = ActiveSidebarNavigation.BuildMenuState(
-            _sidebarEntries,
-            SidebarMenuScopeLabel);
-        if (menu is not null)
+        var rootNavigation = _sidebarNavigationDirectory.Root;
+        IReadOnlyList<SidebarEntry> rootEntries;
+        string? selectedRootId;
+        IReadOnlyList<SidebarEntry>? childEntries = null;
+        string? selectedChildId = null;
+        string? childTitle = null;
+        var childIsActive = false;
+
+        if (_scope == SidebarScope.ProjectTasks)
         {
-            _sidebarNavigationMenuOverlayWindow?.ShowState(menu with
-            {
-                Title = RadialText("侧边栏", "Sidebar"),
-                NavigateGlyph = Glyph(LogicalInput.LeftStick),
-                NavigateHint = RadialText("移动", "Move"),
-                CycleScopeGlyph = Glyph(LogicalInput.LeftStickPress),
-                CycleScopeHint = RadialText("区域", "Region"),
-                OpenGlyph = Glyph(LogicalInput.FaceSouth),
-                OpenHint = RadialText("打开", "Open"),
-            });
+            rootEntries = rootNavigation.FrozenEntries.Count > 0
+                ? rootNavigation.FrozenEntries
+                : _workspaceReader.BuildUnifiedEntries(_snapshot);
+            var disclosedProject = rootEntries.FirstOrDefault(entry =>
+                entry.IsProject &&
+                string.Equals(
+                    entry.ProjectPath,
+                    _selectedProjectPath,
+                    StringComparison.OrdinalIgnoreCase));
+            selectedRootId = disclosedProject?.Id ??
+                             rootNavigation.SelectedEntry(rootEntries)?.Id;
+            childEntries = _sidebarEntries;
+            selectedChildId = ActiveSidebarNavigation
+                .SelectedEntry(_sidebarEntries)?.Id;
+            childTitle = disclosedProject?.Title ??
+                         CurrentSidebarProjectName() ??
+                         ScopeLabel(SidebarScope.ProjectTasks);
+            childIsActive = true;
         }
+        else
+        {
+            rootEntries = _sidebarEntries;
+            var selectedRoot = rootNavigation.SelectedEntry(rootEntries);
+            selectedRootId = selectedRoot?.Id;
+            if (selectedRoot is { IsProject: true } &&
+                !string.IsNullOrWhiteSpace(selectedRoot.ProjectPath))
+            {
+                childEntries = _workspaceReader.BuildEntries(
+                    _snapshot,
+                    SidebarScope.ProjectTasks,
+                    selectedRoot.ProjectPath);
+                selectedChildId = _projectTaskCursorIds.GetValueOrDefault(
+                    selectedRoot.ProjectPath);
+                childTitle = selectedRoot.Title;
+            }
+        }
+
+        if (rootEntries.Count == 0)
+        {
+            return;
+        }
+
+        var menu = SidebarNavigationMenuProjector.Project(
+            rootEntries,
+            selectedRootId,
+            SidebarMenuScopeLabel,
+            childEntries,
+            selectedChildId,
+            childTitle,
+            childIsActive);
+        _sidebarNavigationMenuOverlayWindow?.ShowState(menu with
+        {
+            Title = RadialText("侧边栏", "Sidebar"),
+            NavigateGlyph = Glyph(LogicalInput.LeftStick),
+            NavigateHint = RadialText("移动", "Move"),
+            CycleScopeGlyph = Glyph(LogicalInput.LeftStickPress),
+            CycleScopeHint = RadialText("区域", "Region"),
+            OpenGlyph = Glyph(LogicalInput.FaceSouth),
+            OpenHint = RadialText("打开", "Open"),
+        });
     }
 
     private void FocusCodexSidebarEntry(
@@ -2986,36 +2962,7 @@ public partial class MainWindow : Window
     private void HandleComposerDialShortPress()
     {
         _controllerInteraction.RequireRightStickNeutral();
-        if (IsVirtualDialContextActive)
-        {
-            _ = CloseVirtualDialMenuAsync(showFeedback: false);
-            return;
-        }
-
-        if (_composerPickerMenuLikelyOpen)
-        {
-            // Simple mode leaves the picker informational; R3 toggles it
-            // closed without ever having owned the right stick.
-            CloseComposerPickerOnly();
-            return;
-        }
-
-        var view = ComposerPickerViewPolicy.ResolveEntryView(
-            UsesAdvancedComposerDial);
-        if (
-            view == ComposerPickerView.Model &&
-            !_modelPickerShortcutReady)
-        {
-            PresentAdvancedPickerMenuResult(
-                new ComposerPickerResult(
-                    false,
-                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
-                    ErrorDetail:
-                        "composer-model-picker-keybinding-conflict"));
-            return;
-        }
-
-        _ = OpenComposerPickerAsync(view);
+        _ = PressVirtualDialAsync();
     }
 
     private void QueueVirtualDialNavigation(
@@ -3039,36 +2986,6 @@ public partial class MainWindow : Window
 
         CancelPendingComposerSelection();
         StartVirtualDialNavigationPump();
-    }
-
-    private void QueueAdvancedPickerNavigation(
-        ComposerDialNavigation navigation)
-    {
-        if (
-            _virtualDialCancelRequested ||
-            _virtualDialCleanupPending ||
-            _dialInputReleasePending)
-        {
-            return;
-        }
-
-        Interlocked.Exchange(
-            ref _pendingDialNavigation,
-            (int)navigation);
-        if (_virtualDialOpenPending)
-        {
-            return;
-        }
-
-        if (_virtualDialMenuOpen)
-        {
-            StartVirtualDialNavigationPump();
-            return;
-        }
-
-        _ = OpenComposerPickerAsync(
-            ComposerPickerView.Advanced,
-            startPendingDialNavigation: true);
     }
 
     private void StartVirtualDialNavigationPump()
@@ -3199,8 +3116,6 @@ public partial class MainWindow : Window
     private async Task SelectVirtualDialOptionAsync()
     {
         CancelPendingComposerSelection();
-        var selectedFromSimpleModelPicker =
-            _simpleModelPickerOpen;
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
@@ -3219,14 +3134,6 @@ public partial class MainWindow : Window
         if (result.Succeeded && !result.IsMenuOpen)
         {
             _composerPickerMenuLikelyOpen = false;
-            if (selectedFromSimpleModelPicker)
-            {
-                await Task.Delay(
-                        BridgeTimings.ComposerFallbackSettleMs)
-                    .ConfigureAwait(true);
-                InitializeComposerControls();
-            }
-
             BeginVirtualDialReleaseDrain();
         }
     }
@@ -3255,9 +3162,7 @@ public partial class MainWindow : Window
         }
 
         var hasPendingLocalAction =
-            _composerPickerCancellation is not null ||
-            Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
-            Volatile.Read(ref _pendingAdvancedSteps) != 0;
+            _composerPickerCancellation is not null;
         if (hasPendingLocalAction)
         {
             CancelAction();
@@ -3485,9 +3390,7 @@ public partial class MainWindow : Window
                 failure);
             AddEvent(
                 VirtualDialEventText(failure, result));
-            if (
-                !UsesAdvancedComposerDial &&
-                ShouldShowVirtualDialFailure(result))
+            if (ShouldShowVirtualDialFailure(result))
             {
                 ShowFeedback(
                     _localization.Strings.VirtualDial,
@@ -3605,23 +3508,6 @@ public partial class MainWindow : Window
         };
     }
 
-    private void PresentVirtualDialProbeFailure(
-        ComposerDialResult result)
-    {
-        var failure = ExecutionFailureLabel(
-            result.Error,
-            result.ErrorDetail);
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
-            failure);
-        AddEvent(
-            $"{_localization.Strings.VirtualDial} · {failure}");
-        ShowFeedback(
-            _localization.Strings.VirtualDial,
-            failure);
-        Pulse(strength: 0.08);
-    }
-
     private void ResetVirtualDialInput(bool closeMenu)
     {
         var hadPendingOpen = _virtualDialOpenPending;
@@ -3670,40 +3556,6 @@ public partial class MainWindow : Window
         cancellation?.Cancel();
     }
 
-    private void SwitchRightControlMode(
-        int direction,
-        string? source = null)
-    {
-        CancelPendingComposerSelection();
-        _rightAdjustmentBlockedUntil =
-            Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        var values = AdvancedComposerModes;
-        var current = Array.IndexOf(values, _rightMode);
-        if (current < 0)
-        {
-            current = 0;
-        }
-        var next =
-            (current + Math.Sign(direction) + values.Length) %
-            values.Length;
-        _rightMode = values[next];
-        UpdateRightModeUi();
-        var gesture =
-            source ??
-            _localization.Strings.Format(
-                StringKeys.MessageRightStickGesture,
-                Arrow(direction, horizontal: true));
-        AddEvent($"{gesture} · {ModeLabel(_rightMode)}");
-        ShowFeedback(
-            _localization.Strings.Get(
-                StringKeys.MessageRightStickMode),
-            ModeLabel(_rightMode));
-        Pulse();
-    }
-
-    private bool UsesAdvancedComposerDial =>
-        ComposerDialModes.IsAdvanced(_settings.ComposerDialMode);
-
     private string CurrentPowerSelectionDisplay()
     {
         if (
@@ -3727,179 +3579,10 @@ public partial class MainWindow : Window
                 efforts.Count - 1)]}";
     }
 
-    private void ApplyComposerDialMode(bool forceReset)
+    private void InitializeMicroEncoderPresentation()
     {
-        var useAdvanced = UsesAdvancedComposerDial;
-        if (useAdvanced && _simpleModeUpgradePromptPending)
-        {
-            ClearSimpleModeUpgradePrompt();
-        }
-
-        if (forceReset)
-        {
-            CancelPendingComposerSelection();
-            ResetVirtualDialInput(closeMenu: true);
-            _controllerInteraction.RequireRightStickNeutral();
-            _rightMode = useAdvanced
-                ? RightControlMode.Model
-                : RightControlMode.Dial;
-        }
-        else if (useAdvanced && _rightMode == RightControlMode.Dial)
-        {
-            _rightMode = RightControlMode.Model;
-        }
-        else if (!useAdvanced && _rightMode != RightControlMode.Dial)
-        {
-            _rightMode = RightControlMode.Dial;
-        }
-
+        _rightMode = RightControlMode.Dial;
         UpdateRightModeUi();
-    }
-
-    private void QueueSimplePowerStep(int direction)
-    {
-        if (direction == 0)
-        {
-            return;
-        }
-
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        QueueBoundedStep(
-            ref _pendingSimplePowerSteps,
-            direction);
-        if (
-            Interlocked.CompareExchange(
-                ref _simplePowerPumpRunning,
-                1,
-                0) == 0)
-        {
-            _ = PumpSimplePowerStepsAsync();
-        }
-    }
-
-    private async Task PumpSimplePowerStepsAsync()
-    {
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: false);
-        try
-        {
-            while (!cancellation.IsCancellationRequested)
-            {
-                // Drain the whole accumulated batch so a fast repeater
-                // cannot outrun the serialized automation consumer; the
-                // service applies the signed step count in one pass.
-                var steps = Interlocked.Exchange(
-                    ref _pendingSimplePowerSteps,
-                    0);
-                if (steps == 0)
-                {
-                    break;
-                }
-
-                var pickerMenuLikelyOpen =
-                    _composerPickerMenuLikelyOpen ||
-                    IsVirtualDialContextActive;
-                var result = await RunComposerPickerAutomationAsync(
-                        token => _composerAutomation.StepSimplePowerAsync(
-                            steps,
-                            allowShortcutFastPath:
-                                !pickerMenuLikelyOpen,
-                            _settings,
-                            token),
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                if (
-                    cancellation.IsCancellationRequested ||
-                    result.Error ==
-                        AgentAutomationErrorCodes.OperationCanceled)
-                {
-                    break;
-                }
-
-                PresentSimplePickerResult(
-                    _localization.Strings.Model,
-                    result);
-                if (!result.Succeeded)
-                {
-                    Interlocked.Exchange(
-                        ref _pendingSimplePowerSteps,
-                        0);
-                    break;
-                }
-
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer Simple picker action owns the menu now.
-        }
-        catch (Exception exception)
-        {
-            PresentSimplePickerResult(
-                _localization.Strings.Model,
-                new ComposerPickerResult(
-                    false,
-                    Error: AgentAutomationErrorCodes.Unexpected,
-                    ErrorDetail: exception.Message));
-        }
-        finally
-        {
-            CompleteComposerPickerAutomation(cancellation);
-            Volatile.Write(ref _simplePowerPumpRunning, 0);
-            if (
-                Volatile.Read(ref _pendingSimplePowerSteps) != 0 &&
-                Interlocked.CompareExchange(
-                    ref _simplePowerPumpRunning,
-                    1,
-                    0) == 0)
-            {
-                _ = PumpSimplePowerStepsAsync();
-            }
-        }
-    }
-
-    private void AdjustSimpleSpeed(int direction)
-    {
-        direction = Math.Sign(direction);
-        var fast =
-            SimpleSpeedInputPolicy.ResolveFastTarget(direction);
-        if (
-            !fast.HasValue ||
-            direction == _simpleSpeedHeldDirection)
-        {
-            return;
-        }
-
-        _simpleSpeedHeldDirection = direction;
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        var previousSpeedIndex = _speedIndex;
-        var targetSpeedIndex = fast.Value ? 1 : 0;
-        if (previousSpeedIndex == targetSpeedIndex)
-        {
-            _devicePageViewModel.UpdateRightModeValue(
-                SpeedLabel(_speedIndex));
-            return;
-        }
-
-        _speedIndex = targetSpeedIndex;
-        _devicePageViewModel.UpdateRightModeValue(
-            _localization.Strings.Format(
-                StringKeys.MessageApplyingValue,
-                SpeedLabel(_speedIndex)));
-        var menuWasLikelyOpen =
-            _composerPickerMenuLikelyOpen ||
-            IsVirtualDialContextActive;
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: true);
-        _ = SetSimpleSpeedAsync(
-            fast.Value,
-            menuWasLikelyOpen,
-            previousSpeedIndex,
-            cancellation,
-            _localization.Strings.Speed);
     }
 
     private async Task SetSimpleSpeedAsync(
@@ -3964,145 +3647,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task OpenComposerPickerAsync(
-        ComposerPickerView view,
-        bool startPendingDialNavigation = false)
+    private CancellationTokenSource BeginComposerPickerAutomation()
     {
-        var ownsNativeNavigation =
-            view is ComposerPickerView.Advanced or
-                ComposerPickerView.Model;
-        var simpleModelPicker =
-            view == ComposerPickerView.Model;
-        if (ownsNativeNavigation)
-        {
-            if (_virtualDialOpenPending)
-            {
-                return;
-            }
-
-            if (_virtualDialMenuOpen)
-            {
-                if (startPendingDialNavigation)
-                {
-                    StartVirtualDialNavigationPump();
-                }
-
-                return;
-            }
-
-            _virtualDialOpenPending = true;
-            _virtualDialCancelRequested = false;
-            _devicePageViewModel.UpdateRightMode(
-                RightControlMode.Dial,
-                RadialText("正在打开…", "Opening…"));
-        }
-
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: true);
-        try
-        {
-            var result = await RunComposerPickerAutomationAsync(
-                    token => _composerAutomation.OpenPickerAsync(
-                        view,
-                        _settings,
-                        token),
-                    cancellation.Token)
-                .ConfigureAwait(true);
-            if (
-                cancellation.IsCancellationRequested ||
-                result.Error == AgentAutomationErrorCodes.OperationCanceled)
-            {
-                return;
-            }
-
-            if (ownsNativeNavigation)
-            {
-                _virtualDialOpenPending = false;
-                SetVirtualDialMenuOpen(
-                    result.Succeeded && result.IsMenuOpen);
-                _simpleModelPickerOpen =
-                    simpleModelPicker &&
-                    result.Succeeded &&
-                    result.IsMenuOpen;
-                PresentAdvancedPickerMenuResult(result);
-                if (
-                    result.Succeeded &&
-                    result.IsMenuOpen &&
-                    !_virtualDialCancelRequested &&
-                    Volatile.Read(ref _pendingDialNavigation) != 0)
-                {
-                    StartVirtualDialNavigationPump();
-                }
-                else if (!result.Succeeded)
-                {
-                    Interlocked.Exchange(
-                        ref _pendingDialNavigation,
-                        0);
-                }
-
-                return;
-            }
-
-            PresentSimplePickerResult(
-                _localization.Strings.Model,
-                result);
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer Simple picker action owns the menu now.
-        }
-        catch (Exception exception)
-        {
-            var result = new ComposerPickerResult(
-                false,
-                Error: AgentAutomationErrorCodes.Unexpected,
-                ErrorDetail: exception.Message);
-            if (ownsNativeNavigation)
-            {
-                PresentAdvancedPickerMenuResult(result);
-            }
-            else
-            {
-                PresentSimplePickerResult(
-                    _localization.Strings.Model,
-                    result);
-            }
-        }
-        finally
-        {
-            if (ownsNativeNavigation)
-            {
-                _virtualDialOpenPending = false;
-            }
-
-            CompleteComposerPickerAutomation(cancellation);
-        }
-    }
-
-    private void PresentAdvancedPickerMenuResult(
-        ComposerPickerResult result)
-    {
-        ObserveComposerPickerMenu(result);
-        var value = result.Succeeded
-            ? result.Value ?? _localization.Strings.ComposerDialReady
-            : SimplePickerFailureLabel(result);
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
-            value);
-        AddEvent($"{_localization.Strings.VirtualDial} · {value}");
-        Pulse(strength: result.Succeeded ? 0.16 : 0.08);
-    }
-
-    private CancellationTokenSource BeginComposerPickerAutomation(
-        bool clearPendingPowerSteps)
-    {
-        if (clearPendingPowerSteps)
-        {
-            Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        }
-
         var cancellation = new CancellationTokenSource();
         var previous = Interlocked.Exchange(
             ref _composerPickerCancellation,
@@ -4123,9 +3669,6 @@ public partial class MainWindow : Window
 
     private void CancelComposerPickerAutomation()
     {
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-        _simpleSpeedHeldDirection = 0;
         var cancellation = Interlocked.Exchange(
             ref _composerPickerCancellation,
             null);
@@ -4150,136 +3693,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BeginSimpleModeUpgradePrompt(
-        string sourceTitle,
-        string? modelValue)
-    {
-        if (_simpleModeUpgradePromptPending)
-        {
-            return;
-        }
-
-        _simpleModeUpgradePromptPending = true;
-        _simpleModeUpgradePromptValue = modelValue;
-        _simpleModeUpgradePromptExpiresAt =
-            Environment.TickCount64 +
-            (long)SimpleModeUpgradePromptDuration.TotalMilliseconds;
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        _simpleSpeedHeldDirection = 0;
-        _controllerInteraction.ResetRepeats();
-        _controllerInteraction.RequireRightStickNeutral();
-
-        var modelLabel = string.IsNullOrWhiteSpace(modelValue)
-            ? RadialText("当前模型", "The current model")
-            : modelValue.Trim();
-        var promptTitle = RadialText(
-            $"{modelLabel} 不支持简易 Power",
-            $"{modelLabel} does not support Simple Power");
-        var prompt = RadialText(
-            $"是否改为高级模式？{Glyph(LogicalInput.FaceSouth)} 切换 · {Glyph(LogicalInput.FaceEast)} 保持简易模式（Speed 仍可用）",
-            $"Switch to Advanced mode? {Glyph(LogicalInput.FaceSouth)} switch · {Glyph(LogicalInput.FaceEast)} keep Simple (Speed still works)");
-        _devicePageViewModel.UpdateRightModeValue(prompt);
-        AddEvent($"{sourceTitle} · {promptTitle} · {prompt}");
-        _overlayWindow?.ShowMessage(
-            promptTitle,
-            prompt,
-            SimpleModeUpgradePromptDuration);
-        Pulse(strength: 0.12);
-    }
-
-    private bool ProcessSimpleModeUpgradePrompt(
-        ControllerButtons pressed)
-    {
-        if (!_simpleModeUpgradePromptPending)
-        {
-            return false;
-        }
-
-        var downEdges =
-            _controllerInteraction.PhysicalEdges(pressed).Down;
-        var choice =
-            SimpleModeCompatibilityPrompt.ResolveChoice(downEdges);
-        if (
-            choice ==
-            SimpleModeCompatibilityChoice.SwitchToAdvanced)
-        {
-            SwitchSimpleModePromptToAdvanced();
-        }
-        else if (
-            choice ==
-            SimpleModeCompatibilityChoice.KeepSimple)
-        {
-            KeepSimpleModeFromPrompt(timedOut: false);
-        }
-        else if (
-            Environment.TickCount64 >=
-            _simpleModeUpgradePromptExpiresAt)
-        {
-            KeepSimpleModeFromPrompt(timedOut: true);
-        }
-
-        DrainControllerFrame(pressed);
-        return true;
-    }
-
-    private void SwitchSimpleModePromptToAdvanced()
-    {
-        _simpleModeUpgradeDeclinedKey = null;
-        _settingsPageViewModel.ComposerDialMode =
-            ComposerDialModes.Advanced;
-        SaveSettings(RadialText(
-            "已切换为高级模式",
-            "Switched to Advanced mode"));
-
-        var title = RadialText(
-            "已切换为高级模式",
-            "Advanced mode enabled");
-        var detail = RadialText(
-            "右摇杆左右切换 Model / Effort / Speed，上下调整选项。",
-            "Move the right stick left / right for Model, Effort, or Speed; up / down changes its option.");
-        _overlayWindow?.ShowMessage(
-            title,
-            detail,
-            TimeSpan.FromMilliseconds(1800));
-        Pulse(strength: 0.24);
-    }
-
-    private void KeepSimpleModeFromPrompt(bool timedOut)
-    {
-        // Remember the declined selection so the same model does not
-        // re-prompt on every Power flick; Standard/Fast keep working.
-        _simpleModeUpgradeDeclinedKey =
-            SimpleModeCompatibilityPrompt.SuppressionKey(
-                _simpleModeUpgradePromptValue);
-        ClearSimpleModeUpgradePrompt();
-        var title = timedOut
-            ? RadialText("未切换模式", "No mode change")
-            : RadialText("保持简易模式", "Keeping Simple mode");
-        var detail = RadialText(
-            "当前模型的简易 Power 不可用；Standard / Fast 仍可切换。",
-            "Simple Power is unavailable for the current model; Standard / Fast still work.");
-        _devicePageViewModel.UpdateRightModeValue(detail);
-        AddEvent($"{title} · {detail}");
-        _overlayWindow?.ShowMessage(
-            title,
-            detail,
-            TimeSpan.FromMilliseconds(1800));
-        Pulse(strength: 0.08);
-    }
-
-    private void ClearSimpleModeUpgradePrompt()
-    {
-        _simpleModeUpgradePromptPending = false;
-        _simpleModeUpgradePromptValue = null;
-        _simpleModeUpgradePromptExpiresAt = 0;
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        _simpleSpeedHeldDirection = 0;
-        _rightAdjustmentBlockedUntil =
-            Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        _controllerInteraction.ResetRepeats();
-        _controllerInteraction.RequireRightStickNeutral();
-    }
-
     private void PresentSimplePickerResult(
         string title,
         ComposerPickerResult result)
@@ -4287,16 +3700,6 @@ public partial class MainWindow : Window
         ObserveComposerPickerMenu(result);
         if (!result.Succeeded)
         {
-            if (
-                SimpleModeCompatibilityPrompt.ShouldOfferAdvanced(
-                    UsesAdvancedComposerDial,
-                    result,
-                    _simpleModeUpgradeDeclinedKey))
-            {
-                BeginSimpleModeUpgradePrompt(title, result.Value);
-                return;
-            }
-
             var failure = SimplePickerFailureLabel(result);
             _devicePageViewModel.UpdateRightModeValue(failure);
             AddEvent($"{title} · {failure}");
@@ -4342,12 +3745,12 @@ public partial class MainWindow : Window
                     "Power did not change; it may be at this account's lowest level or the UI may still be updating"),
             "composer-picker-view:simple" =>
                 RadialText(
-                    "当前模型与档位不提供简易 Power；Standard / Fast 仍可切换，也可改用高级模式",
-                    "The current model and effort do not provide Simple Power; Standard / Fast still work, or switch to Advanced mode"),
+                    "当前 Codex 界面未提供这个降级操作；可用 Micro 旋钮打开官方菜单",
+                    "The current Codex UI does not expose this fallback action; use the Micro encoder to open the official menu"),
             "composer-picker-view:advanced" =>
                 RadialText(
-                    "无法切换到当前账户的高级模型菜单",
-                    "Could not switch to the Advanced model picker for the current account"),
+                    "无法打开当前账户的官方模型菜单",
+                    "Could not open the official model menu for the current account"),
             "composer-model-picker-keybinding-conflict" =>
                 RadialText(
                     "模型选择快捷键未就绪或有冲突；请检查设置并重启 Codex",
@@ -4374,156 +3777,6 @@ public partial class MainWindow : Window
         };
     }
 
-    private void QueueAdvancedPickerStep(int direction)
-    {
-        if (direction == 0)
-        {
-            return;
-        }
-
-        var kind = _rightMode switch
-        {
-            RightControlMode.Model => ComposerSettingKind.Model,
-            RightControlMode.Reasoning => ComposerSettingKind.Effort,
-            RightControlMode.Speed => ComposerSettingKind.Speed,
-            _ => (ComposerSettingKind?)null,
-        };
-        if (!kind.HasValue)
-        {
-            return;
-        }
-
-        CancelPendingComposerSelection(cancelComposerPicker: false);
-        Interlocked.Exchange(ref _pendingSimplePowerSteps, 0);
-        _pendingAdvancedKind = kind.Value;
-        QueueBoundedStep(ref _pendingAdvancedSteps, direction);
-        if (
-            Interlocked.CompareExchange(
-                ref _advancedStepPumpRunning,
-                1,
-                0) == 0)
-        {
-            _ = PumpAdvancedPickerStepsAsync();
-        }
-    }
-
-    private async Task PumpAdvancedPickerStepsAsync()
-    {
-        var cancellation = BeginComposerPickerAutomation(
-            clearPendingPowerSteps: false);
-        try
-        {
-            while (!cancellation.IsCancellationRequested)
-            {
-                var pending = Volatile.Read(ref _pendingAdvancedSteps);
-                if (pending == 0)
-                {
-                    break;
-                }
-
-                var direction = Math.Sign(pending);
-                Interlocked.Add(ref _pendingAdvancedSteps, -direction);
-                var kind = _pendingAdvancedKind;
-                var result = await RunComposerPickerAutomationAsync(
-                        token => _composerAutomation.StepAdvancedAsync(
-                            kind,
-                            direction,
-                            _settings,
-                            token),
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-                if (
-                    cancellation.IsCancellationRequested ||
-                    result.Error ==
-                        AgentAutomationErrorCodes.OperationCanceled)
-                {
-                    break;
-                }
-
-                PresentAdvancedPickerResult(kind, result);
-                if (!result.Succeeded)
-                {
-                    Interlocked.Exchange(ref _pendingAdvancedSteps, 0);
-                    break;
-                }
-
-                _threadNavigation.ClearUndo();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer picker action owns the menu now.
-        }
-        catch (Exception exception)
-        {
-            PresentAdvancedPickerResult(
-                _pendingAdvancedKind,
-                new ComposerPickerResult(
-                    false,
-                    Error: AgentAutomationErrorCodes.Unexpected,
-                    ErrorDetail: exception.Message));
-        }
-        finally
-        {
-            CompleteComposerPickerAutomation(cancellation);
-            Volatile.Write(ref _advancedStepPumpRunning, 0);
-            if (
-                Volatile.Read(ref _pendingAdvancedSteps) != 0 &&
-                Interlocked.CompareExchange(
-                    ref _advancedStepPumpRunning,
-                    1,
-                    0) == 0)
-            {
-                _ = PumpAdvancedPickerStepsAsync();
-            }
-        }
-    }
-
-    private void PresentAdvancedPickerResult(
-        ComposerSettingKind kind,
-        ComposerPickerResult result)
-    {
-        ObserveComposerPickerMenu(result);
-        var title = ComposerKindLabel(kind);
-        if (!result.Succeeded)
-        {
-            var failure = result.ErrorDetail switch
-            {
-                "composer-advanced-upper-boundary" =>
-                    RadialText(
-                        "已到当前菜单实际提供的最高一项",
-                        "Already at the highest option in the live menu"),
-                "composer-advanced-lower-boundary" =>
-                    RadialText(
-                        "已到当前菜单实际提供的最低一项",
-                        "Already at the lowest option in the live menu"),
-                var detail when detail?.StartsWith(
-                    "composer-advanced-readback:",
-                    StringComparison.Ordinal) == true =>
-                    RadialText(
-                        "界面没有确认这次选择，未更新本地状态",
-                        "The UI did not confirm this selection; local state was not advanced"),
-                _ => SimplePickerFailureLabel(result),
-            };
-            _devicePageViewModel.UpdateRightModeValue(failure);
-            AddEvent($"{title} · {failure}");
-            ShowComposerPickerOverlayIfNeeded(
-                title,
-                failure,
-                result);
-            Pulse(strength: 0.1);
-            return;
-        }
-
-        var value = ComposerTargetLabel(
-            kind,
-            result.Value ?? string.Empty);
-        _devicePageViewModel.UpdateRightModeValue(value);
-        AddEvent($"{title} · {value}");
-        ShowComposerPickerOverlayIfNeeded(title, value, result);
-        Pulse(strength: 0.18);
-    }
-
     private void ObserveComposerPickerMenu(
         ComposerPickerResult result)
     {
@@ -4534,25 +3787,6 @@ public partial class MainWindow : Window
         else if (result.Succeeded)
         {
             _composerPickerMenuLikelyOpen = false;
-        }
-    }
-
-    private static void QueueBoundedStep(
-        ref int pending,
-        int direction)
-    {
-        direction = Math.Sign(direction);
-        while (direction != 0)
-        {
-            var current = Volatile.Read(ref pending);
-            var next = Math.Clamp(current + direction, -2, 2);
-            if (Interlocked.CompareExchange(
-                    ref pending,
-                    next,
-                    current) == current)
-            {
-                return;
-            }
         }
     }
 
@@ -4753,15 +3987,21 @@ public partial class MainWindow : Window
                     {
                         var result =
                             await ExecuteDictationAutomationAsync(
+                                    microPressed: true,
                                     BridgeTimings.DictationStartTimeoutMs,
                                     PushToTalkAutomationPolicy
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
-                                        .StartActionNames)
+                                        .StartActionNames,
+                                    ComposerAutomationChannel.Unknown)
                                 .ConfigureAwait(true);
                         _pushToTalkAutomation.Complete(
                             action,
                             result.Executed);
+                        _dictationAutomationChannel =
+                            _pushToTalkAutomation.IsDictating
+                                ? result.Automation.Channel
+                                : ComposerAutomationChannel.Unknown;
                         _dictationInjected =
                             _pushToTalkAutomation.IsDictating;
                         DevicePage.SetVoiceHalo(
@@ -4771,16 +4011,22 @@ public partial class MainWindow : Window
                     }
                     case PushToTalkAutomationAction.StopDictation:
                     {
+                        var sessionChannel =
+                            _dictationAutomationChannel;
                         var result =
                             await ExecuteDictationAutomationAsync(
+                                    microPressed: false,
                                     BridgeTimings.DictationStopTimeoutMs,
                                     PushToTalkAutomationPolicy
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
-                                        .StopActionNames)
+                                        .StopActionNames,
+                                    _dictationAutomationChannel)
                                 .ConfigureAwait(true);
                         var stopped =
                             result.Executed ||
+                            sessionChannel !=
+                                ComposerAutomationChannel.MicroHid &&
                             _composerAutomation.IsActionAvailable(
                                 PushToTalkAutomationPolicy
                                     .StartActionNames
@@ -4788,6 +4034,12 @@ public partial class MainWindow : Window
                         _pushToTalkAutomation.Complete(
                             action,
                             stopped);
+                        if (!_pushToTalkAutomation.IsDictating)
+                        {
+                            _dictationAutomationChannel =
+                                ComposerAutomationChannel.Unknown;
+                        }
+
                         _dictationInjected =
                             _pushToTalkAutomation.IsDictating;
                         DevicePage.SetVoiceHalo(
@@ -4810,6 +4062,8 @@ public partial class MainWindow : Window
                 !_pushToTalkAutomation.WantsDictation &&
                 !_pushToTalkAutomation.IsDictating)
             {
+                _dictationAutomationChannel =
+                    ComposerAutomationChannel.Unknown;
                 _dictationInputGlyph = null;
                 DevicePage.SetVoiceHalo(active: false);
             }
@@ -4869,10 +4123,69 @@ public partial class MainWindow : Window
 
     private async Task<DictationAutomationExecution>
         ExecuteDictationAutomationAsync(
+            bool microPressed,
             int timeoutMs,
             bool allowShortcutFallback,
-            IReadOnlyList<string> actionNames)
+            IReadOnlyList<string> actionNames,
+            ComposerAutomationChannel requiredChannel)
     {
+        var microSession =
+            requiredChannel == ComposerAutomationChannel.MicroHid;
+        var mayStartMicroSession =
+            requiredChannel == ComposerAutomationChannel.Unknown &&
+            _settings.BridgeEnabled &&
+            (
+                !_settings.OnlyWhenCodexForeground ||
+                _foregroundApplication.IsForeground
+            );
+        if (microSession || mayStartMicroSession)
+        {
+            var micro = _microInput.SendPushToTalk(microPressed);
+            if (
+                microSession &&
+                !microPressed &&
+                micro == MicroReportSendResult.NotSent)
+            {
+                await Task.Delay(
+                        BridgeTimings.MicroReleaseRetryDelayMs)
+                    .ConfigureAwait(true);
+                micro = _microInput.SendPushToTalk(pressed: false);
+            }
+
+            if (micro is
+                MicroReportSendResult.Accepted or
+                MicroReportSendResult.OutcomeUnknown)
+            {
+                return new(
+                    true,
+                    new ComposerAutomationResult(
+                        true,
+                        Channel: ComposerAutomationChannel.MicroHid));
+            }
+
+            if (micro == MicroReportSendResult.Rejected)
+            {
+                return new(
+                    false,
+                    new ComposerAutomationResult(
+                        false,
+                        AgentAutomationErrorCodes.Unexpected,
+                        "micro.input-rejected",
+                        ComposerAutomationChannel.MicroHid));
+            }
+
+            if (microSession)
+            {
+                return new(
+                    false,
+                    new ComposerAutomationResult(
+                        false,
+                        AgentAutomationErrorCodes.InputInjectionFailed,
+                        "micro.input-not-sent",
+                        ComposerAutomationChannel.MicroHid));
+            }
+        }
+
         using var cancellation = new CancellationTokenSource();
         var automationTask = _composerAutomation.InvokeActionAsync(
             _settings,
@@ -4915,6 +4228,12 @@ public partial class MainWindow : Window
                         _settings.DictationShortcut,
                         _settings))
                 .ConfigureAwait(true);
+            if (fallback)
+            {
+                automation = new(
+                    true,
+                    Channel: ComposerAutomationChannel.KeyboardInput);
+            }
         }
 
         return new(
@@ -5099,9 +4418,7 @@ public partial class MainWindow : Window
         }
 
         var hadPendingSelection =
-            _composerPickerCancellation is not null ||
-            Volatile.Read(ref _pendingSimplePowerSteps) != 0 ||
-            Volatile.Read(ref _pendingAdvancedSteps) != 0;
+            _composerPickerCancellation is not null;
         CancelPendingSidebarFocus();
         CancelPendingComposerSelection();
         if (hadPendingSelection)
@@ -5588,7 +4905,7 @@ public partial class MainWindow : Window
                 StringComparison.OrdinalIgnoreCase)
                 ? 1
                 : 0;
-        ApplyComposerDialMode(forceReset: false);
+        InitializeMicroEncoderPresentation();
     }
 
     private IReadOnlyList<string> CurrentEfforts()
@@ -5732,18 +5049,8 @@ public partial class MainWindow : Window
 
     private void SaveSettings(string eventText)
     {
-        var previousComposerDialMode =
-            ComposerDialModes.Normalize(
-                _settings.ComposerDialMode);
         ReadControlsIntoSettings();
         _settingsService.Save(_settings);
-        var composerDialModeChanged =
-            !string.Equals(
-                previousComposerDialMode,
-                ComposerDialModes.Normalize(
-                    _settings.ComposerDialMode),
-                StringComparison.Ordinal);
-        ApplyComposerDialMode(forceReset: composerDialModeChanged);
         ConfigureCodexKeybindings();
         RefreshRadialMenu();
         AddEvent(eventText);
@@ -5890,7 +5197,7 @@ public partial class MainWindow : Window
         return mode switch
         {
             RightControlMode.Dial =>
-                _localization.Strings.SettingsComposerDialModeSimple,
+                _localization.Strings.VirtualDial,
             RightControlMode.Reasoning =>
                 _localization.Strings.ReasoningEffort,
             RightControlMode.Model => _localization.Strings.Model,
@@ -6085,35 +5392,6 @@ public partial class MainWindow : Window
         UpdateCodexStatus();
     }
 
-    private void SettingsPageViewModel_PropertyChanged(
-        object? sender,
-        PropertyChangedEventArgs e)
-    {
-        if (
-            _initializing ||
-            e.PropertyName !=
-            nameof(SettingsPageViewModel.ComposerDialMode))
-        {
-            return;
-        }
-
-        var next = ComposerDialModes.Normalize(
-            _settingsPageViewModel.ComposerDialMode);
-        if (string.Equals(
-                next,
-                ComposerDialModes.Normalize(
-                    _settings.ComposerDialMode),
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _settings.ComposerDialMode = next;
-        _settingsService.Save(_settings);
-        ApplyComposerDialMode(forceReset: true);
-        FooterStatusText.Text = ModeLabel(_rightMode);
-    }
-
     private void RefreshDeviceData()
     {
         RefreshCodexData(
@@ -6285,6 +5563,8 @@ public partial class MainWindow : Window
         CancelPendingComposerSelection();
         _pushToTalkAutomation.Reset();
         _dictationInjected = false;
+        _dictationAutomationChannel =
+            ComposerAutomationChannel.Unknown;
         _dictationInputGlyph = null;
         _threadNavigation.NoticePublished -=
             ThreadNavigation_NoticePublished;
@@ -6296,8 +5576,6 @@ public partial class MainWindow : Window
         _trayIconImage?.Dispose();
         _feedbackPresenter.PropertyChanged -=
             FeedbackPresenter_PropertyChanged;
-        _settingsPageViewModel.PropertyChanged -=
-            SettingsPageViewModel_PropertyChanged;
         _feedbackPresenter.Dispose();
         _overlayWindow?.Close();
         _radialMenuOverlayWindow?.Close();

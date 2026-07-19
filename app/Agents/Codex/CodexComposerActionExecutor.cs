@@ -112,12 +112,16 @@ public sealed class CodexComposerActionExecutor : CodexActionExecutorBase
         ComposerAutomationResult automation)
     {
         if (actionId == ComposerActionContract.SubmitId &&
-            automation.Channel == ComposerAutomationChannel.KeyboardInput)
+            automation.Channel is
+                ComposerAutomationChannel.KeyboardInput or
+                ComposerAutomationChannel.MicroHid)
         {
             return new(
                 ActionOutcome.AcceptedUnverified,
                 ActionEvidenceKind.Transport,
-                "composer.submit.shortcut-sent");
+                automation.Channel == ComposerAutomationChannel.MicroHid
+                    ? "composer.submit.micro-requested"
+                    : "composer.submit.shortcut-sent");
         }
 
         if (actionId == ComposerActionContract.ClearId &&

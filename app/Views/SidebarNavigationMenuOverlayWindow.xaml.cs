@@ -11,7 +11,7 @@ namespace CodexController.Views;
 public partial class SidebarNavigationMenuOverlayWindow : Window
 {
     private static readonly TimeSpan VisibleDuration =
-        TimeSpan.FromMilliseconds(1350);
+        TimeSpan.FromMilliseconds(2000);
     private const double BottomMargin = 220;
 
     private readonly DispatcherTimer _hideTimer;
@@ -63,9 +63,12 @@ public partial class SidebarNavigationMenuOverlayWindow : Window
         var wasVisible = IsVisible;
         BeginAnimation(OpacityProperty, null);
         ViewModel.Update(state);
+        var activeItem = state.ActiveItem;
         AutomationProperties.SetName(
             this,
-            $"{state.Current.ScopeLabel}: {state.Current.Title}");
+            activeItem is null
+                ? state.Title
+                : $"{activeItem.ScopeLabel}: {activeItem.Title}");
         _hideTimer.Stop();
         if (!wasVisible)
         {

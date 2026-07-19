@@ -34,7 +34,7 @@ I directed Codex to build a prototype. Two hours later it worked; another day we
 
 - Press **Menu** (☰ on an Xbox controller, also called Start or `+` on some gamepads) to wake or foreground Codex when needed.
 - Use the **left stick** to walk the task tree: up/down moves between siblings, right enters a project, and left returns to the parent level. Press **A** to open a task. Click **L3** to cycle between pinned tasks, pinned projects, projects, and projectless tasks.
-- Use the **right stick** for the current model controls. Simple mode adjusts Power with left/right and selects Standard/Fast with up/down; tap **R3** to open the official model list and choose models such as 5.6 Sol Max. Advanced mode—which is still rough in the current Codex UI—switches between Model, Effort, and Speed with left/right, then changes the selected option with up/down.
+- The **right stick is the Codex Micro upper-left encoder**. Stick motion produces clockwise/counter-clockwise detents; Codex `composer-navigation` decides whether those detents traverse composer tools, Model, Effort, Speed, or an open menu. Tap **R3** to press the encoder; hold it to open Agent Controller settings. Agent Controller no longer guesses the current model-menu state.
 - Hold **LT** to dictate and release it to stop.
 - Press **X** to send.
 - To clear the composer, press **Y**, then **A** twice to confirm.
@@ -102,9 +102,8 @@ The v0.7.0-hotfix Windows package is self-contained and does not require a separ
 | B | Close a menu or undo recent navigation when applicable; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
 | Y | Open the action panel. |
 | D-pad ↑ / ↓ | Previous / next Q&A turn; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
-| Right stick (Simple) | ← / → steps the live Power control; ↑ selects Standard; ↓ selects Fast. |
-| Right stick (Advanced) | ← / → selects Model, Effort, or Speed; ↑ / ↓ chooses an option actually exposed by the current account and model. |
-| R3 tap / hold | In Simple mode, tap to open the official model list, use directions to select, A to confirm, and B/R3 to close. Advanced mode opens the full settings menu. Hold for 500 ms to open Agent Controller settings. |
+| Right stick | Emit clockwise/counter-clockwise Micro encoder detents. Codex's active encoder mode and official bridge interpret them; there is no separate Simple/Advanced stick state machine. |
+| R3 tap / hold | Tap to press the Micro encoder and open, enter, or confirm the current item. Hold for 500 ms to open Agent Controller settings. |
 | LB / RB tap | Open the previous / next available task. |
 | LT hold | Start push-to-talk dictation; release to finish. |
 

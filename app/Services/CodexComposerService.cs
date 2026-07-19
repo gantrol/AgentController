@@ -25,6 +25,7 @@ public enum ComposerAutomationChannel
     Unknown,
     UiAutomation,
     KeyboardInput,
+    MicroHid,
 }
 
 public sealed record ComposerAutomationResult(
@@ -244,6 +245,29 @@ public sealed partial class CodexComposerService
         if (gate is not null)
         {
             return gate;
+        }
+
+        var micro = _microInput.SendEncoderSteps(delta);
+        if (micro is
+            MicroReportSendResult.Accepted or
+            MicroReportSendResult.OutcomeUnknown)
+        {
+            return new(
+                true,
+                "Codex Micro",
+                IsMenuOpen: _dialMenuOpen,
+                MenuWasPresent: _dialMenuOpen);
+        }
+
+        if (micro == MicroReportSendResult.Rejected)
+        {
+            return new(
+                false,
+                _dialControlName,
+                IsMenuOpen: _dialMenuOpen,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "micro.encoder-rejected",
+                MenuWasPresent: _dialMenuOpen);
         }
 
         lock (_dialSync)
@@ -504,6 +528,39 @@ public sealed partial class CodexComposerService
         {
             if (_dialMenuOpen)
             {
+                if (navigation is
+                    ComposerDialNavigation.Up or
+                    ComposerDialNavigation.Down)
+                {
+                    var micro = _microInput.SendEncoderSteps(
+                        navigation == ComposerDialNavigation.Up
+                            ? 1
+                            : -1);
+                    if (micro is
+                        MicroReportSendResult.Accepted or
+                        MicroReportSendResult.OutcomeUnknown)
+                    {
+                        return new(
+                            true,
+                            _dialControlName ?? "Codex Micro",
+                            IsMenuOpen: true,
+                            MenuWasPresent: true);
+                    }
+
+                    if (micro == MicroReportSendResult.Rejected)
+                    {
+                        return new(
+                            false,
+                            _dialControlName,
+                            IsMenuOpen: true,
+                            Error:
+                                AgentAutomationErrorCodes
+                                    .InputInjectionFailed,
+                            ErrorDetail: "micro.encoder-rejected",
+                            MenuWasPresent: true);
+                    }
+                }
+
                 if (
                     !ComposerDialNativeInputPolicy.TryGetNavigationKey(
                         navigation,
@@ -913,6 +970,41 @@ public sealed partial class CodexComposerService
 
     public ComposerDialResult DialPress(AppSettings settings)
     {
+        var gate = ValidateInteractiveBridge(settings);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        var micro = _microInput.SendEncoderPress();
+        if (micro is
+            MicroReportSendResult.Accepted or
+            MicroReportSendResult.OutcomeUnknown)
+        {
+            lock (_dialSync)
+            {
+                _dialMenuOpen = true;
+                _dialControlName ??= "Codex Micro";
+            }
+
+            return new(
+                true,
+                _dialControlName,
+                IsMenuOpen: true,
+                MenuWasPresent: true);
+        }
+
+        if (micro == MicroReportSendResult.Rejected)
+        {
+            return new(
+                false,
+                _dialControlName,
+                IsMenuOpen: _dialMenuOpen,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "micro.encoder-rejected",
+                MenuWasPresent: _dialMenuOpen);
+        }
+
         return DialPressCore(
             settings,
             DialActivationIntent.OpenOnly);
@@ -924,6 +1016,38 @@ public sealed partial class CodexComposerService
         if (gate is not null)
         {
             return gate;
+        }
+
+        var micro = _microInput.SendEncoderPress();
+        if (micro is
+            MicroReportSendResult.Accepted or
+            MicroReportSendResult.OutcomeUnknown)
+        {
+            lock (_dialSync)
+            {
+                _dialMenuOpen = true;
+                _dialControlName ??= "Codex Micro";
+            }
+
+            // Encoder delivery cannot prove whether Codex opened a submenu
+            // or committed a leaf. Keep ownership until explicit B/Escape so
+            // the next stick frame never leaks into another input context.
+            return new(
+                true,
+                _dialControlName,
+                IsMenuOpen: true,
+                MenuWasPresent: true);
+        }
+
+        if (micro == MicroReportSendResult.Rejected)
+        {
+            return new(
+                false,
+                _dialControlName,
+                IsMenuOpen: _dialMenuOpen,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "micro.encoder-rejected",
+                MenuWasPresent: _dialMenuOpen);
         }
 
         lock (_dialSync)
@@ -1608,8 +1732,10 @@ public sealed partial class CodexComposerService
                     Thread.Sleep(NativePickerRefocusSettleMs);
                 }
 
+                // AG00 is the first physical Agent key, not Escape. Codex
+                // Micro exposes no general-purpose Escape control, so menu
+                // dismissal remains an owned native-key fallback.
                 var sent =
-                    _microInput.TryDismissOpenMenu() ||
                     _sendKey(ComposerDialNativeInputPolicy.EscapeKey);
                 if (!sent)
                 {

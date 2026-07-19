@@ -12,9 +12,12 @@ namespace CodexController.Services.Micro;
 public static class MicroRpcCodec
 {
     public const byte ReportId = 0x06;
+    public const byte DebugChannel = 0x01;
     public const byte RpcChannel = 0x02;
     public const int ReportLength = 64;
     public const int MaximumPayloadLength = 61;
+    public const int MaximumMessageLength = 64 * 1024;
+    public const string FirmwareVersion = "0.1.0-vhf-poc";
 
     public static IReadOnlyList<byte[]> EncodeHid(
         string key,
@@ -22,6 +25,11 @@ public static class MicroRpcCodec
         int? agent = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (action is < 0 or > 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(action));
+        }
+
         var parameters = new Dictionary<string, object?>
         {
             ["k"] = key,
@@ -70,6 +78,46 @@ public static class MicroRpcCodec
         return EncodeUtf8Payload(Encoding.UTF8.GetBytes(message));
     }
 
+    public static IReadOnlyList<byte[]> EncodeResponse(
+        JsonElement id,
+        object? result)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("id");
+            id.WriteTo(writer);
+            writer.WritePropertyName("result");
+            JsonSerializer.Serialize(writer, result);
+            writer.WriteEndObject();
+        }
+
+        return EncodeUtf8PayloadWithNewline(buffer.WrittenSpan);
+    }
+
+    public static IReadOnlyList<byte[]> EncodeError(
+        JsonElement id,
+        int code,
+        string message)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("id");
+            id.WriteTo(writer);
+            writer.WritePropertyName("error");
+            writer.WriteStartObject();
+            writer.WriteNumber("code", code);
+            writer.WriteString("message", message);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+
+        return EncodeUtf8PayloadWithNewline(buffer.WrittenSpan);
+    }
+
     public static byte[] DecodePayload(
         IEnumerable<ReadOnlyMemory<byte>> reports)
     {
@@ -78,23 +126,13 @@ public static class MicroRpcCodec
         foreach (var reportMemory in reports)
         {
             var report = reportMemory.Span;
-            if (report.Length != ReportLength)
-            {
-                throw new InvalidDataException(
-                    $"Micro report must contain {ReportLength} bytes.");
-            }
-
-            if (report[0] != ReportId || report[1] != RpcChannel)
-            {
-                throw new InvalidDataException(
-                    "Micro report ID or channel does not match the ABI.");
-            }
+            ValidateWireReport(report);
 
             var length = report[2];
-            if (length > MaximumPayloadLength)
+            if (payload.Length + length > MaximumMessageLength)
             {
                 throw new InvalidDataException(
-                    "Micro report payload length is invalid.");
+                    "Micro RPC message is too large.");
             }
 
             payload.Write(report[3..(3 + length)]);
@@ -103,11 +141,44 @@ public static class MicroRpcCodec
         return payload.ToArray();
     }
 
+    public static void ValidateWireReport(ReadOnlySpan<byte> report)
+    {
+        if (report.Length != ReportLength)
+        {
+            throw new InvalidDataException(
+                $"Micro report must contain {ReportLength} bytes.");
+        }
+
+        if (report[0] != ReportId || report[1] != RpcChannel)
+        {
+            throw new InvalidDataException(
+                "Micro report ID or channel does not match the ABI.");
+        }
+
+        if (report[2] > MaximumPayloadLength)
+        {
+            throw new InvalidDataException(
+                "Micro report payload length is invalid.");
+        }
+
+        var padding = report[(3 + report[2])..];
+        if (padding.IndexOfAnyExcept((byte)0) >= 0)
+        {
+            throw new InvalidDataException(
+                "Micro report padding must be zero-filled.");
+        }
+    }
+
     private static IReadOnlyList<byte[]> EncodeUtf8Payload(byte[] payload)
     {
-        if (payload.Length == 0)
+        if (payload.Length == 0 || payload.Length > MaximumMessageLength)
         {
-            return [];
+            if (payload.Length == 0)
+            {
+                return [];
+            }
+
+            throw new InvalidDataException("Micro RPC message is too large.");
         }
 
         var reports = new List<byte[]>();
@@ -143,6 +214,15 @@ public static class MicroRpcCodec
         }
 
         return reports;
+    }
+
+    private static IReadOnlyList<byte[]> EncodeUtf8PayloadWithNewline(
+        ReadOnlySpan<byte> payload)
+    {
+        var terminated = new byte[payload.Length + 1];
+        payload.CopyTo(terminated);
+        terminated[^1] = (byte)'\n';
+        return EncodeUtf8Payload(terminated);
     }
 
     private static bool IsUtf8Continuation(byte value) =>

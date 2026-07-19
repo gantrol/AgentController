@@ -39,7 +39,6 @@ public sealed class PageViewModelTests
             HapticFeedback = false,
             ShowOverlay = false,
             RadialMenuMode = RadialMenuModes.Off,
-            ComposerDialMode = ComposerDialModes.Advanced,
             StartWithWindows = true,
             MinimizeToTray = false,
             DeadZone = 0.63,
@@ -60,9 +59,6 @@ public sealed class PageViewModelTests
         Assert.False(target.HapticFeedback);
         Assert.False(target.ShowOverlay);
         Assert.Equal(RadialMenuModes.Off, target.RadialMenuMode);
-        Assert.Equal(
-            ComposerDialModes.Advanced,
-            target.ComposerDialMode);
         Assert.True(target.StartWithWindows);
         Assert.False(target.MinimizeToTray);
         Assert.Equal(0.63, target.DeadZone);
@@ -161,18 +157,6 @@ public sealed class PageViewModelTests
             {
                 Assert.Equal(RadialMenuModes.Off, option.Value);
                 Assert.Equal("Off", option.DisplayName);
-            });
-        Assert.Collection(
-            settings.ComposerDialModeOptions,
-            option =>
-            {
-                Assert.Equal(ComposerDialModes.Simple, option.Value);
-                Assert.Equal("Simple", option.DisplayName);
-            },
-            option =>
-            {
-                Assert.Equal(ComposerDialModes.Advanced, option.Value);
-                Assert.Equal("Advanced", option.DisplayName);
             });
     }
 

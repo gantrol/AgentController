@@ -10,6 +10,24 @@ namespace CodexController.Tests;
 public sealed class CodexComposerActionExecutorTests
 {
     [Fact]
+    public async Task MicroSubmitReturnsUnverifiedTransportEvidence()
+    {
+        var executor = new CodexComposerActionExecutor(
+            () => new ComposerAutomationResult(
+                true,
+                Channel: ComposerAutomationChannel.MicroHid),
+            clear: null);
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            ComposerActionContract.SubmitId));
+
+        Assert.Equal(ActionOutcome.AcceptedUnverified, result.Outcome);
+        var evidence = Assert.Single(result.Evidence);
+        Assert.Equal(ActionEvidenceKind.Transport, evidence.Kind);
+        Assert.Equal("composer.submit.micro-requested", evidence.Code);
+    }
+
+    [Fact]
     public async Task SubmitReturnsUnverifiedTransportEvidence()
     {
         var executor = new CodexComposerActionExecutor(

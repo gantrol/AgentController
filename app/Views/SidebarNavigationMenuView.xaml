@@ -4,302 +4,394 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
-             d:DesignHeight="314"
-             d:DesignWidth="560"
-             Width="560"
-             Height="314"
+             d:DesignHeight="476"
+             d:DesignWidth="888"
+             Width="{Binding ViewWidth}"
+             Height="{Binding ViewHeight}"
              IsHitTestVisible="False"
              SnapsToDevicePixels="True">
     <UserControl.Resources>
-        <Style x:Key="SidebarMenu.NeighborRow"
-               TargetType="Border">
-            <Setter Property="Height" Value="52" />
-            <Setter Property="Background"
-                    Value="{StaticResource Brush.Agent.Row.Fill}" />
-            <Setter Property="BorderBrush"
-                    Value="{StaticResource Brush.Border.Subtle}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="14" />
-        </Style>
-
-        <Style x:Key="SidebarMenu.SmallKey"
+        <Style x:Key="SidebarMenu.Panel"
                TargetType="Border"
-               BasedOn="{StaticResource Overlay.PhysicalKey}">
-            <Setter Property="Width" Value="40" />
-            <Setter Property="Height" Value="40" />
-            <Setter Property="CornerRadius" Value="10" />
+               BasedOn="{StaticResource Overlay.MicroPanel}">
+            <Setter Property="Width" Value="432" />
+            <Setter Property="Height" Value="414" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="BorderBrush"
+                            Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
-        <Style x:Key="SidebarMenu.HintKey"
-               TargetType="Border">
-            <Setter Property="MinWidth" Value="30" />
-            <Setter Property="Height" Value="24" />
+        <Style x:Key="SidebarMenu.ItemRow" TargetType="Border">
+            <Setter Property="Height" Value="46" />
+            <Setter Property="Margin" Value="7,1" />
+            <Setter Property="Padding" Value="11,0,10,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background"
+                            Value="{StaticResource Brush.Agent.Row.Selected}" />
+                    <Setter Property="BorderBrush"
+                            Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsActiveSelection}" Value="True">
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SidebarMenu.HintKey" TargetType="Border">
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="Height" Value="25" />
             <Setter Property="Padding" Value="6,0" />
             <Setter Property="Background"
                     Value="{StaticResource Brush.Bg.Surface}" />
             <Setter Property="BorderBrush"
                     Value="{StaticResource Brush.Border.Subtle}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="CornerRadius" Value="7" />
         </Style>
-    </UserControl.Resources>
 
-    <Grid Width="560"
-          Height="314"
-          Background="Transparent">
-        <Border Width="544"
-                Height="298"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Style="{StaticResource Overlay.MicroPanel}">
-            <Grid Margin="18,14">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="34" />
-                    <RowDefinition Height="8" />
-                    <RowDefinition Height="52" />
-                    <RowDefinition Height="6" />
-                    <RowDefinition Height="64" />
-                    <RowDefinition Height="6" />
-                    <RowDefinition Height="52" />
-                    <RowDefinition Height="10" />
-                    <RowDefinition Height="36" />
-                </Grid.RowDefinitions>
-
+        <DataTemplate x:Key="SidebarMenu.ItemTemplate">
+            <Border x:Name="MenuItemRow"
+                    Loaded="OnMenuItemLoaded"
+                    Style="{StaticResource SidebarMenu.ItemRow}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Border Style="{StaticResource Overlay.ModifierBadge}"
-                            Margin="0,0,10,0">
-                        <TextBlock Text="{Binding NavigateGlyph}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Agent.Glyph}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontSize="12"
-                                   FontWeight="{StaticResource Font.Weight.Bold}" />
-                    </Border>
+
+                    <Ellipse x:Name="PinnedMark"
+                             Width="6"
+                             Height="6"
+                             Margin="0,0,9,0"
+                             VerticalAlignment="Center"
+                             Fill="{StaticResource Brush.Agent.Glyph}">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPinned}"
+                                                 Value="False">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+
                     <TextBlock Grid.Column="1"
                                Text="{Binding Title}"
                                VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontSize="14"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <TextBlock Grid.Column="2"
+                               MaxWidth="112"
+                               Margin="10,0,5,0"
+                               Text="{Binding Subtitle}"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Tertiary}"
+                               FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <TextBlock x:Name="ChildChevron"
+                               Grid.Column="3"
+                               Width="20"
+                               Text="&#x203A;"
+                               VerticalAlignment="Center"
                                Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="23"
+                               TextAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasChildren}"
+                                                 Value="False">
+                                        <Setter Property="Visibility"
+                                                Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <TextBlock x:Name="SelectedCheck"
+                               Grid.Column="3"
+                               Width="20"
+                               Text="&#x2713;"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Agent.Glyph}"
                                FontSize="15"
-                               FontWeight="{StaticResource Font.Weight.Medium}" />
-                    <Border Grid.Column="2"
-                            Padding="9,4"
-                            VerticalAlignment="Center"
-                            Background="{StaticResource Brush.Bg.Sunken}"
-                            CornerRadius="8">
-                        <TextBlock Text="{Binding Position}"
-                                   Foreground="{StaticResource Brush.Text.Tertiary}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontSize="11" />
-                    </Border>
+                               FontWeight="{StaticResource Font.Weight.Semibold}"
+                               TextAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsSelected}"
+                                                       Value="True" />
+                                            <Condition Binding="{Binding HasChildren}"
+                                                       Value="False" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility"
+                                                Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </Grid>
+            </Border>
+        </DataTemplate>
 
-                <Border x:Name="PreviousRow"
-                        Grid.Row="2"
-                        Style="{StaticResource SidebarMenu.NeighborRow}">
-                    <Grid Margin="8,5,12,5">
+        <DataTemplate x:Key="SidebarMenu.SectionTemplate">
+            <StackPanel>
+                <TextBlock x:Name="SectionTitle"
+                           Margin="15,9,15,3"
+                           Text="{Binding Title}"
+                           Foreground="{StaticResource Brush.Text.Tertiary}"
+                           FontSize="11"
+                           FontWeight="{StaticResource Font.Weight.Semibold}" />
+                <ItemsControl ItemsSource="{Binding Items}"
+                              ItemTemplate="{StaticResource SidebarMenu.ItemTemplate}" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding HasTitle}" Value="False">
+                    <Setter TargetName="SectionTitle"
+                            Property="Visibility"
+                            Value="Collapsed" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Width="{Binding ViewWidth}"
+          Height="{Binding ViewHeight}"
+          Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="422" />
+            <RowDefinition Height="8" />
+            <RowDefinition Height="38" />
+            <RowDefinition Height="8" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0"
+                    Margin="8,4,8,4"
+                    HorizontalAlignment="Left"
+                    Orientation="Horizontal">
+            <Border x:Name="RootCard"
+                    DataContext="{Binding RootPanel}"
+                    Style="{StaticResource SidebarMenu.Panel}">
+                <Grid Margin="0,10,0,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="40" />
+                        <RowDefinition Height="1" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="15,0,14,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource SidebarMenu.SmallKey}">
-                            <TextBlock Text="↑"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="16" />
-                        </Border>
+                        <Ellipse Width="8"
+                                 Height="8"
+                                 Margin="0,0,10,0"
+                                 VerticalAlignment="Center"
+                                 Fill="{StaticResource Brush.Agent.Glyph}">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Opacity" Value="0.32" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsActive}"
+                                                     Value="True">
+                                            <Setter Property="Opacity" Value="1" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
                         <TextBlock Grid.Column="1"
-                                   Margin="6,0,0,0"
-                                   Text="{Binding PreviousTitle}"
+                                   Text="{Binding Title}"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="14"
+                                   Foreground="{StaticResource Brush.Text.Primary}"
+                                   FontSize="16"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}"
                                    TextTrimming="CharacterEllipsis" />
                         <Border Grid.Column="2"
                                 Padding="8,3"
                                 VerticalAlignment="Center"
                                 Background="{StaticResource Brush.Bg.Sunken}"
                                 CornerRadius="7">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding PreviousBoundary}"
-                                                     Value="">
-                                            <Setter Property="Visibility"
-                                                    Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <TextBlock Text="{Binding PreviousBoundary}"
+                            <TextBlock Text="{Binding PositionText}"
                                        Foreground="{StaticResource Brush.Text.Tertiary}"
+                                       FontFamily="{StaticResource Font.Mono}"
                                        FontSize="10" />
                         </Border>
                     </Grid>
-                </Border>
 
-                <Border x:Name="CurrentRow"
-                        Grid.Row="4"
-                        Height="64"
-                        Background="{StaticResource Brush.Agent.Row.Selected}"
-                        BorderBrush="{StaticResource Brush.Agent.Row.SelectedBorder}"
-                        BorderThickness="2"
-                        CornerRadius="16">
-                    <Grid Margin="8,6,12,6">
+                    <Border Grid.Row="1"
+                            Margin="14,0"
+                            Background="{StaticResource Brush.Border.Subtle}" />
+
+                    <ScrollViewer x:Name="RootScrollViewer"
+                                  Grid.Row="2"
+                                  Margin="0,4,0,0"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Hidden"
+                                  CanContentScroll="False"
+                                  Focusable="False">
+                        <ItemsControl ItemsSource="{Binding Sections}"
+                                      ItemTemplate="{StaticResource SidebarMenu.SectionTemplate}" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border x:Name="ChildCard"
+                    Margin="8,0,0,0"
+                    DataContext="{Binding ChildPanel}">
+                <Border.Style>
+                    <Style TargetType="Border"
+                           BasedOn="{StaticResource SidebarMenu.Panel}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.HasChildPanel, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                         Value="False">
+                                <Setter Property="Visibility"
+                                        Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid Margin="0,10,0,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="40" />
+                        <RowDefinition Height="1" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="15,0,14,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource SidebarMenu.SmallKey}"
-                                BorderBrush="{StaticResource Brush.Agent.Row.SelectedBorder}">
-                            <Grid>
-                                <Ellipse Width="18"
-                                         Height="18"
-                                         Fill="{StaticResource Brush.Agent.Row.SelectedBorder}"
-                                         Opacity="0.3" />
-                                <Ellipse Width="9"
-                                         Height="9"
-                                         Fill="{StaticResource Brush.Agent.Glyph}" />
-                            </Grid>
-                        </Border>
-                        <StackPanel Grid.Column="1"
-                                    Margin="6,0,0,0"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="{Binding CurrentScope}"
-                                       Foreground="{StaticResource Brush.Agent.Glyph}"
-                                       FontSize="10"
-                                       FontWeight="{StaticResource Font.Weight.Semibold}" />
-                            <TextBlock Margin="0,3,0,0"
-                                       Text="{Binding CurrentTitle}"
-                                       Foreground="{StaticResource Brush.Text.Primary}"
-                                       FontSize="15"
-                                       FontWeight="{StaticResource Font.Weight.Semibold}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                        <TextBlock Grid.Column="2"
-                                   Text="✓"
+                        <TextBlock Text="&#x2039;"
+                                   Width="18"
+                                   Margin="0,0,7,0"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Agent.Glyph}"
-                                   FontSize="17"
-                                   FontWeight="{StaticResource Font.Weight.Semibold}" />
-                    </Grid>
-                </Border>
-
-                <Border x:Name="NextRow"
-                        Grid.Row="6"
-                        Style="{StaticResource SidebarMenu.NeighborRow}">
-                    <Grid Margin="8,5,12,5">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="48" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource SidebarMenu.SmallKey}">
-                            <TextBlock Text="↓"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Secondary}"
-                                       FontSize="16" />
-                        </Border>
+                                   Foreground="{StaticResource Brush.Text.Tertiary}"
+                                   FontSize="23"
+                                   TextAlignment="Center" />
                         <TextBlock Grid.Column="1"
-                                   Margin="6,0,0,0"
-                                   Text="{Binding NextTitle}"
+                                   Text="{Binding Title}"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="14"
+                                   Foreground="{StaticResource Brush.Text.Primary}"
+                                   FontSize="16"
+                                   FontWeight="{StaticResource Font.Weight.Semibold}"
                                    TextTrimming="CharacterEllipsis" />
                         <Border Grid.Column="2"
                                 Padding="8,3"
                                 VerticalAlignment="Center"
                                 Background="{StaticResource Brush.Bg.Sunken}"
                                 CornerRadius="7">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding NextBoundary}"
-                                                     Value="">
-                                            <Setter Property="Visibility"
-                                                    Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <TextBlock Text="{Binding NextBoundary}"
+                            <TextBlock Text="{Binding PositionText}"
                                        Foreground="{StaticResource Brush.Text.Tertiary}"
+                                       FontFamily="{StaticResource Font.Mono}"
                                        FontSize="10" />
                         </Border>
                     </Grid>
-                </Border>
 
-                <Border Grid.Row="8"
-                        Background="{StaticResource Brush.Bg.Sunken}"
-                        BorderBrush="{StaticResource Brush.Border.Subtle}"
-                        BorderThickness="1"
-                        CornerRadius="10">
-                    <StackPanel HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal">
-                        <Border x:Name="NavigationGlyph"
-                                Style="{StaticResource SidebarMenu.HintKey}">
-                            <TextBlock Text="{Binding NavigateGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Primary}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="10"
-                                       FontWeight="{StaticResource Font.Weight.Semibold}" />
-                        </Border>
-                        <TextBlock Margin="6,0,16,0"
-                                   Text="{Binding NavigateHint}"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="11" />
-                        <Border x:Name="ScopeGlyph"
-                                Style="{StaticResource SidebarMenu.HintKey}">
-                            <TextBlock Text="{Binding CycleScopeGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Primary}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="10"
-                                       FontWeight="{StaticResource Font.Weight.Semibold}" />
-                        </Border>
-                        <TextBlock Margin="6,0,16,0"
-                                   Text="{Binding CycleScopeHint}"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="11" />
-                        <Border x:Name="OpenGlyph"
-                                Style="{StaticResource SidebarMenu.HintKey}">
-                            <TextBlock Text="{Binding OpenGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Primary}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="10"
-                                       FontWeight="{StaticResource Font.Weight.Semibold}" />
-                        </Border>
-                        <TextBlock Margin="6,0,0,0"
-                                   Text="{Binding OpenHint}"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="11" />
-                    </StackPanel>
+                    <Border Grid.Row="1"
+                            Margin="14,0"
+                            Background="{StaticResource Brush.Border.Subtle}" />
+
+                    <ScrollViewer x:Name="ChildScrollViewer"
+                                  Grid.Row="2"
+                                  Margin="0,4,0,0"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Hidden"
+                                  CanContentScroll="False"
+                                  Focusable="False">
+                        <ItemsControl ItemsSource="{Binding Sections}"
+                                      ItemTemplate="{StaticResource SidebarMenu.SectionTemplate}" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <Border Grid.Row="2"
+                Margin="8,0"
+                Background="{StaticResource Brush.Bg.Sunken}"
+                BorderBrush="{StaticResource Brush.Border.Subtle}"
+                BorderThickness="1"
+                CornerRadius="10">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
+                <Border x:Name="NavigationGlyph"
+                        Style="{StaticResource SidebarMenu.HintKey}">
+                    <TextBlock Text="{Binding NavigateGlyph}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontFamily="{StaticResource Font.Mono}"
+                               FontSize="10"
+                               FontWeight="{StaticResource Font.Weight.Semibold}" />
                 </Border>
-            </Grid>
+                <TextBlock Margin="6,0,16,0"
+                           Text="{Binding NavigateHint}"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Text.Secondary}"
+                           FontSize="11" />
+                <Border x:Name="ScopeGlyph"
+                        Style="{StaticResource SidebarMenu.HintKey}">
+                    <TextBlock Text="{Binding CycleScopeGlyph}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontFamily="{StaticResource Font.Mono}"
+                               FontSize="10"
+                               FontWeight="{StaticResource Font.Weight.Semibold}" />
+                </Border>
+                <TextBlock Margin="6,0,16,0"
+                           Text="{Binding CycleScopeHint}"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Text.Secondary}"
+                           FontSize="11" />
+                <Border x:Name="OpenGlyph"
+                        Style="{StaticResource SidebarMenu.HintKey}">
+                    <TextBlock Text="{Binding OpenGlyph}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontFamily="{StaticResource Font.Mono}"
+                               FontSize="10"
+                               FontWeight="{StaticResource Font.Weight.Semibold}" />
+                </Border>
+                <TextBlock Margin="6,0,0,0"
+                           Text="{Binding OpenHint}"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Text.Secondary}"
+                           FontSize="11" />
+            </StackPanel>
         </Border>
     </Grid>
 </UserControl>

@@ -34,7 +34,7 @@ internal sealed class AppComposition : IDisposable
         var codexCommand = new CodexCommandService();
         var codexKeybindings = new CodexKeybindingService();
         var microInput = new MicroInputService(
-            new NamedPipeMicroReportTransport());
+            new VhfMicroReportTransport());
         var codexComposer = new CodexComposerService(microInput);
         var codexSidebar = new CodexSidebarService();
         var controllerProfiles = ControllerProfileRegistry.BuiltIn;
@@ -89,9 +89,40 @@ internal sealed class AppComposition : IDisposable
                 codexActionBlockReason,
                 actionNames => codexComposer.InvokeComposerAction(
                     currentSettings,
-                    actionNames)),
+                    actionNames),
+                tryMicro: actionId => actionId ==
+                    ApprovalActionContract.AcceptId
+                        ? microInput.SendApprove()
+                        : actionId == ApprovalActionContract.DeclineId
+                            ? microInput.SendDecline()
+                            : MicroReportSendResult.NotSent),
             new CodexComposerActionExecutor(
-                () => codexComposer.SubmitComposer(currentSettings),
+                () =>
+                {
+                    if (codexActionBlockReason() is null)
+                    {
+                        var micro = microInput.SendSubmit();
+                        if (micro is
+                            MicroReportSendResult.Accepted or
+                            MicroReportSendResult.OutcomeUnknown)
+                        {
+                            return new ComposerAutomationResult(
+                                true,
+                                Channel:
+                                    ComposerAutomationChannel.MicroHid);
+                        }
+
+                        if (micro == MicroReportSendResult.Rejected)
+                        {
+                            return new ComposerAutomationResult(
+                                false,
+                                AgentAutomationErrorCodes.Unexpected,
+                                "micro.input-rejected");
+                        }
+                    }
+
+                    return codexComposer.SubmitComposer(currentSettings);
+                },
                 () => codexComposer.ClearComposer(currentSettings),
                 () => codexComposer.StopCurrentTurn(currentSettings)),
             new CodexCreateThreadActionExecutor(

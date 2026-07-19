@@ -26,6 +26,7 @@ public static class BridgeTimings
     public const int DictationDialCloseTimeoutMs = 700;
     public const int DictationStartTimeoutMs = 900;
     public const int DictationStopTimeoutMs = 1200;
+    public const int MicroReleaseRetryDelayMs = 1050;
     public const double PushToTalkEngageThreshold = 0.35;
     public const double PushToTalkReleaseThreshold = 0.20;
 

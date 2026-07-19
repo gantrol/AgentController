@@ -158,27 +158,6 @@ public sealed class SidebarNavigationStateTests
     }
 
     [Fact]
-    public void BuildMenuState_ExposesNeighborsAndSectionBoundary()
-    {
-        var entries = RootEntries();
-        var state = new SidebarNavigationState();
-        state.Synchronize(entries, preferredId: "pinned-project");
-
-        var menu = state.BuildMenuState(
-            entries,
-            scope => $"scope:{scope}");
-
-        Assert.NotNull(menu);
-        Assert.Equal("pinned-task", menu.Previous?.Title);
-        Assert.True(menu.Previous?.CrossesSectionBoundary);
-        Assert.Equal("pinned-project", menu.Current.Title);
-        Assert.Equal("project", menu.Next?.Title);
-        Assert.True(menu.Next?.CrossesSectionBoundary);
-        Assert.Equal(2, menu.Position);
-        Assert.Equal(4, menu.Count);
-    }
-
-    [Fact]
     public void TryMove_CrossesRootSectionBoundaryContinuously()
     {
         var entries = RootEntries();

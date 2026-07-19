@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CodexController.Controllers;
 using CodexController.Models;
+using CodexController.Services;
 using CodexController.ViewModels;
 using CodexController.Views;
 
@@ -183,25 +184,60 @@ public sealed class AgentKeypadViewDesignTests
 
     private static void RenderAndAssertSidebarLayout()
     {
-        var viewModel = new SidebarNavigationMenuViewModel();
-        viewModel.Update(new SidebarNavigationMenuState(
-            new SidebarNavigationMenuItem(
-                "分析大模型产业链趋势",
-                SidebarScope.PinnedTasks,
-                "置顶任务",
-                CrossesSectionBoundary: true),
-            new SidebarNavigationMenuItem(
-                "规划项目未来架构",
-                SidebarScope.Projects,
-                "项目",
-                CrossesSectionBoundary: false),
-            new SidebarNavigationMenuItem(
-                "更新 README 文档",
-                SidebarScope.ProjectlessTasks,
-                "未归项目任务",
-                CrossesSectionBoundary: true),
-            Position: 5,
-            Count: 12)
+        var state = SidebarNavigationMenuProjector.Project(
+            [
+                SidebarEntry(
+                    "pinned-task",
+                    "分析大模型产业链趋势",
+                    SidebarScope.PinnedTasks,
+                    SidebarLayer.Pinned),
+                SidebarEntry(
+                    "pinned-project",
+                    "AgentController",
+                    SidebarScope.PinnedProjects,
+                    SidebarLayer.Projects,
+                    isPinned: true),
+                SidebarEntry(
+                    "project",
+                    "控制器 UX 重构",
+                    SidebarScope.Projects,
+                    SidebarLayer.Projects),
+                SidebarEntry(
+                    "loose-task",
+                    "更新 README 文档",
+                    SidebarScope.ProjectlessTasks,
+                    SidebarLayer.Tasks),
+            ],
+            selectedRootId: "project",
+            scope => scope switch
+            {
+                SidebarScope.PinnedTasks => "置顶任务",
+                SidebarScope.PinnedProjects => "置顶项目",
+                SidebarScope.Projects => "项目",
+                SidebarScope.ProjectlessTasks => "未归项目任务",
+                _ => "任务",
+            },
+            childEntries:
+            [
+                SidebarEntry(
+                    "task-one",
+                    "规划项目未来架构",
+                    SidebarScope.ProjectTasks,
+                    SidebarLayer.Tasks),
+                SidebarEntry(
+                    "task-two",
+                    "重新设计弹出菜单",
+                    SidebarScope.ProjectTasks,
+                    SidebarLayer.Tasks),
+                SidebarEntry(
+                    "task-three",
+                    "更新 README 文档",
+                    SidebarScope.ProjectTasks,
+                    SidebarLayer.Tasks),
+            ],
+            selectedChildId: "task-two",
+            childTitle: "控制器 UX 重构",
+            childIsActive: true) with
         {
             Title = "侧边栏",
             NavigateGlyph = "LS",
@@ -210,21 +246,55 @@ public sealed class AgentKeypadViewDesignTests
             CycleScopeHint = "区域",
             OpenGlyph = "A",
             OpenHint = "打开",
-        });
+        };
+        var viewModel = new SidebarNavigationMenuViewModel();
+        viewModel.Update(state);
         var view = new SidebarNavigationMenuView
         {
             DataContext = viewModel,
         };
 
-        view.Measure(new Size(560, 314));
-        view.Arrange(new Rect(0, 0, 560, 314));
+        view.Measure(new Size(
+            SidebarNavigationMenuViewModel.TwoPanelWidth,
+            SidebarNavigationMenuViewModel.MenuHeight));
+        view.Arrange(new Rect(
+            0,
+            0,
+            SidebarNavigationMenuViewModel.TwoPanelWidth,
+            SidebarNavigationMenuViewModel.MenuHeight));
         view.UpdateLayout();
 
-        Assert.Equal(560, view.ActualWidth);
-        Assert.Equal(314, view.ActualHeight);
-        Assert.InRange(view.PreviousRow.ActualHeight, 51.5, 52.5);
-        Assert.InRange(view.CurrentRow.ActualHeight, 63.5, 64.5);
-        Assert.InRange(view.NextRow.ActualHeight, 51.5, 52.5);
+        Assert.Equal(
+            SidebarNavigationMenuViewModel.TwoPanelWidth,
+            view.ActualWidth);
+        Assert.Equal(
+            SidebarNavigationMenuViewModel.MenuHeight,
+            view.ActualHeight);
+        Assert.Equal(Visibility.Visible, view.RootCard.Visibility);
+        Assert.Equal(Visibility.Visible, view.ChildCard.Visibility);
+        Assert.InRange(view.RootCard.ActualWidth, 431.5, 432.5);
+        Assert.InRange(view.ChildCard.ActualWidth, 431.5, 432.5);
+        var rootPosition = view.RootCard.TranslatePoint(new Point(), view);
+        var childPosition = view.ChildCard.TranslatePoint(new Point(), view);
+        Assert.True(
+            childPosition.X > rootPosition.X + view.RootCard.ActualWidth,
+            "The task level must open as an adjacent child card.");
+
+        var sectionTitles = FindVisualChildren<TextBlock>(view)
+            .Where(text => text.Name == "SectionTitle")
+            .Select(text => text.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToArray();
+        Assert.Contains("置顶任务", sectionTitles);
+        Assert.Contains("置顶项目", sectionTitles);
+        Assert.Contains("项目", sectionTitles);
+        Assert.Contains("未归项目任务", sectionTitles);
+
+        var visibleChevrons = FindVisualChildren<TextBlock>(view)
+            .Count(text =>
+                text.Name == "ChildChevron" &&
+                text.Visibility == Visibility.Visible);
+        Assert.Equal(2, visibleChevrons);
         Assert.Equal("LS", ChildText(view.NavigationGlyph));
         Assert.Equal("L3", ChildText(view.ScopeGlyph));
         Assert.Equal("A", ChildText(view.OpenGlyph));
@@ -232,7 +302,50 @@ public sealed class AgentKeypadViewDesignTests
         WritePreviewFromEnvironment(
             view,
             "AGENT_CONTROLLER_SIDEBAR_PREVIEW_PATH");
+
+        var leafState = SidebarNavigationMenuProjector.Project(
+            [
+                SidebarEntry(
+                    "loose-task",
+                    "更新 README 文档",
+                    SidebarScope.ProjectlessTasks,
+                    SidebarLayer.Tasks),
+            ],
+            selectedRootId: "loose-task",
+            scope => scope.ToString());
+        viewModel.Update(leafState);
+        view.Measure(new Size(
+            SidebarNavigationMenuViewModel.SinglePanelWidth,
+            SidebarNavigationMenuViewModel.MenuHeight));
+        view.Arrange(new Rect(
+            0,
+            0,
+            SidebarNavigationMenuViewModel.SinglePanelWidth,
+            SidebarNavigationMenuViewModel.MenuHeight));
+        view.UpdateLayout();
+
+        Assert.Equal(
+            SidebarNavigationMenuViewModel.SinglePanelWidth,
+            view.ActualWidth);
+        Assert.Equal(Visibility.Collapsed, view.ChildCard.Visibility);
     }
+
+    private static SidebarEntry SidebarEntry(
+        string id,
+        string title,
+        SidebarScope scope,
+        SidebarLayer layer,
+        bool isPinned = false) =>
+        new(
+            id,
+            title,
+            layer == SidebarLayer.Projects ? "3 tasks" : "just now",
+            layer,
+            ThreadId: layer == SidebarLayer.Tasks ? id : null,
+            ProjectPath: layer == SidebarLayer.Projects ? id : null,
+            IsPinned: isPinned,
+            ProjectIsPinned: isPinned,
+            NavigationScope: scope);
 
     private static string ChildText(DependencyObject parent)
     {

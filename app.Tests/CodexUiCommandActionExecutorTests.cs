@@ -4,11 +4,90 @@ using AgentController.Domain.Inputs;
 using CodexController.Agents;
 using CodexController.Agents.Codex;
 using CodexController.Services;
+using CodexController.Services.Micro;
 
 namespace CodexController.Tests;
 
 public sealed class CodexUiCommandActionExecutorTests
 {
+    [Theory]
+    [InlineData(MicroReportSendResult.Accepted)]
+    [InlineData(MicroReportSendResult.OutcomeUnknown)]
+    public async Task MicroDeliveryDoesNotFallBackToUiAutomation(
+        MicroReportSendResult sendResult)
+    {
+        var automationCalls = 0;
+        var executor = new CodexUiCommandActionExecutor(
+            blockReason: null,
+            _ =>
+            {
+                automationCalls++;
+                return CodexComposerService.UiAutomationSucceeded();
+            },
+            tryMicro: _ => sendResult);
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            ApprovalActionContract.DeclineId));
+
+        Assert.Equal(0, automationCalls);
+        Assert.Equal(ActionOutcome.AcceptedUnverified, result.Outcome);
+        var evidence = Assert.Single(result.Evidence);
+        Assert.Equal(ActionEvidenceKind.Transport, evidence.Kind);
+        Assert.Equal("approval.decline.micro-requested", evidence.Code);
+    }
+
+    [Fact]
+    public async Task MicroRejectionFailsClosedWithoutUiFallback()
+    {
+        var automationCalls = 0;
+        var executor = new CodexUiCommandActionExecutor(
+            blockReason: null,
+            _ =>
+            {
+                automationCalls++;
+                return CodexComposerService.UiAutomationSucceeded();
+            },
+            tryMicro: _ => MicroReportSendResult.Rejected);
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            ApprovalActionContract.DeclineId));
+
+        Assert.Equal(0, automationCalls);
+        Assert.Equal(ActionOutcome.Failed, result.Outcome);
+        Assert.Equal("micro.input-rejected", result.ErrorCode);
+        Assert.Empty(result.Evidence);
+    }
+
+    [Fact]
+    public async Task MicroNotSentFallsBackToUiAutomation()
+    {
+        var automationCalls = 0;
+        var microCalls = 0;
+        var executor = new CodexUiCommandActionExecutor(
+            blockReason: null,
+            _ =>
+            {
+                automationCalls++;
+                return CodexComposerService.UiAutomationSucceeded();
+            },
+            tryMicro: actionId =>
+            {
+                Assert.Equal(ApprovalActionContract.DeclineId, actionId);
+                microCalls++;
+                return MicroReportSendResult.NotSent;
+            });
+
+        var result = await executor.ExecuteAsync(CreateRequest(
+            ApprovalActionContract.DeclineId));
+
+        Assert.Equal(1, microCalls);
+        Assert.Equal(1, automationCalls);
+        Assert.Equal(ActionOutcome.AcceptedUnverified, result.Outcome);
+        var evidence = Assert.Single(result.Evidence);
+        Assert.Equal(ActionEvidenceKind.UiObservation, evidence.Kind);
+        Assert.Equal("approval.decline.control-invoked", evidence.Code);
+    }
+
     [Theory]
     [InlineData(
         "approval.accept",

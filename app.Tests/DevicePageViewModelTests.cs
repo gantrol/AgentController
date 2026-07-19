@@ -71,7 +71,7 @@ public sealed class DevicePageViewModelTests
             "↑↓ Move focus · → Enter project · ← Exit project · A Open task · LS changes root",
             viewModel.LeftStickHint);
         Assert.Equal(
-            "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
+            "Move to turn the Micro encoder · tap RS to press it · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
         Assert.Equal(
             "A · Open task",
@@ -167,7 +167,7 @@ public sealed class DevicePageViewModelTests
             BuiltInControllerProfiles.Generic);
 
         Assert.Equal(RightControlMode.Dial, viewModel.RightMode);
-        Assert.Equal("简易模式", viewModel.RightModeLabel);
+        Assert.Equal("Micro 旋钮", viewModel.RightModeLabel);
 
         viewModel.UpdateRightMode(
             RightControlMode.Model,
@@ -211,7 +211,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "Simple mode · live Power and Speed controls",
+            "Micro encoder · Codex owns navigation",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(ControllerState.Disconnected);
@@ -248,7 +248,7 @@ public sealed class DevicePageViewModelTests
             ConnectedState("Windows.Gaming.Input"));
 
         Assert.Equal(
-            "简易模式 · 实际 Power 与速度控件",
+            "Micro 旋钮 · 由 Codex 解释当前导航",
             viewModel.RightModeValue);
     }
 
@@ -266,13 +266,13 @@ public sealed class DevicePageViewModelTests
         viewModel.UpdateVirtualDialMenuState(isOpen: true);
 
         Assert.Equal(
-            "Model picker active · ↑ / ↓ Move · A Select · B Close",
+            "Micro menu active · move the stick to turn · A Select · B Close",
             viewModel.RightStickHint);
 
         viewModel.UpdateVirtualDialMenuState(isOpen: false);
 
         Assert.Equal(
-            "Simple: ← / → Power, ↑ Standard, ↓ Fast · Advanced: ← / → changes control, ↑ / ↓ changes an available value · click RS opens the picker · hold RS Settings",
+            "Move to turn the Micro encoder · tap RS to press it · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
     }
 

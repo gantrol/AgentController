@@ -4,14 +4,14 @@ namespace CodexController.ViewModels;
 
 public sealed class SidebarNavigationMenuViewModel : ObservableObject
 {
-    private string _previousTitle = "—";
-    private string _previousBoundary = string.Empty;
-    private string _currentTitle = string.Empty;
-    private string _currentScope = string.Empty;
-    private string _nextTitle = "—";
-    private string _nextBoundary = string.Empty;
-    private string _position = string.Empty;
-    private string _title = "Sidebar";
+    public const double SinglePanelWidth = 448;
+    public const double TwoPanelWidth = 888;
+    public const double MenuHeight = 476;
+
+    private SidebarNavigationMenuPanelViewModel _rootPanel =
+        SidebarNavigationMenuPanelViewModel.Empty("Sidebar");
+    private SidebarNavigationMenuPanelViewModel? _childPanel;
+    private double _viewWidth = SinglePanelWidth;
     private string _navigateGlyph = "LS";
     private string _navigateHint = "Move";
     private string _cycleScopeGlyph = "L3";
@@ -19,53 +19,35 @@ public sealed class SidebarNavigationMenuViewModel : ObservableObject
     private string _openGlyph = "A";
     private string _openHint = "Open";
 
-    public string Title
+    public SidebarNavigationMenuPanelViewModel RootPanel
     {
-        get => _title;
-        private set => SetProperty(ref _title, value);
+        get => _rootPanel;
+        private set => SetProperty(ref _rootPanel, value);
     }
 
-    public string PreviousTitle
+    public SidebarNavigationMenuPanelViewModel? ChildPanel
     {
-        get => _previousTitle;
-        private set => SetProperty(ref _previousTitle, value);
+        get => _childPanel;
+        private set
+        {
+            if (!SetProperty(ref _childPanel, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(HasChildPanel));
+        }
     }
 
-    public string PreviousBoundary
+    public bool HasChildPanel => ChildPanel is not null;
+
+    public double ViewWidth
     {
-        get => _previousBoundary;
-        private set => SetProperty(ref _previousBoundary, value);
+        get => _viewWidth;
+        private set => SetProperty(ref _viewWidth, value);
     }
 
-    public string CurrentTitle
-    {
-        get => _currentTitle;
-        private set => SetProperty(ref _currentTitle, value);
-    }
-
-    public string CurrentScope
-    {
-        get => _currentScope;
-        private set => SetProperty(ref _currentScope, value);
-    }
-
-    public string NextTitle
-    {
-        get => _nextTitle;
-        private set => SetProperty(ref _nextTitle, value);
-    }
-
-    public string NextBoundary
-    {
-        get => _nextBoundary;
-        private set => SetProperty(ref _nextBoundary, value);
-    }
-
-    public string Position
-    {
-        get => _position;
-        private set => SetProperty(ref _position, value);
-    }
+    public double ViewHeight => MenuHeight;
 
     public string NavigateGlyph
     {
@@ -107,14 +89,17 @@ public sealed class SidebarNavigationMenuViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        PreviousTitle = state.Previous?.Title ?? "—";
-        PreviousBoundary = BoundaryText(state.Previous);
-        CurrentTitle = state.Current.Title;
-        CurrentScope = state.Current.ScopeLabel;
-        NextTitle = state.Next?.Title ?? "—";
-        NextBoundary = BoundaryText(state.Next);
-        Position = $"{state.Position} / {state.Count}";
-        Title = state.Title;
+        RootPanel = CreatePanel(
+            state.Root,
+            string.IsNullOrWhiteSpace(state.Title)
+                ? state.Root.Title
+                : state.Title);
+        ChildPanel = state.Child is null
+            ? null
+            : CreatePanel(state.Child, state.Child.Title);
+        ViewWidth = ChildPanel is null
+            ? SinglePanelWidth
+            : TwoPanelWidth;
         NavigateGlyph = state.NavigateGlyph;
         NavigateHint = state.NavigateHint;
         CycleScopeGlyph = state.CycleScopeGlyph;
@@ -123,9 +108,66 @@ public sealed class SidebarNavigationMenuViewModel : ObservableObject
         OpenHint = state.OpenHint;
     }
 
-    private static string BoundaryText(
-        SidebarNavigationMenuItem? item) =>
-        item is { CrossesSectionBoundary: true }
-            ? item.ScopeLabel
-            : string.Empty;
+    private static SidebarNavigationMenuPanelViewModel CreatePanel(
+        SidebarNavigationMenuPanel panel,
+        string title)
+    {
+        var sections = panel.Sections
+            .Select(section => new SidebarNavigationMenuSectionViewModel(
+                section.Scope,
+                section.Title,
+                section.Items
+                    .Select(item => new SidebarNavigationMenuItemViewModel(
+                        item.Id,
+                        item.Title,
+                        item.Subtitle,
+                        item.ScopeLabel,
+                        item.HasChildren,
+                        item.IsSelected,
+                        item.IsSelected && panel.IsActive,
+                        item.IsPinned))
+                    .ToArray()))
+            .ToArray();
+
+        return new SidebarNavigationMenuPanelViewModel(
+            title,
+            sections,
+            panel.IsActive,
+            panel.SelectedPosition,
+            panel.Items.Count);
+    }
 }
+
+public sealed record SidebarNavigationMenuPanelViewModel(
+    string Title,
+    IReadOnlyList<SidebarNavigationMenuSectionViewModel> Sections,
+    bool IsActive,
+    int SelectedPosition,
+    int ItemCount)
+{
+    public string PositionText =>
+        ItemCount == 0
+            ? "0 / 0"
+            : $"{SelectedPosition} / {ItemCount}";
+
+    public static SidebarNavigationMenuPanelViewModel Empty(string title) =>
+        new(title, [], IsActive: true, SelectedPosition: 0, ItemCount: 0);
+}
+
+public sealed record SidebarNavigationMenuSectionViewModel(
+    SidebarScope Scope,
+    string Title,
+    IReadOnlyList<SidebarNavigationMenuItemViewModel> Items)
+{
+    public bool HasTitle => !string.IsNullOrWhiteSpace(Title);
+}
+
+public sealed record SidebarNavigationMenuItemViewModel(
+    string Id,
+    string Title,
+    string Subtitle,
+    string ScopeLabel,
+    bool HasChildren,
+    bool IsSelected,
+    bool IsActiveSelection,
+    bool IsPinned);
