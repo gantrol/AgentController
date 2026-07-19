@@ -417,6 +417,59 @@ public sealed class BrokerCoexistenceTests
         Assert.Equal(0, await hostTask);
     }
 
+    [Fact]
+    public async Task RequestCompletionRenewsLeaseBeforeExpiryCanNeutralizeIt()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint();
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30),
+            clientLeaseTimeout: TimeSpan.FromMilliseconds(100),
+            leaseSweepInterval: TimeSpan.FromMilliseconds(10));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var client = new MicroBrokerClient(
+            "lease-boundary-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        _ = client.Connect();
+        driver.BlockNextSubmit();
+
+        var submitTask = Task.Run(() => client.Submit(
+            MicroRpcCodec.EncodeHid("ACT10", 1)));
+        try
+        {
+            Assert.True(driver.WaitForBlockedSubmit(TimeSpan.FromSeconds(3)));
+            await Task.Delay(250);
+        }
+        finally
+        {
+            driver.ReleaseBlockedSubmit();
+        }
+
+        var result = await submitTask;
+        await Task.Delay(40);
+
+        Assert.Equal(MicroSendDisposition.Accepted, result.Disposition);
+        Assert.DoesNotContain(
+            driver.Messages,
+            message =>
+                message.Contains("\"k\":\"ACT10\"") &&
+                message.Contains("\"act\":0"));
+
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
     private static async Task<BrokerResponse> SendRequestAsync(
         string pipeName,
         BrokerRequest request)
@@ -449,11 +502,29 @@ public sealed class BrokerCoexistenceTests
     {
         private readonly ConcurrentQueue<string> _messages = new();
         private readonly ConcurrentQueue<DriverOutputReport> _output = new();
+        private readonly ManualResetEventSlim _blockedSubmitEntered =
+            new(false);
+        private readonly ManualResetEventSlim _releaseBlockedSubmit =
+            new(true);
+        private int _blockNextSubmit;
         private long _outputSequence;
 
         public bool IsConnected { get; private set; }
         public int ConnectCount { get; private set; }
         public IReadOnlyList<string> Messages => _messages.ToArray();
+
+        public void BlockNextSubmit()
+        {
+            _blockedSubmitEntered.Reset();
+            _releaseBlockedSubmit.Reset();
+            Volatile.Write(ref _blockNextSubmit, 1);
+        }
+
+        public bool WaitForBlockedSubmit(TimeSpan timeout) =>
+            _blockedSubmitEntered.Wait(timeout);
+
+        public void ReleaseBlockedSubmit() =>
+            _releaseBlockedSubmit.Set();
 
         public BrokerDriverInfo Connect()
         {
@@ -473,6 +544,20 @@ public sealed class BrokerCoexistenceTests
             var payload = MicroRpcCodec.DecodePayload(
                 reports.Select(item => (ReadOnlyMemory<byte>)item));
             _messages.Enqueue(Encoding.UTF8.GetString(payload));
+            if (Interlocked.Exchange(ref _blockNextSubmit, 0) == 1)
+            {
+                _blockedSubmitEntered.Set();
+                if (!_releaseBlockedSubmit.Wait(TimeSpan.FromSeconds(3)))
+                {
+                    return new(
+                        MicroSendDisposition.OutcomeUnknown,
+                        0,
+                        reports.Count,
+                        0,
+                        "blocked fake-driver submit timed out");
+                }
+            }
+
             return new(
                 MicroSendDisposition.Accepted,
                 reports.Count,
@@ -518,6 +603,9 @@ public sealed class BrokerCoexistenceTests
         public void Dispose()
         {
             IsConnected = false;
+            _releaseBlockedSubmit.Set();
+            _blockedSubmitEntered.Dispose();
+            _releaseBlockedSubmit.Dispose();
         }
     }
 }

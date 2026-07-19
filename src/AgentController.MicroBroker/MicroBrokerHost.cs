@@ -14,6 +14,9 @@ public sealed class MicroBrokerHost : IDisposable
         TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan LeaseSweepInterval =
         TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan DefaultClientLeaseTimeout =
+        TimeSpan.FromMilliseconds(
+            MicroBrokerProtocol.ClientLeaseTimeoutMs);
     private static readonly TimeSpan DefaultIdleExitDelay =
         TimeSpan.FromSeconds(15);
     private const int MaximumConcurrentConnections = 16;
@@ -22,6 +25,8 @@ public sealed class MicroBrokerHost : IDisposable
     private readonly string _pipeName;
     private readonly string _instanceLeasePath;
     private readonly TimeSpan _idleExitDelay;
+    private readonly TimeSpan _clientLeaseTimeout;
+    private readonly TimeSpan _leaseSweepInterval;
     private readonly DeviceRpcHandler _rpc = new();
     private readonly ConcurrentDictionary<Guid, ClientLease> _clients = new();
     private readonly object _inputSync = new();
@@ -48,7 +53,9 @@ public sealed class MicroBrokerHost : IDisposable
         IMicroDriverEndpoint driver,
         string pipeName,
         string instanceLeasePath,
-        TimeSpan idleExitDelay)
+        TimeSpan idleExitDelay,
+        TimeSpan? clientLeaseTimeout = null,
+        TimeSpan? leaseSweepInterval = null)
     {
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
@@ -58,9 +65,27 @@ public sealed class MicroBrokerHost : IDisposable
             throw new ArgumentOutOfRangeException(nameof(idleExitDelay));
         }
 
+        var resolvedClientLeaseTimeout =
+            clientLeaseTimeout ?? DefaultClientLeaseTimeout;
+        var resolvedLeaseSweepInterval =
+            leaseSweepInterval ?? LeaseSweepInterval;
+        if (resolvedClientLeaseTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(clientLeaseTimeout));
+        }
+
+        if (resolvedLeaseSweepInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(leaseSweepInterval));
+        }
+
         _pipeName = pipeName;
         _instanceLeasePath = instanceLeasePath;
         _idleExitDelay = idleExitDelay;
+        _clientLeaseTimeout = resolvedClientLeaseTimeout;
+        _leaseSweepInterval = resolvedLeaseSweepInterval;
         _rpc.SlotLightingObserved += (_, snapshot) =>
             PublishEvent("slot-lighting", snapshot);
     }
@@ -577,7 +602,7 @@ public sealed class MicroBrokerHost : IDisposable
         {
             try
             {
-                await Task.Delay(LeaseSweepInterval, lifetime.Token)
+                await Task.Delay(_leaseSweepInterval, lifetime.Token)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -588,18 +613,18 @@ public sealed class MicroBrokerHost : IDisposable
             var now = Environment.TickCount64;
             foreach (var pair in _clients)
             {
-                if (
-                    now - pair.Value.LastSeen <=
-                    MicroBrokerProtocol.ClientLeaseTimeoutMs ||
-                    !_clients.TryRemove(pair.Key, out var expired))
+                if (!pair.Value.TryExpire(
+                        now,
+                        _clientLeaseTimeout,
+                        () => TryRemoveClient(pair.Key, pair.Value)))
                 {
                     continue;
                 }
 
-                Neutralize(expired);
+                Neutralize(pair.Value);
                 PublishEvent(
                     "client-expired",
-                    detail: expired.ClientName);
+                    detail: pair.Value.ClientName);
             }
 
             if (
@@ -623,6 +648,10 @@ public sealed class MicroBrokerHost : IDisposable
             }
         }
     }
+
+    private bool TryRemoveClient(Guid id, ClientLease expected) =>
+        ((ICollection<KeyValuePair<Guid, ClientLease>>)_clients).Remove(
+            new(id, expected));
 
     private void Neutralize(ClientLease client)
     {
@@ -807,6 +836,7 @@ public sealed class MicroBrokerHost : IDisposable
                 }
 
                 var response = execute();
+                Volatile.Write(ref _lastSeen, Environment.TickCount64);
                 _lastRequestId = request.RequestId;
                 Remember(request, response);
                 return response;
@@ -823,10 +853,51 @@ public sealed class MicroBrokerHost : IDisposable
 
         internal void Touch(string clientName)
         {
-            lock (_sync)
+            lock (_requestSync)
             {
-                ClientName = clientName;
-                Volatile.Write(ref _lastSeen, Environment.TickCount64);
+                if (_disconnected)
+                {
+                    return;
+                }
+
+                lock (_sync)
+                {
+                    ClientName = clientName;
+                    Volatile.Write(
+                        ref _lastSeen,
+                        Environment.TickCount64);
+                }
+            }
+        }
+
+        internal bool TryExpire(
+            long now,
+            TimeSpan timeout,
+            Func<bool> remove)
+        {
+            if (!Monitor.TryEnter(_requestSync))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (now - LastSeen <= timeout.TotalMilliseconds)
+                {
+                    return false;
+                }
+
+                if (!remove())
+                {
+                    return false;
+                }
+
+                _disconnected = true;
+                return true;
+            }
+            finally
+            {
+                Monitor.Exit(_requestSync);
             }
         }
 
