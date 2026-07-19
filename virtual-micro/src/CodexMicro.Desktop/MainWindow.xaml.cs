@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
     private readonly CodexAgentRosterObserver _agentRosterObserver = new();
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
+    private readonly SlotLightingPresentationTracker
+        _slotLightingPresentation = new();
     private readonly DialGestureTracker _dialGesture = new();
     private readonly EncoderStepAccumulator _encoderSteps = new(3);
     private readonly SemaphoreSlim _encoderInputGate = new(1, 1);
@@ -62,8 +64,6 @@ public partial class MainWindow : Window
     private int _joystickFeedbackVersion;
     private long _dialInputSequence;
     private long _dialWheelRouteSequence;
-    private long _lastSlotLightingSequence;
-    private SlotLightingSnapshot? _latestSlotLighting;
     private CodexAgentRosterSnapshot? _latestAgentRoster;
     private int _dialSelectionFeedbackVersion;
     private int _dialSelectionHudVersion;
@@ -260,16 +260,19 @@ public partial class MainWindow : Window
 
             SetLed(
                 CompatibilityLed,
-                "#9EBDFF",
-                $"Codex {_compatibility.Build} · 已验证\n{_compatibility.Fingerprint}");
+                _compatibility.IsReviewed ? "#9EBDFF" : "#FFD66E",
+                _compatibility.IsReviewed
+                    ? $"Codex {_compatibility.Build} · 已验证\n{_compatibility.Fingerprint}"
+                    : $"Codex {_compatibility.Build} · 未审核，兼容模式\n{_compatibility.Detail}");
             try
             {
                 var info = _broker.Connect(_compatibility);
+                _slotLightingPresentation.BeginConnection(info.ConnectionEpoch);
                 _transportName = info.TransportName;
                 SetLed(DriverLed, "#B8B98B", $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16}");
                 SetLed(ActivityLed, "#B8B98B", "HID / RPC 已就绪");
                 SetStatus(
-                    $"Codex {_compatibility.Build} 已验证。\n" +
+                    $"Codex {_compatibility.Build} 已连接。\n" +
                     $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}。\n" +
                     "点击黑色设置旋钮打开设置；Codex 键会将 Codex 切到前台。");
             }
@@ -1533,24 +1536,22 @@ public partial class MainWindow : Window
     {
         _ = Dispatcher.InvokeAsync(() =>
         {
-            if (snapshot.Sequence <= _lastSlotLightingSequence)
+            if (!_slotLightingPresentation.Observe(snapshot))
             {
                 return;
             }
 
-            _lastSlotLightingSequence = snapshot.Sequence;
-            _latestSlotLighting = snapshot;
             RefreshAgentSlotPresentation();
 
             var activeSlots = snapshot.Slots.Count(slot =>
-                slot.SlotId is >= 0 and < 6 &&
-                slot.Color != 0 &&
-                slot.Brightness > 0);
+                SlotLightingPresentationTracker.IsLit(slot));
 
             SetHelp(
                 DriverLed,
                 "虚拟 HID",
-                $"{_transportName} · Agent 状态已同步 · {activeSlots} 个活动槽位");
+                _slotLightingPresentation.IsInactivityLightingSuppressed
+                    ? $"{_transportName} · Codex 空闲照明已暂停 · 屏幕保留最近灯色 · 连接正常"
+                    : $"{_transportName} · Agent 状态已同步 · {activeSlots} 个活动槽位");
         });
     }
 
@@ -1567,7 +1568,7 @@ public partial class MainWindow : Window
 
     private void RefreshAgentSlotPresentation()
     {
-        var lightingBySlot = _latestSlotLighting?.Slots
+        var lightingBySlot = _slotLightingPresentation.VisibleSnapshot?.Slots
             .Where(slot => slot.SlotId is >= 0 and < 6)
             .ToDictionary(slot => slot.SlotId) ?? [];
 
@@ -1588,7 +1589,9 @@ public partial class MainWindow : Window
             var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
             var title = rosterEntry?.DisplayTitle ?? $"Agent 槽位 {slotId + 1}";
             var state = active
-                ? $"活动 · #{lighting!.Color:X6} · effect {lighting.Effect}"
+                ? _slotLightingPresentation.IsInactivityLightingSuppressed
+                    ? $"保持点亮 · 最近 #{lighting!.Color:X6} · Codex 空闲照明已暂停"
+                    : $"活动 · #{lighting!.Color:X6} · effect {lighting.Effect}"
                 : "空闲";
             var localMatch = rosterEntry is null
                 ? string.Empty

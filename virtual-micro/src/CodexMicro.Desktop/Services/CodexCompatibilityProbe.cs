@@ -6,12 +6,26 @@ using Microsoft.Win32;
 
 namespace CodexMicro.Desktop.Services;
 
+internal enum CodexCompatibilityDisposition
+{
+    Incompatible,
+    Unreviewed,
+    Reviewed,
+}
+
 internal sealed record CodexCompatibilityResult(
-    bool IsCompatible,
+    CodexCompatibilityDisposition Disposition,
     string Build,
     string Fingerprint,
     string Detail,
-    string? PackageRoot);
+    string? PackageRoot)
+{
+    public bool IsCompatible =>
+        Disposition is not CodexCompatibilityDisposition.Incompatible;
+
+    public bool IsReviewed =>
+        Disposition is CodexCompatibilityDisposition.Reviewed;
+}
 
 internal sealed class CodexCompatibilityProbe
 {
@@ -21,6 +35,25 @@ internal sealed class CodexCompatibilityProbe
     private static readonly IReadOnlyDictionary<string, BuildManifest> Manifests =
         new Dictionary<string, BuildManifest>(StringComparer.OrdinalIgnoreCase)
         {
+            ["26.715.4045.0"] = new(
+                "26.715.4045.0",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [".vite/build/codex-micro-service-D1zOebWq.js"] =
+                        "5caa5193214fcd29ef0e9fe66ed641d9646a114ea9122bdc1fc2bf78491c2746",
+                    ["webview/assets/codex-micro-layout-upYsAgUW.js"] =
+                        "2ae8829dfafbf0fb9262e270421d8d6f6279d02dec5821b5c8af075a2898ed50",
+                    ["webview/assets/codex-micro-bridge-BzpuGF_V.js"] =
+                        "dc09025adabce2c654fdeabf36ddb728ad293eba7040efa137b7a2b20dfa1d1b",
+                    ["webview/assets/codex-micro-settings-dLpS1GVV.js"] =
+                        "f75c5fc01113d27f732d00bb29a3474521e098b43dde48adc8c70075847ea698",
+                    ["webview/assets/codex-micro-slot-signals-nIAsNNU3.js"] =
+                        "7041d68667af1ed519961bcb1ec61bc5a514f1bec1f8365b97ce740c522b542c",
+                    ["node_modules/@worklouder/device-kit-oai/dist/rpc_api_oai/rpc_api_oai.js"] =
+                        "80815366885246cd9644e13b770f38c7f9c0587db13cc8979310571ba0fa029a",
+                    ["node_modules/@worklouder/device-kit-oai/node_modules/@worklouder/wl-device-kit/dist/index.js"] =
+                        "f44d8d09e10a4608bf37f2860cd4807c3be9b0242f91d8258df540e277cd7548",
+                }),
             ["26.715.3651.0"] = new(
                 "26.715.3651.0",
                 new Dictionary<string, string>(StringComparer.Ordinal)
@@ -73,14 +106,6 @@ internal sealed class CodexCompatibilityProbe
         }
 
         var build = GetBuild(package.Value.PackageId);
-        if (!Manifests.TryGetValue(build, out var manifest))
-        {
-            return Incompatible(
-                build,
-                "This Codex build has no reviewed Micro compatibility manifest.",
-                package.Value.PackageRoot);
-        }
-
         var asarPath = Path.Combine(
             package.Value.PackageRoot,
             "app",
@@ -91,6 +116,32 @@ internal sealed class CodexCompatibilityProbe
             return Incompatible(
                 build,
                 "Codex app.asar could not be located for read-only fingerprinting.",
+                package.Value.PackageRoot);
+        }
+
+        if (!Manifests.TryGetValue(build, out var manifest))
+        {
+            try
+            {
+                using var archive = new AsarArchiveReader(asarPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    UnauthorizedAccessException or
+                    InvalidDataException or
+                    JsonException)
+            {
+                return Incompatible(
+                    build,
+                    $"Compatibility fingerprint could not be inspected: {exception.Message}",
+                    package.Value.PackageRoot);
+            }
+
+            return new CodexCompatibilityResult(
+                CodexCompatibilityDisposition.Unreviewed,
+                build,
+                "unreviewed",
+                "This Codex build is newer than the reviewed Micro manifests; continuing in compatibility mode.",
                 package.Value.PackageRoot);
         }
 
@@ -119,7 +170,7 @@ internal sealed class CodexCompatibilityProbe
                 SHA256.HashData(Encoding.UTF8.GetBytes(canonical)))
                 .ToLowerInvariant();
             return new CodexCompatibilityResult(
-                true,
+                CodexCompatibilityDisposition.Reviewed,
                 build,
                 fingerprint,
                 "Codex build and reviewed Micro bundle hashes match.",
@@ -177,7 +228,7 @@ internal sealed class CodexCompatibilityProbe
         string build,
         string detail,
         string? packageRoot = null) => new(
-            false,
+            CodexCompatibilityDisposition.Incompatible,
             build,
             "unverified",
             detail,
