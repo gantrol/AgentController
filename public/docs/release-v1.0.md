@@ -18,7 +18,7 @@ Agent Controller v1 maps a physical gamepad to Codex Micro controls. A single Br
 3. Connect an XInput gamepad, launch Codex Desktop, and enable the Bridge in Agent Controller.
 4. For the complete Micro-first HID path, separately install the matching `CodexMicroVhfUm` Device Support component. This public release provides an unsigned developer-driver workflow only: users must review, build, or locally sign it. Do not disable Windows driver-signing enforcement or install certificates from untrusted sources.
 
-Without the driver, Agent Controller attempts limited compatibility fallbacks only after an explicit `NotSent` result; this is not full Micro compatibility. See the [unsigned-driver guide](https://github.com/gantrol/AgentController/blob/v1.0.0/virtual-micro/UNSIGNED-DRIVER.md) and [installation tutorial](https://github.com/gantrol/AgentController/blob/main/docs/CodexMicroSimulator-%E5%AE%89%E8%A3%85%E6%95%99%E7%A8%8B.zh-CN.md).
+Without the driver, Agent Controller attempts limited compatibility fallbacks only after an explicit `NotSent` result; this is not full Micro compatibility. See the [unsigned-driver guide](https://github.com/gantrol/AgentController/blob/v1.0.0/virtual-micro/UNSIGNED-DRIVER.md) and [English installation tutorial](https://github.com/gantrol/AgentController/blob/main/docs/CodexMicroSimulator-installation.md).
 
 ## Control summary
 

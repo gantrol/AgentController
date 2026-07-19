@@ -1,5 +1,7 @@
 # Codex Micro Simulator 安装与验证教程
 
+[English](./CodexMicroSimulator-installation.md)
+
 ## 适用范围
 
 本教程适用于 Windows 10/11 x64，以及以下两个解压目录：

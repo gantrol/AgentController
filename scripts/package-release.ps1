@@ -100,6 +100,9 @@ Copy-Item -LiteralPath (
 Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\codex-micro-command-reference.md") `
     -Destination $docsPublicRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "docs\CodexMicroSimulator-installation.md") `
+    -Destination $docsDesignRoot
 $installTutorials = @(
     Get-ChildItem `
         -LiteralPath (Join-Path $repoRoot "docs") `
