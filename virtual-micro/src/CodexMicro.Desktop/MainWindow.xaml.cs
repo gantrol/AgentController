@@ -260,8 +260,10 @@ public partial class MainWindow : Window
 
             SetLed(
                 CompatibilityLed,
-                "#9EBDFF",
-                $"Codex {_compatibility.Build} · 已验证\n{_compatibility.Fingerprint}");
+                _compatibility.IsReviewed ? "#9EBDFF" : "#FFD66E",
+                _compatibility.IsReviewed
+                    ? $"Codex {_compatibility.Build} · 已验证\n{_compatibility.Fingerprint}"
+                    : $"Codex {_compatibility.Build} · 未审核，兼容模式\n{_compatibility.Detail}");
             try
             {
                 var info = _broker.Connect(_compatibility);
@@ -269,7 +271,7 @@ public partial class MainWindow : Window
                 SetLed(DriverLed, "#B8B98B", $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16}");
                 SetLed(ActivityLed, "#B8B98B", "HID / RPC 已就绪");
                 SetStatus(
-                    $"Codex {_compatibility.Build} 已验证。\n" +
+                    $"Codex {_compatibility.Build} 已连接。\n" +
                     $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}。\n" +
                     "点击黑色设置旋钮打开设置；Codex 键会将 Codex 切到前台。");
             }
