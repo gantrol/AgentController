@@ -135,11 +135,12 @@ flowchart LR
     Broker -->|"event cursor broadcast"| SimClient
 ```
 
-Broker 对每个客户端保存独立 `clientId`、心跳 lease、held key、PTT 和 analog 状态。正常 disconnect、客户端崩溃后的 lease expiry、Broker 退出都会执行 best-effort neutral；当另一客户端仍持有同一键或 analog 时，不发送会释放对方状态的 neutral。管道限定当前用户、帧长和 batch 数，并限制同时连接数；驱动 handle、batch sequence 和 output/RPC reader 只有一份。
+Broker 对每个客户端保存独立 `clientId`、心跳 lease、held key、PTT 和 analog 状态。正常 disconnect、客户端崩溃后的 lease expiry、Broker 退出都会执行 best-effort neutral；当另一客户端仍持有同一键或 analog 时，不发送会释放对方状态的 neutral。管道限定当前用户、帧长和 batch 数，并限制同时连接数；每个 lease 的 32 条有界 response cache 保证重复 request id 不会双发非幂等输入。驱动 handle、batch sequence 和 output/RPC reader 只有一份。
 
 自动回归覆盖：
 
 - 两个客户端交换连接顺序后共享同一 connection epoch，驱动只连接一次；
 - 一个客户端退出只释放自己的 held state；同键/同 analog 被另一客户端持有时不会误释放；
 - output/RPC 只有 Broker 读取，灯光状态同时广播给两个客户端；
+- 相同 request id + payload 重放只返回缓存 response；换 payload 复用同一 id 会被拒绝；
 - app、Broker、协议和模拟器测试通过后，仍必须执行 [`91-controller-input-known-issues.md`](../../todo/91-controller-input-known-issues.md) 中未勾选的实机矩阵。

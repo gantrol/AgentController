@@ -231,15 +231,20 @@ public sealed class MicroBrokerHost : IDisposable
             id => new ClientLease(id, request.ClientName));
         client.Touch(request.ClientName);
 
-        return request.Operation switch
-        {
-            MicroBrokerProtocol.Hello => Success(request, client),
-            MicroBrokerProtocol.Submit => Submit(request, client),
-            MicroBrokerProtocol.Keyboard => Keyboard(request, client),
-            MicroBrokerProtocol.Poll => Poll(request, client),
-            MicroBrokerProtocol.Disconnect => Disconnect(request, client),
-            _ => Failure(request, "Broker operation is not supported."),
-        };
+        return client.ExecuteRequest(
+            request,
+            () => request.Operation switch
+            {
+                MicroBrokerProtocol.Hello => Success(request, client),
+                MicroBrokerProtocol.Submit => Submit(request, client),
+                MicroBrokerProtocol.Keyboard => Keyboard(request, client),
+                MicroBrokerProtocol.Poll => Poll(request, client),
+                MicroBrokerProtocol.Disconnect => Disconnect(request, client),
+                _ => Failure(
+                    request,
+                    "Broker operation is not supported."),
+            },
+            error => Failure(request, error));
     }
 
     private BrokerResponse Submit(
@@ -313,8 +318,8 @@ public sealed class MicroBrokerHost : IDisposable
         BrokerRequest request,
         ClientLease client)
     {
-        _clients.TryRemove(client.ClientId, out _);
         Neutralize(client);
+        client.MarkDisconnected();
         return Success(request, client);
     }
 
@@ -541,9 +546,16 @@ public sealed class MicroBrokerHost : IDisposable
 
     private sealed class ClientLease
     {
+        private const int MaximumCachedResponses = 32;
+
         private readonly object _sync = new();
+        private readonly object _requestSync = new();
         private readonly ClientInputState _input = new();
+        private readonly Dictionary<long, CachedResponse> _responses = [];
+        private readonly Queue<long> _responseOrder = [];
         private long _lastSeen;
+        private long _lastRequestId;
+        private bool _disconnected;
 
         internal ClientLease(Guid clientId, string clientName)
         {
@@ -555,6 +567,50 @@ public sealed class MicroBrokerHost : IDisposable
         internal Guid ClientId { get; }
         internal string ClientName { get; private set; }
         internal long LastSeen => Volatile.Read(ref _lastSeen);
+
+        internal BrokerResponse ExecuteRequest(
+            BrokerRequest request,
+            Func<BrokerResponse> execute,
+            Func<string, BrokerResponse> failure)
+        {
+            lock (_requestSync)
+            {
+                if (_responses.TryGetValue(
+                        request.RequestId,
+                        out var cached))
+                {
+                    return RequestsMatch(cached.Request, request)
+                        ? cached.Response
+                        : failure(
+                            "Broker request id was reused with a different payload.");
+                }
+
+                if (request.RequestId <= _lastRequestId)
+                {
+                    return failure(
+                        "Broker request id is stale and outside the response cache.");
+                }
+
+                if (_disconnected)
+                {
+                    return failure(
+                        "Broker client lease is already disconnected.");
+                }
+
+                var response = execute();
+                _lastRequestId = request.RequestId;
+                Remember(request, response);
+                return response;
+            }
+        }
+
+        internal void MarkDisconnected()
+        {
+            lock (_requestSync)
+            {
+                _disconnected = true;
+            }
+        }
 
         internal void Touch(string clientName)
         {
@@ -605,5 +661,65 @@ public sealed class MicroBrokerHost : IDisposable
                 return reports;
             }
         }
+
+        private void Remember(
+            BrokerRequest request,
+            BrokerResponse response)
+        {
+            _responses.Add(
+                request.RequestId,
+                new(request, response));
+            _responseOrder.Enqueue(request.RequestId);
+            while (_responseOrder.Count > MaximumCachedResponses)
+            {
+                _responses.Remove(_responseOrder.Dequeue());
+            }
+        }
+
+        private static bool RequestsMatch(
+            BrokerRequest left,
+            BrokerRequest right)
+        {
+            if (
+                left.Version != right.Version ||
+                left.Operation != right.Operation ||
+                left.ClientId != right.ClientId ||
+                left.RequestId != right.RequestId ||
+                left.ClientName != right.ClientName ||
+                left.KeyboardKey != right.KeyboardKey ||
+                left.Shift != right.Shift ||
+                left.EventCursor != right.EventCursor)
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(left.Reports, right.Reports))
+            {
+                return true;
+            }
+
+            if (
+                left.Reports is null ||
+                right.Reports is null ||
+                left.Reports.Length != right.Reports.Length)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < left.Reports.Length; index++)
+            {
+                if (!left.Reports[index].AsSpan().SequenceEqual(
+                        right.Reports[index]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private sealed record CachedResponse(
+            BrokerRequest Request,
+            BrokerResponse Response);
     }
 }

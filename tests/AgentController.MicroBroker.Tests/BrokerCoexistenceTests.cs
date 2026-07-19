@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO.Pipes;
 using System.Text;
 using AgentController.MicroBroker;
 using CodexMicro.Protocol;
@@ -192,6 +193,91 @@ public sealed class BrokerCoexistenceTests
 
         cancellation.Cancel();
         Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
+    public async Task DuplicateRequestIdReturnsCachedResponseWithoutResending()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint();
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        var clientId = Guid.NewGuid();
+        _ = await SendRequestAsync(
+            pipeName,
+            new(
+                MicroBrokerProtocol.Version,
+                MicroBrokerProtocol.Hello,
+                clientId,
+                1,
+                "raw-test-client"));
+        var submit = new BrokerRequest(
+            MicroBrokerProtocol.Version,
+            MicroBrokerProtocol.Submit,
+            clientId,
+            2,
+            "raw-test-client",
+            Reports: MicroRpcCodec.EncodeHid("ENC_CW", 2)
+                .Select(report => report.ToArray())
+                .ToArray());
+
+        var first = await SendRequestAsync(pipeName, submit);
+        var duplicate = await SendRequestAsync(pipeName, submit);
+
+        Assert.True(first.Succeeded);
+        Assert.Equal(first, duplicate);
+        Assert.Single(driver.Messages);
+
+        var mismatched = await SendRequestAsync(
+            pipeName,
+            submit with
+            {
+                Reports = MicroRpcCodec.EncodeHid("ENC_CC", 2)
+                    .Select(report => report.ToArray())
+                    .ToArray(),
+            });
+        Assert.False(mismatched.Succeeded);
+        Assert.Contains("different payload", mismatched.Error);
+        Assert.Single(driver.Messages);
+
+        _ = await SendRequestAsync(
+            pipeName,
+            new(
+                MicroBrokerProtocol.Version,
+                MicroBrokerProtocol.Disconnect,
+                clientId,
+                3,
+                "raw-test-client"));
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    private static async Task<BrokerResponse> SendRequestAsync(
+        string pipeName,
+        BrokerRequest request)
+    {
+        using var timeout = new CancellationTokenSource(
+            TimeSpan.FromSeconds(3));
+        await using var pipe = new NamedPipeClientStream(
+            ".",
+            pipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        await pipe.ConnectAsync(timeout.Token);
+        await BrokerWire.WriteAsync(pipe, request, timeout.Token);
+        return await BrokerWire.ReadAsync<BrokerResponse>(
+            pipe,
+            timeout.Token);
     }
 
     private sealed class FakeDriverEndpoint : IMicroDriverEndpoint
