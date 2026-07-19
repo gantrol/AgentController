@@ -262,6 +262,50 @@ public sealed class BrokerCoexistenceTests
         Assert.Equal(0, await hostTask);
     }
 
+    [Fact]
+    public async Task BackgroundWarmupConnectsBeforeTheFirstInput()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint();
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var client = new MicroBrokerClient(
+            "warmup-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+
+        client.StartConnecting();
+        var deadline = Environment.TickCount64 + 3_000;
+        while (
+            client.State != MicroBrokerClientState.Ready &&
+            Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(MicroBrokerClientState.Ready, client.State);
+        Assert.Equal(
+            MicroSendDisposition.Accepted,
+            client.Submit(
+                MicroRpcCodec.EncodeHid("ENC_CW", 2)).Disposition);
+        Assert.Equal(1, driver.ConnectCount);
+
+        client.Dispose();
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
     private static async Task<BrokerResponse> SendRequestAsync(
         string pipeName,
         BrokerRequest request)

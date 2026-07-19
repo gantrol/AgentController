@@ -16,6 +16,7 @@ public sealed class VhfMicroReportTransport : IMicroReportTransport
     public VhfMicroReportTransport()
     {
         _broker.SlotLightingObserved += Broker_SlotLightingObserved;
+        _broker.StartConnecting();
     }
 
     public event EventHandler<MicroSlotLightingSnapshot>?

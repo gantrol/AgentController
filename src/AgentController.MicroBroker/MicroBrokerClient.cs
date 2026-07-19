@@ -18,6 +18,7 @@ public sealed class MicroBrokerClient : IDisposable
         TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan RequestTimeout =
         TimeSpan.FromMilliseconds(900);
+    private const int ConnectFailureBackoffMs = 2_000;
 
     private readonly Guid _clientId = Guid.NewGuid();
     private readonly string _clientName;
@@ -28,8 +29,11 @@ public sealed class MicroBrokerClient : IDisposable
     private readonly object _requestSync = new();
     private CancellationTokenSource? _pollCancellation;
     private Task? _pollTask;
+    private Task? _backgroundConnectTask;
     private long _requestId;
     private long _eventCursor;
+    private long _retryAfter;
+    private int _backgroundConnectRunning;
     private volatile bool _connected;
     private bool _disposed;
     private int _state = (int)MicroBrokerClientState.Unavailable;
@@ -107,18 +111,55 @@ public sealed class MicroBrokerClient : IDisposable
                 !response.Succeeded ||
                 response.Driver is null)
             {
+                Volatile.Write(
+                    ref _retryAfter,
+                    Environment.TickCount64 + ConnectFailureBackoffMs);
                 State = MicroBrokerClientState.Unavailable;
                 throw new InvalidOperationException(
                     response?.Error ??
                     "AgentController Micro Broker is unavailable.");
             }
 
+            ObjectDisposedException.ThrowIf(_disposed, this);
             _connected = true;
+            Volatile.Write(ref _retryAfter, 0);
             _eventCursor = 0;
             State = MicroBrokerClientState.Ready;
             StartPollLoop();
             return response.Driver;
         }
+    }
+
+    public void StartConnecting()
+    {
+        if (
+            _disposed ||
+            _connected ||
+            Environment.TickCount64 < Volatile.Read(ref _retryAfter) ||
+            Interlocked.CompareExchange(
+                ref _backgroundConnectRunning,
+                1,
+                0) != 0)
+        {
+            return;
+        }
+
+        _backgroundConnectTask = Task.Run(() =>
+        {
+            try
+            {
+                _ = Connect();
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or
+                    ObjectDisposedException)
+            {
+            }
+            finally
+            {
+                Volatile.Write(ref _backgroundConnectRunning, 0);
+            }
+        });
     }
 
     public MicroSendResult Submit(IReadOnlyList<byte[]> reports)
@@ -194,6 +235,15 @@ public sealed class MicroBrokerClient : IDisposable
         }
 
         _disposed = true;
+        try
+        {
+            _backgroundConnectTask?.Wait(TimeSpan.FromSeconds(3));
+        }
+        catch (AggregateException)
+        {
+        }
+
+        _backgroundConnectTask = null;
         var cancellation = _pollCancellation;
         _pollCancellation = null;
         cancellation?.Cancel();
@@ -234,6 +284,13 @@ public sealed class MicroBrokerClient : IDisposable
         if (_connected)
         {
             return true;
+        }
+
+        if (
+            Volatile.Read(ref _backgroundConnectRunning) != 0 ||
+            Environment.TickCount64 < Volatile.Read(ref _retryAfter))
+        {
+            return false;
         }
 
         try
@@ -493,6 +550,9 @@ public sealed class MicroBrokerClient : IDisposable
     private void MarkDisconnected()
     {
         _connected = false;
+        Volatile.Write(
+            ref _retryAfter,
+            Environment.TickCount64 + ConnectFailureBackoffMs);
         State = MicroBrokerClientState.Faulted;
     }
 
