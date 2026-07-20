@@ -49,6 +49,35 @@ public sealed class WindowDesignTests
                 Assert.Equal(Visibility.Collapsed, window.DialSelectionHud.Visibility);
                 Assert.Equal(250, window.DialSelectionHud.Width, 3);
 
+                Assert.IsType<LinearGradientBrush>(
+                    window.DeviceFrame.Background);
+                Assert.IsType<LinearGradientBrush>(
+                    window.PearlLightGuide.Background);
+                Assert.IsType<LinearGradientBrush>(
+                    window.CrystalPrismRim.BorderBrush);
+                Assert.NotNull(window.CrystalDepthPlate.Background);
+                Assert.True(window.CrystalLightClip.ClipToBounds);
+                Assert.False(window.CrystalLowerRefraction.IsHitTestVisible);
+                Assert.Equal(0.15, window.CrystalLowerRefraction.Opacity, 3);
+                Assert.Null(window.FindName("CrystalTopRefraction"));
+                Assert.Null(window.FindName("AuroraFilm"));
+                Assert.Null(window.FindName("InnerCrystalEtch"));
+                Assert.Null(window.FindName("CrystalFlowBand"));
+                Assert.Null(window.FindName("CrystalEdgeLightSource"));
+                Assert.Null(window.FindName("CrystalEdgeLightTransform"));
+                Assert.Null(window.FindName("CrystalKeyLightLayer"));
+                Assert.Null(window.FindName("CrystalKeyLightSource"));
+                Assert.Null(window.FindName("CrystalKeyLightTransform"));
+                Assert.Null(window.FindName("AmbientMintGlow"));
+                Assert.Null(window.FindName("AmbientVioletGlow"));
+                Assert.Null(window.FindName("InnerFlowRotateTransform"));
+                Assert.Null(window.FindName("CrystalFastenerTopLeft"));
+                Assert.Null(window.FindName("CrystalFastenerTopRight"));
+                Assert.Null(window.FindName("CrystalFastenerBottomLeft"));
+                Assert.Null(window.FindName("CrystalFastenerBottomRight"));
+                Assert.Contains("CRYSTAL HID", window.LeftSilkScreen.Text);
+                Assert.Contains("OPTICAL INPUT", window.RightSilkScreen.Text);
+
                 var dialHelp = Assert.IsType<ToolTip>(window.DialButton.ToolTip);
                 var dialHelpContent = Assert.IsType<StackPanel>(dialHelp.Content);
                 Assert.Equal(2, dialHelpContent.Children.Count);
@@ -75,14 +104,42 @@ public sealed class WindowDesignTests
                     dialIndicator.RenderTransform).IsFrozen);
 
                 window.AgentKey0.ApplyTemplate();
+                var statusLightField = Assert.IsType<Ellipse>(
+                    window.AgentKey0.Template.FindName(
+                        "StatusLightField",
+                        window.AgentKey0));
                 var statusDot = Assert.IsType<Ellipse>(
                     window.AgentKey0.Template.FindName(
                         "StatusDot",
                         window.AgentKey0));
+                var agentCap = Assert.IsType<Border>(
+                    window.AgentKey0.Template.FindName(
+                        "Cap",
+                        window.AgentKey0));
+                Assert.IsType<RadialGradientBrush>(
+                    statusLightField.OpacityMask);
+                var activeLight = new SolidColorBrush(
+                    Color.FromRgb(0x63, 0xD9, 0x84));
+                window.AgentKey0.BorderBrush = activeLight;
+                Assert.Same(activeLight, statusLightField.Fill);
+                Assert.NotEqual(
+                    activeLight.Color,
+                    Assert.IsType<SolidColorBrush>(agentCap.Background).Color);
                 Assert.Equal(20, statusDot.ActualWidth, 3);
                 Assert.Equal(
                     Color.FromArgb(0xD9, 0x68, 0x5F, 0xAE),
                     Assert.IsType<SolidColorBrush>(statusDot.Fill).Color);
+                var hoverTrigger = window.AgentKey0.Template.Triggers
+                    .OfType<Trigger>()
+                    .Single(trigger => trigger.Property.Name == "IsMouseOver");
+                Assert.DoesNotContain(
+                    hoverTrigger.Setters.OfType<Setter>(),
+                    setter => setter.TargetName is "StatusDot" or "CrystalSide");
+                var pressTrigger = window.AgentKey0.Template.Triggers
+                    .OfType<Trigger>()
+                    .Single(trigger => trigger.Property.Name == "IsPressed");
+                Assert.NotEmpty(pressTrigger.EnterActions);
+                Assert.NotEmpty(pressTrigger.ExitActions);
 
                 Assert.InRange(window.JoystickCap.ActualWidth, 53.5, 54.5);
                 Assert.InRange(window.JoystickCap.ActualHeight, 53.5, 54.5);
@@ -118,6 +175,7 @@ public sealed class WindowDesignTests
                 Assert.Equal(
                     Color.FromRgb(0x2D, 0x29, 0x25),
                     Assert.IsType<SolidColorBrush>(settingsKnob.Fill).Color);
+                Assert.Null(settingsKnob.Stroke);
 
                 var compatibilityLedTop = window.CompatibilityLed
                     .TranslatePoint(new Point(), window.DesignSurface)

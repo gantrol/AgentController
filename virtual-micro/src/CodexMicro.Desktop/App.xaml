@@ -5,8 +5,22 @@
     <Application.Resources>
         <SolidColorBrush x:Key="InkBrush" Color="#2F3438" />
         <SolidColorBrush x:Key="MutedInkBrush" Color="#737C82" />
-        <SolidColorBrush x:Key="KeyTopBrush" Color="#FFF7F5F1" />
-        <SolidColorBrush x:Key="KeyEdgeBrush" Color="#F0FFFFFF" />
+        <SolidColorBrush x:Key="KeyEdgeBrush" Color="#F7FFFFFF" />
+        <SolidColorBrush x:Key="CrystalShadowBrush" Color="#44343B40" />
+        <LinearGradientBrush x:Key="CrystalKeySideBrush"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Color="#E8FFFFFF" Offset="0" />
+            <GradientStop Color="#CDE8F0EF" Offset="0.48" />
+            <GradientStop Color="#9DAAB8BA" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="CrystalKeyTopBrush"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Color="#FFFFFFFF" Offset="0" />
+            <GradientStop Color="#FFF9F8F4" Offset="0.52" />
+            <GradientStop Color="#F3E8EEEE" Offset="1" />
+        </LinearGradientBrush>
         <Geometry x:Key="JoystickChevronGeometry">M 1,7 L 6,2 L 11,7</Geometry>
 
         <Style TargetType="TextBlock">
@@ -44,7 +58,7 @@
         </Style>
 
         <Style x:Key="CommandKey" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource KeyTopBrush}" />
+            <Setter Property="Background" Value="{StaticResource CrystalKeyTopBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource KeyEdgeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
@@ -54,7 +68,23 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid Margin="2">
+                            <Border x:Name="SwitchShadow"
+                                    Margin="8,78,8,2"
+                                    Background="{StaticResource CrystalShadowBrush}"
+                                    CornerRadius="8"
+                                    Opacity="0.34">
+                                <Border.Effect>
+                                    <BlurEffect Radius="5" />
+                                </Border.Effect>
+                            </Border>
+                            <Border x:Name="CrystalSide"
+                                    Margin="1,4,1,0"
+                                    Background="{StaticResource CrystalKeySideBrush}"
+                                    BorderBrush="#B4FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="18" />
                             <Border x:Name="Cap"
+                                    Margin="1,0,1,4"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
@@ -68,6 +98,18 @@
                                             BorderBrush="#70FFFFFF"
                                             BorderThickness="1,1,0,0"
                                             CornerRadius="16" />
+                                    <Border Margin="5,4,5,0"
+                                            Height="18"
+                                            VerticalAlignment="Top"
+                                            CornerRadius="12"
+                                            Opacity="0.45">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Color="#BFFFFFFF" Offset="0" />
+                                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Center" />
                                 </Grid>
@@ -86,7 +128,46 @@
                                 <Setter TargetName="Cap" Property="Background" Value="#FFFCFAF7" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Cap" Property="Margin" Value="0,1,0,-1" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ThicknessAnimation Storyboard.TargetName="Cap"
+                                                                Storyboard.TargetProperty="Margin"
+                                                                To="1,3,1,1"
+                                                                Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="CrystalSide"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.5"
+                                                             Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="SwitchShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.2"
+                                                             Duration="0:0:0.08" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ThicknessAnimation Storyboard.TargetName="Cap"
+                                                                Storyboard.TargetProperty="Margin"
+                                                                To="1,0,1,4"
+                                                                Duration="0:0:0.11">
+                                                <ThicknessAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </ThicknessAnimation.EasingFunction>
+                                            </ThicknessAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="CrystalSide"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.11" />
+                                            <DoubleAnimation Storyboard.TargetName="SwitchShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.34"
+                                                             Duration="0:0:0.11" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -104,8 +185,17 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid Margin="2">
+                            <Border x:Name="SwitchShadow"
+                                    Margin="8,78,8,2"
+                                    Background="{StaticResource CrystalShadowBrush}"
+                                    CornerRadius="8"
+                                    Opacity="0.32">
+                                <Border.Effect>
+                                    <BlurEffect Radius="5" />
+                                </Border.Effect>
+                            </Border>
                             <Border x:Name="Glow"
-                                    Margin="-2"
+                                    Margin="-2,2,-2,-4"
                                     Background="{TemplateBinding BorderBrush}"
                                     CornerRadius="20"
                                     Opacity="0.28">
@@ -113,22 +203,39 @@
                                     <BlurEffect Radius="8" />
                                 </Border.Effect>
                             </Border>
+                            <Border x:Name="CrystalSide"
+                                    Margin="1,4,1,0"
+                                    Background="{StaticResource CrystalKeySideBrush}"
+                                    BorderBrush="#C9FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Opacity="0.86" />
                             <Border x:Name="Cap"
+                                    Margin="1,0,1,4"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="#D1FFFFFF"
                                     BorderThickness="1"
                                     CornerRadius="18">
                                 <Grid>
-                                    <Border Margin="1"
-                                            Background="{TemplateBinding BorderBrush}"
-                                            CornerRadius="17"
-                                            Opacity="0.55" />
+                                    <Ellipse x:Name="StatusLightField"
+                                             Margin="7"
+                                             Fill="{TemplateBinding BorderBrush}"
+                                             Opacity="0.58">
+                                        <Ellipse.OpacityMask>
+                                            <RadialGradientBrush>
+                                                <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                                <GradientStop Color="#B8FFFFFF" Offset="0.3" />
+                                                <GradientStop Color="#46FFFFFF" Offset="0.66" />
+                                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                                            </RadialGradientBrush>
+                                        </Ellipse.OpacityMask>
+                                    </Ellipse>
                                     <Border Margin="1" CornerRadius="17">
                                         <Border.Background>
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                <GradientStop Color="#61FFFFFF" Offset="0" />
-                                                <GradientStop Color="#1AFFFFFF" Offset="0.52" />
-                                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                                                <GradientStop Color="#A8FFFFFF" Offset="0" />
+                                                <GradientStop Color="#36FFFFFF" Offset="0.52" />
+                                                <GradientStop Color="#0AE9FFFF" Offset="1" />
                                             </LinearGradientBrush>
                                         </Border.Background>
                                     </Border>
@@ -165,13 +272,51 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Glow" Property="Opacity" Value="0.46" />
+                                <Setter TargetName="Glow" Property="Opacity" Value="0.38" />
                                 <Setter TargetName="Cap" Property="Background" Value="#8FFFFFFF" />
-                                <Setter TargetName="StatusDot" Property="Width" Value="21" />
-                                <Setter TargetName="StatusDot" Property="Height" Value="21" />
+                                <Setter TargetName="Cap" Property="BorderBrush" Value="#F7FFFFFF" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Cap" Property="Margin" Value="0,1,0,-1" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ThicknessAnimation Storyboard.TargetName="Cap"
+                                                                Storyboard.TargetProperty="Margin"
+                                                                To="1,3,1,1"
+                                                                Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="CrystalSide"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.52"
+                                                             Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="SwitchShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.18"
+                                                             Duration="0:0:0.08" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ThicknessAnimation Storyboard.TargetName="Cap"
+                                                                Storyboard.TargetProperty="Margin"
+                                                                To="1,0,1,4"
+                                                                Duration="0:0:0.11">
+                                                <ThicknessAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </ThicknessAnimation.EasingFunction>
+                                            </ThicknessAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="CrystalSide"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.86"
+                                                             Duration="0:0:0.11" />
+                                            <DoubleAnimation Storyboard.TargetName="SwitchShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.32"
+                                                             Duration="0:0:0.11" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -188,13 +333,18 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Ellipse Margin="3,9,3,0" Fill="#9BA6ABAF" />
+                            <Ellipse Margin="3,9,3,0" Fill="#8B8E9DA3" />
+                            <Ellipse Margin="5,4,5,4"
+                                     Stroke="#8AFFFFFF"
+                                     StrokeThickness="1"
+                                     Fill="#55DDE9EC" />
                             <Ellipse x:Name="DialFace" Margin="3,0,3,7">
                                 <Ellipse.Fill>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                         <GradientStop Color="#FFFFFFFF" Offset="0" />
-                                        <GradientStop Color="#FFE8ECEE" Offset="0.58" />
-                                        <GradientStop Color="#FFB8C0C5" Offset="1" />
+                                        <GradientStop Color="#FFF4F9F9" Offset="0.38" />
+                                        <GradientStop Color="#FFE3EDF0" Offset="0.7" />
+                                        <GradientStop Color="#FFB4C2C8" Offset="1" />
                                     </LinearGradientBrush>
                                 </Ellipse.Fill>
                                 <Ellipse.Effect>
@@ -239,6 +389,14 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
+                            <Ellipse Width="64"
+                                     Height="64"
+                                     Margin="0,4,1,0"
+                                     HorizontalAlignment="Right"
+                                     VerticalAlignment="Center"
+                                     Fill="#4AFFFFFF"
+                                     Stroke="#72C9D8DC"
+                                     StrokeThickness="1" />
                             <Ellipse x:Name="KnobFace"
                                      Width="58"
                                      Height="58"
