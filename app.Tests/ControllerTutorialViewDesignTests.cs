@@ -33,13 +33,16 @@ public sealed class ControllerTutorialViewDesignTests
 
         Arrange(view, width: 760, height: 425);
         AssertTabs(view);
-        Assert.Equal(6, english.Items.Count);
+        Assert.Equal(7, english.Items.Count);
         Assert.Contains(
             FindVisualChildren<ControllerGlyphView>(view),
             glyph => glyph.Glyph == "⧉");
         Assert.Contains(
             FindVisualChildren<ControllerGlyphView>(view),
             glyph => glyph.Glyph == "☰");
+        WritePreviewFromEnvironment(
+            view,
+            "AGENT_CONTROLLER_OVERVIEW_PREVIEW_PATH");
 
         english.SelectActionCommand.Execute(null);
         view.UpdateLayout();

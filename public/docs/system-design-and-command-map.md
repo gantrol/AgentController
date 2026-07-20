@@ -213,6 +213,7 @@ sequenceDiagram
 | R3 长按 500 ms | hold | 打开 Agent Controller 设置 | 本地窗口 | 抑制同一次 `ENC` 短按 |
 | LT 按住/松开 | `LeftTrigger` | PTT start/stop | layout 验证后 `ACT10` down/up | release 不得丢失 |
 | LB/RB 短按 | shoulder tap | 上一个/下一个可用任务 | 本地任务导航 | 180 ms 内释放才是 tap |
+| View | `View` / reserved | 当前无动作；后续可能用于切换当前受控 Agent | 无 | 实现前保持 fail closed，不复用为其他 Base 动作 |
 
 ### 6.2 上下文层
 

@@ -539,6 +539,12 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             Text("发送当前输入", "Send current input"),
             string.Empty),
         new(
+            ViewGlyph,
+            Text("View：保留键", "View: reserved"),
+            Text(
+                "当前不执行操作；后续可能用于切换控制不同 Agent",
+                "No action yet; it may switch the controlled Agent in a future version")),
+        new(
             MenuGlyph,
             Text("Menu：唤醒 Codex", "Menu: wake Codex"),
             Text("需要时将 Codex 置于前台", "Bring Codex to the foreground when needed")),

@@ -23,6 +23,7 @@
 | Y | 打开动作面板 | 本地 UI |
 | 十字键上/下 | 上一轮/下一轮；长按到顶部/底部 | Codex semantic/verified navigation adapter |
 | LB/RB 短按 | 上一个/下一个可用任务 | 本地任务导航 |
+| View | 保留键；当前不执行操作，后续可能用于切换当前受控 Agent | 无；保持 fail closed |
 
 L3/R3 都表示**垂直按下摇杆帽**，不是把摇杆向下拨。
 

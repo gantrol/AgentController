@@ -24,6 +24,24 @@ public sealed class ControllerTutorialViewModelTests
         Assert.Contains("press", viewModel.StickPressGuideTitle);
         Assert.Contains("LS / L3", viewModel.LeftStickPressGuide);
         Assert.Contains("RS / R3", viewModel.RightStickPressGuide);
+        Assert.Contains(
+            viewModel.Items,
+            item =>
+                item.Glyph == "⧉" &&
+                item.Title == "View: reserved" &&
+                item.Description.Contains(
+                    "switch the controlled Agent",
+                    StringComparison.Ordinal));
+        var chinese = Create(
+            AppLanguage.ZhCn,
+            BuiltInControllerProfiles.Xbox);
+        Assert.Contains(
+            chinese.Items,
+            item =>
+                item.Title == "View：保留键" &&
+                item.Description.Contains(
+                    "后续可能用于切换控制不同 Agent",
+                    StringComparison.Ordinal));
 
         viewModel.SelectStickPressCommand.Execute(null);
 
