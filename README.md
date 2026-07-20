@@ -16,7 +16,9 @@ Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex,
 
 The gamepad wins. QED. (To be fair, very few controllers can compete with six gloriously distracting color-changing lights.)
 
-![Agent Controller gamepad controls](public/images/agent-controller-gamepad-guide-en.png)
+![Agent Controller dashboard with the interactive controller guide, Micro dial, and Codex sidebar](public/images/agent-controller-gamepad-guide-en.png)
+
+The dashboard brings the interactive controller guide, Micro dial, Codex task sidebar, and recent events into one crystal workspace. Pressing a controller input switches the matching tutorial tab and action hint in real time.
 
 > One catch: you still need a microphone for voice input. Neither device usually records audio by itself.
 
