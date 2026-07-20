@@ -24,21 +24,22 @@ public sealed class ConfigPageViewModel : ObservableObject
     private string _openAgentShortcutsText = string.Empty;
     private bool _canOpenAgentShortcuts = true;
     private readonly RelayCommand _openAgentShortcutsCommand;
+    private readonly Action _save;
+    private bool _suppressAutoSave;
 
     public ConfigPageViewModel(
         Action openAgentShortcuts,
         Action save)
     {
+        _save = save;
         _openAgentShortcutsCommand = new RelayCommand(
             openAgentShortcuts,
             () => CanOpenAgentShortcuts);
         OpenAgentShortcutsCommand = _openAgentShortcutsCommand;
-        SaveCommand = new RelayCommand(save);
         ResetCommand = new RelayCommand(ResetToDefaults);
     }
 
     public ICommand OpenAgentShortcutsCommand { get; }
-    public ICommand SaveCommand { get; }
     public ICommand ResetCommand { get; }
 
     public string Description
@@ -124,31 +125,31 @@ public sealed class ConfigPageViewModel : ObservableObject
     public string ReasoningDownShortcut
     {
         get => _reasoningDownShortcut;
-        set => SetProperty(ref _reasoningDownShortcut, value);
+        set => SetShortcut(ref _reasoningDownShortcut, value);
     }
 
     public string ReasoningUpShortcut
     {
         get => _reasoningUpShortcut;
-        set => SetProperty(ref _reasoningUpShortcut, value);
+        set => SetShortcut(ref _reasoningUpShortcut, value);
     }
 
     public string ModelPickerShortcut
     {
         get => _modelPickerShortcut;
-        set => SetProperty(ref _modelPickerShortcut, value);
+        set => SetShortcut(ref _modelPickerShortcut, value);
     }
 
     public string FastToggleShortcut
     {
         get => _fastToggleShortcut;
-        set => SetProperty(ref _fastToggleShortcut, value);
+        set => SetShortcut(ref _fastToggleShortcut, value);
     }
 
     public string DictationShortcut
     {
         get => _dictationShortcut;
-        set => SetProperty(ref _dictationShortcut, value);
+        set => SetShortcut(ref _dictationShortcut, value);
     }
 
     public void UpdateContext(
@@ -193,11 +194,19 @@ public sealed class ConfigPageViewModel : ObservableObject
     public void Load(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        ReasoningDownShortcut = settings.ReasoningDownShortcut;
-        ReasoningUpShortcut = settings.ReasoningUpShortcut;
-        ModelPickerShortcut = settings.ModelPickerShortcut;
-        FastToggleShortcut = settings.FastToggleShortcut;
-        DictationShortcut = settings.DictationShortcut;
+        _suppressAutoSave = true;
+        try
+        {
+            ReasoningDownShortcut = settings.ReasoningDownShortcut;
+            ReasoningUpShortcut = settings.ReasoningUpShortcut;
+            ModelPickerShortcut = settings.ModelPickerShortcut;
+            FastToggleShortcut = settings.FastToggleShortcut;
+            DictationShortcut = settings.DictationShortcut;
+        }
+        finally
+        {
+            _suppressAutoSave = false;
+        }
     }
 
     public void ApplyTo(AppSettings settings)
@@ -223,6 +232,17 @@ public sealed class ConfigPageViewModel : ObservableObject
     public void ResetToDefaults()
     {
         Load(new AppSettings());
+        _save();
+    }
+
+    private void SetShortcut(ref string field, string value)
+    {
+        if (!SetProperty(ref field, value) || _suppressAutoSave)
+        {
+            return;
+        }
+
+        _save();
     }
 
     private static string Normalize(string? value, string fallback)

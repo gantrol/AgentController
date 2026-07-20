@@ -124,9 +124,8 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.ConfigDictation);
     public string ConfigModelPicker =>
         Get(StringKeys.ConfigModelPicker);
-    public string ConfigRestoreRecommended =>
-        Get(StringKeys.ConfigRestoreRecommended);
-    public string ConfigSave => Get(StringKeys.ConfigSave);
+    public string ConfigRestoreDefaults =>
+        Get(StringKeys.ConfigRestoreDefaults);
 
     public string SettingsTitle =>
         Get(StringKeys.SettingsTitle);
@@ -172,7 +171,8 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.SettingsStartWithWindows);
     public string SettingsMinimizeToTray =>
         Get(StringKeys.SettingsMinimizeToTray);
-    public string SettingsSave => Get(StringKeys.SettingsSave);
+    public string SettingsRestoreDefaults =>
+        Get(StringKeys.SettingsRestoreDefaults);
     public string SettingsLanguage =>
         Get(StringKeys.SettingsLanguage);
     public string SettingsLanguageAuto =>

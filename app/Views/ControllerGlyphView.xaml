@@ -2,8 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Name="Root"
-             Width="36"
-             Height="20"
+             MinWidth="36"
+             MinHeight="20"
              IsHitTestVisible="False"
              SnapsToDevicePixels="True">
     <Grid>

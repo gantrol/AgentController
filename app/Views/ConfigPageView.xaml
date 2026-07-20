@@ -9,16 +9,30 @@
              d:DesignWidth="1060">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel MaxWidth="1060">
-            <StackPanel Margin="0,4,0,18">
-                <TextBlock Text="{Binding Strings.ConfigTitle,
+            <Grid Margin="0,4,0,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{Binding Strings.ConfigTitle,
+                                              ElementName=Root}"
+                               FontSize="{StaticResource Font.Size.Hero}"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Description}"
+                               Margin="0,5,0,0"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontSize="{StaticResource Font.Size.Label}" />
+                </StackPanel>
+                <Button x:Name="RestoreDefaultsButton"
+                        Grid.Column="1"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="16,0,0,0"
+                        VerticalAlignment="Center"
+                        Content="{Binding Strings.ConfigRestoreDefaults,
                                           ElementName=Root}"
-                           FontSize="{StaticResource Font.Size.Hero}"
-                           FontWeight="SemiBold" />
-                <TextBlock Text="{Binding Description}"
-                           Margin="0,5,0,0"
-                           Foreground="{StaticResource MutedBrush}"
-                           FontSize="{StaticResource Font.Size.Label}" />
-            </StackPanel>
+                        Command="{Binding ResetCommand}" />
+            </Grid>
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -194,19 +208,6 @@
                 </Grid>
             </Border>
 
-            <StackPanel Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Margin="0,16,0,8">
-                <Button Style="{StaticResource SecondaryButtonStyle}"
-                        Content="{Binding Strings.ConfigRestoreRecommended,
-                                          ElementName=Root}"
-                        Margin="0,0,8,0"
-                        Command="{Binding ResetCommand}" />
-                <Button Style="{StaticResource PrimaryButtonStyle}"
-                        Content="{Binding Strings.ConfigSave,
-                                          ElementName=Root}"
-                        Command="{Binding SaveCommand}" />
-            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

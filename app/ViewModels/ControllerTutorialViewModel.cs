@@ -494,8 +494,8 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             case ControllerTutorialMode.StickPress:
                 GestureGlyph = "L3 / R3";
                 ModeTitle = Text(
-                    "把摇杆当作按钮向下按",
-                    "Press each stick like a button");
+                    "垂直按下摇杆帽",
+                    "Press each stick cap vertically");
                 ModeDescription = Text(
                     "不是把摇杆往屏幕下方拨；请垂直按压摇杆帽，直到有咔哒手感。",
                     "Do not move the stick downward; press the cap vertically until it clicks.");
@@ -538,6 +538,12 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             Glyph(LogicalInput.FaceWest),
             Text("发送当前输入", "Send current input"),
             string.Empty),
+        new(
+            ViewGlyph,
+            Text("View：保留键", "View: reserved"),
+            Text(
+                "当前不执行操作；后续可能用于切换控制不同 Agent",
+                "No action yet; it may switch the controlled Agent in a future version")),
         new(
             MenuGlyph,
             Text("Menu：唤醒 Codex", "Menu: wake Codex"),

@@ -152,9 +152,8 @@ public static class StringKeys
         "config.submit-prompt";
     public const string ConfigDictation = "config.dictation";
     public const string ConfigModelPicker = "config.model-picker";
-    public const string ConfigRestoreRecommended =
-        "config.restore-recommended";
-    public const string ConfigSave = "config.save";
+    public const string ConfigRestoreDefaults =
+        "config.restore-defaults";
 
     public const string SettingsTitle = "settings.title";
     public const string SettingsDescription =
@@ -203,7 +202,8 @@ public static class StringKeys
         "settings.open-controller-software-generic";
     public const string SettingsOpenAgent =
         "settings.open-agent";
-    public const string SettingsSave = "settings.save";
+    public const string SettingsRestoreDefaults =
+        "settings.restore-defaults";
     public const string SettingsLanguage = "settings.language";
     public const string SettingsLanguageAuto =
         "settings.language.auto";
@@ -331,10 +331,6 @@ public static class StringKeys
     public const string ErrorWithDetail =
         "error.with-detail";
 
-    public const string MessageShortcutSettingsSaved =
-        "message.shortcut-settings-saved";
-    public const string MessageSettingsSaved =
-        "message.settings-saved";
     public const string MessageAgentKeybindingsWriteFailed =
         "message.agent-keybindings-write-failed";
     public const string MessageAgentKeybindingsConflict =
@@ -619,8 +615,7 @@ public static class StringKeys
         ConfigSubmitPrompt,
         ConfigDictation,
         ConfigModelPicker,
-        ConfigRestoreRecommended,
-        ConfigSave,
+        ConfigRestoreDefaults,
         SettingsTitle,
         SettingsDescription,
         SettingsBehavior,
@@ -648,7 +643,7 @@ public static class StringKeys
         SettingsOpenControllerSoftware,
         SettingsOpenControllerSoftwareGeneric,
         SettingsOpenAgent,
-        SettingsSave,
+        SettingsRestoreDefaults,
         SettingsLanguage,
         SettingsLanguageAuto,
         SettingsLanguageZhCn,
@@ -712,8 +707,6 @@ public static class StringKeys
         ErrorAutomationUnexpected,
         ErrorCapabilityUnavailable,
         ErrorWithDetail,
-        MessageShortcutSettingsSaved,
-        MessageSettingsSaved,
         MessageAgentKeybindingsWriteFailed,
         MessageAgentKeybindingsConflict,
         MessageFallbackKeybindingsWritten,

@@ -108,7 +108,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
 
             [StringKeys.ConfigTitle] = "Configuration",
             [StringKeys.ConfigDescription] =
-                "Stick directions stay fixed; {0} commands can adapt to versions and personal preferences.",
+                "Stick directions stay fixed; {0} commands can adapt to versions and personal preferences. Changes save automatically.",
             [StringKeys.ConfigLeftStickSidebar] =
                 "Left stick · {0} sidebar",
             [StringKeys.ConfigMoveFocus] = "↑↓",
@@ -145,13 +145,12 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSubmitPrompt] = "Submit prompt",
             [StringKeys.ConfigDictation] = "Dictation",
             [StringKeys.ConfigModelPicker] = "Model picker",
-            [StringKeys.ConfigRestoreRecommended] =
-                "Restore recommended values",
-            [StringKeys.ConfigSave] = "Save configuration",
+            [StringKeys.ConfigRestoreDefaults] =
+                "Restore defaults",
 
             [StringKeys.SettingsTitle] = "Settings",
             [StringKeys.SettingsDescription] =
-                "Control bridge scope, stick feel, and background behavior.",
+                "Control bridge scope, stick feel, and background behavior. Changes save automatically.",
             [StringKeys.SettingsBehavior] = "Behavior",
             [StringKeys.SettingsOnlyForeground] =
                 "Control {0} only when it is in the foreground",
@@ -196,7 +195,8 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SettingsOpenControllerSoftwareGeneric] =
                 "Open controller software",
             [StringKeys.SettingsOpenAgent] = "Open {0} settings",
-            [StringKeys.SettingsSave] = "Save settings",
+            [StringKeys.SettingsRestoreDefaults] =
+                "Restore defaults",
             [StringKeys.SettingsLanguage] = "Display language",
             [StringKeys.SettingsLanguageAuto] = "Follow system",
             [StringKeys.SettingsLanguageZhCn] = "简体中文",
@@ -310,9 +310,6 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "This Agent does not support the requested capability",
             [StringKeys.ErrorWithDetail] = "{0}: {1}",
 
-            [StringKeys.MessageShortcutSettingsSaved] =
-                "Shortcut settings saved",
-            [StringKeys.MessageSettingsSaved] = "Settings saved",
             [StringKeys.MessageAgentKeybindingsWriteFailed] =
                 "{0} shortcuts were not written · {1}",
             [StringKeys.MessageAgentKeybindingsConflict] =
