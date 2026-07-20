@@ -104,7 +104,7 @@ The controller will not control Codex. Re-enable it in Agent Controller.
 | RB 按住 | Command 六槽层 | 已实现，固定映射 |
 | LT 按住 | 超过 0.35 开始语音识别，低于 0.20 结束 | 部分实现；没有实现双拉锁定免手持录音 |
 | RT 按住 | 超过 0.55 打开运行中操作层，低于 0.35 关闭 | 已实现；动作可用性依赖 Codex 当前 UI |
-| View | Base 层当前无动作 | 规划为任务总览/搜索 |
+| View | Base 层保留键，当前无动作 | 后续可能用于切换当前受控 Agent |
 | Menu | 唤醒 Codex、置于前台并解锁控制器会话 | 已实现；桥接关闭时被入口总门控拦截 |
 | Guide | 无动作 | 保留给系统 |
 
@@ -259,7 +259,7 @@ Y 现在打开一个持久的直接按键面板。它不是“移动游标再按
 
 - 完整 Approval、Question、Menu 上下文解析和优先级覆盖；
 - Base 十字键的最终映射；
-- Base View 任务总览；
+- 评估使用 Base View 切换当前受控 Agent；
 - LT 双拉锁定录音；
 - Agent slots 配置、后台聚焦/双击置前和实时状态；
 - Command slots 配置；

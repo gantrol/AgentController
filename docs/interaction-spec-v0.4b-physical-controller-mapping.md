@@ -61,7 +61,7 @@
 | RB | 下一个任务；长按进入 Command 槽层 |
 | LT | Push-to-talk |
 | RT | Turn / Follow-up 层 |
-| View | 任务总览；层内作为第 5 槽 |
+| View | Base 层保留键，后续可能用于切换当前受控 Agent；层内仍作为第 5 槽 |
 | Menu | 唤醒与解锁；层内作为第 6 槽 |
 | 四背键 | 可选加速入口，不承担唯一可达路径 |
 
@@ -153,7 +153,7 @@ Nintendo、PlayStation 或厂商自定义字形只改变显示标签，不改变
 | B / FaceEast | `ContextCancel` | 取消局部状态 | RunningTurn → Stop；菜单 → 关闭 |
 | X / FaceWest | `composer.dispatchDefault` | 发送并开始 turn | RunningTurn → 按默认 Steer/Queue |
 | Y / FaceNorth | `ContextSecondary` | 打开动作面板 | Approval → Decline |
-| View | `task.openOverview` | 打开任务总览或任务搜索 | Agent 层 → Agent slot 5 |
+| View | `Reserved` | Base 层当前无动作；后续可能用于切换当前受控 Agent | Agent 层 → Agent slot 5 |
 | Menu | `controller.wakeOrArm` | 唤醒、前台和解锁控制 | 已解锁时显示控制器状态；层内为 slot 6 |
 | Guide | Reserved | 不绑定 | 由操作系统或平台保留 |
 
