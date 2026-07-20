@@ -36,12 +36,12 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Root"
                                     Property="Background"
-                                    Value="{StaticResource Brush.Bg.Inverse}" />
+                                    Value="{StaticResource Brush.Accent.Soft}" />
                             <Setter TargetName="Root"
                                     Property="BorderBrush"
-                                    Value="{StaticResource Brush.Bg.Inverse}" />
+                                    Value="{StaticResource Brush.Border.Accent}" />
                             <Setter Property="Foreground"
-                                    Value="{StaticResource Brush.Text.Inverse}" />
+                                    Value="{StaticResource Brush.Text.Accent}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Root" Property="Opacity" Value="0.42" />

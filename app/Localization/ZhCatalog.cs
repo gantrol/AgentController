@@ -102,7 +102,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
 
             [StringKeys.ConfigTitle] = "配置",
             [StringKeys.ConfigDescription] =
-                "手柄方向固定，{0} 命令可按版本和个人习惯调整。",
+                "手柄方向固定，{0} 命令可按版本和个人习惯调整；修改后自动保存。",
             [StringKeys.ConfigLeftStickSidebar] =
                 "左摇杆 · {0} 侧边栏",
             [StringKeys.ConfigMoveFocus] = "↑↓",
@@ -137,12 +137,11 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSubmitPrompt] = "发送提示词",
             [StringKeys.ConfigDictation] = "语音识别",
             [StringKeys.ConfigModelPicker] = "模型选择器",
-            [StringKeys.ConfigRestoreRecommended] = "恢复推荐值",
-            [StringKeys.ConfigSave] = "保存配置",
+            [StringKeys.ConfigRestoreDefaults] = "恢复默认值",
 
             [StringKeys.SettingsTitle] = "设置",
             [StringKeys.SettingsDescription] =
-                "控制桥接生效范围、摇杆手感和后台运行方式。",
+                "控制桥接生效范围、摇杆手感和后台运行方式；修改后自动保存。",
             [StringKeys.SettingsBehavior] = "行为",
             [StringKeys.SettingsOnlyForeground] =
                 "仅前台时控制 {0}",
@@ -186,7 +185,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SettingsOpenControllerSoftwareGeneric] =
                 "打开手柄配置软件",
             [StringKeys.SettingsOpenAgent] = "打开 {0} 设置",
-            [StringKeys.SettingsSave] = "保存设置",
+            [StringKeys.SettingsRestoreDefaults] = "恢复默认值",
             [StringKeys.SettingsLanguage] = "界面语言",
             [StringKeys.SettingsLanguageAuto] = "跟随系统",
             [StringKeys.SettingsLanguageZhCn] = "简体中文",
@@ -295,9 +294,6 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "当前 Agent 不支持此功能",
             [StringKeys.ErrorWithDetail] = "{0}：{1}",
 
-            [StringKeys.MessageShortcutSettingsSaved] =
-                "快捷键配置已保存",
-            [StringKeys.MessageSettingsSaved] = "设置已保存",
             [StringKeys.MessageAgentKeybindingsWriteFailed] =
                 "{0} 快捷键未写入 · {1}",
             [StringKeys.MessageAgentKeybindingsConflict] =

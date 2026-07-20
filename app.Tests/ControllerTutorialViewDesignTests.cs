@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CodexController.Controllers;
+using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Models;
 using CodexController.Presentation.Feedback;
@@ -46,6 +47,8 @@ public sealed class ControllerTutorialViewDesignTests
         Assert.True(view.TutorialDPadHalo.Tag is true);
         Assert.True(view.TutorialFaceClusterHalo.Tag is true);
         Assert.True(view.TutorialActionButtonHalo.HasAnimatedProperties);
+        Assert.Equal(208d, Canvas.GetLeft(view.TutorialDPadHalo));
+        Assert.Equal(176d, Canvas.GetTop(view.TutorialDPadHalo));
         WritePreviewFromEnvironment(
             view,
             "AGENT_CONTROLLER_TUTORIAL_PREVIEW_PATH");
@@ -61,6 +64,7 @@ public sealed class ControllerTutorialViewDesignTests
             view.TutorialRightPressArrow.RenderTransform
                 .HasAnimatedProperties);
         Assert.Equal(2, english.Items.Count);
+        Assert.Equal("LS / L3", english.Items[0].Glyph);
         WritePreviewFromEnvironment(
             view,
             "AGENT_CONTROLLER_STICK_PRESS_PREVIEW_PATH");
@@ -85,9 +89,32 @@ public sealed class ControllerTutorialViewDesignTests
 
     private static void RenderDashboardPreview()
     {
+        var timestamp = new DateTimeOffset(
+            2026,
+            7,
+            19,
+            8,
+            45,
+            26,
+            TimeSpan.FromHours(-7));
+        var rows = new ObservableCollection<BridgeFeedbackLogRow>
+        {
+            new(
+                new BridgeEvent(
+                    BridgeEventKeys.LegacyMessage,
+                    timestamp,
+                    BridgeEventSeverity.Warning),
+                "侧边栏焦点未同步 · 目标 Agent 未在前台"),
+            new(
+                new BridgeEvent(
+                    BridgeEventKeys.LegacyMessage,
+                    timestamp.AddSeconds(-1),
+                    BridgeEventSeverity.Info),
+                "侧边栏焦点已同步 · Codex"),
+        };
         var recentEvents = new ReadOnlyObservableCollection<
             BridgeFeedbackLogRow>(
-            new ObservableCollection<BridgeFeedbackLogRow>());
+            rows);
         var viewModel = new DevicePageViewModel(
             new ObservableCollection<SidebarEntry>(),
             recentEvents,

@@ -113,22 +113,22 @@
                     AutomationProperties.Name="{Binding AccessibleName}">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="62" />
+                        <ColumnDefinition Width="82" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="54"
-                            Height="26"
+                    <Border Width="74"
+                            Height="28"
                             HorizontalAlignment="Left"
                             Background="{StaticResource Brush.Bg.Sunken}"
                             BorderBrush="{StaticResource Brush.Border.Strong}"
                             BorderThickness="1"
                             CornerRadius="8">
-                        <views:ControllerGlyphView Width="52"
+                        <views:ControllerGlyphView Width="72"
                                                    Glyph="{Binding Glyph}"
                                                    Foreground="{StaticResource Brush.Text.Primary}"
                                                    FontFamily="{StaticResource Font.Mono}"
-                                                   FontSize="10"
-                                                   FontWeight="SemiBold" />
+                                                   FontSize="{StaticResource Font.Size.Label}"
+                                                   FontWeight="Bold" />
                     </Border>
                     <StackPanel Grid.Column="1"
                                 VerticalAlignment="Center">
@@ -312,8 +312,8 @@
                                  StrokeThickness="2"
                                  Opacity="0" />
                         <Border x:Name="DPadHalo"
-                                Canvas.Left="228"
-                                Canvas.Top="210"
+                                Canvas.Left="210"
+                                Canvas.Top="178"
                                 Width="76"
                                 Height="76"
                                 Background="{StaticResource Brush.Accent.Halo}"
@@ -409,8 +409,8 @@
                                  Tag="{Binding IsActionMode}"
                                  Style="{StaticResource Tutorial.Pulse.Ellipse}" />
                         <Border x:Name="TutorialDPadHalo"
-                                Canvas.Left="226"
-                                Canvas.Top="208"
+                                Canvas.Left="208"
+                                Canvas.Top="176"
                                 Width="80"
                                 Height="80"
                                 CornerRadius="20"

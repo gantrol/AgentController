@@ -6,15 +6,15 @@
                          StartPoint="0,0"
                          EndPoint="0,1">
         <GradientStop Offset="0" Color="#FEFFFFFF" />
-        <GradientStop Offset="1" Color="#F8F1F1EC" />
+        <GradientStop Offset="1" Color="#F8F2F3F3" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="Brush.Overlay.MicroKey"
                          StartPoint="0,0"
                          EndPoint="0,1">
         <GradientStop Offset="0" Color="#FFFFFFFF" />
-        <GradientStop Offset="0.58" Color="#FFF8F8F5" />
-        <GradientStop Offset="1" Color="#FFEAEAE5" />
+        <GradientStop Offset="0.58" Color="#FFF9FAFA" />
+        <GradientStop Offset="1" Color="#FFECEEEE" />
     </LinearGradientBrush>
 
     <Style x:Key="Overlay.MicroPanel" TargetType="Border">

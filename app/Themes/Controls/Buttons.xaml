@@ -60,8 +60,8 @@
     <Style x:Key="Button.Primary"
            TargetType="Button"
            BasedOn="{StaticResource Button.Base}">
-        <Setter Property="Background" Value="{StaticResource Brush.Bg.Inverse}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Bg.Inverse}" />
+        <Setter Property="Background" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
         <Setter Property="Foreground" Value="{StaticResource Brush.Text.Inverse}" />
         <Setter Property="FontWeight" Value="{StaticResource Font.Weight.Semibold}" />
     </Style>

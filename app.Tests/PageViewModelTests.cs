@@ -31,6 +31,28 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    public void ConfigViewModelAutoSavesEditsButNotInitialLoad()
+    {
+        var saveCount = 0;
+        var viewModel = new ConfigPageViewModel(
+            () => { },
+            () => saveCount++);
+
+        viewModel.Load(new AppSettings
+        {
+            ReasoningDownShortcut = "F13",
+        });
+        Assert.Equal(0, saveCount);
+
+        viewModel.ReasoningDownShortcut = "F14";
+        Assert.Equal(1, saveCount);
+
+        viewModel.ResetToDefaults();
+        Assert.Equal(2, saveCount);
+        Assert.Equal("F17", viewModel.ReasoningDownShortcut);
+    }
+
+    [Fact]
     public void SettingsViewModelRoundTripsBehaviorAndTuning()
     {
         var source = new AppSettings
@@ -64,6 +86,32 @@ public sealed class PageViewModelTests
         Assert.Equal(0.63, target.DeadZone);
         Assert.Equal(410, target.RepeatDelayMs);
         Assert.Equal(185, target.RepeatIntervalMs);
+    }
+
+    [Fact]
+    public void SettingsViewModelAutoSavesEditsButNotInitialLoad()
+    {
+        var saveCount = 0;
+        var viewModel = new SettingsPageViewModel(
+            () => { },
+            () => { },
+            () => saveCount++,
+            _ => { });
+
+        viewModel.Load(new AppSettings
+        {
+            HapticFeedback = false,
+            DeadZone = 0.72,
+        });
+        Assert.Equal(0, saveCount);
+
+        viewModel.HapticFeedback = true;
+        Assert.Equal(1, saveCount);
+
+        viewModel.ResetToDefaults();
+        Assert.Equal(2, saveCount);
+        Assert.True(viewModel.HapticFeedback);
+        Assert.Equal(0.58, viewModel.DeadZone);
     }
 
     [Fact]

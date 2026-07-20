@@ -80,6 +80,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
     private readonly DispatcherTimer _radialLearningTimer;
+    private readonly DispatcherTimer _configSaveTimer;
+    private readonly DispatcherTimer _settingsSaveTimer;
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
@@ -187,17 +189,23 @@ public partial class MainWindow : Window
         _microInput = dependencies.MicroInput;
         _currentControlExecutor = new(_microInput);
         _controllerProfiles = dependencies.ControllerProfiles;
+        _configSaveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(350),
+        };
+        _configSaveTimer.Tick += (_, _) => PersistConfigSettings();
+        _settingsSaveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(350),
+        };
+        _settingsSaveTimer.Tick += (_, _) => PersistPageSettings();
         _configPageViewModel = new ConfigPageViewModel(
             OpenAgentShortcuts,
-            () => SaveSettings(
-                _localization.Strings.Get(
-                    StringKeys.MessageShortcutSettingsSaved)));
+            QueueConfigSave);
         _settingsPageViewModel = new SettingsPageViewModel(
             OpenControllerVendorTool,
             OpenAgentSettings,
-            () => SaveSettings(
-                _localization.Strings.Get(
-                    StringKeys.MessageSettingsSaved)),
+            QueueSettingsSave,
             ChangeLanguage);
         InitializeComponent();
         DataContext = _localization.Strings;
@@ -5292,22 +5300,33 @@ public partial class MainWindow : Window
         _configPageViewModel.Load(_settings);
     }
 
-    private void ReadControlsIntoSettings()
+    private void QueueConfigSave()
     {
-        _settings.BridgeEnabled = BridgeEnabledCheckBox.IsChecked == true;
-        _settingsPageViewModel.ApplyTo(_settings);
-        _configPageViewModel.ApplyTo(_settings);
-        _settings.Language = _localization.SettingValue;
+        _configSaveTimer.Stop();
+        _configSaveTimer.Start();
     }
 
-    private void SaveSettings(string eventText)
+    private void PersistConfigSettings()
     {
-        ReadControlsIntoSettings();
+        _configSaveTimer.Stop();
+        _configPageViewModel.ApplyTo(_settings);
         _settingsService.Save(_settings);
         ConfigureCodexKeybindings();
         RefreshRadialMenu();
-        AddEvent(eventText);
-        FooterStatusText.Text = eventText;
+    }
+
+    private void QueueSettingsSave()
+    {
+        _settingsSaveTimer.Stop();
+        _settingsSaveTimer.Start();
+    }
+
+    private void PersistPageSettings()
+    {
+        _settingsSaveTimer.Stop();
+        _settingsPageViewModel.ApplyTo(_settings);
+        _settingsService.Save(_settings);
+        RefreshRadialMenu();
     }
 
     private void UpdateCodexStatus()
@@ -5808,6 +5827,14 @@ public partial class MainWindow : Window
         _statusTimer.Stop();
         _dataTimer.Stop();
         _radialLearningTimer.Stop();
+        if (_configSaveTimer.IsEnabled)
+        {
+            PersistConfigSettings();
+        }
+        if (_settingsSaveTimer.IsEnabled)
+        {
+            PersistPageSettings();
+        }
         CancelBaseCancelHold(showFeedback: false);
         CancelConversationBoundaryHold();
         ResetRadialLayer(clearSuppression: true);

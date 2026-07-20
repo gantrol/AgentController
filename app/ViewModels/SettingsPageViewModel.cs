@@ -24,9 +24,11 @@ public sealed class SettingsPageViewModel : ObservableObject
     private string _openAgentSettingsText = string.Empty;
     private bool _canOpenVendorTool = true;
     private bool _canOpenAgentSettings = true;
+    private readonly Action _save;
     private readonly Action<string> _changeLanguage;
     private readonly RelayCommand _openVendorToolCommand;
     private readonly RelayCommand _openAgentSettingsCommand;
+    private bool _suppressAutoSave;
 
     public SettingsPageViewModel(
         Action openVendorTool,
@@ -34,7 +36,9 @@ public sealed class SettingsPageViewModel : ObservableObject
         Action save,
         Action<string> changeLanguage)
     {
+        ArgumentNullException.ThrowIfNull(save);
         ArgumentNullException.ThrowIfNull(changeLanguage);
+        _save = save;
         _changeLanguage = changeLanguage;
         _openVendorToolCommand = new RelayCommand(
             openVendorTool,
@@ -44,12 +48,12 @@ public sealed class SettingsPageViewModel : ObservableObject
             () => CanOpenAgentSettings);
         OpenVendorToolCommand = _openVendorToolCommand;
         OpenAgentSettingsCommand = _openAgentSettingsCommand;
-        SaveCommand = new RelayCommand(save);
+        ResetCommand = new RelayCommand(ResetToDefaults);
     }
 
     public ICommand OpenVendorToolCommand { get; }
     public ICommand OpenAgentSettingsCommand { get; }
-    public ICommand SaveCommand { get; }
+    public ICommand ResetCommand { get; }
 
     public string OnlyForegroundText
     {
@@ -106,27 +110,29 @@ public sealed class SettingsPageViewModel : ObservableObject
     public bool OnlyWhenAgentForeground
     {
         get => _onlyWhenAgentForeground;
-        set => SetProperty(ref _onlyWhenAgentForeground, value);
+        set => SaveIfChanged(
+            SetProperty(ref _onlyWhenAgentForeground, value));
     }
 
     public bool HapticFeedback
     {
         get => _hapticFeedback;
-        set => SetProperty(ref _hapticFeedback, value);
+        set => SaveIfChanged(SetProperty(ref _hapticFeedback, value));
     }
 
     public bool ShowOverlay
     {
         get => _showOverlay;
-        set => SetProperty(ref _showOverlay, value);
+        set => SaveIfChanged(SetProperty(ref _showOverlay, value));
     }
 
     public string RadialMenuMode
     {
         get => _radialMenuMode;
-        set => SetProperty(
-            ref _radialMenuMode,
-            RadialMenuModes.Normalize(value));
+        set => SaveIfChanged(
+            SetProperty(
+                ref _radialMenuMode,
+                RadialMenuModes.Normalize(value)));
     }
 
     public IReadOnlyList<LocalizedRadialMenuOption>
@@ -141,13 +147,13 @@ public sealed class SettingsPageViewModel : ObservableObject
     public bool StartWithWindows
     {
         get => _startWithWindows;
-        set => SetProperty(ref _startWithWindows, value);
+        set => SaveIfChanged(SetProperty(ref _startWithWindows, value));
     }
 
     public bool MinimizeToTray
     {
         get => _minimizeToTray;
-        set => SetProperty(ref _minimizeToTray, value);
+        set => SaveIfChanged(SetProperty(ref _minimizeToTray, value));
     }
 
     public double DeadZone
@@ -158,6 +164,7 @@ public sealed class SettingsPageViewModel : ObservableObject
             if (SetProperty(ref _deadZone, Math.Round(value, 2)))
             {
                 OnPropertyChanged(nameof(DeadZoneDisplay));
+                SaveIfChanged(changed: true);
             }
         }
     }
@@ -170,6 +177,7 @@ public sealed class SettingsPageViewModel : ObservableObject
             if (SetProperty(ref _repeatDelayMs, value))
             {
                 OnPropertyChanged(nameof(RepeatDelayDisplay));
+                SaveIfChanged(changed: true);
             }
         }
     }
@@ -182,6 +190,7 @@ public sealed class SettingsPageViewModel : ObservableObject
             if (SetProperty(ref _repeatIntervalMs, value))
             {
                 OnPropertyChanged(nameof(RepeatIntervalDisplay));
+                SaveIfChanged(changed: true);
             }
         }
     }
@@ -201,6 +210,7 @@ public sealed class SettingsPageViewModel : ObservableObject
             if (SetProperty(ref _languageSetting, normalized))
             {
                 _changeLanguage(normalized);
+                SaveIfChanged(changed: true);
             }
         }
     }
@@ -249,16 +259,24 @@ public sealed class SettingsPageViewModel : ObservableObject
     public void Load(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        OnlyWhenAgentForeground = settings.OnlyWhenCodexForeground;
-        HapticFeedback = settings.HapticFeedback;
-        ShowOverlay = settings.ShowOverlay;
-        RadialMenuMode = settings.RadialMenuMode;
-        StartWithWindows = settings.StartWithWindows;
-        MinimizeToTray = settings.MinimizeToTray;
-        DeadZone = settings.DeadZone;
-        RepeatDelayMs = settings.RepeatDelayMs;
-        RepeatIntervalMs = settings.RepeatIntervalMs;
-        LanguageSetting = settings.Language;
+        _suppressAutoSave = true;
+        try
+        {
+            OnlyWhenAgentForeground = settings.OnlyWhenCodexForeground;
+            HapticFeedback = settings.HapticFeedback;
+            ShowOverlay = settings.ShowOverlay;
+            RadialMenuMode = settings.RadialMenuMode;
+            StartWithWindows = settings.StartWithWindows;
+            MinimizeToTray = settings.MinimizeToTray;
+            DeadZone = settings.DeadZone;
+            RepeatDelayMs = settings.RepeatDelayMs;
+            RepeatIntervalMs = settings.RepeatIntervalMs;
+            LanguageSetting = settings.Language;
+        }
+        finally
+        {
+            _suppressAutoSave = false;
+        }
     }
 
     public void ApplyTo(AppSettings settings)
@@ -275,6 +293,20 @@ public sealed class SettingsPageViewModel : ObservableObject
         settings.RepeatDelayMs = RepeatDelayMs;
         settings.RepeatIntervalMs = RepeatIntervalMs;
         settings.Language = LanguageSetting;
+    }
+
+    public void ResetToDefaults()
+    {
+        Load(new AppSettings());
+        _save();
+    }
+
+    private void SaveIfChanged(bool changed)
+    {
+        if (changed && !_suppressAutoSave)
+        {
+            _save();
+        }
     }
 }
 
