@@ -52,13 +52,15 @@ And the six Agent keys from Codex Micro? Hold **LB**, then use the four D-pad di
 
 If the controller shorthand is unfamiliar, the dashboard now includes an interactive guide for Basics, Tap Y, Hold LB, Hold RT, Hold RB, and stick presses. Click a tab or press the matching control to switch the lesson. L3/R3 are also labeled as LS/RS and animated as vertical stick-cap presses—not downward stick movement.
 
-### Codex Micro desktop simulator: a second route
-
-Alongside the gamepad route, this repository now explores and improves Codex Micro through a separate implementation: an independent desktop virtual keypad. The current milestone is a successful end-to-end bring-up against the Codex desktop app; buttons, the encoder, joystick, Micro settings routing, and Agent state reports now travel through the VHF/UMDF2 path.
+### Codex Micro desktop simulator
 
 ![Codex Micro desktop simulator](public/images/codex-micro-simulator.png)
 
-The [Codex Micro desktop simulator](virtual-micro/README.md) renders a resizable transparent keypad and connects directly to Codex without using Agent Controller. The [v1.0.0 release](../../releases/tag/codex-micro-v1.0.0) provides a self-contained Windows x64 app and a separately labeled **unsigned developer driver package**. The driver package saves the C/C++ compilation step, but it is not a production installer: [sign it locally and install it](virtual-micro/UNSIGNED-DRIVER.md), or build the driver from source.
+The [Codex Micro desktop simulator](virtual-micro/README.md) renders a resizable transparent keypad. It is a side project and currently does not depend on Agent Controller. The [v1.0.0 release](../../releases/tag/codex-micro-v1.0.0) provides a self-contained Windows x64 app that does not require a separate .NET Runtime.
+
+> It may be merged into Agent Controller in the future.
+
+Unfortunately, it also depends on an **unsigned developer driver package**. The package saves the C/C++ compilation step, but it is not a production installer: [sign it locally and install it](virtual-micro/UNSIGNED-DRIVER.md), or build the driver from source.
 
 > ⚠️ **Security notice — read before use**
 >
