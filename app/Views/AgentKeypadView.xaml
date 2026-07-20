@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="clr-namespace:CodexController.Models"
+             xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
              xmlns:views="clr-namespace:CodexController.Views"
              mc:Ignorable="d"
              d:DesignHeight="360"
@@ -39,37 +40,58 @@
                                         VerticalAlignment="Center"
                                         Style="{StaticResource Overlay.PhysicalKey}">
                                     <Grid>
+                                        <Ellipse x:Name="LedField"
+                                                 Width="50"
+                                                 Height="50"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{StaticResource Brush.Led.Unknown}"
+                                                 Opacity="0.16">
+                                            <Ellipse.OpacityMask>
+                                                <RadialGradientBrush>
+                                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                                    <GradientStop Color="#7FFFFFFF" Offset="0.46" />
+                                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                                </RadialGradientBrush>
+                                            </Ellipse.OpacityMask>
+                                        </Ellipse>
                                         <views:ControllerGlyphView x:Name="GlyphView"
-                                                                   Margin="5,2,0,0"
+                                                                   Width="36"
+                                                                   Height="34"
                                                                    Glyph="{Binding InputGlyph}"
-                                                                   HorizontalAlignment="Left"
-                                                                   VerticalAlignment="Top"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
                                                                    Foreground="{StaticResource Brush.Text.Secondary}"
                                                                    FontFamily="{StaticResource Font.Mono}"
                                                                    FontSize="12"
                                                                    FontWeight="{StaticResource Font.Weight.Medium}" />
-
                                         <Ellipse x:Name="LedHalo"
-                                                 Width="28"
-                                                 Height="28"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
+                                                 Width="18"
+                                                 Height="18"
+                                                 Margin="0,0,1,1"
+                                                 HorizontalAlignment="Right"
+                                                 VerticalAlignment="Bottom"
                                                  Fill="{StaticResource Brush.Led.Unknown}"
-                                                 Opacity="0.16" />
+                                                 Opacity="0.16">
+                                            <Ellipse.Effect>
+                                                <BlurEffect Radius="5" />
+                                            </Ellipse.Effect>
+                                        </Ellipse>
                                         <Ellipse x:Name="StatusLed"
-                                                 Width="16"
-                                                 Height="16"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
+                                                 Width="10"
+                                                 Height="10"
+                                                 Margin="0,0,4,4"
+                                                 HorizontalAlignment="Right"
+                                                 VerticalAlignment="Bottom"
                                                  Fill="{StaticResource Brush.Led.Unknown}"
                                                  Stroke="#77FFFFFF"
                                                  StrokeThickness="1" />
                                         <Ellipse x:Name="LedHighlight"
-                                                 Width="5"
-                                                 Height="3"
-                                                 Margin="-4,-6,0,0"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
+                                                 Width="3"
+                                                 Height="2"
+                                                 Margin="0,0,10,11"
+                                                 HorizontalAlignment="Right"
+                                                 VerticalAlignment="Bottom"
                                                  Fill="#BFFFFFFF" />
                                     </Grid>
                                 </Border>
@@ -122,6 +144,9 @@
                                 <Setter TargetName="LedHalo"
                                         Property="Opacity"
                                         Value="0" />
+                                <Setter TargetName="LedField"
+                                        Property="Opacity"
+                                        Value="0" />
                                 <Setter TargetName="LedHighlight"
                                         Property="Visibility"
                                         Value="Collapsed" />
@@ -137,6 +162,12 @@
                                 <Setter TargetName="LedHalo"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Idle}" />
+                                <Setter TargetName="LedField"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.Idle}" />
+                                <Setter TargetName="LedField"
+                                        Property="Opacity"
+                                        Value="0.1" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.Thinking}">
@@ -146,6 +177,12 @@
                                 <Setter TargetName="LedHalo"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Working}" />
+                                <Setter TargetName="LedField"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.Working}" />
+                                <Setter TargetName="LedField"
+                                        Property="Opacity"
+                                        Value="0.28" />
                                 <Setter TargetName="LedHalo"
                                         Property="Opacity"
                                         Value="0.24" />
@@ -158,6 +195,12 @@
                                 <Setter TargetName="LedHalo"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.CompleteUnread}" />
+                                <Setter TargetName="LedField"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.CompleteUnread}" />
+                                <Setter TargetName="LedField"
+                                        Property="Opacity"
+                                        Value="0.2" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Status}"
                                          Value="{x:Static models:ThreadStatus.RequiresInput}">
@@ -167,6 +210,12 @@
                                 <Setter TargetName="LedHalo"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.RequiresInput}" />
+                                <Setter TargetName="LedField"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.RequiresInput}" />
+                                <Setter TargetName="LedField"
+                                        Property="Opacity"
+                                        Value="0.26" />
                                 <Setter TargetName="LedHalo"
                                         Property="Opacity"
                                         Value="0.24" />
@@ -179,6 +228,12 @@
                                 <Setter TargetName="LedHalo"
                                         Property="Fill"
                                         Value="{StaticResource Brush.Led.Error}" />
+                                <Setter TargetName="LedField"
+                                        Property="Fill"
+                                        Value="{StaticResource Brush.Led.Error}" />
+                                <Setter TargetName="LedField"
+                                        Property="Opacity"
+                                        Value="0.26" />
                                 <Setter TargetName="LedHalo"
                                         Property="Opacity"
                                         Value="0.24" />
@@ -206,27 +261,35 @@
                                 <Setter TargetName="GlyphView"
                                         Property="Foreground"
                                         Value="{StaticResource Brush.Agent.Glyph}" />
-                                <DataTrigger.EnterActions>
-                                    <BeginStoryboard x:Name="SelectedPulseStoryboard">
+                            </DataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Status}"
+                                               Value="{x:Static models:ThreadStatus.Thinking}" />
+                                    <Condition Binding="{Binding Source={x:Static sys:SystemParameters.ClientAreaAnimation}}"
+                                               Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="WorkingPulseStoryboard">
                                         <Storyboard RepeatBehavior="Forever"
                                                     AutoReverse="True">
-                                            <DoubleAnimation Storyboard.TargetName="StatusLed"
+                                            <DoubleAnimation Storyboard.TargetName="LedField"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             From="1"
-                                                             To="0.5"
+                                                             From="0.28"
+                                                             To="0.2"
                                                              Duration="0:0:0.8" />
                                             <DoubleAnimation Storyboard.TargetName="LedHalo"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             From="0.28"
-                                                             To="0.08"
+                                                             From="0.24"
+                                                             To="0.14"
                                                              Duration="0:0:0.8" />
                                         </Storyboard>
                                     </BeginStoryboard>
-                                </DataTrigger.EnterActions>
-                                <DataTrigger.ExitActions>
-                                    <RemoveStoryboard BeginStoryboardName="SelectedPulseStoryboard" />
-                                </DataTrigger.ExitActions>
-                            </DataTrigger>
+                                </MultiDataTrigger.EnterActions>
+                                <MultiDataTrigger.ExitActions>
+                                    <RemoveStoryboard BeginStoryboardName="WorkingPulseStoryboard" />
+                                </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -284,10 +347,7 @@
                                 VerticalAlignment="Center"
                                 AutomationProperties.Name="View and Menu button guide">
                         <Border Padding="7,3"
-                                Background="{StaticResource Brush.Bg.Sunken}"
-                                BorderBrush="{StaticResource Brush.Border.Subtle}"
-                                BorderThickness="1"
-                                CornerRadius="8">
+                                Style="{StaticResource Overlay.PhysicalKey.Compact}">
                             <StackPanel Orientation="Horizontal">
                                 <views:ControllerGlyphView Width="28"
                                                            Glyph="{Binding Left.InputGlyph}"
@@ -304,10 +364,7 @@
                         </Border>
                         <Border Margin="8,0,0,0"
                                 Padding="7,3"
-                                Background="{StaticResource Brush.Bg.Sunken}"
-                                BorderBrush="{StaticResource Brush.Border.Subtle}"
-                                BorderThickness="1"
-                                CornerRadius="8">
+                                Style="{StaticResource Overlay.PhysicalKey.Compact}">
                             <StackPanel Orientation="Horizontal">
                                 <views:ControllerGlyphView Width="28"
                                                            Glyph="{Binding Right.InputGlyph}"

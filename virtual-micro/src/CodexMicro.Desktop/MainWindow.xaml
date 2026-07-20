@@ -33,27 +33,19 @@
                    ToolTipService.InitialShowDelay="320"
                    ToolTipService.BetweenShowDelay="100"
                    ToolTipService.ShowDuration="16000">
-                <Border Margin="47"
-                        Background="#7A9CFFF8"
-                        CornerRadius="64"
-                        Opacity="0.65">
-                    <Border.Effect>
-                        <BlurEffect Radius="27" />
-                    </Border.Effect>
-                </Border>
-
                 <Border x:Name="DeviceFrame"
                         Margin="23"
                         CornerRadius="66"
                         BorderBrush="#D9FFFFFF"
-                        BorderThickness="3"
+                        BorderThickness="2"
                         ContextMenuOpening="DeviceFrame_ContextMenuOpening"
                         MouseLeftButtonDown="DeviceFrame_MouseLeftButtonDown">
                     <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#F7FFFFFF" Offset="0" />
-                            <GradientStop Color="#EFEFF3F4" Offset="0.56" />
-                            <GradientStop Color="#E1C9D0D3" Offset="1" />
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#E4FFFFFF" Offset="0" />
+                            <GradientStop Color="#D6F7FAF9" Offset="0.48" />
+                            <GradientStop Color="#C8E8F0EF" Offset="0.78" />
+                            <GradientStop Color="#B8C7D3D3" Offset="1" />
                         </LinearGradientBrush>
                     </Border.Background>
                     <Border.ContextMenu>
@@ -71,27 +63,79 @@
                         </ContextMenu>
                     </Border.ContextMenu>
                     <Border.Effect>
-                        <DropShadowEffect Color="#5C6670"
-                                          BlurRadius="28"
-                                          ShadowDepth="9"
+                        <DropShadowEffect Color="#526E7B80"
+                                          BlurRadius="30"
+                                          ShadowDepth="7"
                                           Direction="270"
-                                          Opacity="0.38" />
+                                          Opacity="0.29" />
                     </Border.Effect>
 
-                    <Grid>
-                        <Border Margin="19"
-                                CornerRadius="47"
-                                Background="#BDECF1F2"
-                                BorderBrush="#8A7D8A91"
-                                BorderThickness="1.5" />
-                        <Border Margin="29"
-                                CornerRadius="39"
-                                Background="#5CFFFFFF"
-                                BorderBrush="#C8FFFFFF"
-                                BorderThickness="1" />
+                    <Grid x:Name="CrystalLightClip"
+                          ClipToBounds="True">
+                        <Border x:Name="CrystalPrismRim"
+                                Margin="4,4,4,5"
+                                CornerRadius="61"
+                                BorderThickness="2"
+                                Opacity="0.94"
+                                IsHitTestVisible="False">
+                            <Border.BorderBrush>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#B8DFF8F3" Offset="0.16" />
+                                    <GradientStop Color="#76FFFFFF" Offset="0.46" />
+                                    <GradientStop Color="#8BC6EEE5" Offset="0.78" />
+                                    <GradientStop Color="#D6FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.BorderBrush>
+                        </Border>
+                        <Border x:Name="CrystalDepthPlate"
+                                Margin="10"
+                                CornerRadius="56"
+                                BorderThickness="1"
+                                Background="#14748788"
+                                IsHitTestVisible="False">
+                            <Border.BorderBrush>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#78FFFFFF" Offset="0" />
+                                    <GradientStop Color="#5EACBDBB" Offset="0.58" />
+                                    <GradientStop Color="#75859498" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.BorderBrush>
+                        </Border>
+                        <Border x:Name="PearlLightGuide"
+                                Margin="18"
+                                CornerRadius="50"
+                                BorderBrush="#A8FFFFFF"
+                                BorderThickness="1"
+                                IsHitTestVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#F4FFFFFF" Offset="0" />
+                                    <GradientStop Color="#EEF8FAF8" Offset="0.5" />
+                                    <GradientStop Color="#E9F1F5F2" Offset="0.82" />
+                                    <GradientStop Color="#E3E1EAE8" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="CrystalLowerRefraction"
+                                Height="5"
+                                Margin="88,0,88,18"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Bottom"
+                                CornerRadius="3"
+                                Opacity="0.15"
+                                IsHitTestVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#0098E8D5" Offset="0" />
+                                    <GradientStop Color="#A598E8D5" Offset="0.48" />
+                                    <GradientStop Color="#0098E8D5" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
 
                         <TextBlock x:Name="LeftSilkScreen"
-                                   Text="CODEX  /  MICRO  /  VIRTUAL HID"
+                                   Text="CODEX  /  MICRO  /  CRYSTAL HID"
                                    FontSize="8"
                                    FontWeight="Bold"
                                    Foreground="#6A5A6368"
@@ -105,7 +149,7 @@
                             </TextBlock.LayoutTransform>
                         </TextBlock>
                         <TextBlock x:Name="RightSilkScreen"
-                                   Text="303A : 8360  /  PROJECT 2077"
+                                   Text="OPTICAL INPUT  /  PROJECT 2077"
                                    FontSize="8"
                                    FontWeight="SemiBold"
                                    Foreground="#6A5A6368"
@@ -227,10 +271,17 @@
                                   ToolTip="拖动黑色圆帽模拟摇杆，或单击四周方向键">
                                 <Border x:Name="JoystickSeat"
                                         Margin="4"
-                                        Background="#FFDAD4CA"
                                         BorderBrush="#D6FFFFFF"
                                         BorderThickness="1"
                                         CornerRadius="18">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#FFF8F8F5" Offset="0" />
+                                            <GradientStop Color="#FFECEFF0" Offset="0.5" />
+                                            <GradientStop Color="#FFDDD9E2" Offset="0.76" />
+                                            <GradientStop Color="#FFC7CFD2" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
                                     <Border.Effect>
                                         <DropShadowEffect BlurRadius="4"
                                                           Direction="270"
@@ -400,6 +451,7 @@
                             <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">
                                 <controls:KeycapIcon x:Name="ActionIcon12" Width="37" Height="37" KeycapId="CODEX" IconBrush="#171717" />
                             </Button>
+
                         </Grid>
                     </Grid>
                 </Border>

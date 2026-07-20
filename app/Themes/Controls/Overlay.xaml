@@ -6,26 +6,50 @@
                          StartPoint="0,0"
                          EndPoint="0,1">
         <GradientStop Offset="0" Color="#FEFFFFFF" />
-        <GradientStop Offset="1" Color="#F8F2F3F3" />
+        <GradientStop Offset="0.68" Color="#FAF8FAF9" />
+        <GradientStop Offset="0.94" Color="#F7EEF3F1" />
+        <GradientStop Offset="1" Color="#F3DDEAE5" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Brush.Overlay.CrystalRim"
+                         StartPoint="0,0"
+                         EndPoint="0,1">
+        <GradientStop Offset="0" Color="#FFFFFFFF" />
+        <GradientStop Offset="0.52" Color="#CFE4E9E7" />
+        <GradientStop Offset="1" Color="#91A6B5B1" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="Brush.Overlay.MicroKey"
                          StartPoint="0,0"
                          EndPoint="0,1">
         <GradientStop Offset="0" Color="#FFFFFFFF" />
-        <GradientStop Offset="0.58" Color="#FFF9FAFA" />
-        <GradientStop Offset="1" Color="#FFECEEEE" />
+        <GradientStop Offset="0.54" Color="#FFFAF9F5" />
+        <GradientStop Offset="0.84" Color="#FFF0F3F2" />
+        <GradientStop Offset="1" Color="#FFD7E0E1" />
     </LinearGradientBrush>
 
-    <Style x:Key="Overlay.MicroPanel" TargetType="Border">
+    <LinearGradientBrush x:Key="Brush.Overlay.KeyRim"
+                         StartPoint="0,0"
+                         EndPoint="0,1">
+        <GradientStop Offset="0" Color="#FFFFFFFF" />
+        <GradientStop Offset="0.68" Color="#D8E3E7E6" />
+        <GradientStop Offset="1" Color="#9EABB8B9" />
+    </LinearGradientBrush>
+
+    <Style x:Key="Overlay.CrystalPanel" TargetType="Border">
         <Setter Property="Background"
                 Value="{StaticResource Brush.Overlay.MicroPanel}" />
         <Setter Property="BorderBrush"
-                Value="{StaticResource Brush.Overlay.Border.Frosted}" />
+                Value="{StaticResource Brush.Overlay.CrystalRim}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="24" />
         <Setter Property="Effect" Value="{StaticResource Shadow.Overlay}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
+
+    <Style x:Key="Overlay.MicroPanel"
+           TargetType="Border"
+           BasedOn="{StaticResource Overlay.CrystalPanel}" />
 
     <Style x:Key="Overlay.PhysicalKey" TargetType="Border">
         <Setter Property="Width" Value="58" />
@@ -33,20 +57,38 @@
         <Setter Property="Background"
                 Value="{StaticResource Brush.Overlay.MicroKey}" />
         <Setter Property="BorderBrush"
-                Value="{StaticResource Brush.Border.Subtle}" />
-        <Setter Property="BorderThickness" Value="1" />
+                Value="{StaticResource Brush.Overlay.KeyRim}" />
+        <Setter Property="BorderThickness" Value="1,1,1,2" />
         <Setter Property="CornerRadius" Value="13" />
         <Setter Property="Effect" Value="{StaticResource Shadow.OverlayKey}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
-    <Style x:Key="Overlay.ModifierBadge" TargetType="Border">
+    <Style x:Key="Overlay.PhysicalKey.Compact"
+           TargetType="Border"
+           BasedOn="{StaticResource Overlay.PhysicalKey}">
+        <Setter Property="MinWidth" Value="32" />
+        <Setter Property="Width" Value="Auto" />
+        <Setter Property="Height" Value="25" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="BorderThickness" Value="1,1,1,2" />
+    </Style>
+
+    <Style x:Key="Overlay.PhysicalKey.Chip"
+           TargetType="Border"
+           BasedOn="{StaticResource Overlay.PhysicalKey}">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderThickness" Value="1,1,1,2" />
+    </Style>
+
+    <Style x:Key="Overlay.ModifierBadge"
+           TargetType="Border"
+           BasedOn="{StaticResource Overlay.PhysicalKey}">
         <Setter Property="Width" Value="42" />
         <Setter Property="Height" Value="26" />
-        <Setter Property="Background"
-                Value="{StaticResource Brush.Bg.Surface}" />
-        <Setter Property="BorderBrush"
-                Value="{StaticResource Brush.Border.Subtle}" />
-        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
     </Style>
 
@@ -76,12 +118,10 @@
         </Setter>
     </Style>
 
-    <Style x:Key="Overlay.Toast" TargetType="Border">
+    <Style x:Key="Overlay.Toast"
+           TargetType="Border"
+           BasedOn="{StaticResource Overlay.CrystalPanel}">
         <Setter Property="Padding" Value="{StaticResource Pad.CardDense}" />
-        <Setter Property="Background" Value="{StaticResource Brush.Bg.Panel}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border.Subtle}" />
-        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource Radius.LG}" />
-        <Setter Property="Effect" Value="{StaticResource Shadow.Overlay}" />
     </Style>
 </ResourceDictionary>

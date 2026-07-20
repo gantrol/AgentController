@@ -119,10 +119,8 @@
                     <Border Width="74"
                             Height="28"
                             HorizontalAlignment="Left"
-                            Background="{StaticResource Brush.Bg.Sunken}"
-                            BorderBrush="{StaticResource Brush.Border.Strong}"
-                            BorderThickness="1"
-                            CornerRadius="8">
+                            Padding="0"
+                            Style="{StaticResource Overlay.PhysicalKey.Compact}">
                         <views:ControllerGlyphView Width="72"
                                                    Glyph="{Binding Glyph}"
                                                    Foreground="{StaticResource Brush.Text.Primary}"

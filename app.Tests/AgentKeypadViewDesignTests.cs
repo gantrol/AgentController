@@ -18,6 +18,41 @@ public sealed class AgentKeypadViewDesignTests
         WpfTestHost.Run(RenderAndAssertLayout);
     }
 
+    [Fact]
+    public void DPadGlyphNormalizesProfileArrowsAndPreviewLabels()
+    {
+        WpfTestHost.Run(() =>
+        {
+            var cases = new[]
+            {
+                (Glyph: "↑", Direction: ControllerDPadDirection.Up),
+                (Glyph: "Up", Direction: ControllerDPadDirection.Up),
+                (Glyph: "→", Direction: ControllerDPadDirection.Right),
+                (Glyph: "Right", Direction: ControllerDPadDirection.Right),
+                (Glyph: "↓", Direction: ControllerDPadDirection.Down),
+                (Glyph: "Down", Direction: ControllerDPadDirection.Down),
+                (Glyph: "←", Direction: ControllerDPadDirection.Left),
+                (Glyph: "Left", Direction: ControllerDPadDirection.Left),
+                (Glyph: "↑↓", Direction:
+                    ControllerDPadDirection.Up |
+                    ControllerDPadDirection.Down),
+                (Glyph: "←→", Direction:
+                    ControllerDPadDirection.Left |
+                    ControllerDPadDirection.Right),
+                (Glyph: "A", Direction: ControllerDPadDirection.None),
+            };
+
+            foreach (var (glyph, direction) in cases)
+            {
+                var view = new ControllerGlyphView
+                {
+                    Glyph = glyph,
+                };
+                Assert.Equal(direction, view.DPadDirection);
+            }
+        });
+    }
+
     private static void RenderAndAssertLayout()
     {
         RenderAndAssertAgentLayout();
@@ -62,12 +97,18 @@ public sealed class AgentKeypadViewDesignTests
             var statusLed = GetTemplatePart<System.Windows.Shapes.Ellipse>(
                 control,
                 "StatusLed");
+            var ledField = GetTemplatePart<System.Windows.Shapes.Ellipse>(
+                control,
+                "LedField");
             var title = GetTemplatePart<TextBlock>(control, "SlotTitle");
 
             Assert.InRange(keycap.ActualWidth, 57.5, 58.5);
             Assert.InRange(keycap.ActualHeight, 57.5, 58.5);
-            Assert.InRange(statusLed.ActualWidth, 15.5, 16.5);
-            Assert.InRange(statusLed.ActualHeight, 15.5, 16.5);
+            Assert.IsType<LinearGradientBrush>(keycap.Background);
+            Assert.IsType<RadialGradientBrush>(ledField.OpacityMask);
+            Assert.InRange(ledField.ActualWidth, 49.5, 50.5);
+            Assert.InRange(statusLed.ActualWidth, 9.5, 10.5);
+            Assert.InRange(statusLed.ActualHeight, 9.5, 10.5);
 
             var keyPosition = keycap.TranslatePoint(new Point(), view);
             var titlePosition = title.TranslatePoint(new Point(), view);
@@ -100,6 +141,39 @@ public sealed class AgentKeypadViewDesignTests
                 Assert.Equal(
                     Visibility.Collapsed,
                     glyph.FallbackGlyphText.Visibility);
+            });
+
+        var dpadGlyphs = glyphViews
+            .Where(glyph =>
+                glyph.DPadDirection != ControllerDPadDirection.None)
+            .ToArray();
+        Assert.Equal(4, dpadGlyphs.Length);
+        Assert.Equal(
+            [
+                ControllerDPadDirection.Up,
+                ControllerDPadDirection.Right,
+                ControllerDPadDirection.Down,
+                ControllerDPadDirection.Left,
+            ],
+            dpadGlyphs.Select(glyph => glyph.DPadDirection).ToArray());
+        Assert.All(
+            dpadGlyphs,
+            glyph =>
+            {
+                Assert.Equal(Visibility.Visible, glyph.DPadIcon.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    glyph.FallbackGlyphText.Visibility);
+                var armVisibility = new[]
+                {
+                    glyph.DPadUpArm.Visibility,
+                    glyph.DPadRightArm.Visibility,
+                    glyph.DPadDownArm.Visibility,
+                    glyph.DPadLeftArm.Visibility,
+                };
+                Assert.Single(
+                    armVisibility,
+                    visibility => visibility == Visibility.Visible);
             });
 
         WritePreviewFromEnvironment(

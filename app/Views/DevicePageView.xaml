@@ -90,11 +90,16 @@
                     Style="{StaticResource Card.Dense}"
                     Margin="0,0,5,0">
                 <StackPanel>
-                    <TextBlock x:Name="PrimaryGlyphText"
-                               Text="{Binding PrimaryGlyph}"
-                               Foreground="{StaticResource Brush.Text.Accent}"
-                               FontSize="{StaticResource Font.Size.TitleLg}"
-                               FontWeight="Bold" />
+                    <Border HorizontalAlignment="Left"
+                            Style="{StaticResource Overlay.PhysicalKey.Chip}">
+                        <TextBlock x:Name="PrimaryGlyphText"
+                                   Text="{Binding PrimaryGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Text.Accent}"
+                                   FontSize="{StaticResource Font.Size.TitleLg}"
+                                   FontWeight="Bold" />
+                    </Border>
                     <TextBlock x:Name="PrimaryActionTitle"
                                Text="{Binding PrimaryActionTitle}"
                                Margin="0,4,0,0"
@@ -111,11 +116,16 @@
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
-                    <TextBlock x:Name="VoiceGlyphText"
-                               Text="{Binding VoiceGlyph}"
-                               Foreground="{StaticResource Brush.Text.Accent}"
-                               FontSize="{StaticResource Font.Size.TitleLg}"
-                               FontWeight="Bold" />
+                    <Border HorizontalAlignment="Left"
+                            Style="{StaticResource Overlay.PhysicalKey.Chip}">
+                        <TextBlock x:Name="VoiceGlyphText"
+                                   Text="{Binding VoiceGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Text.Accent}"
+                                   FontSize="{StaticResource Font.Size.TitleLg}"
+                                   FontWeight="Bold" />
+                    </Border>
                     <TextBlock x:Name="VoiceActionTitle"
                                Text="{Binding VoiceActionTitle}"
                                Margin="0,4,0,0"
@@ -132,10 +142,15 @@
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
-                    <TextBlock x:Name="SendGlyphText"
-                               Text="{Binding SendGlyph}"
-                               FontSize="{StaticResource Font.Size.TitleLg}"
-                               FontWeight="Bold" />
+                    <Border HorizontalAlignment="Left"
+                            Style="{StaticResource Overlay.PhysicalKey.Chip}">
+                        <TextBlock x:Name="SendGlyphText"
+                                   Text="{Binding SendGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="{StaticResource Font.Size.TitleLg}"
+                                   FontWeight="Bold" />
+                    </Border>
                     <TextBlock x:Name="SendActionTitle"
                                Text="{Binding SendActionTitle}"
                                Margin="0,4,0,0"
@@ -152,11 +167,16 @@
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
-                    <TextBlock x:Name="CancelGlyphText"
-                               Text="{Binding CancelGlyph}"
-                               Foreground="{StaticResource Brush.Status.Danger}"
-                               FontSize="{StaticResource Font.Size.TitleLg}"
-                               FontWeight="Bold" />
+                    <Border HorizontalAlignment="Left"
+                            Style="{StaticResource Overlay.PhysicalKey.Chip}">
+                        <TextBlock x:Name="CancelGlyphText"
+                                   Text="{Binding CancelGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Status.Danger}"
+                                   FontSize="{StaticResource Font.Size.TitleLg}"
+                                   FontWeight="Bold" />
+                    </Border>
                     <TextBlock x:Name="CancelActionTitle"
                                Text="{Binding CancelActionTitle}"
                                Margin="0,4,0,0"
@@ -173,11 +193,16 @@
                     Style="{StaticResource Card.Dense}"
                     Margin="3,0">
                 <StackPanel>
-                    <TextBlock x:Name="ProjectGlyphText"
-                               Text="{Binding ProjectGlyph}"
-                               Foreground="{StaticResource Brush.Text.Accent}"
-                               FontSize="{StaticResource Font.Size.TitleLg}"
-                               FontWeight="Bold" />
+                    <Border HorizontalAlignment="Left"
+                            Style="{StaticResource Overlay.PhysicalKey.Chip}">
+                        <TextBlock x:Name="ProjectGlyphText"
+                                   Text="{Binding ProjectGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Text.Accent}"
+                                   FontSize="{StaticResource Font.Size.TitleLg}"
+                                   FontWeight="Bold" />
+                    </Border>
                     <TextBlock x:Name="ProjectActionTitle"
                                Text="{Binding ProjectActionTitle}"
                                Margin="0,4,0,0"
@@ -194,11 +219,16 @@
                     Style="{StaticResource Card.Dense}"
                     Margin="5,0,0,0">
                 <StackPanel>
-                    <TextBlock x:Name="WakeGlyphText"
-                               Text="{Binding WakeGlyph}"
-                               Foreground="{StaticResource Brush.Text.Accent}"
-                               FontSize="{StaticResource Font.Size.Title}"
-                               FontWeight="Bold" />
+                    <Border HorizontalAlignment="Left"
+                            Style="{StaticResource Overlay.PhysicalKey.Chip}">
+                        <TextBlock x:Name="WakeGlyphText"
+                                   Text="{Binding WakeGlyph}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Text.Accent}"
+                                   FontSize="{StaticResource Font.Size.Title}"
+                                   FontWeight="Bold" />
+                    </Border>
                     <TextBlock x:Name="WakeActionTitle"
                                Text="{Binding WakeActionTitle}"
                                Margin="0,4,0,0"

@@ -6,6 +6,14 @@
              MinHeight="20"
              IsHitTestVisible="False"
              SnapsToDevicePixels="True">
+    <UserControl.Resources>
+        <!-- SVG path data for one shared D-pad silhouette and its four arms. -->
+        <Geometry x:Key="Geometry.DPad.Silhouette">M 9,1 C 9,0.45 9.45,0 10,0 L 14,0 C 14.55,0 15,0.45 15,1 L 15,9 L 23,9 C 23.55,9 24,9.45 24,10 L 24,14 C 24,14.55 23.55,15 23,15 L 15,15 L 15,23 C 15,23.55 14.55,24 14,24 L 10,24 C 9.45,24 9,23.55 9,23 L 9,15 L 1,15 C 0.45,15 0,14.55 0,14 L 0,10 C 0,9.45 0.45,9 1,9 L 9,9 Z</Geometry>
+        <Geometry x:Key="Geometry.DPad.Up">M 10,1 L 14,1 L 14,9 L 12,11 L 10,9 Z</Geometry>
+        <Geometry x:Key="Geometry.DPad.Right">M 15,10 L 23,10 L 23,14 L 15,14 L 13,12 Z</Geometry>
+        <Geometry x:Key="Geometry.DPad.Down">M 14,15 L 14,23 L 10,23 L 10,15 L 12,13 Z</Geometry>
+        <Geometry x:Key="Geometry.DPad.Left">M 9,14 L 1,14 L 1,10 L 9,10 L 11,12 Z</Geometry>
+    </UserControl.Resources>
     <Grid>
         <TextBlock x:Name="FallbackGlyphText"
                    Text="{Binding Glyph, ElementName=Root}"
@@ -27,10 +35,133 @@
                                      Value="☰">
                             <Setter Property="Visibility" Value="Collapsed" />
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding IsDPadGlyph, ElementName=Root}"
+                                     Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </TextBlock.Style>
         </TextBlock>
+
+        <Viewbox x:Name="DPadIcon"
+                 Width="25"
+                 Height="25"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center">
+            <Viewbox.Style>
+                <Style TargetType="Viewbox">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDPadGlyph, ElementName=Root}"
+                                     Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Viewbox.Style>
+            <Grid Width="24" Height="24">
+                <Path Data="{StaticResource Geometry.DPad.Silhouette}"
+                      Fill="{Binding Foreground, ElementName=Root}"
+                      Stroke="{Binding Foreground, ElementName=Root}"
+                      StrokeThickness="0.8"
+                      StrokeLineJoin="Round"
+                      Opacity="0.3" />
+
+                <Path x:Name="DPadUpArm"
+                      Data="{StaticResource Geometry.DPad.Up}"
+                      Fill="{StaticResource Brush.Agent.Glyph}">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDPadUpHighlighted, ElementName=Root}"
+                                             Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                    <Path.Effect>
+                        <DropShadowEffect Color="#53675A"
+                                          BlurRadius="3"
+                                          ShadowDepth="0"
+                                          Opacity="0.25" />
+                    </Path.Effect>
+                </Path>
+                <Path x:Name="DPadRightArm"
+                      Data="{StaticResource Geometry.DPad.Right}"
+                      Fill="{StaticResource Brush.Agent.Glyph}">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDPadRightHighlighted, ElementName=Root}"
+                                             Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                    <Path.Effect>
+                        <DropShadowEffect Color="#53675A"
+                                          BlurRadius="3"
+                                          ShadowDepth="0"
+                                          Opacity="0.25" />
+                    </Path.Effect>
+                </Path>
+                <Path x:Name="DPadDownArm"
+                      Data="{StaticResource Geometry.DPad.Down}"
+                      Fill="{StaticResource Brush.Agent.Glyph}">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDPadDownHighlighted, ElementName=Root}"
+                                             Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                    <Path.Effect>
+                        <DropShadowEffect Color="#53675A"
+                                          BlurRadius="3"
+                                          ShadowDepth="0"
+                                          Opacity="0.25" />
+                    </Path.Effect>
+                </Path>
+                <Path x:Name="DPadLeftArm"
+                      Data="{StaticResource Geometry.DPad.Left}"
+                      Fill="{StaticResource Brush.Agent.Glyph}">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDPadLeftHighlighted, ElementName=Root}"
+                                             Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                    <Path.Effect>
+                        <DropShadowEffect Color="#53675A"
+                                          BlurRadius="3"
+                                          ShadowDepth="0"
+                                          Opacity="0.25" />
+                    </Path.Effect>
+                </Path>
+
+                <Ellipse Width="4.5"
+                         Height="4.5"
+                         Fill="#EFFFFFFF"
+                         Stroke="{StaticResource Brush.Agent.Glyph}"
+                         StrokeThickness="0.8"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+            </Grid>
+        </Viewbox>
 
         <!-- Xbox View: two offset windows, drawn instead of relying on a
              font-dependent Unicode approximation. -->
