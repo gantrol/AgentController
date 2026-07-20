@@ -14,7 +14,7 @@ Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex,
 - It has to be shipped to you.
 - Most importantly, it cannot play games.
 
-The gamepad wins. QED. (To be fair, very few controllers can compete with six gloriously distracting color-changing lights.)
+The gamepad wins. QED.
 
 ![Agent Controller dashboard with the interactive controller guide, Micro dial, and Codex sidebar](public/images/agent-controller-gamepad-guide-en.png)
 
