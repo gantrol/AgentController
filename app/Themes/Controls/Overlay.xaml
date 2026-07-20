@@ -36,6 +36,39 @@
         <GradientStop Offset="1" Color="#9EABB8B9" />
     </LinearGradientBrush>
 
+    <!-- The toast is a small crystal backplate, not an oversized keycap. -->
+    <LinearGradientBrush x:Key="Brush.Overlay.ToastCrystalFace"
+                         StartPoint="0,0"
+                         EndPoint="0,1">
+        <GradientStop Offset="0" Color="#F9FFFFFF" />
+        <GradientStop Offset="0.62" Color="#F4FAFCFB" />
+        <GradientStop Offset="1" Color="#EDF0F8F5" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Brush.Overlay.ToastCrystalEdge"
+                         StartPoint="0,1"
+                         EndPoint="1,0">
+        <GradientStop Offset="0" Color="#EDE9F5F1" />
+        <GradientStop Offset="0.46" Color="#FAFFFFFF" />
+        <GradientStop Offset="1" Color="#F2F4FAF7" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Brush.Overlay.ToastRefraction"
+                         StartPoint="0,0"
+                         EndPoint="1,0">
+        <GradientStop Offset="0" Color="#00FFFFFF" />
+        <GradientStop Offset="0.18" Color="#74FFFFFF" />
+        <GradientStop Offset="0.50" Color="#B8FFFFFF" />
+        <GradientStop Offset="0.82" Color="#74FFFFFF" />
+        <GradientStop Offset="1" Color="#00FFFFFF" />
+    </LinearGradientBrush>
+
+    <DropShadowEffect x:Key="Shadow.Overlay.ToastCrystal"
+                      BlurRadius="30"
+                      ShadowDepth="7"
+                      Opacity="0.15"
+                      Color="#3D514B" />
+
     <Style x:Key="Overlay.CrystalPanel" TargetType="Border">
         <Setter Property="Background"
                 Value="{StaticResource Brush.Overlay.MicroPanel}" />
@@ -123,9 +156,17 @@
     </Style>
 
     <Style x:Key="Overlay.Toast"
-           TargetType="Border"
-           BasedOn="{StaticResource Overlay.CrystalPanel}">
-        <Setter Property="Padding" Value="{StaticResource Pad.CardDense}" />
-        <Setter Property="CornerRadius" Value="{StaticResource Radius.LG}" />
+           TargetType="Border">
+        <Setter Property="MinHeight" Value="72" />
+        <Setter Property="Padding" Value="16,13,20,15" />
+        <Setter Property="Background"
+                Value="{StaticResource Brush.Overlay.ToastCrystalFace}" />
+        <Setter Property="BorderBrush"
+                Value="{StaticResource Brush.Overlay.ToastCrystalEdge}" />
+        <Setter Property="BorderThickness" Value="4" />
+        <Setter Property="CornerRadius" Value="20" />
+        <Setter Property="Effect"
+                Value="{StaticResource Shadow.Overlay.ToastCrystal}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 </ResourceDictionary>

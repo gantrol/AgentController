@@ -1,6 +1,7 @@
 <Application x:Class="CodexController.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
@@ -38,6 +39,30 @@
                 <Setter Property="HasDropShadow" Value="True" />
                 <Setter Property="Placement" Value="Mouse" />
                 <Setter Property="StaysOpen" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToolTip">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <Border.Resources>
+                                    <DataTemplate DataType="{x:Type sys:String}">
+                                        <TextBlock MaxWidth="300"
+                                                   Text="{Binding}"
+                                                   TextWrapping="Wrap"
+                                                   TextTrimming="None" />
+                                    </DataTemplate>
+                                </Border.Resources>
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  ContentStringFormat="{TemplateBinding ContentStringFormat}"
+                                                  RecognizesAccessKey="False" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <Style x:Key="Tooltip.HitRegion"

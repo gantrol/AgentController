@@ -17,37 +17,46 @@
         AutomationProperties.Name="{loc:Loc overlay.notification-name}"
         WindowStartupLocation="Manual">
     <Border x:Name="RootBorder"
-            Margin="8"
+            Margin="12"
             Style="{StaticResource Overlay.Toast}"
             SnapsToDevicePixels="True">
         <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="40" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Image Width="36"
-                   Height="30"
-                   Source="Assets/AgentController.png"
-                   Stretch="Uniform"
-                   RenderOptions.BitmapScalingMode="HighQuality"
-                   VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1"
-                        Margin="9,0,0,0"
-                        VerticalAlignment="Center">
-                <TextBlock x:Name="OverlayTitle"
-                           Text="{loc:Loc composer.right-stick-adjustment}"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="{StaticResource Font.Size.Caption}"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="OverlayValue"
-                           Text="High"
-                           Margin="0,3,0,0"
-                           Foreground="{StaticResource Brush.Text.Primary}"
-                           FontSize="{StaticResource Font.Size.Title}"
-                           FontWeight="{StaticResource Font.Weight.Semibold}"
-                           TextWrapping="Wrap"
-                           TextTrimming="CharacterEllipsis" />
-            </StackPanel>
+            <Border Height="1"
+                    Margin="8,-7,8,0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top"
+                    Background="{StaticResource Brush.Overlay.ToastRefraction}"
+                    IsHitTestVisible="False" />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Image Width="36"
+                       Height="30"
+                       Source="Assets/AgentController.png"
+                       Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1"
+                            Margin="10,0,0,0"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="OverlayTitle"
+                               Text="{loc:Loc composer.right-stick-adjustment}"
+                               Foreground="{StaticResource Brush.Text.Secondary}"
+                               FontSize="{StaticResource Font.Size.Caption}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="OverlayValue"
+                               Text="High"
+                               Margin="0,3,0,0"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontSize="{StaticResource Font.Size.Title}"
+                               FontWeight="{StaticResource Font.Weight.Semibold}"
+                               TextWrapping="Wrap"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>

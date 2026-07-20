@@ -138,8 +138,15 @@
                 </Border>
             </Grid>
 
-            <Border Style="{StaticResource Card.Divider.Top}"
+            <Border x:Name="AgentShortcutsSection"
+                    Style="{StaticResource Card.Divider.Top}"
                     Margin="0,14,0,0"
+                    ToolTipService.InitialShowDelay="180"
+                    ToolTipService.BetweenShowDelay="0"
+                    ToolTipService.ShowDuration="30000"
+                    ToolTipService.Placement="MousePoint"
+                    ToolTipService.HorizontalOffset="14"
+                    ToolTipService.VerticalOffset="16"
                     ToolTip="{Binding AgentShortcutsDescription}">
                 <Grid>
                     <Grid.RowDefinitions>

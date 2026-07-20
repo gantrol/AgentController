@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CodexController.Localization;
@@ -13,6 +14,12 @@ public sealed class ConfigPageViewDesignTests
     public void ShowsVisibleRestoreDefaultsActionWithoutSaveButton()
     {
         WpfTestHost.Run(RenderAndAssert);
+    }
+
+    [Fact]
+    public void LongTextTooltipsWrapWithoutClipping()
+    {
+        WpfTestHost.Run(AssertLongTooltipTemplate);
     }
 
     private static void RenderAndAssert()
@@ -51,7 +58,62 @@ public sealed class ConfigPageViewDesignTests
                 .TransformToAncestor(view)
                 .Transform(new Point()).Y < 80);
 
+        Assert.Equal(
+            viewModel.AgentShortcutsDescription,
+            view.AgentShortcutsSection.ToolTip);
+
         WritePreviewFromEnvironment(view);
+    }
+
+    private static void AssertLongTooltipTemplate()
+    {
+        const string longDescription =
+            "The app safely appends fallback bindings; " +
+            "new bindings take effect after Codex restarts.";
+        var tooltip = new ToolTip
+        {
+            Content = longDescription,
+            Style = (Style)Application.Current.FindResource(
+                typeof(ToolTip)),
+        };
+
+        tooltip.ApplyTemplate();
+        tooltip.Measure(new Size(
+            double.PositiveInfinity,
+            double.PositiveInfinity));
+        tooltip.Arrange(new Rect(
+            0,
+            0,
+            tooltip.DesiredSize.Width,
+            tooltip.DesiredSize.Height));
+        tooltip.UpdateLayout();
+
+        var wrappedText = FindVisualChildren<TextBlock>(tooltip)
+            .Single(text => text.Text == longDescription);
+        Assert.Equal(TextWrapping.Wrap, wrappedText.TextWrapping);
+        Assert.InRange(wrappedText.MaxWidth, 240, 320);
+        Assert.True(tooltip.DesiredSize.Width <= 340);
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(
+        DependencyObject parent)
+        where T : DependencyObject
+    {
+        for (var index = 0;
+             index < VisualTreeHelper.GetChildrenCount(parent);
+             index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private static void WritePreviewFromEnvironment(
