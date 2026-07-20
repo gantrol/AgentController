@@ -113,6 +113,7 @@ public sealed class AgentKeypadViewDesignTests
         Assert.Equal(
             Visibility.Visible,
             view.MetaButtonLegend.Visibility);
+        AssertCrystalPanel(view.AgentPanelShell);
 
         foreach (var control in controls)
         {
@@ -230,10 +231,13 @@ public sealed class AgentKeypadViewDesignTests
         Assert.Equal(6, keycaps.Length);
         Assert.Equal(6, titles.Length);
         Assert.Empty(positionGlyphs);
-        Assert.Equal(Visibility.Visible, commandView.LearningPositionGuide.Visibility);
-        Assert.Single(
+        AssertCrystalPanel(commandView.ActionPanelShell);
+        Assert.DoesNotContain(
             FindVisualChildren<Canvas>(commandView),
             element => element.Name == "FaceButtonDiagram");
+        Assert.DoesNotContain(
+            FindVisualChildren<TextBlock>(commandView),
+            element => element.Text == "ABXY face-button layout");
         foreach (var (keycap, title) in keycaps.Zip(titles))
         {
             Assert.InRange(keycap.ActualWidth, 57.5, 58.5);
@@ -256,6 +260,7 @@ public sealed class AgentKeypadViewDesignTests
             .Count(element => element.Name == "Keycap");
 
         Assert.Equal(4, turnKeycaps);
+        AssertCrystalPanel(turnView.ActionPanelShell);
         Assert.True(
             turnSize.Height < commandSize.Height,
             "A four-action panel should collapse its unused third row.");
@@ -276,6 +281,13 @@ public sealed class AgentKeypadViewDesignTests
         view.Arrange(new Rect(0, 0, 820, height));
         view.UpdateLayout();
         return new Size(view.ActualWidth, view.ActualHeight);
+    }
+
+    private static void AssertCrystalPanel(Border panel)
+    {
+        Assert.IsType<DrawingBrush>(panel.Background);
+        Assert.Equal(new Thickness(4), panel.BorderThickness);
+        Assert.NotNull(panel.Effect);
     }
 
     private static void RenderAndAssertSidebarLayout()
@@ -370,6 +382,8 @@ public sealed class AgentKeypadViewDesignTests
         Assert.Equal(Visibility.Visible, view.ChildCard.Visibility);
         Assert.InRange(view.RootCard.ActualWidth, 431.5, 432.5);
         Assert.InRange(view.ChildCard.ActualWidth, 431.5, 432.5);
+        AssertCrystalPanel(view.RootCard);
+        AssertCrystalPanel(view.ChildCard);
         var rootPosition = view.RootCard.TranslatePoint(new Point(), view);
         var childPosition = view.ChildCard.TranslatePoint(new Point(), view);
         Assert.True(
@@ -391,10 +405,6 @@ public sealed class AgentKeypadViewDesignTests
                 text.Name == "ChildChevron" &&
                 text.Visibility == Visibility.Visible);
         Assert.Equal(2, visibleChevrons);
-        Assert.Equal("LS", ChildText(view.NavigationGlyph));
-        Assert.Equal("L3", ChildText(view.ScopeGlyph));
-        Assert.Equal("A", ChildText(view.OpenGlyph));
-
         WritePreviewFromEnvironment(
             view,
             "AGENT_CONTROLLER_SIDEBAR_PREVIEW_PATH");
@@ -442,13 +452,6 @@ public sealed class AgentKeypadViewDesignTests
             IsPinned: isPinned,
             ProjectIsPinned: isPinned,
             NavigationScope: scope);
-
-    private static string ChildText(DependencyObject parent)
-    {
-        return FindVisualChildren<TextBlock>(parent)
-            .Select(textBlock => textBlock.Text)
-            .Single();
-    }
 
     private static RadialMenuState CreatePreviewState()
     {

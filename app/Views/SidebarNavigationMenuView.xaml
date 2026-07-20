@@ -4,7 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
-             d:DesignHeight="476"
+             d:DesignHeight="430"
              d:DesignWidth="888"
              Width="{Binding ViewWidth}"
              Height="{Binding ViewHeight}"
@@ -16,13 +16,11 @@
                BasedOn="{StaticResource Overlay.MicroPanel}">
             <Setter Property="Width" Value="432" />
             <Setter Property="Height" Value="414" />
-            <Setter Property="CornerRadius" Value="18" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="20" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter Property="BorderBrush"
                             Value="{StaticResource Brush.Agent.Row.SelectedBorder}" />
-                    <Setter Property="BorderThickness" Value="2" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -46,15 +44,6 @@
                     <Setter Property="BorderThickness" Value="2" />
                 </DataTrigger>
             </Style.Triggers>
-        </Style>
-
-        <Style x:Key="SidebarMenu.HintKey"
-               TargetType="Border"
-               BasedOn="{StaticResource Overlay.PhysicalKey.Compact}">
-            <Setter Property="MinWidth" Value="32" />
-            <Setter Property="Height" Value="25" />
-            <Setter Property="Padding" Value="6,0" />
-            <Setter Property="CornerRadius" Value="7" />
         </Style>
 
         <DataTemplate x:Key="SidebarMenu.ItemTemplate">
@@ -184,8 +173,6 @@
           Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="422" />
-            <RowDefinition Height="8" />
-            <RowDefinition Height="38" />
             <RowDefinition Height="8" />
         </Grid.RowDefinitions>
 
@@ -334,61 +321,5 @@
             </Border>
         </StackPanel>
 
-        <Border Grid.Row="2"
-                Margin="8,0"
-                Background="{StaticResource Brush.Bg.Sunken}"
-                BorderBrush="{StaticResource Brush.Border.Subtle}"
-                BorderThickness="1"
-                CornerRadius="10">
-            <StackPanel HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Orientation="Horizontal">
-                <Border x:Name="NavigationGlyph"
-                        Style="{StaticResource SidebarMenu.HintKey}">
-                    <TextBlock Text="{Binding NavigateGlyph}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Text.Primary}"
-                               FontFamily="{StaticResource Font.Mono}"
-                               FontSize="10"
-                               FontWeight="{StaticResource Font.Weight.Semibold}" />
-                </Border>
-                <TextBlock Margin="6,0,16,0"
-                           Text="{Binding NavigateHint}"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="11" />
-                <Border x:Name="ScopeGlyph"
-                        Style="{StaticResource SidebarMenu.HintKey}">
-                    <TextBlock Text="{Binding CycleScopeGlyph}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Text.Primary}"
-                               FontFamily="{StaticResource Font.Mono}"
-                               FontSize="10"
-                               FontWeight="{StaticResource Font.Weight.Semibold}" />
-                </Border>
-                <TextBlock Margin="6,0,16,0"
-                           Text="{Binding CycleScopeHint}"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="11" />
-                <Border x:Name="OpenGlyph"
-                        Style="{StaticResource SidebarMenu.HintKey}">
-                    <TextBlock Text="{Binding OpenGlyph}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Text.Primary}"
-                               FontFamily="{StaticResource Font.Mono}"
-                               FontSize="10"
-                               FontWeight="{StaticResource Font.Weight.Semibold}" />
-                </Border>
-                <TextBlock Margin="6,0,0,0"
-                           Text="{Binding OpenHint}"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="11" />
-            </StackPanel>
-        </Border>
     </Grid>
 </UserControl>

@@ -2,21 +2,57 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <LinearGradientBrush x:Key="Brush.Overlay.MicroPanel"
+    <!-- Large overlay panels use a quiet frosted face with refraction held at
+         the material edges. The mint band sits inside the lower edge rather
+         than being painted across the content surface. -->
+    <LinearGradientBrush x:Key="Brush.Overlay.CrystalFace"
                          StartPoint="0,0"
                          EndPoint="0,1">
-        <GradientStop Offset="0" Color="#FEFFFFFF" />
-        <GradientStop Offset="0.68" Color="#FAF8FAF9" />
-        <GradientStop Offset="0.94" Color="#F7EEF3F1" />
-        <GradientStop Offset="1" Color="#F3DDEAE5" />
+        <GradientStop Offset="0" Color="#FAFFFFFF" />
+        <GradientStop Offset="0.62" Color="#F7FBFCFB" />
+        <GradientStop Offset="1" Color="#F1F3F9F7" />
     </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Brush.Overlay.CrystalUnderlight"
+                         StartPoint="0,0"
+                         EndPoint="0,1">
+        <GradientStop Offset="0" Color="#00C8E4DA" />
+        <GradientStop Offset="0.56" Color="#30B8DDCF" />
+        <GradientStop Offset="1" Color="#72A8D3C3" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Brush.Overlay.CrystalTopRefraction"
+                         StartPoint="0,0"
+                         EndPoint="1,0">
+        <GradientStop Offset="0" Color="#00FFFFFF" />
+        <GradientStop Offset="0.18" Color="#86FFFFFF" />
+        <GradientStop Offset="0.50" Color="#C8FFFFFF" />
+        <GradientStop Offset="0.82" Color="#86FFFFFF" />
+        <GradientStop Offset="1" Color="#00FFFFFF" />
+    </LinearGradientBrush>
+
+    <DrawingBrush x:Key="Brush.Overlay.MicroPanel"
+                  Stretch="Fill">
+        <DrawingBrush.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="{StaticResource Brush.Overlay.CrystalFace}"
+                                 Geometry="M 0,0 L 1,0 1,1 0,1 Z" />
+                <GeometryDrawing Brush="{StaticResource Brush.Overlay.CrystalUnderlight}"
+                                 Geometry="M 0,0.88 L 1,0.88 1,1 0,1 Z" />
+                <GeometryDrawing Brush="{StaticResource Brush.Overlay.CrystalTopRefraction}"
+                                 Geometry="M 0.04,0 L 0.96,0 0.96,0.012 0.04,0.012 Z" />
+            </DrawingGroup>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
 
     <LinearGradientBrush x:Key="Brush.Overlay.CrystalRim"
                          StartPoint="0,0"
                          EndPoint="0,1">
         <GradientStop Offset="0" Color="#FFFFFFFF" />
-        <GradientStop Offset="0.52" Color="#CFE4E9E7" />
-        <GradientStop Offset="1" Color="#91A6B5B1" />
+        <GradientStop Offset="0.16" Color="#EDF7FAF8" />
+        <GradientStop Offset="0.66" Color="#C9E1E9E5" />
+        <GradientStop Offset="0.92" Color="#B2BCD9D0" />
+        <GradientStop Offset="1" Color="#91A8CABD" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="Brush.Overlay.MicroKey"
@@ -69,14 +105,21 @@
                       Opacity="0.15"
                       Color="#3D514B" />
 
+    <DropShadowEffect x:Key="Shadow.Overlay.CrystalPanel"
+                      BlurRadius="30"
+                      ShadowDepth="7"
+                      Opacity="0.13"
+                      Color="#3D514B" />
+
     <Style x:Key="Overlay.CrystalPanel" TargetType="Border">
         <Setter Property="Background"
                 Value="{StaticResource Brush.Overlay.MicroPanel}" />
         <Setter Property="BorderBrush"
                 Value="{StaticResource Brush.Overlay.CrystalRim}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="4" />
         <Setter Property="CornerRadius" Value="24" />
-        <Setter Property="Effect" Value="{StaticResource Shadow.Overlay}" />
+        <Setter Property="Effect"
+                Value="{StaticResource Shadow.Overlay.CrystalPanel}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 

@@ -6,7 +6,7 @@ public sealed class SidebarNavigationMenuViewModel : ObservableObject
 {
     public const double SinglePanelWidth = 448;
     public const double TwoPanelWidth = 888;
-    public const double MenuHeight = 476;
+    public const double MenuHeight = 430;
 
     private SidebarNavigationMenuPanelViewModel _rootPanel =
         SidebarNavigationMenuPanelViewModel.Empty("Sidebar");

@@ -300,7 +300,8 @@
     <Grid Width="820"
           Height="360"
           Background="Transparent">
-        <Border Width="804"
+        <Border x:Name="AgentPanelShell"
+                Width="804"
                 Height="344"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
