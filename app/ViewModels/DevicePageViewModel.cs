@@ -407,16 +407,20 @@ public sealed class DevicePageViewModel : ObservableObject
             leftPressGlyph,
             PrimaryGlyph);
         RefreshRightStickHint();
-        PrimaryActionTitle =
-            strings.ControlPrimary(PrimaryGlyph);
-        VoiceActionTitle = strings.ControlHoldToTalk(VoiceGlyph);
-        SendActionTitle = strings.ControlSend(SendGlyph);
+        PrimaryActionTitle = CompactActionTitle(
+            strings.ControlPrimary(PrimaryGlyph));
+        VoiceActionTitle = CompactActionTitle(
+            strings.ControlHoldToTalk(VoiceGlyph));
+        SendActionTitle = CompactActionTitle(
+            strings.ControlSend(SendGlyph));
         CancelActionTitle =
-            strings.ControlCancelUndo(CancelGlyph);
+            CompactActionTitle(strings.ControlCancelUndo(CancelGlyph));
         ProjectActionTitle =
-            strings.ControlProjectContext(ProjectGlyph);
+            CompactActionTitle(
+                strings.ControlProjectContext(ProjectGlyph));
         WakeActionTitle =
-            strings.ControlWakeAgent(WakeGlyph, AgentName);
+            CompactActionTitle(
+                strings.ControlWakeAgent(WakeGlyph, AgentName));
         WakeActionDescription =
             strings.ControlWakeAgentDescription(AgentName);
         SidebarTitle = strings.SidebarAgent(AgentName);
@@ -431,6 +435,18 @@ public sealed class DevicePageViewModel : ObservableObject
         RefreshRightModeLabel();
         RefreshRightModeValue();
         RefreshSidebarContextText();
+    }
+
+    private static string CompactActionTitle(string title)
+    {
+        var separator = title.IndexOf('·');
+        var compact = separator < 0
+            ? title.Trim()
+            : title[(separator + 1)..].Trim();
+        var detailSeparator = compact.IndexOf('·');
+        return detailSeparator < 0
+            ? compact
+            : compact[..detailSeparator].Trim();
     }
 
     public void UpdateControllerState(ControllerState state)

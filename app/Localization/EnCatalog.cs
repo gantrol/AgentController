@@ -21,8 +21,8 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.OverlayNotificationName] =
                 "Agent Controller notification",
 
-            [StringKeys.DeviceWaiting] = "Waiting for controller",
-            [StringKeys.DeviceConnected] = "Controller connected: {0}",
+            [StringKeys.DeviceWaiting] = "Waiting…",
+            [StringKeys.DeviceConnected] = "Connected · {0}",
             [StringKeys.DeviceDisconnected] =
                 "Controller disconnected",
             [StringKeys.DeviceEnableBridge] = "Enable bridge",
@@ -62,18 +62,18 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Bring {0} to front; foreground control enables automatically",
 
             [StringKeys.ComposerRightStickAdjustment] =
-                "Right-stick Micro encoder",
+                "Micro dial",
             [StringKeys.ComposerAgentNotForeground] =
-                "{0} is not in the foreground",
+                "{0} in background",
             [StringKeys.ComposerDialReady] =
                 "Micro control · ↑/← previous · ↓/→ next · R3 enter",
             [StringKeys.ComposerConnectController] =
-                "Connect a controller to begin",
+                "Connect controller",
             [StringKeys.ComposerDialSettingsOpened] =
                 "Controller settings opened",
             [StringKeys.ComposerDialCanceled] =
                 "Current picker closed",
-            [StringKeys.TermVirtualDial] = "Micro encoder",
+            [StringKeys.TermVirtualDial] = "Micro dial",
             [StringKeys.TermReasoningEffort] = "Reasoning effort",
             [StringKeys.TermModel] = "Model",
             [StringKeys.TermSpeed] = "Speed",
@@ -85,11 +85,11 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SidebarPinnedProjects] = "Pinned projects",
             [StringKeys.SidebarProjects] = "Projects",
             [StringKeys.SidebarProjectlessTasks] =
-                "Tasks without a project",
+                "Loose tasks",
             [StringKeys.SidebarRecentEvents] = "Recent events",
             [StringKeys.SidebarPinnedBadge] = "Pinned",
-            [StringKeys.SidebarEnterAction] = "→ Enter",
-            [StringKeys.SidebarOpenAction] = "A Open",
+            [StringKeys.SidebarEnterAction] = "→",
+            [StringKeys.SidebarOpenAction] = "A",
             [StringKeys.SidebarProjectTaskCountOne] =
                 "{0} task",
             [StringKeys.SidebarProjectTaskCountMany] =
@@ -106,11 +106,11 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SidebarOneDayAgo] = "1 day ago",
             [StringKeys.SidebarDaysAgo] = "{0} days ago",
 
-            [StringKeys.ConfigTitle] = "Configuration",
+            [StringKeys.ConfigTitle] = "Controls",
             [StringKeys.ConfigDescription] =
                 "Stick directions stay fixed; {0} commands can adapt to versions and personal preferences. Changes save automatically.",
             [StringKeys.ConfigLeftStickSidebar] =
-                "Left stick · {0} sidebar",
+                "Left stick · {0}",
             [StringKeys.ConfigMoveFocus] = "↑↓",
             [StringKeys.ConfigMoveFocusDescription] =
                 "Select an item at the current level and sync focus with the native {0} sidebar",
@@ -123,7 +123,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ConfigSidebarBehavior] =
                 "↑↓ follows this app's stable wheel and syncs {0} sidebar focus without opening a conversation. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A opens tasks only. Pinning and project expansion remain independent.",
             [StringKeys.ConfigRightStickComposer] =
-                "Right stick · Micro encoder",
+                "Right stick · Micro dial",
             [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
             [StringKeys.ConfigIncreaseDecreaseDescription] =
                 "↑↓ uses Micro encoder detents to traverse Advanced, Fast, Power, and other controls; ←→ keeps its screen direction and adjusts the current control.",
@@ -132,19 +132,19 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Tap presses the Micro encoder; hold for 500 ms to open Agent Controller settings",
             [StringKeys.ConfigSelectionBehavior] =
                 "Codex composer-navigation owns control traversal; the gamepad keeps two-dimensional intent and never merges left/right with up/down.",
-            [StringKeys.ConfigAgentShortcuts] = "{0} shortcuts",
+            [StringKeys.ConfigAgentShortcuts] = "{0} keys",
             [StringKeys.ConfigAgentShortcutsDescription] =
                 "The app safely appends fallback bindings; new bindings take effect after {0} restarts.",
             [StringKeys.ConfigOpenAgentShortcuts] =
                 "Open {0} shortcuts",
             [StringKeys.ConfigLowerReasoning] =
-                "Lower reasoning effort",
+                "Reasoning −",
             [StringKeys.ConfigRaiseReasoning] =
-                "Raise reasoning effort",
-            [StringKeys.ConfigToggleFast] = "Toggle Fast",
-            [StringKeys.ConfigSubmitPrompt] = "Submit prompt",
+                "Reasoning +",
+            [StringKeys.ConfigToggleFast] = "Fast mode",
+            [StringKeys.ConfigSubmitPrompt] = "Submit",
             [StringKeys.ConfigDictation] = "Dictation",
-            [StringKeys.ConfigModelPicker] = "Model picker",
+            [StringKeys.ConfigModelPicker] = "Model",
             [StringKeys.ConfigRestoreDefaults] =
                 "Restore defaults",
 
@@ -153,15 +153,15 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Control bridge scope, stick feel, and background behavior. Changes save automatically.",
             [StringKeys.SettingsBehavior] = "Behavior",
             [StringKeys.SettingsOnlyForeground] =
-                "Control {0} only when it is in the foreground",
+                "Foreground only",
             [StringKeys.SettingsOnlyForegroundDescription] =
                 "Recommended. Controller input enables automatically while {1} is foreground and the controls are neutral. Press {0} only to bring {1} forward. Leaving the foreground pauses input; returning or reconnecting resumes after neutral.",
             [StringKeys.SettingsHaptic] =
-                "Use light haptic feedback after successful actions",
+                "Haptics",
             [StringKeys.SettingsOverlay] =
-                "Show brief status overlays at the lower center of the screen",
+                "Status overlay",
             [StringKeys.SettingsRadialMenu] =
-                "Shortcut wheel hints",
+                "Wheel hints",
             [StringKeys.SettingsRadialMenuDescription] =
                 "Always appears immediately; Learning appears after a short hold; Off hides the wheel.",
             [StringKeys.SettingsRadialMenuAlways] =
@@ -171,7 +171,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SettingsRadialMenuOff] =
                 "Off",
             [StringKeys.SettingsComposerDialMode] =
-                "Composer dial mode",
+                "Dial mode",
             [StringKeys.SettingsComposerDialModeDescription] =
                 "Simple drives Codex's live Power and Speed controls. Advanced exposes the Model, Reasoning effort, and Speed options currently available to this account.",
             [StringKeys.SettingsComposerDialModeSimple] =
@@ -183,13 +183,18 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Primary-direction locking prevents diagonal movement from triggering horizontal and vertical actions together.",
             [StringKeys.SettingsDeadZone] = "Dead zone",
             [StringKeys.SettingsInitialRepeat] =
-                "Initial repeat delay",
+                "Repeat delay",
             [StringKeys.SettingsRepeatInterval] = "Repeat interval",
             [StringKeys.SettingsSystem] = "System",
+            [StringKeys.SettingsTextSize] = "Text size",
+            [StringKeys.SettingsTextSizeSmall] = "Small",
+            [StringKeys.SettingsTextSizeMedium] = "Medium",
+            [StringKeys.SettingsTextSizeLarge] = "Large",
+            [StringKeys.SettingsTextSizeExtraLarge] = "Extra large",
             [StringKeys.SettingsStartWithWindows] =
-                "Start after signing in to Windows",
+                "Start with Windows",
             [StringKeys.SettingsMinimizeToTray] =
-                "Keep running in the tray when the window closes",
+                "Keep running in tray",
             [StringKeys.SettingsOpenControllerSoftware] =
                 "Open {0}",
             [StringKeys.SettingsOpenControllerSoftwareGeneric] =
@@ -197,7 +202,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.SettingsOpenAgent] = "Open {0} settings",
             [StringKeys.SettingsRestoreDefaults] =
                 "Restore defaults",
-            [StringKeys.SettingsLanguage] = "Display language",
+            [StringKeys.SettingsLanguage] = "Language",
             [StringKeys.SettingsLanguageAuto] = "Follow system",
             [StringKeys.SettingsLanguageZhCn] = "简体中文",
             [StringKeys.SettingsLanguageEnUs] = "English (US)",
@@ -230,21 +235,21 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.StatusControllerResumed] =
                 "Controller input resumed",
             [StringKeys.StatusWaitingForReconnect] =
-                "Waiting for the controller to reconnect",
+                "Reconnecting…",
             [StringKeys.StatusAgentForegroundLocked] =
-                "{0} is in the foreground · enabling controller input",
+                "{0} active · enabling input",
             [StringKeys.StatusAgentForegroundNeutral] =
-                "{0} is in the foreground · release controls to resume",
+                "{0} active · release controls",
             [StringKeys.StatusAgentForegroundArmed] =
-                "{0} is in the foreground · unlocked",
+                "{0} active · unlocked",
             [StringKeys.StatusBackgroundArmed] =
                 "Background control · unlocked",
             [StringKeys.StatusBackgroundLocked] =
                 "Background control · press {0} to unlock",
             [StringKeys.StatusAgentAwayPaused] =
-                "{0} left the foreground · control paused",
+                "{0} in background · paused",
             [StringKeys.StatusAgentNotForeground] =
-                "{0} is not in the foreground · press {1} to wake",
+                "{0} in background · {1} to wake",
             [StringKeys.StatusControllerHelp] =
                 "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} closes / undoes; hold 3s to cancel turn",
             [StringKeys.TrayOpenApplication] =
@@ -465,7 +470,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ValueScopeProjects] = "Projects",
             [StringKeys.ValueScopeProjectTasks] = "Project tasks",
             [StringKeys.ValueScopeProjectlessTasks] =
-                "Tasks without a project",
+                "Loose tasks",
             [StringKeys.ValueReasoningMinimal] = "Minimal",
             [StringKeys.ValueReasoningLight] = "Light",
             [StringKeys.ValueReasoningLow] = "Low",

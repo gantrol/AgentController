@@ -50,6 +50,30 @@ public sealed class AgentKeypadViewDesignTests
                 };
                 Assert.Equal(direction, view.DPadDirection);
             }
+
+            foreach (var glyph in new[] { "View", "VIEW" })
+            {
+                var view = new ControllerGlyphView { Glyph = glyph };
+                view.Measure(new Size(40, 28));
+                view.Arrange(new Rect(0, 0, 40, 28));
+                view.UpdateLayout();
+                Assert.Equal(Visibility.Visible, view.ViewIcon.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    view.FallbackGlyphText.Visibility);
+            }
+
+            foreach (var glyph in new[] { "Menu", "MENU" })
+            {
+                var view = new ControllerGlyphView { Glyph = glyph };
+                view.Measure(new Size(40, 28));
+                view.Arrange(new Rect(0, 0, 40, 28));
+                view.UpdateLayout();
+                Assert.Equal(Visibility.Visible, view.MenuIcon.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    view.FallbackGlyphText.Visibility);
+            }
         });
     }
 
@@ -286,7 +310,7 @@ public sealed class AgentKeypadViewDesignTests
                 SidebarScope.PinnedTasks => "置顶任务",
                 SidebarScope.PinnedProjects => "置顶项目",
                 SidebarScope.Projects => "项目",
-                SidebarScope.ProjectlessTasks => "未归项目任务",
+                SidebarScope.ProjectlessTasks => "游离任务",
                 _ => "任务",
             },
             childEntries:
@@ -360,7 +384,7 @@ public sealed class AgentKeypadViewDesignTests
         Assert.Contains("置顶任务", sectionTitles);
         Assert.Contains("置顶项目", sectionTitles);
         Assert.Contains("项目", sectionTitles);
-        Assert.Contains("未归项目任务", sectionTitles);
+        Assert.Contains("游离任务", sectionTitles);
 
         var visibleChevrons = FindVisualChildren<TextBlock>(view)
             .Count(text =>

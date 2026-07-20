@@ -258,6 +258,7 @@ public partial class MainWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        UpdateShellForWindowState();
         _localization.SetLanguage(_settings.Language);
         _localization.PropertyChanged +=
             Localization_PropertyChanged;
@@ -5317,6 +5318,7 @@ public partial class MainWindow : Window
 
     private void QueueSettingsSave()
     {
+        UiTypography.Apply(_settingsPageViewModel.TextSize);
         _settingsSaveTimer.Stop();
         _settingsSaveTimer.Start();
     }
@@ -5620,6 +5622,66 @@ public partial class MainWindow : Window
         SetSelectedNav(SettingsNavButton);
     }
 
+    private void TitleBar_MouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+        {
+            return;
+        }
+
+        if (e.ClickCount == 2)
+        {
+            ToggleWindowState();
+            e.Handled = true;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // The pointer can be released between the routed event and
+            // DragMove. The next gesture remains fully functional.
+        }
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleWindowState();
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void ToggleWindowState()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+    }
+
+    private void UpdateShellForWindowState()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        CrystalShell.Margin = maximized
+            ? new Thickness(7)
+            : new Thickness(18);
+        CrystalShell.CornerRadius = maximized
+            ? new CornerRadius(18)
+            : new CornerRadius(28);
+    }
+
     private void BridgeEnabledCheckBox_Changed(
         object sender,
         RoutedEventArgs e)
@@ -5801,6 +5863,7 @@ public partial class MainWindow : Window
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
+        UpdateShellForWindowState();
         if (
             WindowState == WindowState.Minimized &&
             _settings.MinimizeToTray)

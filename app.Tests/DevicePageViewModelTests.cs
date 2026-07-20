@@ -74,13 +74,11 @@ public sealed class DevicePageViewModelTests
         Assert.Equal(
             "Up/left: previous · down/right: next · tap RS (R3) to enter or confirm · hold RS for Agent Controller settings",
             viewModel.RightStickHint);
+        Assert.Equal("Open task", viewModel.PrimaryActionTitle);
+        Assert.Equal("Hold to talk", viewModel.VoiceActionTitle);
+        Assert.Equal("Send", viewModel.SendActionTitle);
         Assert.Equal(
-            "A · Open task",
-            viewModel.PrimaryActionTitle);
-        Assert.Equal("LT · Hold to talk", viewModel.VoiceActionTitle);
-        Assert.Equal("X · Send", viewModel.SendActionTitle);
-        Assert.Equal(
-            "Y · Action panel",
+            "Action panel",
             viewModel.ProjectActionTitle);
         Assert.Contains("Studio Agent", viewModel.WakeActionTitle);
         Assert.Equal(
@@ -133,7 +131,7 @@ public sealed class DevicePageViewModelTests
 
         Assert.False(viewModel.IsControllerConnected);
         Assert.Equal(
-            "Waiting for controller",
+            "Waiting…",
             viewModel.ControllerStatusText);
         Assert.Equal("Idle", viewModel.ControllerLiveBadge);
 
@@ -205,7 +203,7 @@ public sealed class DevicePageViewModelTests
             BuiltInControllerProfiles.Generic);
 
         Assert.Equal(
-            "Connect a controller to begin",
+            "Connect controller",
             viewModel.RightModeValue);
 
         viewModel.UpdateControllerState(
@@ -233,7 +231,7 @@ public sealed class DevicePageViewModelTests
             strings.ComposerDialReady);
 
         Assert.Equal(
-            "Connect a controller to begin",
+            "Connect controller",
             viewModel.RightModeValue);
 
         var chinese =

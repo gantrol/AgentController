@@ -62,6 +62,10 @@
         <Setter Property="CornerRadius" Value="13" />
         <Setter Property="Effect" Value="{StaticResource Shadow.OverlayKey}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+        <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
+        <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
     </Style>
 
     <Style x:Key="Overlay.PhysicalKey.Compact"

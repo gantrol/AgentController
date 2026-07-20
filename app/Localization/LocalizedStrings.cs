@@ -167,6 +167,16 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
         Get(StringKeys.SettingsRepeatInterval);
     public string SettingsSystem =>
         Get(StringKeys.SettingsSystem);
+    public string SettingsTextSize =>
+        Get(StringKeys.SettingsTextSize);
+    public string SettingsTextSizeSmall =>
+        Get(StringKeys.SettingsTextSizeSmall);
+    public string SettingsTextSizeMedium =>
+        Get(StringKeys.SettingsTextSizeMedium);
+    public string SettingsTextSizeLarge =>
+        Get(StringKeys.SettingsTextSizeLarge);
+    public string SettingsTextSizeExtraLarge =>
+        Get(StringKeys.SettingsTextSizeExtraLarge);
     public string SettingsStartWithWindows =>
         Get(StringKeys.SettingsStartWithWindows);
     public string SettingsMinimizeToTray =>

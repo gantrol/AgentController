@@ -66,6 +66,7 @@ public sealed class PageViewModelTests
             DeadZone = 0.63,
             RepeatDelayMs = 410,
             RepeatIntervalMs = 185,
+            TextSize = UiTextSizes.ExtraLarge,
         };
         var target = new AppSettings();
         var viewModel = new SettingsPageViewModel(
@@ -86,6 +87,7 @@ public sealed class PageViewModelTests
         Assert.Equal(0.63, target.DeadZone);
         Assert.Equal(410, target.RepeatDelayMs);
         Assert.Equal(185, target.RepeatIntervalMs);
+        Assert.Equal(UiTextSizes.ExtraLarge, target.TextSize);
     }
 
     [Fact]
@@ -180,9 +182,10 @@ public sealed class PageViewModelTests
         Assert.Contains("Studio Agent", config.Description);
         Assert.Equal("L3 / △", config.RootProjectGlyphs);
         Assert.Equal("R3 / 500 ms R3", config.ModeSwitchGlyphs);
+        Assert.Equal("Foreground only", settings.OnlyForegroundText);
         Assert.Contains(
             "Studio Agent",
-            settings.OnlyForegroundText);
+            settings.OnlyForegroundDescription);
         Assert.Contains(
             "Controller Studio",
             settings.OpenVendorToolText);

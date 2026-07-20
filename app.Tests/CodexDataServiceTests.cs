@@ -599,7 +599,7 @@ public sealed class CodexDataServiceTests
                 selectedProjectPath: null));
         Assert.Equal("2 tasks", englishPinnedProject.Subtitle);
         Assert.Equal("Pinned", englishPinnedProject.PinBadge);
-        Assert.Equal("→ Enter", englishPinnedProject.ActionHint);
+        Assert.Equal("→", englishPinnedProject.ActionHint);
 
         var englishRegularProject = Assert.Single(
             service.BuildEntries(
@@ -608,7 +608,7 @@ public sealed class CodexDataServiceTests
                 selectedProjectPath: null));
         Assert.Equal("1 task", englishRegularProject.Subtitle);
         Assert.Equal(string.Empty, englishRegularProject.PinBadge);
-        Assert.Equal("→ Enter", englishRegularProject.ActionHint);
+        Assert.Equal("→", englishRegularProject.ActionHint);
 
         var englishTasks = service.BuildEntries(
             snapshot,
@@ -619,7 +619,7 @@ public sealed class CodexDataServiceTests
             "Pinned · 2 hours ago",
             englishTasks[0].Subtitle);
         Assert.Equal("Pinned", englishTasks[0].PinBadge);
-        Assert.Equal("A Open", englishTasks[0].ActionHint);
+        Assert.Equal("A", englishTasks[0].ActionHint);
         Assert.Equal(string.Empty, englishTasks[1].PinBadge);
         Assert.Equal("4 minutes ago", englishTasks[1].Subtitle);
 

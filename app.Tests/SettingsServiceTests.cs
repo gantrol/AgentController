@@ -233,6 +233,7 @@ public sealed class SettingsServiceTests
         {
             Version = 99,
             Language = "invalid-language",
+            TextSize = "giant",
             ActiveAgentId = " Mixed-Agent ",
             RadialMenuMode = " ALWAYS ",
             ComposerDialMode = " ADVANCED ",
@@ -247,6 +248,7 @@ public sealed class SettingsServiceTests
 
         Assert.Equal(99, source.Version);
         Assert.Equal("invalid-language", source.Language);
+        Assert.Equal("giant", source.TextSize);
         Assert.Equal(" Mixed-Agent ", source.ActiveAgentId);
         Assert.Equal(" ALWAYS ", source.RadialMenuMode);
         Assert.Equal(" ADVANCED ", source.ComposerDialMode);
@@ -258,6 +260,7 @@ public sealed class SettingsServiceTests
         var persisted = store.Service.Load();
         Assert.Equal(3, persisted.Version);
         Assert.Equal("auto", persisted.Language);
+        Assert.Equal(UiTextSizes.Medium, persisted.TextSize);
         Assert.Equal("mixed-agent", persisted.ActiveAgentId);
         Assert.Equal("always", persisted.RadialMenuMode);
         Assert.Equal("advanced", persisted.ComposerDialMode);

@@ -15,21 +15,28 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="MinHeight" Value="42" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="Margin" Value="0,2" />
+        <Setter Property="Margin" Value="0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">
-                    <Border x:Name="ItemRoot"
-                            Padding="10,9"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{StaticResource Brush.Border.Subtle}"
-                            BorderThickness="1"
-                            CornerRadius="{StaticResource Radius.MD}">
-                        <ContentPresenter />
-                    </Border>
+                    <Grid>
+                        <Border x:Name="ItemRoot"
+                                Padding="12,9,10,9"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource Brush.Divider.Crystal.Horizontal}"
+                                BorderThickness="0,0,0,1"
+                                CornerRadius="0">
+                            <ContentPresenter />
+                        </Border>
+                        <Border x:Name="SelectionRail"
+                                Width="2"
+                                Margin="0,7,0,7"
+                                HorizontalAlignment="Left"
+                                Background="Transparent" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="ItemRoot"
@@ -40,9 +47,9 @@
                             <Setter TargetName="ItemRoot"
                                     Property="Background"
                                     Value="{StaticResource Brush.Accent.Soft}" />
-                            <Setter TargetName="ItemRoot"
-                                    Property="BorderBrush"
-                                    Value="{StaticResource Brush.Border.Accent}" />
+                            <Setter TargetName="SelectionRail"
+                                    Property="Background"
+                                    Value="{StaticResource Brush.Accent}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="ItemRoot" Property="Opacity" Value="0.42" />

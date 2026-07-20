@@ -2,6 +2,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <SolidColorBrush x:Key="Brush.TabbedPanel.Fill" Color="#FCF9FBFA" />
+    <SolidColorBrush x:Key="Brush.TabbedPanel.Border" Color="#A8BFD0CA" />
+    <LinearGradientBrush x:Key="Brush.TabbedPanel.SelectedFill"
+                         StartPoint="0,0"
+                         EndPoint="0,1">
+        <GradientStop Offset="0" Color="#FFFFFFFF" />
+        <GradientStop Offset="1" Color="#FCF9FBFA" />
+    </LinearGradientBrush>
+
     <Style x:Key="Segment.Base" TargetType="RadioButton">
         <Setter Property="Height" Value="{StaticResource Control.H.SM}" />
         <Setter Property="MinWidth" Value="56" />
@@ -15,6 +24,10 @@
         <Setter Property="FontWeight" Value="{StaticResource Font.Weight.Medium}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+        <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
+        <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -63,6 +76,169 @@
     <Style x:Key="Tab.Segment"
            TargetType="RadioButton"
            BasedOn="{StaticResource Segment.Base}" />
+
+    <!-- The selected tab masks the panel stroke directly underneath it.
+         Two short, tangent-continuous shoulders reconnect the tab sides to
+         the visible panel hairline, so the outline reads as one crystal cut. -->
+    <Style x:Key="Tab.Connected" TargetType="RadioButton">
+        <Setter Property="Height" Value="34" />
+        <Setter Property="MinWidth" Value="58" />
+        <Setter Property="Margin" Value="2,0" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Secondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.Label}" />
+        <Setter Property="FontWeight" Value="{StaticResource Font.Weight.Medium}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="Panel.ZIndex" Value="2" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+        <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
+        <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid ClipToBounds="False">
+                        <Border x:Name="TabSurface"
+                                Height="30"
+                                Margin="4,0"
+                                VerticalAlignment="Top"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+
+                        <Grid x:Name="PanelConnector"
+                              Height="6"
+                              Margin="-7.5,29,-7.5,-1"
+                              VerticalAlignment="Top"
+                              Panel.ZIndex="3"
+                              Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                            </Grid.ColumnDefinitions>
+                            <Path Grid.Column="0"
+                                  Data="M 0,5.5 L 1.5,5.5 C 6.1,5.5 8.7,4.4 10.2,2.4 C 11.1,1.3 11.7,0.8 12,0.5 L 12,6 L 0,6 Z"
+                                  Fill="{StaticResource Brush.TabbedPanel.Fill}" />
+                            <Path Grid.Column="0"
+                                  Data="M 0,5.5 L 1.5,5.5 C 6.1,5.5 8.7,4.4 10.2,2.4 C 11.1,1.3 11.7,0.8 12,0.5 L 12,-2"
+                                  Stroke="{StaticResource Brush.TabbedPanel.Border}"
+                                  StrokeThickness="1"
+                                  StrokeStartLineCap="Square"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  SnapsToDevicePixels="True" />
+                            <Border Grid.Column="1"
+                                    Margin="-1,0,-1,-1"
+                                    Background="{StaticResource Brush.TabbedPanel.Fill}" />
+                            <Path Grid.Column="2"
+                                  Data="M 0,0.5 C 0.3,0.8 0.9,1.3 1.8,2.4 C 3.3,4.4 5.9,5.5 10.5,5.5 L 12,5.5 L 12,6 L 0,6 Z"
+                                  Fill="{StaticResource Brush.TabbedPanel.Fill}" />
+                            <Path Grid.Column="2"
+                                  Data="M 0,-2 L 0,0.5 C 0.3,0.8 0.9,1.3 1.8,2.4 C 3.3,4.4 5.9,5.5 10.5,5.5 L 12,5.5"
+                                  Stroke="{StaticResource Brush.TabbedPanel.Border}"
+                                  StrokeThickness="1"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Square"
+                                  StrokeLineJoin="Round"
+                                  SnapsToDevicePixels="True" />
+                        </Grid>
+
+                        <!-- Crisp one-pixel bridges cover the shared tab/shoulder
+                             pixels at fractional DPI, so no anti-aliasing seam can
+                             appear between the two outline primitives. -->
+                        <Border x:Name="LeftJointBridge"
+                                Width="1"
+                                Height="4"
+                                Margin="4,27,0,0"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Background="{StaticResource Brush.TabbedPanel.Border}"
+                                Panel.ZIndex="4"
+                                SnapsToDevicePixels="True"
+                                Visibility="Collapsed" />
+                        <Border x:Name="RightJointBridge"
+                                Width="1"
+                                Height="4"
+                                Margin="0,27,4,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Background="{StaticResource Brush.TabbedPanel.Border}"
+                                Panel.ZIndex="4"
+                                SnapsToDevicePixels="True"
+                                Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="TabSurface"
+                                    Property="Background"
+                                    Value="#A8FFFFFF" />
+                            <Setter Property="Foreground"
+                                    Value="{StaticResource Brush.Text.Primary}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="TabSurface"
+                                    Property="Background"
+                                    Value="{StaticResource Brush.TabbedPanel.SelectedFill}" />
+                            <Setter TargetName="TabSurface"
+                                    Property="BorderBrush"
+                                    Value="{StaticResource Brush.TabbedPanel.Border}" />
+                            <Setter TargetName="TabSurface"
+                                    Property="BorderThickness"
+                                    Value="1,1,1,0" />
+                            <Setter TargetName="TabSurface"
+                                    Property="CornerRadius"
+                                    Value="10,10,0,0" />
+                            <Setter TargetName="PanelConnector"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                            <Setter TargetName="LeftJointBridge"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                            <Setter TargetName="RightJointBridge"
+                                    Property="Visibility"
+                                    Value="Visible" />
+                            <Setter Property="Foreground"
+                                    Value="{StaticResource Brush.Text.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="TabSurface"
+                                    Property="Opacity"
+                                    Value="0.42" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Tab.SidebarScope"
+           TargetType="RadioButton"
+           BasedOn="{StaticResource Tab.Connected}">
+        <Setter Property="MinWidth" Value="48" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style x:Key="Panel.ConnectedTab" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Brush.TabbedPanel.Fill}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.TabbedPanel.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Panel.ZIndex" Value="1" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+        <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
+        <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+    </Style>
 
     <Style x:Key="NavButtonStyle"
            TargetType="Button"

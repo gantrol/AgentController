@@ -9,6 +9,112 @@
              mc:Ignorable="d"
              d:DesignHeight="660"
              d:DesignWidth="1184">
+    <UserControl.Resources>
+        <Style x:Key="Sidebar.ScopeGlyph"
+               TargetType="ContentControl">
+            <Setter Property="Width" Value="21" />
+            <Setter Property="Height" Value="21" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContentControl">
+                        <Viewbox Stretch="Uniform"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Stretch">
+                            <Grid Width="24" Height="24">
+                                <Grid x:Name="PinnedTasksGlyph"
+                                      Visibility="Collapsed">
+                                    <Path Data="M 4,2 H 12 L 11,7 L 14,10 V 12 H 9.5 V 18 L 8,20 L 6.5,18 V 12 H 2 V 10 L 5,7 Z"
+                                          Fill="Transparent"
+                                          Stroke="{TemplateBinding Foreground}"
+                                          StrokeThickness="1.45"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                    <Path Data="M 14.5,14 H 21.5 V 22 H 14.5 Z M 16.5,17 H 19.7 M 16.5,19.5 H 19.7"
+                                          Fill="Transparent"
+                                          Stroke="{TemplateBinding Foreground}"
+                                          StrokeThickness="1.35"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                </Grid>
+
+                                <Grid x:Name="PinnedProjectsGlyph"
+                                      Visibility="Collapsed">
+                                    <Path Data="M 4,2 H 12 L 11,7 L 14,10 V 12 H 9.5 V 18 L 8,20 L 6.5,18 V 12 H 2 V 10 L 5,7 Z"
+                                          Fill="Transparent"
+                                          Stroke="{TemplateBinding Foreground}"
+                                          StrokeThickness="1.45"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                    <Path Data="M 13.5,15 H 17 L 18.5,16.5 H 22 V 21.5 H 13.5 Z"
+                                          Fill="Transparent"
+                                          Stroke="{TemplateBinding Foreground}"
+                                          StrokeThickness="1.35"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                </Grid>
+
+                                <Grid x:Name="ProjectsGlyph"
+                                      Visibility="Collapsed">
+                                    <Path Data="M 2.5,6.5 H 9 L 11,9 H 21.5 V 18.5 H 2.5 Z"
+                                          Fill="Transparent"
+                                          Stroke="{TemplateBinding Foreground}"
+                                          StrokeThickness="1.55"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                </Grid>
+
+                                <Grid x:Name="ProjectlessTasksGlyph"
+                                      Visibility="Collapsed">
+                                    <Ellipse Width="3.5"
+                                             Height="3.5"
+                                             Margin="1.5,0,0,0"
+                                             HorizontalAlignment="Left"
+                                             VerticalAlignment="Center"
+                                             Stroke="{TemplateBinding Foreground}"
+                                             StrokeThickness="1.4" />
+                                    <Path Data="M 7,3 H 15 L 19,7 V 21 H 7 Z M 15,3 V 7 H 19 M 10,11 H 16 M 10,15 H 16"
+                                          Fill="Transparent"
+                                          Stroke="{TemplateBinding Foreground}"
+                                          StrokeThickness="1.45"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                </Grid>
+                            </Grid>
+                        </Viewbox>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="PinnedTasks">
+                                <Setter TargetName="PinnedTasksGlyph"
+                                        Property="Visibility"
+                                        Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="PinnedProjects">
+                                <Setter TargetName="PinnedProjectsGlyph"
+                                        Property="Visibility"
+                                        Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Projects">
+                                <Setter TargetName="ProjectsGlyph"
+                                        Property="Visibility"
+                                        Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="ProjectlessTasks">
+                                <Setter TargetName="ProjectlessTasksGlyph"
+                                        Property="Visibility"
+                                        Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 <Grid x:Name="DevicePage">
     <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
@@ -18,63 +124,12 @@
     <Grid Grid.Column="0" Margin="0,0,14,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
-            <RowDefinition Height="132" />
+            <RowDefinition Height="108" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource CardStyle}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="{Binding Tutorial.Heading}"
-                                   Foreground="{StaticResource Brush.Text.Primary}"
-                                   FontSize="{StaticResource Font.Size.Display}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Tutorial.Subheading}"
-                                   Margin="0,3,0,0"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="{StaticResource Font.Size.Caption}" />
-                    </StackPanel>
-                    <Border Grid.Column="1"
-                            Padding="9,5"
-                            BorderBrush="{StaticResource LineBrush}"
-                            BorderThickness="1"
-                            CornerRadius="7"
-                            VerticalAlignment="Top">
-                        <TextBlock x:Name="ControllerLiveBadge"
-                                   Text="{Binding ControllerLiveBadge}"
-                                   FontFamily="{StaticResource Font.Mono}"
-                                   FontSize="{StaticResource Font.Size.Caption}"
-                                   FontWeight="Bold">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground"
-                                            Value="{StaticResource Brush.Status.Idle}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsControllerConnected}"
-                                                     Value="True">
-                                            <Setter Property="Foreground"
-                                                    Value="{StaticResource Brush.Status.Success}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Border>
-                </Grid>
-
-                <views:ControllerTutorialView x:Name="ControllerTutorial"
-                                              Grid.Row="1"
-                                              Margin="0,10,0,0"
-                                              DataContext="{Binding Tutorial}" />
-            </Grid>
+        <Border Grid.Row="0" Style="{StaticResource Card.Plain}">
+            <views:ControllerTutorialView x:Name="ControllerTutorial"
+                                          DataContext="{Binding Tutorial}" />
         </Border>
 
         <Grid Grid.Row="1" Margin="0,12,0,0">
@@ -87,8 +142,8 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0"
-                    Style="{StaticResource Card.Dense}"
-                    Margin="0,0,5,0">
+                    Style="{StaticResource Card.ActionSlot}"
+                    ToolTip="{loc:Loc control.primary-description}">
                 <StackPanel>
                     <Border HorizontalAlignment="Left"
                             Style="{StaticResource Overlay.PhysicalKey.Chip}">
@@ -105,16 +160,11 @@
                                Margin="0,4,0,0"
                                FontSize="{StaticResource Font.Size.Body}"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc control.primary-description}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="1"
-                    Style="{StaticResource Card.Dense}"
-                    Margin="3,0">
+                    Style="{StaticResource Card.ActionSlot}"
+                    ToolTip="{loc:Loc control.hold-to-talk-description}">
                 <StackPanel>
                     <Border HorizontalAlignment="Left"
                             Style="{StaticResource Overlay.PhysicalKey.Chip}">
@@ -131,16 +181,11 @@
                                Margin="0,4,0,0"
                                FontSize="{StaticResource Font.Size.Body}"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc control.hold-to-talk-description}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="2"
-                    Style="{StaticResource Card.Dense}"
-                    Margin="3,0">
+                    Style="{StaticResource Card.ActionSlot}"
+                    ToolTip="{loc:Loc control.send-description}">
                 <StackPanel>
                     <Border HorizontalAlignment="Left"
                             Style="{StaticResource Overlay.PhysicalKey.Chip}">
@@ -156,16 +201,11 @@
                                Margin="0,4,0,0"
                                FontSize="{StaticResource Font.Size.Body}"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc control.send-description}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="3"
-                    Style="{StaticResource Card.Dense}"
-                    Margin="3,0">
+                    Style="{StaticResource Card.ActionSlot}"
+                    ToolTip="{loc:Loc control.cancel-undo-description}">
                 <StackPanel>
                     <Border HorizontalAlignment="Left"
                             Style="{StaticResource Overlay.PhysicalKey.Chip}">
@@ -182,16 +222,11 @@
                                Margin="0,4,0,0"
                                FontSize="{StaticResource Font.Size.Body}"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc control.cancel-undo-description}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="4"
-                    Style="{StaticResource Card.Dense}"
-                    Margin="3,0">
+                    Style="{StaticResource Card.ActionSlot}"
+                    ToolTip="{loc:Loc control.project-context-description}">
                 <StackPanel>
                     <Border HorizontalAlignment="Left"
                             Style="{StaticResource Overlay.PhysicalKey.Chip}">
@@ -208,26 +243,21 @@
                                Margin="0,4,0,0"
                                FontSize="{StaticResource Font.Size.Body}"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="{loc:Loc control.project-context-description}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <Border Grid.Column="5"
-                    Style="{StaticResource Card.Dense}"
-                    Margin="5,0,0,0">
+                    Style="{StaticResource Card.ActionSlot.Last}"
+                    ToolTip="{Binding WakeActionDescription}">
                 <StackPanel>
                     <Border HorizontalAlignment="Left"
                             Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                        <TextBlock x:Name="WakeGlyphText"
-                                   Text="{Binding WakeGlyph}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Text.Accent}"
-                                   FontSize="{StaticResource Font.Size.Title}"
-                                   FontWeight="Bold" />
+                        <views:ControllerGlyphView x:Name="WakeGlyphText"
+                                                   Width="30"
+                                                   Height="28"
+                                                   Glyph="{Binding WakeGlyph}"
+                                                   Foreground="{StaticResource Brush.Text.Accent}"
+                                                   FontSize="{StaticResource Font.Size.Title}"
+                                                   FontWeight="Bold" />
                     </Border>
                     <TextBlock x:Name="WakeActionTitle"
                                Text="{Binding WakeActionTitle}"
@@ -236,10 +266,7 @@
                                FontWeight="SemiBold" />
                     <TextBlock x:Name="WakeActionDescription"
                                Text="{Binding WakeActionDescription}"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource Brush.Text.Secondary}"
-                               FontSize="{StaticResource Font.Size.Caption}"
-                               TextWrapping="Wrap" />
+                               Visibility="Collapsed" />
                 </StackPanel>
             </Border>
         </Grid>
@@ -247,12 +274,14 @@
 
     <Grid Grid.Column="1">
         <Grid.RowDefinitions>
-            <RowDefinition Height="205" />
+            <RowDefinition Height="174" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="132" />
+            <RowDefinition Height="108" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource CardStyle}">
+        <Border Grid.Row="0"
+                Style="{StaticResource Card.Plain}"
+                ToolTip="{Binding RightStickHint}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -283,10 +312,7 @@
                     </TextBlock>
                 </Grid>
                 <Border Grid.Row="1"
-                        Margin="0,13,0,11"
-                        Padding="12,8"
-                        Background="{StaticResource Brush.Bg.Sunken}"
-                        CornerRadius="{StaticResource Radius.MD}">
+                        Visibility="Collapsed">
                     <TextBlock Text="{Binding RightStickHint}"
                                HorizontalAlignment="Center"
                                Foreground="{StaticResource Brush.Text.Secondary}"
@@ -295,10 +321,9 @@
                                TextWrapping="Wrap" />
                 </Border>
                 <Border Grid.Row="2"
-                        Background="{StaticResource Brush.Bg.Panel}"
-                        BorderBrush="{StaticResource Brush.Border.Subtle}"
-                        BorderThickness="1"
-                        CornerRadius="{StaticResource Radius.MD}"
+                        Background="#38FFFFFF"
+                        BorderThickness="0"
+                        CornerRadius="0"
                         Padding="12">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -390,72 +415,49 @@
                                     </Style.Triggers>
                                 </Style>
                             </StackPanel.Style>
-                            <Border Padding="7,3"
-                                    Background="{StaticResource Brush.Bg.Sunken}"
-                                    BorderBrush="{StaticResource Brush.Border.Subtle}"
-                                    BorderThickness="1"
-                                    CornerRadius="6">
-                                <TextBlock Text="{Binding SidebarProjectName}"
-                                           Foreground="{StaticResource Brush.Text.Primary}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           FontWeight="SemiBold"
-                                           MaxWidth="150"
-                                           TextTrimming="CharacterEllipsis" />
-                            </Border>
+                            <TextBlock Text="{Binding SidebarProjectName}"
+                                       Foreground="{StaticResource Brush.Text.Primary}"
+                                       FontSize="{StaticResource Font.Size.Caption}"
+                                       FontWeight="SemiBold"
+                                       MaxWidth="150"
+                                       TextTrimming="CharacterEllipsis" />
                             <TextBlock Margin="7,0"
                                        Text="›"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource Brush.Text.Tertiary}"
                                        FontSize="{StaticResource Font.Size.Caption}" />
-                            <Border Padding="7,3"
-                                    BorderThickness="1"
-                                    CornerRadius="6">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background"
-                                                Value="{StaticResource Brush.Bg.Surface}" />
-                                        <Setter Property="BorderBrush"
-                                                Value="{StaticResource Brush.Border.Subtle}" />
+                            <TextBlock Text="{Binding SidebarProjectFilterText}"
+                                       FontSize="{StaticResource Font.Size.Caption}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground"
+                                                Value="{StaticResource Brush.Text.Secondary}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsProjectTasksPinnedOnly}"
                                                          Value="True">
-                                                <Setter Property="Background"
-                                                        Value="{StaticResource Brush.Accent.Soft}" />
-                                                <Setter Property="BorderBrush"
-                                                        Value="{StaticResource Brush.Border.Accent}" />
+                                                <Setter Property="Foreground"
+                                                        Value="{StaticResource Brush.Text.Accent}" />
+                                                <Setter Property="FontWeight"
+                                                        Value="SemiBold" />
+                                                <Setter Property="TextDecorations"
+                                                        Value="Underline" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding SidebarProjectFilterText}"
-                                           FontSize="{StaticResource Font.Size.Caption}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground"
-                                                    Value="{StaticResource Brush.Text.Secondary}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsProjectTasksPinnedOnly}"
-                                                             Value="True">
-                                                    <Setter Property="Foreground"
-                                                            Value="{StaticResource Brush.Text.Accent}" />
-                                                    <Setter Property="FontWeight"
-                                                            Value="SemiBold" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Border>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </StackPanel>
                     <Button HorizontalAlignment="Right"
-                            Style="{StaticResource SecondaryButtonStyle}"
-                            Height="28"
-                            Padding="9,0"
-                            Content="{loc:Loc sidebar.refresh}"
+                            Style="{StaticResource Shell.IconButton}"
+                            Content="↻"
+                            ToolTip="{loc:Loc sidebar.refresh}"
+                            AutomationProperties.Name="{loc:Loc sidebar.refresh}"
                             Command="{Binding RefreshCommand}" />
                 </Grid>
-                <Grid Grid.Row="1" Margin="0,12,0,8">
+                <Grid Grid.Row="1"
+                      Margin="20,12,20,0"
+                      Panel.ZIndex="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
@@ -465,38 +467,61 @@
                     <RadioButton x:Name="PinnedLayerButton"
                                  Grid.Column="0"
                                  GroupName="SidebarRoot"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc sidebar.pinned-tasks}"
+                                 Style="{StaticResource Tab.SidebarScope}"
+                                 ToolTip="{loc:Loc sidebar.pinned-tasks}"
+                                 AutomationProperties.Name="{loc:Loc sidebar.pinned-tasks}"
                                  IsChecked="{Binding IsPinnedTasksRootActive,
                                                      Mode=OneWay}"
-                                 Command="{Binding SelectPinnedTasksCommand}" />
+                                 Command="{Binding SelectPinnedTasksCommand}">
+                        <ContentControl x:Name="PinnedTasksScopeGlyph"
+                                        Tag="PinnedTasks"
+                                        Style="{StaticResource Sidebar.ScopeGlyph}" />
+                    </RadioButton>
                     <RadioButton x:Name="PinnedProjectsLayerButton"
                                  Grid.Column="1"
                                  GroupName="SidebarRoot"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc sidebar.pinned-projects}"
+                                 Style="{StaticResource Tab.SidebarScope}"
+                                 ToolTip="{loc:Loc sidebar.pinned-projects}"
+                                 AutomationProperties.Name="{loc:Loc sidebar.pinned-projects}"
                                  IsChecked="{Binding IsPinnedProjectsRootActive,
                                                      Mode=OneWay}"
-                                 Command="{Binding SelectPinnedProjectsCommand}" />
+                                 Command="{Binding SelectPinnedProjectsCommand}">
+                        <ContentControl x:Name="PinnedProjectsScopeGlyph"
+                                        Tag="PinnedProjects"
+                                        Style="{StaticResource Sidebar.ScopeGlyph}" />
+                    </RadioButton>
                     <RadioButton x:Name="ProjectsLayerButton"
                                  Grid.Column="2"
                                  GroupName="SidebarRoot"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc sidebar.projects}"
+                                 Style="{StaticResource Tab.SidebarScope}"
+                                 ToolTip="{loc:Loc sidebar.projects}"
+                                 AutomationProperties.Name="{loc:Loc sidebar.projects}"
                                  IsChecked="{Binding IsProjectsRootActive,
                                                      Mode=OneWay}"
-                                 Command="{Binding SelectProjectsCommand}" />
+                                 Command="{Binding SelectProjectsCommand}">
+                        <ContentControl x:Name="ProjectsScopeGlyph"
+                                        Tag="Projects"
+                                        Style="{StaticResource Sidebar.ScopeGlyph}" />
+                    </RadioButton>
                     <RadioButton x:Name="TasksLayerButton"
                                  Grid.Column="3"
                                  GroupName="SidebarRoot"
-                                 Style="{StaticResource Tab.Segment}"
-                                 Content="{loc:Loc sidebar.projectless-tasks}"
+                                 Style="{StaticResource Tab.SidebarScope}"
+                                 ToolTip="{loc:Loc sidebar.projectless-tasks}"
+                                 AutomationProperties.Name="{loc:Loc sidebar.projectless-tasks}"
                                  IsChecked="{Binding IsProjectlessTasksRootActive,
                                                      Mode=OneWay}"
-                                 Command="{Binding SelectProjectlessTasksCommand}" />
+                                 Command="{Binding SelectProjectlessTasksCommand}">
+                        <ContentControl x:Name="ProjectlessTasksScopeGlyph"
+                                        Tag="ProjectlessTasks"
+                                        Style="{StaticResource Sidebar.ScopeGlyph}" />
+                    </RadioButton>
                 </Grid>
+                <Border Grid.Row="2"
+                        Margin="0,0,0,0"
+                        Padding="4"
+                        Style="{StaticResource Panel.ConnectedTab}">
                 <ListBox x:Name="SidebarList"
-                         Grid.Row="2"
                          Style="{StaticResource ListBox.Sidebar}"
                          ItemsSource="{Binding SidebarEntries}"
                          SelectionChanged="SidebarList_SelectionChanged"
@@ -506,16 +531,50 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0"
-                                           Text="{Binding KindGlyph}"
-                                           Foreground="{StaticResource Brush.Text.Accent}"
-                                           FontSize="{StaticResource Font.Size.Title}"
-                                           VerticalAlignment="Center" />
+                                <Grid Grid.Column="0"
+                                      Width="22"
+                                      VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding KindGlyph}"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource Brush.Text.Accent}"
+                                               FontSize="{StaticResource Font.Size.Title}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsProject}"
+                                                                 Value="True">
+                                                        <Setter Property="Visibility"
+                                                                Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <ContentControl Tag="Projects"
+                                                    Foreground="{StaticResource Brush.Text.Accent}">
+                                        <ContentControl.Style>
+                                            <Style TargetType="ContentControl"
+                                                   BasedOn="{StaticResource Sidebar.ScopeGlyph}">
+                                                <Setter Property="Width" Value="19" />
+                                                <Setter Property="Height" Value="19" />
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsProject}"
+                                                                 Value="True">
+                                                        <Setter Property="Visibility"
+                                                                Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ContentControl.Style>
+                                    </ContentControl>
+                                </Grid>
                                 <StackPanel Grid.Column="1"
                                             Margin="8,0,8,0">
                                     <TextBlock Text="{Binding Title}"
@@ -527,13 +586,34 @@
                                                Foreground="{StaticResource Brush.Text.Secondary}"
                                                FontSize="{StaticResource Font.Size.Caption}" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="2"
-                                           Text="{Binding PinBadge}"
-                                           Margin="0,0,8,0"
-                                           Foreground="{StaticResource Brush.Text.Accent}"
-                                           FontSize="{StaticResource Font.Size.Caption}"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
+                                <Viewbox Grid.Column="2"
+                                         Width="14"
+                                         Height="14"
+                                         Margin="0,0,8,0"
+                                         VerticalAlignment="Center"
+                                         ToolTip="{Binding PinBadge}"
+                                         AutomationProperties.Name="{Binding PinBadge}">
+                                    <Viewbox.Style>
+                                        <Style TargetType="Viewbox">
+                                            <Setter Property="Visibility"
+                                                    Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPinned}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Viewbox.Style>
+                                    <Path Data="M 7,2 H 17 L 15.5,9 L 19,12 V 14 H 13 V 21 L 12,23 L 11,21 V 14 H 5 V 12 L 8.5,9 Z"
+                                          Fill="Transparent"
+                                          Stroke="{StaticResource Brush.Text.Accent}"
+                                          StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                </Viewbox>
                                 <TextBlock Grid.Column="3"
                                            Text="{Binding ActionHint}"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
@@ -543,10 +623,11 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                </Border>
             </Grid>
         </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+        <Border Grid.Row="2" Style="{StaticResource Card.Plain}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -568,17 +649,31 @@
                               Margin="0,8,0,0">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,3">
+                            <Grid Margin="0,3"
+                                  Background="Transparent"
+                                  Style="{StaticResource Tooltip.HitRegion}">
+                                <Grid.ToolTip>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Time}"
+                                                   FontFamily="{StaticResource Font.Mono}"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Text="{Binding Text}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid.ToolTip>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="64" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding Time}"
+                                           IsHitTestVisible="False"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontFamily="{StaticResource Font.Mono}"
                                            FontSize="{StaticResource Font.Size.Caption}" />
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding Text}"
+                                           IsHitTestVisible="False"
                                            Foreground="{StaticResource Brush.Text.Secondary}"
                                            FontSize="{StaticResource Font.Size.Caption}"
                                            TextTrimming="CharacterEllipsis" />

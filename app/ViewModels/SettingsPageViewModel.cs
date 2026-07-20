@@ -18,6 +18,9 @@ public sealed class SettingsPageViewModel : ObservableObject
     private int _repeatDelayMs = 360;
     private int _repeatIntervalMs = 220;
     private string _languageSetting = "auto";
+    private string _textSize = UiTextSizes.Medium;
+    private IReadOnlyList<LocalizedTextSizeOption>
+        _textSizeOptions = [];
     private string _onlyForegroundText = string.Empty;
     private string _onlyForegroundDescription = string.Empty;
     private string _openVendorToolText = string.Empty;
@@ -215,6 +218,21 @@ public sealed class SettingsPageViewModel : ObservableObject
         }
     }
 
+    public string TextSize
+    {
+        get => _textSize;
+        set => SaveIfChanged(
+            SetProperty(
+                ref _textSize,
+                UiTextSizes.Normalize(value)));
+    }
+
+    public IReadOnlyList<LocalizedTextSizeOption> TextSizeOptions
+    {
+        get => _textSizeOptions;
+        private set => SetProperty(ref _textSizeOptions, value);
+    }
+
     public void UpdateContext(
         LocalizedStrings strings,
         string agentName,
@@ -252,6 +270,15 @@ public sealed class SettingsPageViewModel : ObservableObject
                 RadialMenuModes.Off,
                 strings.SettingsRadialMenuOff),
         ];
+        TextSizeOptions =
+        [
+            new(UiTextSizes.Small, strings.SettingsTextSizeSmall),
+            new(UiTextSizes.Medium, strings.SettingsTextSizeMedium),
+            new(UiTextSizes.Large, strings.SettingsTextSizeLarge),
+            new(
+                UiTextSizes.ExtraLarge,
+                strings.SettingsTextSizeExtraLarge),
+        ];
         CanOpenVendorTool = canOpenVendorTool;
         CanOpenAgentSettings = canOpenAgentSettings;
     }
@@ -272,6 +299,7 @@ public sealed class SettingsPageViewModel : ObservableObject
             RepeatDelayMs = settings.RepeatDelayMs;
             RepeatIntervalMs = settings.RepeatIntervalMs;
             LanguageSetting = settings.Language;
+            TextSize = settings.TextSize;
         }
         finally
         {
@@ -293,6 +321,7 @@ public sealed class SettingsPageViewModel : ObservableObject
         settings.RepeatDelayMs = RepeatDelayMs;
         settings.RepeatIntervalMs = RepeatIntervalMs;
         settings.Language = LanguageSetting;
+        settings.TextSize = UiTextSizes.Normalize(TextSize);
     }
 
     public void ResetToDefaults()
@@ -311,5 +340,9 @@ public sealed class SettingsPageViewModel : ObservableObject
 }
 
 public sealed record LocalizedRadialMenuOption(
+    string Value,
+    string DisplayName);
+
+public sealed record LocalizedTextSizeOption(
     string Value,
     string DisplayName);

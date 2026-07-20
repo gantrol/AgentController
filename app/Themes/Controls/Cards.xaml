@@ -17,20 +17,81 @@
         <GradientStop Offset="1" Color="#C5D7DEDC" />
     </LinearGradientBrush>
 
+    <!--
+        Structural separation is deliberately linear. The crystal shell and
+        connected tabs own the rounded silhouette; page sections only need a
+        faint refractive seam.
+    -->
+    <LinearGradientBrush x:Key="Brush.Divider.Crystal.Horizontal"
+                         StartPoint="0,0"
+                         EndPoint="1,0">
+        <GradientStop Offset="0" Color="#00A7BBB5" />
+        <GradientStop Offset="0.12" Color="#55A7BBB5" />
+        <GradientStop Offset="0.50" Color="#78A7BBB5" />
+        <GradientStop Offset="0.88" Color="#55A7BBB5" />
+        <GradientStop Offset="1" Color="#00A7BBB5" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Brush.Divider.Crystal.Vertical"
+                         StartPoint="0,0"
+                         EndPoint="0,1">
+        <GradientStop Offset="0" Color="#00A7BBB5" />
+        <GradientStop Offset="0.12" Color="#55A7BBB5" />
+        <GradientStop Offset="0.50" Color="#78A7BBB5" />
+        <GradientStop Offset="0.88" Color="#55A7BBB5" />
+        <GradientStop Offset="1" Color="#00A7BBB5" />
+    </LinearGradientBrush>
+
     <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource Brush.Card.CrystalFrost}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Card.CrystalRim}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource Radius.LG}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Divider.Crystal.Horizontal}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="CornerRadius" Value="0" />
         <Setter Property="Padding" Value="{StaticResource Pad.Card}" />
-        <Setter Property="Effect" Value="{StaticResource Shadow.Card}" />
+        <Setter Property="Effect" Value="{x:Null}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+        <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
+        <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
     </Style>
 
     <Style x:Key="Card.Dense"
            TargetType="Border"
            BasedOn="{StaticResource Card}">
         <Setter Property="Padding" Value="{StaticResource Pad.CardDense}" />
+    </Style>
+
+    <Style x:Key="Card.Plain"
+           TargetType="Border"
+           BasedOn="{StaticResource Card}">
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style x:Key="Card.Divider.Right"
+           TargetType="Border"
+           BasedOn="{StaticResource Card}">
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Divider.Crystal.Vertical}" />
+        <Setter Property="BorderThickness" Value="0,0,1,0" />
+    </Style>
+
+    <Style x:Key="Card.Divider.Top"
+           TargetType="Border"
+           BasedOn="{StaticResource Card}">
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+
+    <Style x:Key="Card.ActionSlot"
+           TargetType="Border"
+           BasedOn="{StaticResource Card.Dense}">
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Divider.Crystal.Vertical}" />
+        <Setter Property="BorderThickness" Value="0,0,1,0" />
+    </Style>
+
+    <Style x:Key="Card.ActionSlot.Last"
+           TargetType="Border"
+           BasedOn="{StaticResource Card.ActionSlot}">
+        <Setter Property="BorderThickness" Value="0" />
     </Style>
 
     <Style x:Key="CardStyle"

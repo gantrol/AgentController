@@ -40,13 +40,14 @@ public sealed class SettingsPageViewDesignTests
         view.Arrange(new Rect(0, 0, 900, 680));
         view.UpdateLayout();
 
+        Assert.Equal("↺", view.RestoreDefaultsButton.Content);
         Assert.Equal(
             "恢复默认值",
-            view.RestoreDefaultsButton.Content);
+            view.RestoreDefaultsButton.ToolTip);
         Assert.Equal(
             Visibility.Visible,
             view.RestoreDefaultsButton.Visibility);
-        Assert.True(view.RestoreDefaultsButton.ActualWidth >= 72);
+        Assert.True(view.RestoreDefaultsButton.ActualWidth >= 38);
         Assert.True(
             view.RestoreDefaultsButton
                 .TransformToAncestor(view)

@@ -17,6 +17,7 @@
                 <ResourceDictionary Source="Themes/Controls/Lists.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Status.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Overlay.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Shell.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <Style TargetType="Window">
@@ -24,6 +25,27 @@
                 <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
                 <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
                 <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
+            </Style>
+
+            <Style TargetType="ToolTip">
+                <Setter Property="Background" Value="#F51A1C1D" />
+                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Inverse}" />
+                <Setter Property="BorderBrush" Value="#28FFFFFF" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="11,8" />
+                <Setter Property="FontSize" Value="{DynamicResource Font.Size.Caption}" />
+                <Setter Property="MaxWidth" Value="340" />
+                <Setter Property="HasDropShadow" Value="True" />
+                <Setter Property="Placement" Value="Mouse" />
+                <Setter Property="StaysOpen" Value="True" />
+            </Style>
+
+            <Style x:Key="Tooltip.HitRegion"
+                   TargetType="{x:Type FrameworkElement}">
+                <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+                <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
+                <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+                <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

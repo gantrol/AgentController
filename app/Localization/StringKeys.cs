@@ -192,6 +192,15 @@ public static class StringKeys
     public const string SettingsRepeatInterval =
         "settings.repeat-interval";
     public const string SettingsSystem = "settings.system";
+    public const string SettingsTextSize = "settings.text-size";
+    public const string SettingsTextSizeSmall =
+        "settings.text-size.small";
+    public const string SettingsTextSizeMedium =
+        "settings.text-size.medium";
+    public const string SettingsTextSizeLarge =
+        "settings.text-size.large";
+    public const string SettingsTextSizeExtraLarge =
+        "settings.text-size.extra-large";
     public const string SettingsStartWithWindows =
         "settings.start-with-windows";
     public const string SettingsMinimizeToTray =
@@ -638,6 +647,11 @@ public static class StringKeys
         SettingsInitialRepeat,
         SettingsRepeatInterval,
         SettingsSystem,
+        SettingsTextSize,
+        SettingsTextSizeSmall,
+        SettingsTextSizeMedium,
+        SettingsTextSizeLarge,
+        SettingsTextSizeExtraLarge,
         SettingsStartWithWindows,
         SettingsMinimizeToTray,
         SettingsOpenControllerSoftware,

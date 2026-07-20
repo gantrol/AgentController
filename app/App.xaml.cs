@@ -3,6 +3,7 @@ using System.Windows;
 using AgentController.MicroBroker;
 using CodexController.Composition;
 using CodexController.Localization;
+using CodexController.Presentation;
 
 namespace CodexController;
 
@@ -48,6 +49,9 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
         _composition = AppComposition.CreateDefault();
+        UiTypography.Apply(
+            _composition.Desktop.CurrentSettings.TextSize,
+            resizeOpenWindows: false);
         LocalizationHost.Use(_composition.Localization);
         var window = new MainWindow(_composition.Desktop);
         MainWindow = window;

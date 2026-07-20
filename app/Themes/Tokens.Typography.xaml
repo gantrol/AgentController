@@ -6,15 +6,15 @@
     <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
     <FontFamily x:Key="Font.Mono">Cascadia Mono, Consolas</FontFamily>
 
-    <!-- 11px floor keeps captions legible for CJK glyphs; steps stay ~1.13. -->
-    <sys:Double x:Key="Font.Size.Caption">11</sys:Double>
-    <sys:Double x:Key="Font.Size.Label">12</sys:Double>
-    <sys:Double x:Key="Font.Size.Body">13</sys:Double>
-    <sys:Double x:Key="Font.Size.BodyLg">14</sys:Double>
-    <sys:Double x:Key="Font.Size.Title">16</sys:Double>
-    <sys:Double x:Key="Font.Size.TitleLg">18</sys:Double>
-    <sys:Double x:Key="Font.Size.Display">22</sys:Double>
-    <sys:Double x:Key="Font.Size.Hero">26</sys:Double>
+    <!-- Medium is the default. Presets scale the full hierarchy together. -->
+    <sys:Double x:Key="Font.Size.Caption">14</sys:Double>
+    <sys:Double x:Key="Font.Size.Label">15</sys:Double>
+    <sys:Double x:Key="Font.Size.Body">16</sys:Double>
+    <sys:Double x:Key="Font.Size.BodyLg">17</sys:Double>
+    <sys:Double x:Key="Font.Size.Title">19</sys:Double>
+    <sys:Double x:Key="Font.Size.TitleLg">21</sys:Double>
+    <sys:Double x:Key="Font.Size.Display">25</sys:Double>
+    <sys:Double x:Key="Font.Size.Hero">29</sys:Double>
 
     <FontWeight x:Key="Font.Weight.Regular">Normal</FontWeight>
     <FontWeight x:Key="Font.Weight.Medium">Medium</FontWeight>

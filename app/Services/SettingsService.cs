@@ -135,6 +135,7 @@ public sealed class SettingsService
         {
             Version = CurrentVersion,
             Language = settings.Language,
+            TextSize = settings.TextSize,
             ActiveAgentId = settings.ActiveAgentId,
             BridgeEnabled = settings.BridgeEnabled,
             OnlyWhenCodexForeground =
@@ -172,6 +173,7 @@ public sealed class SettingsService
         var defaults = new AppSettings();
         settings.Language =
             AppLanguageParser.Parse(settings.Language).ToSettingValue();
+        settings.TextSize = UiTextSizes.Normalize(settings.TextSize);
         settings.RadialMenuMode =
             RadialMenuModes.Normalize(settings.RadialMenuMode);
         settings.ComposerDialMode =

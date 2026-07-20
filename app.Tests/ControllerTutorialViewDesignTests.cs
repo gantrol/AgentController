@@ -33,7 +33,14 @@ public sealed class ControllerTutorialViewDesignTests
 
         Arrange(view, width: 760, height: 425);
         AssertTabs(view);
-        Assert.Equal(7, english.Items.Count);
+        Assert.Equal("Basics", view.OverviewTutorialButton.Content);
+        Assert.Contains(
+            "common actions",
+            Assert.IsType<string>(view.OverviewTutorialButton.ToolTip),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(9, english.Items.Count);
+        Assert.Contains(english.Items, item => item.Glyph == "LS");
+        Assert.Contains(english.Items, item => item.Glyph == "RS");
         Assert.Contains(
             FindVisualChildren<ControllerGlyphView>(view),
             glyph => glyph.Glyph == "⧉");
@@ -183,6 +190,7 @@ public sealed class ControllerTutorialViewDesignTests
         Assert.Equal(6, tabs.Length);
         Assert.All(tabs, tab =>
         {
+            tab.ApplyTemplate();
             Assert.True(
                 tab.ActualWidth > 70,
                 $"Tutorial tab width was {tab.ActualWidth}.");
@@ -192,6 +200,15 @@ public sealed class ControllerTutorialViewDesignTests
             Assert.True(
                 tab.Focusable,
                 $"Tutorial tab '{tab.Content}' must accept keyboard focus.");
+            Assert.Equal(180, ToolTipService.GetInitialShowDelay(tab));
+            Assert.Equal(30000, ToolTipService.GetShowDuration(tab));
+            var connector = Assert.IsType<Grid>(
+                tab.Template.FindName("PanelConnector", tab));
+            Assert.Equal(
+                tab.IsChecked == true
+                    ? Visibility.Visible
+                    : Visibility.Collapsed,
+                connector.Visibility);
         });
     }
 

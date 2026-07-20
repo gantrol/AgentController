@@ -24,6 +24,10 @@ public sealed class ControllerTutorialViewModelTests
         Assert.Contains("press", viewModel.StickPressGuideTitle);
         Assert.Contains("LS / L3", viewModel.LeftStickPressGuide);
         Assert.Contains("RS / R3", viewModel.RightStickPressGuide);
+        Assert.Contains("basics", viewModel.OverviewTabToolTip, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("action panel", viewModel.ActionTabToolTip, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(viewModel.Items, item => item.Glyph == "LS");
+        Assert.Contains(viewModel.Items, item => item.Glyph == "RS");
         Assert.Contains(
             viewModel.Items,
             item =>

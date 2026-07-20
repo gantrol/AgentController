@@ -108,7 +108,7 @@ public sealed class LocalizationTests
             "置顶项目",
             zh[StringKeys.SidebarPinnedProjects]);
         Assert.Equal(
-            "Display language",
+            "Language",
             en[StringKeys.SettingsLanguage]);
         Assert.Equal(
             "Reasoning effort",

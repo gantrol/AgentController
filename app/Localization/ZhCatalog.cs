@@ -80,7 +80,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SidebarPinnedTasks] = "置顶任务",
             [StringKeys.SidebarPinnedProjects] = "置顶项目",
             [StringKeys.SidebarProjects] = "项目",
-            [StringKeys.SidebarProjectlessTasks] = "未归项目",
+            [StringKeys.SidebarProjectlessTasks] = "游离任务",
             [StringKeys.SidebarRecentEvents] = "最近事件",
             [StringKeys.SidebarPinnedBadge] = "置顶",
             [StringKeys.SidebarEnterAction] = "→ 进入",
@@ -176,6 +176,11 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.SettingsInitialRepeat] = "首次连发",
             [StringKeys.SettingsRepeatInterval] = "连发间隔",
             [StringKeys.SettingsSystem] = "系统",
+            [StringKeys.SettingsTextSize] = "界面字号",
+            [StringKeys.SettingsTextSizeSmall] = "小",
+            [StringKeys.SettingsTextSizeMedium] = "中",
+            [StringKeys.SettingsTextSizeLarge] = "大",
+            [StringKeys.SettingsTextSizeExtraLarge] = "超大",
             [StringKeys.SettingsStartWithWindows] =
                 "登录 Windows 后自动启动",
             [StringKeys.SettingsMinimizeToTray] =
@@ -447,7 +452,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ValueScopeProjects] = "普通项目",
             [StringKeys.ValueScopeProjectTasks] = "项目任务",
             [StringKeys.ValueScopeProjectlessTasks] =
-                "未归项目任务",
+                "游离任务",
             [StringKeys.ValueReasoningMinimal] = "最低",
             [StringKeys.ValueReasoningLight] = "轻量",
             [StringKeys.ValueReasoningLow] = "低",

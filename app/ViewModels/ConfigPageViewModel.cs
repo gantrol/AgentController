@@ -18,6 +18,7 @@ public sealed class ConfigPageViewModel : ObservableObject
     private string _rootProjectDescription = string.Empty;
     private string _sidebarBehavior = string.Empty;
     private string _modeSwitchGlyphs = "←→ / RS";
+    private string _rightPressGlyph = "RS";
     private string _selectionBehavior = string.Empty;
     private string _agentShortcutsTitle = string.Empty;
     private string _agentShortcutsDescription = string.Empty;
@@ -82,6 +83,12 @@ public sealed class ConfigPageViewModel : ObservableObject
     {
         get => _modeSwitchGlyphs;
         private set => SetProperty(ref _modeSwitchGlyphs, value);
+    }
+
+    public string RightPressGlyph
+    {
+        get => _rightPressGlyph;
+        private set => SetProperty(ref _rightPressGlyph, value);
     }
 
     public string SelectionBehavior
@@ -180,6 +187,7 @@ public sealed class ConfigPageViewModel : ObservableObject
         ModeSwitchGlyphs = strings.ConfigModeSwitchGlyphs(
             rightPressGlyph,
             $"500 ms {rightPressGlyph}");
+        RightPressGlyph = rightPressGlyph;
         SelectionBehavior =
             strings.ConfigSelectionBehavior(agentName);
         AgentShortcutsTitle =

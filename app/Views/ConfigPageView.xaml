@@ -4,33 +4,34 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="clr-namespace:CodexController.Views"
              mc:Ignorable="d"
              d:DesignHeight="720"
              d:DesignWidth="1060">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel MaxWidth="1060">
-            <Grid Margin="0,4,0,18">
+            <Grid Margin="4,0,4,14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="{Binding Strings.ConfigTitle,
-                                              ElementName=Root}"
-                               FontSize="{StaticResource Font.Size.Hero}"
+                <StackPanel Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Strings.ConfigTitle, ElementName=Root}"
+                               VerticalAlignment="Center"
+                               FontSize="{StaticResource Font.Size.Display}"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Description}"
-                               Margin="0,5,0,0"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="{StaticResource Font.Size.Label}" />
+                    <Button Margin="7,0,0,0"
+                            Style="{StaticResource Shell.HelpButton}"
+                            ToolTip="{Binding Description}"
+                            AutomationProperties.Name="{Binding Description}" />
                 </StackPanel>
                 <Button x:Name="RestoreDefaultsButton"
                         Grid.Column="1"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Margin="16,0,0,0"
-                        VerticalAlignment="Center"
-                        Content="{Binding Strings.ConfigRestoreDefaults,
-                                          ElementName=Root}"
+                        Style="{StaticResource Button.CrystalKey.Icon}"
+                        Content="↺"
+                        ToolTip="{Binding Strings.ConfigRestoreDefaults, ElementName=Root}"
+                        AutomationProperties.Name="{Binding Strings.ConfigRestoreDefaults, ElementName=Root}"
                         Command="{Binding ResetCommand}" />
             </Grid>
 
@@ -41,173 +42,165 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
-                        Style="{StaticResource CardStyle}"
-                        Margin="0,0,8,0">
+                        Style="{StaticResource Card.Divider.Right}"
+                        ToolTip="{Binding SidebarBehavior}">
                     <StackPanel>
                         <TextBlock Text="{Binding LeftStickSidebarTitle}"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <TextBlock Text="↑↓"
-                                   Margin="0,20,0,0"
-                                   Foreground="{StaticResource SageBrush}"
-                                   FontSize="{StaticResource Font.Size.TitleLg}"
-                                   FontWeight="Bold" />
-                        <TextBlock Text="{Binding MoveFocusDescription}"
-                                   Margin="0,4,0,0"
-                                   FontSize="{StaticResource Font.Size.Label}" />
-                        <Separator Margin="0,16"
-                                   Background="{StaticResource LineBrush}" />
-                        <TextBlock Text="{Binding Strings.ConfigEnterBack,
-                                                ElementName=Root}"
-                                   Foreground="{StaticResource SageBrush}"
-                                   FontSize="{StaticResource Font.Size.TitleLg}"
-                                   FontWeight="Bold" />
-                        <TextBlock Text="{Binding Strings.ConfigEnterBackDescription,
-                                                ElementName=Root}"
-                                   Margin="0,4,0,0"
-                                   FontSize="{StaticResource Font.Size.Label}" />
-                        <Separator Margin="0,16"
-                                   Background="{StaticResource LineBrush}" />
-                        <TextBlock Text="{Binding RootProjectGlyphs}"
-                                   Foreground="{StaticResource SageBrush}"
-                                   FontSize="{StaticResource Font.Size.TitleLg}"
-                                   FontWeight="Bold" />
-                        <TextBlock Text="{Binding RootProjectDescription}"
-                                   Margin="0,4,0,0"
-                                   FontSize="{StaticResource Font.Size.Label}"
-                                   TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding SidebarBehavior}"
-                                   Margin="0,18,0,0"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="{StaticResource Font.Size.Label}"
-                                   TextWrapping="Wrap" />
+                        <UniformGrid Margin="0,22,0,8" Columns="3">
+                            <StackPanel HorizontalAlignment="Center"
+                                        Background="Transparent"
+                                        Style="{StaticResource Tooltip.HitRegion}"
+                                        ToolTip="{Binding MoveFocusDescription}">
+                                <Border Width="64"
+                                        Height="58"
+                                        Style="{StaticResource Overlay.PhysicalKey}">
+                                    <views:ControllerGlyphView Glyph="↑↓"
+                                                               Foreground="{StaticResource Brush.Text.Accent}"
+                                                               FontWeight="Bold" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center"
+                                        Background="Transparent"
+                                        Style="{StaticResource Tooltip.HitRegion}"
+                                        ToolTip="{Binding Strings.ConfigEnterBackDescription, ElementName=Root}">
+                                <Border Width="64"
+                                        Height="58"
+                                        Style="{StaticResource Overlay.PhysicalKey}">
+                                    <TextBlock Text="A / B"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontFamily="{StaticResource Font.Mono}"
+                                               FontWeight="Bold" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center"
+                                        Background="Transparent"
+                                        Style="{StaticResource Tooltip.HitRegion}"
+                                        ToolTip="{Binding RootProjectDescription}">
+                                <Border Width="64"
+                                        Height="58"
+                                        Style="{StaticResource Overlay.PhysicalKey}">
+                                    <TextBlock Text="{Binding RootProjectGlyphs}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontFamily="{StaticResource Font.Mono}"
+                                               FontWeight="Bold" />
+                                </Border>
+                            </StackPanel>
+                        </UniformGrid>
                     </StackPanel>
                 </Border>
 
                 <Border Grid.Column="1"
-                        Style="{StaticResource CardStyle}"
-                        Margin="8,0,0,0">
+                        Style="{StaticResource Card.Plain}"
+                        ToolTip="{Binding SelectionBehavior}">
                     <StackPanel>
-                        <TextBlock Text="{Binding Strings.ConfigRightStickComposer,
-                                                ElementName=Root}"
+                        <TextBlock Text="{Binding Strings.ConfigRightStickComposer, ElementName=Root}"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <TextBlock Text="←→ / ↑↓"
-                                   Margin="0,20,0,0"
-                                   Foreground="{StaticResource SageBrush}"
-                                   FontSize="{StaticResource Font.Size.TitleLg}"
-                                   FontWeight="Bold" />
-                        <TextBlock Text="{Binding Strings.ConfigIncreaseDecreaseDescription,
-                                                ElementName=Root}"
-                                   Margin="0,4,0,0"
-                                   FontSize="{StaticResource Font.Size.Label}" />
-                        <Separator Margin="0,16"
-                                   Background="{StaticResource LineBrush}" />
-                        <TextBlock Text="{Binding ModeSwitchGlyphs}"
-                                   Foreground="{StaticResource SageBrush}"
-                                   FontSize="{StaticResource Font.Size.TitleLg}"
-                                   FontWeight="Bold" />
-                        <TextBlock Text="{Binding Strings.ConfigModeSwitchDescription,
-                                                ElementName=Root}"
-                                   Margin="0,4,0,0"
-                                   FontSize="{StaticResource Font.Size.Label}" />
-                        <TextBlock Text="{Binding SelectionBehavior}"
-                                   Margin="0,18,0,0"
-                                   Foreground="{StaticResource Brush.Text.Secondary}"
-                                   FontSize="{StaticResource Font.Size.Label}"
-                                   TextWrapping="Wrap" />
+                        <UniformGrid Margin="0,22,0,8" Columns="2">
+                            <StackPanel HorizontalAlignment="Center"
+                                        Background="Transparent"
+                                        Style="{StaticResource Tooltip.HitRegion}"
+                                        ToolTip="{Binding Strings.ConfigIncreaseDecreaseDescription, ElementName=Root}">
+                                <Border Width="82"
+                                        Height="58"
+                                        Style="{StaticResource Overlay.PhysicalKey}">
+                                    <StackPanel Orientation="Horizontal"
+                                                HorizontalAlignment="Center">
+                                        <views:ControllerGlyphView Width="31"
+                                                                   Glyph="←→"
+                                                                   Foreground="{StaticResource Brush.Text.Accent}" />
+                                        <views:ControllerGlyphView Width="31"
+                                                                   Glyph="↑↓"
+                                                                   Foreground="{StaticResource Brush.Text.Accent}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center"
+                                        Background="Transparent"
+                                        Style="{StaticResource Tooltip.HitRegion}"
+                                        ToolTip="{Binding Strings.ConfigModeSwitchDescription, ElementName=Root}">
+                                <Border Width="82"
+                                        Height="58"
+                                        Style="{StaticResource Overlay.PhysicalKey}">
+                                    <TextBlock Text="{Binding RightPressGlyph}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontFamily="{StaticResource Font.Mono}"
+                                               FontWeight="Bold" />
+                                </Border>
+                            </StackPanel>
+                        </UniformGrid>
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <Border Style="{StaticResource CardStyle}"
-                    Margin="0,16,0,0">
+            <Border Style="{StaticResource Card.Divider.Top}"
+                    Margin="0,14,0,0"
+                    ToolTip="{Binding AgentShortcutsDescription}">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="250" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0"
-                                Margin="0,0,24,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
                         <TextBlock Text="{Binding AgentShortcutsTitle}"
+                                   VerticalAlignment="Center"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding AgentShortcutsDescription}"
-                                   Margin="0,7,0,0"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontSize="{StaticResource Font.Size.Caption}"
-                                   TextWrapping="Wrap" />
-                        <Button Style="{StaticResource SecondaryButtonStyle}"
-                                Margin="0,16,0,0"
-                                HorizontalAlignment="Left"
-                                Content="{Binding OpenAgentShortcutsText}"
+                        <Button HorizontalAlignment="Right"
+                                Style="{StaticResource Button.CrystalKey.Icon}"
+                                Content="↗"
+                                ToolTip="{Binding OpenAgentShortcutsText}"
+                                AutomationProperties.Name="{Binding OpenAgentShortcutsText}"
                                 IsEnabled="{Binding CanOpenAgentShortcuts}"
                                 Command="{Binding OpenAgentShortcutsCommand}" />
-                    </StackPanel>
-
-                    <Grid Grid.Column="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="12" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="12" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <StackPanel Grid.Row="0" Grid.Column="0">
-                            <TextBlock Text="{Binding Strings.ConfigLowerReasoning,
-                                                    ElementName=Root}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       Foreground="{StaticResource MutedBrush}" />
-                            <TextBox Margin="0,5,0,0"
-                                     Text="{Binding ReasoningDownShortcut,
-                                                    UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Row="0" Grid.Column="2">
-                            <TextBlock Text="{Binding Strings.ConfigRaiseReasoning,
-                                                    ElementName=Root}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       Foreground="{StaticResource MutedBrush}" />
-                            <TextBox Margin="0,5,0,0"
-                                     Text="{Binding ReasoningUpShortcut,
-                                                    UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Row="2" Grid.Column="0">
-                            <TextBlock Text="{Binding Strings.ConfigToggleFast,
-                                                    ElementName=Root}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       Foreground="{StaticResource MutedBrush}" />
-                            <TextBox Margin="0,5,0,0"
-                                     Text="{Binding FastToggleShortcut,
-                                                    UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Row="2" Grid.Column="2">
-                            <TextBlock Text="{Binding Strings.ConfigDictation,
-                                                    ElementName=Root}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       Foreground="{StaticResource MutedBrush}" />
-                            <TextBox Margin="0,5,0,0"
-                                     Text="{Binding DictationShortcut,
-                                                    UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Row="4" Grid.Column="0">
-                            <TextBlock Text="{Binding Strings.ConfigModelPicker,
-                                                    ElementName=Root}"
-                                       FontSize="{StaticResource Font.Size.Label}"
-                                       Foreground="{StaticResource MutedBrush}" />
-                            <TextBox Margin="0,5,0,0"
-                                     Text="{Binding ModelPickerShortcut,
-                                                    UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
                     </Grid>
+
+                    <UniformGrid Grid.Row="1"
+                                 Margin="0,18,0,2"
+                                 Columns="5">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="{Binding Strings.ConfigLowerReasoning, ElementName=Root}"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{StaticResource Font.Size.Caption}" />
+                            <TextBox Margin="0,5,0,0"
+                                     Text="{Binding ReasoningDownShortcut, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Margin="4,0">
+                            <TextBlock Text="{Binding Strings.ConfigRaiseReasoning, ElementName=Root}"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{StaticResource Font.Size.Caption}" />
+                            <TextBox Margin="0,5,0,0"
+                                     Text="{Binding ReasoningUpShortcut, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Margin="4,0">
+                            <TextBlock Text="{Binding Strings.ConfigToggleFast, ElementName=Root}"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{StaticResource Font.Size.Caption}" />
+                            <TextBox Margin="0,5,0,0"
+                                     Text="{Binding FastToggleShortcut, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Margin="4,0">
+                            <TextBlock Text="{Binding Strings.ConfigDictation, ElementName=Root}"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{StaticResource Font.Size.Caption}" />
+                            <TextBox Margin="0,5,0,0"
+                                     Text="{Binding DictationShortcut, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Margin="8,0,0,0">
+                            <TextBlock Text="{Binding Strings.ConfigModelPicker, ElementName=Root}"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{StaticResource Font.Size.Caption}" />
+                            <TextBox Margin="0,5,0,0"
+                                     Text="{Binding ModelPickerShortcut, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </UniformGrid>
                 </Grid>
             </Border>
-
         </StackPanel>
     </ScrollViewer>
 </UserControl>

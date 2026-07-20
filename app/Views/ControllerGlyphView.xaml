@@ -35,6 +35,22 @@
                                      Value="☰">
                             <Setter Property="Visibility" Value="Collapsed" />
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="View">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="VIEW">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="Menu">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="MENU">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
                         <DataTrigger Binding="{Binding IsDPadGlyph, ElementName=Root}"
                                      Value="True">
                             <Setter Property="Visibility" Value="Collapsed" />
@@ -178,6 +194,14 @@
                                      Value="⧉">
                             <Setter Property="Visibility" Value="Visible" />
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="View">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="VIEW">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>
@@ -212,6 +236,14 @@
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
                                      Value="☰">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="Menu">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Glyph, ElementName=Root}"
+                                     Value="MENU">
                             <Setter Property="Visibility" Value="Visible" />
                         </DataTrigger>
                     </Style.Triggers>

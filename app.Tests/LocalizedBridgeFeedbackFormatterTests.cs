@@ -87,10 +87,10 @@ public sealed class LocalizedBridgeFeedbackFormatterTests
             ("requiresNeutral", "true")));
 
         Assert.Equal(
-            "Controller disconnected · Waiting for the controller to reconnect",
+            "Controller disconnected · Reconnecting…",
             disconnected.LogText);
         Assert.Equal(
-            "Controller connected: 8BitDo Ultimate · Controller input locked",
+            "Connected · 8BitDo Ultimate · Controller input locked",
             restored.LogText);
         Assert.Equal(
             "8BitDo Ultimate · Controller input locked",

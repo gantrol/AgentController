@@ -44,6 +44,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
     private string _turnTabLabel = string.Empty;
     private string _commandTabLabel = string.Empty;
     private string _stickPressTabLabel = string.Empty;
+    private string _actionTabGlyph = string.Empty;
     private string _gestureGlyph = string.Empty;
     private string _modeTitle = string.Empty;
     private string _modeDescription = string.Empty;
@@ -182,6 +183,42 @@ public sealed class ControllerTutorialViewModel : ObservableObject
         private set => SetProperty(ref _stickPressTabLabel, value);
     }
 
+    public string OverviewTabToolTip =>
+        Text(
+            "先认识基础操作\n左右摇杆负责浏览和 Micro 控制；常用动作保持单键直达。",
+            "Start with the basics\nThe sticks handle navigation and Micro control; common actions stay one button away.");
+
+    public string ActionTabToolTip =>
+        Text(
+            $"点按 {ActionTabGlyph}：动作面板\n再次点按或按 B 关闭；箭头表示十字键。",
+            $"Tap {ActionTabGlyph}: action panel\nTap again or press B to close; arrows mean the D-pad.");
+
+    public string AgentTabToolTip =>
+        Text(
+            $"按住 {LeftShoulderGlyph}：六个 Agent 任务\n保持按下再选择映射键；短按切到上一个任务。",
+            $"Hold {LeftShoulderGlyph}: six Agent tasks\nKeep it held and choose a mapped key; tap for the previous task.");
+
+    public string TurnTabToolTip =>
+        Text(
+            $"扣住 {RightTriggerGlyph}：运行中操作\n保持扣住选择操作，松开即关闭这一层。",
+            $"Hold {RightTriggerGlyph}: active-turn actions\nKeep it held while choosing; release to close the layer.");
+
+    public string CommandTabToolTip =>
+        Text(
+            $"按住 {RightShoulderGlyph}：Codex 命令\n短按切到下一个任务；L3 可取消。",
+            $"Hold {RightShoulderGlyph}: Codex commands\nTap for the next task; L3 cancels.");
+
+    public string StickPressTabToolTip =>
+        Text(
+            "垂直按下摇杆帽\nL3 / R3 不是向下拨动摇杆，而是把摇杆帽按到咔哒。",
+            "Press each stick cap vertically\nL3 / R3 mean clicking the stick caps, not moving the sticks downward.");
+
+    public string ActionTabGlyph
+    {
+        get => _actionTabGlyph;
+        private set => SetProperty(ref _actionTabGlyph, value);
+    }
+
     public string GestureGlyph
     {
         get => _gestureGlyph;
@@ -310,6 +347,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             "点击分层预览；实际按下对应按键也会自动切换",
             "Choose a layer, or press its button on the controller");
         OverviewTabLabel = Text("基础", "Basics");
+        ActionTabGlyph = Glyph(LogicalInput.FaceNorth);
         ActionTabLabel = Text(
             $"点按 {Glyph(LogicalInput.FaceNorth)}",
             $"Tap {Glyph(LogicalInput.FaceNorth)}");
@@ -323,6 +361,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             $"按住 {RightShoulderGlyph}",
             $"Hold {RightShoulderGlyph}");
         StickPressTabLabel = Text("按下摇杆", "Press sticks");
+        RaiseTabToolTips();
         StickPressGuideTitle = Text(
             "L3 / R3 指的是把摇杆帽垂直按下",
             "L3 / R3 mean pressing the stick caps straight down");
@@ -525,6 +564,14 @@ public sealed class ControllerTutorialViewModel : ObservableObject
                 "Up/left selects previous; down/right selects next; press R3 to enter or confirm")
                 : _rightStickHint),
         new(
+            LeftStickPressGlyph,
+            Text("切换任务根区域", "Change task roots"),
+            LeftStickPressGuide),
+        new(
+            RightStickPressGlyph,
+            Text("Micro 确认 / 设置", "Micro confirm / settings"),
+            RightStickPressGuide),
+        new(
             "↑↓",
             Text("十字键：遍历对话", "D-pad: browse turns"),
             Text(
@@ -573,7 +620,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             $"{LeftStickPressGlyph} / L3",
             Text("按下左摇杆", "Press the left stick"),
             Text(
-                "切换置顶任务、置顶项目、项目和未归项目任务",
+                "切换置顶任务、置顶项目、项目和游离任务",
                 "Cycle pinned tasks, pinned projects, projects, and projectless tasks")),
         new(
             $"{RightStickPressGlyph} / R3",
@@ -612,5 +659,15 @@ public sealed class ControllerTutorialViewModel : ObservableObject
         OnPropertyChanged(nameof(HighlightDPad));
         OnPropertyChanged(nameof(HighlightFaceCluster));
         OnPropertyChanged(nameof(HighlightViewMenu));
+    }
+
+    private void RaiseTabToolTips()
+    {
+        OnPropertyChanged(nameof(OverviewTabToolTip));
+        OnPropertyChanged(nameof(ActionTabToolTip));
+        OnPropertyChanged(nameof(AgentTabToolTip));
+        OnPropertyChanged(nameof(TurnTabToolTip));
+        OnPropertyChanged(nameof(CommandTabToolTip));
+        OnPropertyChanged(nameof(StickPressTabToolTip));
     }
 }

@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:loc="clr-namespace:CodexController.Localization"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:views="clr-namespace:CodexController.Views"
         mc:Ignorable="d"
         Title="Agent Controller"
@@ -13,132 +14,267 @@
         MinHeight="690"
         Icon="Assets/AgentController.ico"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource CanvasBrush}"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResize"
+        Background="Transparent"
         KeyboardNavigation.TabNavigation="Cycle"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
-        StateChanged="Window_StateChanged">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="66" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="38" />
-        </Grid.RowDefinitions>
+        StateChanged="Window_StateChanged"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="58"
+                            ResizeBorderThickness="8"
+                            GlassFrameThickness="0"
+                            CornerRadius="26"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
 
-        <Border Grid.Row="0"
-                Background="{StaticResource PaperBrush}"
-                BorderBrush="{StaticResource LineBrush}"
-                BorderThickness="0,0,0,1">
-            <Grid Margin="20,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+    <Border x:Name="CrystalShell"
+            Margin="18"
+            Padding="0"
+            Background="{StaticResource Brush.Shell.WorkSurface}"
+            BorderBrush="{StaticResource Brush.Shell.OuterCrystal}"
+            BorderThickness="7"
+            CornerRadius="28"
+            Effect="{StaticResource Shadow.Window}">
+        <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="58" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="26" />
+                    </Grid.RowDefinitions>
 
-                <StackPanel Grid.Column="0"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center">
-                    <Image Width="40"
-                           Height="32"
-                           Source="Assets/AgentController.png"
-                           Stretch="Uniform"
-                           RenderOptions.BitmapScalingMode="HighQuality" />
-                    <StackPanel Margin="8,0,0,0"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="{loc:Loc app.title}"
-                                   FontSize="{StaticResource Font.Size.Title}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock x:Name="AppSubtitleText"
-                                   Text="Game Controller → Codex"
-                                   Foreground="{StaticResource FaintBrush}"
+                    <Grid Grid.Row="0"
+                          Margin="14,0,10,0"
+                          MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+                            <Border Width="34"
+                                    Height="34"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="0">
+                                <Image Margin="4"
+                                       Source="Assets/AgentController.png"
+                                       Stretch="Uniform"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                            </Border>
+                            <TextBlock Margin="10,0,0,0"
+                                       Text="AGENT CONTROLLER"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Text.Primary}"
+                                       FontSize="{StaticResource Font.Size.Caption}"
+                                       FontWeight="SemiBold" />
+                            <TextBlock x:Name="AppSubtitleText"
+                                       Visibility="Collapsed" />
+                        </StackPanel>
+
+                        <Border Grid.Column="1"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CornerRadius="0"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="DeviceNavButton"
+                                             GroupName="PrimaryNavigation"
+                                             IsChecked="True"
+                                             Style="{StaticResource Shell.NavIcon}"
+                                             ToolTip="{loc:Loc nav.device}"
+                                             AutomationProperties.Name="{loc:Loc nav.device}"
+                                             Click="DeviceNavButton_Click">
+                                    <Viewbox Width="18" Height="18">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Data="M5,8 C3.3,8 2,10.2 2,13.3 C2,16.2 3.1,18 4.7,18 C5.8,18 6.7,16.6 7.6,15.7 C8.4,14.9 9.1,15 12,15 C14.9,15 15.6,14.9 16.4,15.7 C17.3,16.6 18.2,18 19.3,18 C20.9,18 22,16.2 22,13.3 C22,10.2 20.7,8 19,8 C16.5,8 15.8,9 12,9 C8.2,9 7.5,8 5,8 Z"
+                                                  Fill="Transparent"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                  StrokeThickness="1.8"
+                                                  StrokeLineJoin="Round" />
+                                            <Path Data="M6,11 L6,15 M4,13 L8,13 M17,11.8 L17.01,11.8 M19,14.2 L19.01,14.2"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                  StrokeThickness="1.8"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </RadioButton>
+                                <RadioButton x:Name="ConfigNavButton"
+                                             GroupName="PrimaryNavigation"
+                                             Style="{StaticResource Shell.NavIcon}"
+                                             ToolTip="{loc:Loc nav.configuration}"
+                                             AutomationProperties.Name="{loc:Loc nav.configuration}"
+                                             Click="ConfigNavButton_Click">
+                                    <Viewbox Width="18" Height="18">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Data="M5,7 L19,7 M5,12 L19,12 M5,17 L19,17"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                  StrokeThickness="1.8"
+                                                  StrokeStartLineCap="Round" />
+                                            <Ellipse Canvas.Left="7" Canvas.Top="5" Width="4" Height="4"
+                                                     Fill="{StaticResource Brush.Shell.WorkSurface}"
+                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                     StrokeThickness="1.6" />
+                                            <Ellipse Canvas.Left="14" Canvas.Top="10" Width="4" Height="4"
+                                                     Fill="{StaticResource Brush.Shell.WorkSurface}"
+                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                     StrokeThickness="1.6" />
+                                            <Ellipse Canvas.Left="9" Canvas.Top="15" Width="4" Height="4"
+                                                     Fill="{StaticResource Brush.Shell.WorkSurface}"
+                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                     StrokeThickness="1.6" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </RadioButton>
+                                <RadioButton x:Name="SettingsNavButton"
+                                             GroupName="PrimaryNavigation"
+                                             Style="{StaticResource Shell.NavIcon}"
+                                             ToolTip="{loc:Loc nav.settings}"
+                                             AutomationProperties.Name="{loc:Loc nav.settings}"
+                                             Click="SettingsNavButton_Click">
+                                    <Viewbox Width="18" Height="18">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Data="M12,3.8 L13.4,5.5 L15.6,5.3 L16.2,7.4 L18.2,8.4 L17.6,10.5 L18.7,12.4 L17.1,13.9 L17.2,16.1 L15.1,16.7 L13.9,18.5 L12,17.7 L10.1,18.5 L8.9,16.7 L6.8,16.1 L6.9,13.9 L5.3,12.4 L6.4,10.5 L5.8,8.4 L7.8,7.4 L8.4,5.3 L10.6,5.5 Z"
+                                                  Fill="Transparent"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                  StrokeThickness="1.5"
+                                                  StrokeLineJoin="Round" />
+                                            <Ellipse Canvas.Left="9" Canvas.Top="9" Width="6" Height="6"
+                                                     Fill="Transparent"
+                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                                     StrokeThickness="1.6" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </RadioButton>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Border Width="28"
+                                    Height="28"
+                                    Margin="0,0,5,0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="0"
+                                    ToolTip="{Binding Text, ElementName=ControllerStatusText}">
+                                <Ellipse x:Name="ControllerStatusDot"
+                                         Width="7"
+                                         Height="7"
+                                         Fill="{StaticResource FaintBrush}" />
+                            </Border>
+                            <TextBlock x:Name="ControllerStatusText"
+                                       Text="{loc:Loc device.waiting}"
+                                       Visibility="Collapsed" />
+                            <CheckBox x:Name="BridgeEnabledCheckBox"
+                                      Margin="0,0,10,0"
+                                      Style="{StaticResource Shell.Toggle}"
+                                      ToolTip="{loc:Loc device.enable-bridge}"
+                                      AutomationProperties.Name="{loc:Loc device.enable-bridge}"
+                                      IsChecked="True"
+                                      Checked="BridgeEnabledCheckBox_Changed"
+                                      Unchecked="BridgeEnabledCheckBox_Changed" />
+                            <Button Style="{StaticResource Shell.CaptionButton}"
+                                    Content="—"
+                                    ToolTip="Minimize"
+                                    AutomationProperties.Name="Minimize"
+                                    Click="MinimizeButton_Click" />
+                            <Button Style="{StaticResource Shell.CaptionButton}"
+                                    Content="□"
+                                    ToolTip="Maximize"
+                                    AutomationProperties.Name="Maximize"
+                                    Click="MaximizeButton_Click" />
+                            <Button Style="{StaticResource Shell.CaptionButton.Close}"
+                                    Content="×"
+                                    ToolTip="Close"
+                                    AutomationProperties.Name="Close"
+                                    Click="CloseButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="14,4,14,8">
+                        <views:DevicePageView x:Name="DevicePage"
+                                              SidebarSelectionChanged="SidebarList_SelectionChanged"
+                                              SidebarMouseDoubleClick="SidebarList_MouseDoubleClick"
+                                              SidebarPreviewKeyDown="SidebarList_PreviewKeyDown" />
+
+                        <views:ConfigPageView x:Name="ConfigPage"
+                                              Visibility="Collapsed" />
+
+                        <views:SettingsPageView x:Name="SettingsPage"
+                                                Visibility="Collapsed" />
+                    </Grid>
+
+                    <Grid Grid.Row="2" Margin="18,0">
+                        <StackPanel Orientation="Horizontal"
+                                    VerticalAlignment="Top">
+                            <Ellipse x:Name="FooterPulse"
+                                     Width="5"
+                                     Height="5"
+                                     Margin="0,0,0,0"
+                                     VerticalAlignment="Center"
+                                     ToolTip="{Binding Text, ElementName=FooterStatusText}">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill"
+                                                Value="{StaticResource Brush.Status.Idle}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DataContext.IsControllerConnected, ElementName=DevicePage}"
+                                                         Value="True">
+                                                <Setter Property="Fill"
+                                                        Value="{StaticResource Brush.Status.Success}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock x:Name="FooterControllerLiveBadge"
+                                       Margin="6,0,0,0"
+                                       Text="{Binding DataContext.ControllerLiveBadge, ElementName=DevicePage}"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource Font.Mono}"
+                                       FontSize="{StaticResource Font.Size.Caption}"
+                                       FontWeight="Bold"
+                                       ToolTip="{Binding Text, ElementName=FooterStatusText}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground"
+                                                Value="{StaticResource Brush.Status.Idle}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DataContext.IsControllerConnected, ElementName=DevicePage}"
+                                                         Value="True">
+                                                <Setter Property="Foreground"
+                                                        Value="{StaticResource Brush.Status.Success}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock x:Name="FooterStatusText"
+                                       Text="{loc:Loc status.loading-agent-data, Arg0=Codex}"
+                                       Visibility="Collapsed" />
+                        </StackPanel>
+                        <TextBlock x:Name="FooterVersionText"
+                                   Text="v0.7"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Top"
+                                   Foreground="{StaticResource Brush.Text.Tertiary}"
                                    FontSize="{StaticResource Font.Size.Caption}" />
-                    </StackPanel>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <RadioButton x:Name="DeviceNavButton"
-                                 GroupName="PrimaryNavigation"
-                                 IsChecked="True"
-                                 Style="{StaticResource Nav.Segment}"
-                                 Content="{loc:Loc nav.device}"
-                                 Click="DeviceNavButton_Click" />
-                    <RadioButton x:Name="ConfigNavButton"
-                                 GroupName="PrimaryNavigation"
-                                 Style="{StaticResource Nav.Segment}"
-                                 Content="{loc:Loc nav.configuration}"
-                                 Click="ConfigNavButton_Click" />
-                    <RadioButton x:Name="SettingsNavButton"
-                                 GroupName="PrimaryNavigation"
-                                 Style="{StaticResource Nav.Segment}"
-                                 Content="{loc:Loc nav.settings}"
-                                 Click="SettingsNavButton_Click" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="2"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center">
-                    <Ellipse x:Name="ControllerStatusDot"
-                             Width="7"
-                             Height="7"
-                             Fill="{StaticResource FaintBrush}"
-                             Margin="0,0,7,0" />
-                    <TextBlock x:Name="ControllerStatusText"
-                               Text="{loc:Loc device.waiting}"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="{StaticResource Font.Size.Label}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,15,0" />
-                    <CheckBox x:Name="BridgeEnabledCheckBox"
-                              Content="{loc:Loc device.enable-bridge}"
-                              IsChecked="True"
-                              Checked="BridgeEnabledCheckBox_Changed"
-                              Unchecked="BridgeEnabledCheckBox_Changed" />
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <Grid Grid.Row="1" Margin="18">
-            <views:DevicePageView x:Name="DevicePage"
-                                  SidebarSelectionChanged="SidebarList_SelectionChanged"
-                                  SidebarMouseDoubleClick="SidebarList_MouseDoubleClick"
-                                  SidebarPreviewKeyDown="SidebarList_PreviewKeyDown" />
-
-            <views:ConfigPageView x:Name="ConfigPage"
-                                  Visibility="Collapsed" />
-
-            <views:SettingsPageView x:Name="SettingsPage"
-                                    Visibility="Collapsed" />
+                    </Grid>
         </Grid>
-
-        <Border Grid.Row="2"
-                Background="{StaticResource PaperBrush}"
-                BorderBrush="{StaticResource LineBrush}"
-                BorderThickness="0,1,0,0">
-            <Grid Margin="20,0">
-                <StackPanel Orientation="Horizontal"
-                            VerticalAlignment="Center">
-                    <Ellipse x:Name="FooterPulse"
-                             Width="6"
-                             Height="6"
-                             Fill="{StaticResource SageBrush}"
-                             Margin="0,0,8,0" />
-                    <TextBlock x:Name="FooterStatusText"
-                               Text="{loc:Loc status.loading-agent-data, Arg0=Codex}"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="{StaticResource Font.Size.Caption}" />
-                </StackPanel>
-                <TextBlock x:Name="FooterVersionText"
-                           Text="v0.7"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Text.Secondary}"
-                           FontSize="{StaticResource Font.Size.Caption}" />
-            </Grid>
-        </Border>
-    </Grid>
+    </Border>
 </Window>
