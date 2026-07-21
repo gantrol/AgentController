@@ -19,12 +19,25 @@ $legacyHardwareIds = @('Root\CodexMicroVhfUm', 'Root\CodexMicroVhf')
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run this installer elevated.'
+    Write-Host 'Administrator permission is required. Opening the Windows UAC prompt...'
+    $elevated = Start-Process `
+        -FilePath 'powershell.exe' `
+        -Verb RunAs `
+        -Wait `
+        -PassThru `
+        -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            "`"$($MyInvocation.MyCommand.Path)`"")
+    exit $elevated.ExitCode
 }
 
 $transcriptPath = Join-Path $root 'driver-install.log'
 Start-Transcript -Path $transcriptPath -Force | Out-Null
 try {
+    Write-Host '[1/4] Checking the local driver package...'
     foreach ($path in @($inf, $driverBinary, $installer, $signTool, $inf2Cat, $pnputil)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "Required file not found: $path"
@@ -53,6 +66,7 @@ try {
     Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
     Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
 
+    Write-Host '[2/4] Signing the driver package...'
     & $signTool sign /v /fd SHA256 /sha1 $cert.Thumbprint /sm $driverBinary
     if ($LASTEXITCODE -ne 0) {
         throw "signtool failed for $driverBinary"
@@ -71,6 +85,7 @@ try {
         throw "signtool failed for $catalog"
     }
 
+    Write-Host '[3/4] Installing or refreshing the virtual HID...'
     # Updating an active UMDF/VHF source in place leaves its HID descriptor
     # cached until a system reboot. Remove only this simulator root before
     # reinstalling so descriptor changes enumerate immediately.
@@ -102,6 +117,7 @@ try {
         throw "The VHF source device reported ConfigManager error $($vhfSource.ConfigManagerErrorCode)."
     }
 
+    Write-Host '[4/4] Verifying device health...'
     # Remove only obsolete simulator root devices after the user-mode VHF
     # source is confirmed healthy. HID children leave with the same subtree.
     $legacyDevices = @(Get-CimInstance Win32_PnPEntity |
@@ -119,7 +135,17 @@ try {
         }
     }
 
-    Write-Host "Codex Micro Microsoft user-mode VHF device is ready: $($vhfSource.PNPDeviceID)"
+    $installedDriver = Get-CimInstance Win32_PnPSignedDriver |
+        Where-Object { $_.DeviceID -eq $vhfSource.PNPDeviceID } |
+        Select-Object -First 1
+    $driverVersion = if ($installedDriver) {
+        $installedDriver.DriverVersion
+    }
+    else {
+        'unknown'
+    }
+    Write-Host "Ready: $($vhfSource.PNPDeviceID) (driver $driverVersion)"
+    Write-Host "Log: $transcriptPath"
 }
 finally {
     Stop-Transcript | Out-Null

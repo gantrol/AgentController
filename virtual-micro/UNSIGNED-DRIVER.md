@@ -2,6 +2,9 @@
 
 [简体中文](./UNSIGNED-DRIVER.zh-CN.md)
 
+For ordinary installation, use the [short installation guide](../docs/CodexMicroSimulator-installation.md).
+This document retains only the build, re-signing, and certificate details.
+
 The Release asset named
 `CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` is a developer artifact,
 not a production installer. It contains prebuilt x64 UMDF2/VHF binaries so that

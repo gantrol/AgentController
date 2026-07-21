@@ -2,6 +2,9 @@
 
 [English](./UNSIGNED-DRIVER.md)
 
+只想安装现成驱动，请使用[三步安装说明](../docs/CodexMicroSimulator-安装教程.zh-CN.md)。
+本文仅保留构建、二次签名和证书细节。
+
 Release 资产 `CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` 是开发者产物，
 不是正式安装包。它提供预编译的 x64 UMDF2/VHF 二进制，方便审计者在不编译 C/C++
 的情况下检查并二次签名。

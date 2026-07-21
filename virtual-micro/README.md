@@ -123,28 +123,18 @@ Main outputs:
 
 ## Install the virtual HID
 
-Run from an elevated PowerShell:
+Exit AgentController, then run from an ordinary PowerShell:
 
 ```powershell
 .\virtual-micro\Install-CodexMicroDriver.ps1
 ```
 
-The installer creates a local code-signing certificate named
-`CN=Codex Micro Simulator Driver`, adds it to the LocalMachine `Root` and
-`TrustedPublisher` stores, signs the VHF source driver and catalog, refreshes
-only the existing simulator device when its report descriptor changes, creates
-`Root\CodexMicroHidUm`, and verifies device health. The installation log is
-written to `virtual-micro/driver-install.log`.
-
-The generated certificate and signed build outputs are local development
-artifacts. Do not publish the private key or reuse this test certificate as a
-production signing identity.
-
-For a downloaded unsigned package, this is also the simplest local secondary
-signing path: the script signs the DLL first, regenerates the catalog so it
-contains the signed DLL hash, signs the catalog, verifies the PnP device, and
-installs it. To sign with an existing development certificate or verify every
-step manually, follow [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md).
+The script opens UAC itself and completes local signing, installation/update,
+and the health check. The driver does not check Codex or AgentController
+versions; its INF version is only for Windows driver-package updates. See the
+[short installation guide](../docs/CodexMicroSimulator-installation.md) for
+verification commands and [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for
+build and certificate details.
 
 ## Verify
 

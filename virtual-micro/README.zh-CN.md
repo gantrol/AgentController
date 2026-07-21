@@ -110,24 +110,16 @@ if (-not $msbuild) { throw '未找到 Visual Studio MSBuild。' }
 
 ## 安装虚拟 HID
 
-在管理员 PowerShell 中运行：
+先退出 AgentController，再用普通 PowerShell 运行：
 
 ```powershell
 .\virtual-micro\Install-CodexMicroDriver.ps1
 ```
 
-安装脚本生成本机代码签名证书 `CN=Codex Micro Simulator Driver`，将其加入
-LocalMachine 的 `Root` 与 `TrustedPublisher`，签名 VHF source driver 和
-catalog；报告描述符变化时只刷新已有模拟器设备，然后创建并验证
-`Root\CodexMicroHidUm`；安装记录写入
-`virtual-micro/driver-install.log`。
-
-脚本生成的证书和签名后文件只是本机开发产物。不要公开私钥，也不要把该测试
-证书当作生产签名身份复用。
-
-对于下载的未签名包，这也是最简单的本机二次签名路径：脚本先签 DLL，再重新生成
-包含新 DLL 哈希的 catalog，签 catalog，最后安装并验证 PnP 设备。如果要使用已有
-开发证书或逐步手动验证，请参阅 [`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
+脚本会自行弹出 UAC，并完成本机签名、安装/更新和健康检查。驱动不检查 Codex 或
+AgentController 版本；INF 版本只供 Windows 更新驱动包。简明步骤与验证命令见
+[驱动安装说明](../docs/CodexMicroSimulator-安装教程.zh-CN.md)，构建和证书细节见
+[`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
 
 ## 验证
 
