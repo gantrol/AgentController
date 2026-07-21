@@ -84,6 +84,34 @@ public sealed class MicroDriverOwnershipRulesTests
     }
 
     [Fact]
+    public void PhysicalRightStickIsMicroOnlyAndCannotFallBackToUia()
+    {
+        var mainWindow = File.ReadAllText(Resolve(
+            "app/MainWindow.xaml.cs"));
+
+        Assert.Contains(
+            "_microInput.SendEncoderSteps(steps)",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_microInput.SendEncoderPress()",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_composerAutomation.DialStep(",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_composerAutomation.DialPress(",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_composerAutomation.DialSelect(",
+            mainWindow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void VirtualMicroHidIdentityAlwaysAdvertisesWiredUsb()
     {
         var header = File.ReadAllText(Resolve(

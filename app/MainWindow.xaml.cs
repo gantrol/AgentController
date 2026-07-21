@@ -2972,6 +2972,42 @@ public partial class MainWindow : Window
         }
     }
 
+    private ComposerDialResult SendMicroEncoderSteps(int steps) =>
+        MicroEncoderResult(_microInput.SendEncoderSteps(steps));
+
+    private ComposerDialResult SendMicroEncoderPress() =>
+        MicroEncoderResult(_microInput.SendEncoderPress());
+
+    private ComposerDialResult MicroEncoderResult(
+        MicroReportSendResult delivery)
+    {
+        var menuOpen = _virtualDialMenuOpen;
+        return delivery switch
+        {
+            MicroReportSendResult.Accepted or
+                MicroReportSendResult.OutcomeUnknown => new(
+                    true,
+                    "Codex Micro",
+                    IsMenuOpen: menuOpen,
+                    MenuWasPresent: menuOpen,
+                    StateVerified: false),
+            MicroReportSendResult.Rejected => new(
+                    false,
+                    "Codex Micro",
+                    IsMenuOpen: menuOpen,
+                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                    ErrorDetail: "micro.encoder-rejected",
+                    MenuWasPresent: menuOpen),
+            _ => new(
+                    false,
+                    "Codex Micro",
+                    IsMenuOpen: menuOpen,
+                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                    ErrorDetail: "micro.encoder-unavailable",
+                    MenuWasPresent: menuOpen),
+        };
+    }
+
     private async Task PumpVirtualDialEncoderStepsAsync()
     {
         try
@@ -2989,10 +3025,13 @@ public partial class MainWindow : Window
                 var generation =
                     Volatile.Read(ref _virtualDialGeneration);
                 var sendStarted = Stopwatch.GetTimestamp();
+                // The physical right stick is the Codex Micro encoder. Keep
+                // this route HID-only: an unavailable Broker must be visible
+                // as a failure instead of silently reviving the legacy UIA
+                // dial path after a Codex update or during Broker startup.
                 var result = await RunVirtualDialAutomationAsync(
-                        () => _composerAutomation.DialStep(
-                            intent.Value.Direction,
-                            _settings))
+                        () => SendMicroEncoderSteps(
+                            intent.Value.Direction))
                     .ConfigureAwait(true);
                 if (
                     Stopwatch.GetTimestamp() - sendStarted >
@@ -3163,7 +3202,7 @@ public partial class MainWindow : Window
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
-                () => _composerAutomation.DialPress(_settings))
+                SendMicroEncoderPress)
             .ConfigureAwait(true);
         if (
             generation !=
@@ -3331,8 +3370,7 @@ public partial class MainWindow : Window
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
-                () => _composerAutomation.DialSelect(
-                    _settings))
+                SendMicroEncoderPress)
             .ConfigureAwait(true);
         if (
             generation !=
