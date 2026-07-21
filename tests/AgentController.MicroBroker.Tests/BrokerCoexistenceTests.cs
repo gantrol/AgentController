@@ -418,6 +418,64 @@ public sealed class BrokerCoexistenceTests
     }
 
     [Fact]
+    public async Task InputFallsBackUntilCodexRuntimeHandshakeIsObserved()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint(
+            codexLinkObservedOnConnect: false);
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var client = new MicroBrokerClient(
+            "runtime-capability-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+
+        var initial = client.Connect();
+        Assert.False(initial.CodexLinkObserved);
+        Assert.Equal(
+            MicroBrokerClientState.Unavailable,
+            client.State);
+        Assert.Equal(
+            MicroSendDisposition.NotSent,
+            client.Submit(
+                MicroRpcCodec.EncodeHid("ENC_CW", 2)).Disposition);
+        Assert.Empty(driver.Messages);
+
+        driver.EnqueueHostRpc(
+            "{\"id\":7,\"method\":\"v.oai.config.get\",\"params\":[]}");
+        var deadline = Environment.TickCount64 + 3_000;
+        while (
+            client.State != MicroBrokerClientState.Ready &&
+            Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(MicroBrokerClientState.Ready, client.State);
+        Assert.Equal(
+            MicroSendDisposition.Accepted,
+            client.Submit(
+                MicroRpcCodec.EncodeHid("ENC_CW", 2)).Disposition);
+        Assert.Contains(
+            driver.Messages,
+            message => message.Contains("\"k\":\"ENC_CW\""));
+
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
     public async Task RequestCompletionRenewsLeaseBeforeExpiryCanNeutralizeIt()
     {
         var suffix = Guid.NewGuid().ToString("N");
@@ -508,6 +566,14 @@ public sealed class BrokerCoexistenceTests
             new(true);
         private int _blockNextSubmit;
         private long _outputSequence;
+        private readonly bool _codexLinkObservedOnConnect;
+
+        public FakeDriverEndpoint(
+            bool codexLinkObservedOnConnect = true)
+        {
+            _codexLinkObservedOnConnect =
+                codexLinkObservedOnConnect;
+        }
 
         public bool IsConnected { get; private set; }
         public int ConnectCount { get; private set; }
@@ -536,7 +602,8 @@ public sealed class BrokerCoexistenceTests
                 0,
                 0,
                 3,
-                "fake-broker-driver");
+                "fake-broker-driver",
+                _codexLinkObservedOnConnect);
         }
 
         public MicroSendResult Submit(IReadOnlyList<byte[]> reports)

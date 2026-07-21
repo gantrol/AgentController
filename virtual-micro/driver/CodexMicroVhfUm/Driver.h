@@ -11,6 +11,19 @@
 
 #define VMICRO_OUTPUT_QUEUE_CAPACITY 64U
 
+// Work Louder's HID discovery contract reserves the low two bcdDevice bits
+// for the connection kind. A software VHF device is presented as a wired USB
+// device, so those bits must remain zero. Driver package revisions belong in
+// CodexMicroVhfUm.inf and must never be encoded here.
+#define VMICRO_VENDOR_ID 0x303AU
+#define VMICRO_VENDOR_PRODUCT_ID 0x8360U
+#define VMICRO_DIALOG_KEYBOARD_PRODUCT_ID 0x8361U
+#define VMICRO_USB_RELEASE_NUMBER 0x0100U
+
+#if ((VMICRO_USB_RELEASE_NUMBER & 0x0003U) != 0)
+#error VMICRO_USB_RELEASE_NUMBER must remain classified as wired USB.
+#endif
+
 typedef struct _DEVICE_CONTEXT {
     VHFHANDLE VhfHandle;
     VHFHANDLE KeyboardVhfHandle;

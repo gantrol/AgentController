@@ -3,7 +3,7 @@ Signature="$WINDOWS NT$"
 Class=HIDClass
 ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
 Provider=%ProviderName%
-DriverVer=07/18/2026,1.0.0.5
+DriverVer=07/21/2026,1.0.0.6
 CatalogFile=CodexMicroVhfUm.cat
 PnpLockdown=1
 
@@ -42,10 +42,10 @@ Include=wudfrd.inf
 Needs=WUDFRD.NT.Services
 
 [Device_Install.NT.Wdf]
-UmdfService=CodexMicroVhfUm105,CodexMicroVhfUm105_Service
-UmdfServiceOrder=CodexMicroVhfUm105
+UmdfService=CodexMicroVhfUm106,CodexMicroVhfUm106_Service
+UmdfServiceOrder=CodexMicroVhfUm106
 
-[CodexMicroVhfUm105_Service]
+[CodexMicroVhfUm106_Service]
 UmdfLibraryVersion=2.23.0
 ServiceBinary=%12%\UMDF\CodexMicroVhfUm.dll
 

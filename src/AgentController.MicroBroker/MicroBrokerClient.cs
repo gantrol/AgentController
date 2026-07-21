@@ -86,6 +86,7 @@ public sealed class MicroBrokerClient : IDisposable
                         allowLaunch: false);
                     if (status.Succeeded && status.Driver is not null)
                     {
+                        UpdateDriverState(status.Driver);
                         return status.Driver;
                     }
                 }
@@ -124,7 +125,7 @@ public sealed class MicroBrokerClient : IDisposable
             _connected = true;
             Volatile.Write(ref _retryAfter, 0);
             _eventCursor = 0;
-            State = MicroBrokerClientState.Ready;
+            UpdateDriverState(response.Driver);
             StartPollLoop();
             return response.Driver;
         }
@@ -182,6 +183,13 @@ public sealed class MicroBrokerClient : IDisposable
                 "AgentController Micro Broker is unavailable.");
         }
 
+        if (State != MicroBrokerClientState.Ready)
+        {
+            return MicroSendResult.NotSent(
+                "Codex has not completed a Micro HID handshake; use the " +
+                "non-Micro fallback until runtime capability is observed.");
+        }
+
         try
         {
             var response = SendRequest(
@@ -207,6 +215,12 @@ public sealed class MicroBrokerClient : IDisposable
         {
             return MicroSendResult.NotSent(
                 "AgentController Micro Broker is unavailable.");
+        }
+
+        if (State != MicroBrokerClientState.Ready)
+        {
+            return MicroSendResult.NotSent(
+                "Codex has not completed a Micro HID handshake.");
         }
 
         try
@@ -406,6 +420,11 @@ public sealed class MicroBrokerClient : IDisposable
                     continue;
                 }
 
+                if (response.Driver is { } driver)
+                {
+                    UpdateDriverState(driver);
+                }
+
                 if (response.EventCursor <
                     Interlocked.Read(ref _eventCursor))
                 {
@@ -543,9 +562,17 @@ public sealed class MicroBrokerClient : IDisposable
                 response.Error ?? "Micro Broker did not accept the request.");
         }
 
-        State = MicroBrokerClientState.Ready;
+        if (response.Driver is { } driver)
+        {
+            UpdateDriverState(driver);
+        }
         return response.Send.Value;
     }
+
+    private void UpdateDriverState(BrokerDriverInfo driver) =>
+        State = driver.CodexLinkObserved
+            ? MicroBrokerClientState.Ready
+            : MicroBrokerClientState.Unavailable;
 
     private void MarkDisconnected()
     {

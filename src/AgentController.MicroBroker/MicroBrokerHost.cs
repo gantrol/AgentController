@@ -507,6 +507,7 @@ public sealed class MicroBrokerHost : IDisposable
         {
             Events = events,
             EventCursor = cursor,
+            Driver = Volatile.Read(ref _driverInfo),
         };
     }
 
@@ -526,7 +527,7 @@ public sealed class MicroBrokerHost : IDisposable
             MicroBrokerProtocol.Version,
             request.RequestId,
             true,
-            Driver: _driverInfo,
+            Driver: Volatile.Read(ref _driverInfo),
             EventCursor: Volatile.Read(ref _eventSequence),
             Role: BrokerConnectionRole.Client);
 
@@ -553,6 +554,8 @@ public sealed class MicroBrokerHost : IDisposable
                         .ConfigureAwait(false);
                     continue;
                 }
+
+                MarkCodexLinkObserved(output.Sequence);
 
                 if (output.WireReport[1] == MicroProtocol.DebugChannel)
                 {
@@ -721,6 +724,28 @@ public sealed class MicroBrokerHost : IDisposable
             {
                 _events.Dequeue();
             }
+        }
+    }
+
+    private void MarkCodexLinkObserved(ulong outputSequence)
+    {
+        var current = Volatile.Read(ref _driverInfo);
+        if (current is null)
+        {
+            return;
+        }
+
+        var firstObservation = !current.CodexLinkObserved;
+        Volatile.Write(
+            ref _driverInfo,
+            current with
+            {
+                OutputSequence = outputSequence,
+                CodexLinkObserved = true,
+            });
+        if (firstObservation)
+        {
+            PublishEvent("codex-link-ready");
         }
     }
 

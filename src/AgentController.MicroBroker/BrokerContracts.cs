@@ -35,7 +35,8 @@ public sealed record BrokerDriverInfo(
     ulong OutputSequence,
     uint DroppedOutputReports,
     uint Flags,
-    string TransportName);
+    string TransportName,
+    bool CodexLinkObserved = false);
 
 public sealed record BrokerEvent(
     long Sequence,

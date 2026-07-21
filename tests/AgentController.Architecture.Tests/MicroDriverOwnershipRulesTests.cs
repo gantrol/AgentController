@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
 
@@ -44,6 +45,33 @@ public sealed class MicroDriverOwnershipRulesTests
             .ToArray();
 
         Assert.Contains("AgentController.MicroBroker", references);
+    }
+
+    [Fact]
+    public void VirtualMicroHidIdentityAlwaysAdvertisesWiredUsb()
+    {
+        var header = File.ReadAllText(Resolve(
+            "virtual-micro/driver/CodexMicroVhfUm/Driver.h"));
+        var driver = File.ReadAllText(Resolve(
+            "virtual-micro/driver/CodexMicroVhfUm/Driver.c"));
+        var release = Regex.Match(
+            header,
+            @"#define\s+VMICRO_USB_RELEASE_NUMBER\s+0x([0-9A-Fa-f]+)U?");
+
+        Assert.True(release.Success);
+        var releaseNumber = Convert.ToUInt32(
+            release.Groups[1].Value,
+            16);
+        Assert.Equal(0U, releaseNumber & 0x0003U);
+        Assert.Equal(
+            2,
+            Regex.Matches(
+                driver,
+                @"VersionNumber\s*=\s*VMICRO_USB_RELEASE_NUMBER")
+                .Count);
+        Assert.DoesNotMatch(
+            @"VersionNumber\s*=\s*0x[0-9A-Fa-f]+",
+            driver);
     }
 
     private static IEnumerable<string> RuntimeSourceFiles()

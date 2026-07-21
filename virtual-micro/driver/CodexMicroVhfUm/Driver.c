@@ -511,9 +511,9 @@ VmicroCreateUserModeVhf(
         sizeof(MicroReportDescriptor),
         MicroReportDescriptor);
     vhfConfig.VhfClientContext = Context;
-    vhfConfig.VendorID = 0x303A;
-    vhfConfig.ProductID = 0x8360;
-    vhfConfig.VersionNumber = 0x0102;
+    vhfConfig.VendorID = VMICRO_VENDOR_ID;
+    vhfConfig.ProductID = VMICRO_VENDOR_PRODUCT_ID;
+    vhfConfig.VersionNumber = VMICRO_USB_RELEASE_NUMBER;
     vhfConfig.EvtVhfAsyncOperationWriteReport = VmicroEvtVhfWriteReport;
 
     status = VhfCreate(&vhfConfig, &Context->VhfHandle);
@@ -541,9 +541,9 @@ VmicroCreateUserModeVhf(
         sizeof(DialogKeyboardReportDescriptor),
         DialogKeyboardReportDescriptor);
     vhfConfig.VhfClientContext = Context;
-    vhfConfig.VendorID = 0x303A;
-    vhfConfig.ProductID = 0x8361;
-    vhfConfig.VersionNumber = 0x0100;
+    vhfConfig.VendorID = VMICRO_VENDOR_ID;
+    vhfConfig.ProductID = VMICRO_DIALOG_KEYBOARD_PRODUCT_ID;
+    vhfConfig.VersionNumber = VMICRO_USB_RELEASE_NUMBER;
 
     status = VhfCreate(&vhfConfig, &Context->KeyboardVhfHandle);
     if (!NT_SUCCESS(status)) {
