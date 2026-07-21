@@ -1,5 +1,6 @@
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
+using AgentController.MicroSurface.Wpf;
 using CodexController.Agents;
 using CodexController.Agents.Codex;
 using CodexController.Controllers;
@@ -21,6 +22,8 @@ internal sealed class AppComposition : IDisposable
     }
 
     internal MainWindowDependencies Desktop { get; }
+
+    internal MicroSurfaceController MicroSurface => Desktop.MicroSurface;
 
     internal LocalizationService Localization => Desktop.Localization;
 
@@ -161,6 +164,7 @@ internal sealed class AppComposition : IDisposable
             settings,
             currentSettings,
             microInput,
+            new MicroSurfaceController(),
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
             new ControllerHoldCoordinator(),
@@ -177,6 +181,7 @@ internal sealed class AppComposition : IDisposable
             return;
         }
 
+        MicroSurface.Dispose();
         Desktop.Controller.Dispose();
         Desktop.ControllerHolds.Dispose();
         Desktop.RadialLayers.Dispose();

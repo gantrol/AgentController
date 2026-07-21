@@ -239,6 +239,8 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "需要时按 {0} 唤醒；进入前台后自动启用 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 短按关闭 / 撤回、长按 3 秒取消会话",
             [StringKeys.TrayOpenApplication] =
                 "打开 Agent Controller",
+            [StringKeys.TrayOpenMicroSurface] =
+                "打开 Micro 面板",
             [StringKeys.TrayOpenAgent] = "打开 {0}",
             [StringKeys.TrayExit] = "退出",
 

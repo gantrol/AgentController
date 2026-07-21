@@ -66,10 +66,13 @@ public sealed class MicroBrokerClient : IDisposable
     public event EventHandler<SlotLightingSnapshot>?
         SlotLightingObserved;
 
+    public event EventHandler<MicroBrokerClientState>?
+        StateChanged;
+
     public MicroBrokerClientState State
     {
         get => (MicroBrokerClientState)Volatile.Read(ref _state);
-        private set => Volatile.Write(ref _state, (int)value);
+        private set => SetState(value);
     }
 
     public BrokerDriverInfo Connect()
@@ -597,6 +600,35 @@ public sealed class MicroBrokerClient : IDisposable
             try
             {
                 handler(this, snapshot);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private void SetState(MicroBrokerClientState value)
+    {
+        var previous = (MicroBrokerClientState)Interlocked.Exchange(
+            ref _state,
+            (int)value);
+        if (previous == value)
+        {
+            return;
+        }
+
+        var handlers = StateChanged;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<MicroBrokerClientState> handler in
+                 handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(this, value);
             }
             catch
             {

@@ -1,8 +1,8 @@
-<Window x:Class="CodexMicro.Desktop.MainWindow"
+<Window x:Class="CodexMicro.Desktop.MicroSurfaceWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:CodexMicro.Desktop.Controls"
-        Title="Codex Micro Simulator"
+        Title="Agent Controller · Micro Surface"
         Width="442.5"
         Height="457.5"
         MinWidth="354"
@@ -12,14 +12,22 @@
         Background="Transparent"
         ResizeMode="CanResize"
         ShowActivated="False"
-        ShowInTaskbar="True"
+        ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         SourceInitialized="Window_SourceInitialized"
         Loaded="Window_Loaded"
+        Closing="Window_Closing"
         Closed="Window_Closed"
         Deactivated="Window_Deactivated">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="MicroSurfaceResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
     <Grid Background="Transparent">
         <Viewbox x:Name="DeviceViewbox"
                  Stretch="Uniform"
@@ -58,7 +66,7 @@
                             <Separator />
                             <MenuItem Header="重新连接虚拟 HID"
                                       Click="ReconnectMenuItem_Click" />
-                            <MenuItem Header="退出"
+                            <MenuItem Header="隐藏面板"
                                       Click="ExitMenuItem_Click" />
                         </ContextMenu>
                     </Border.ContextMenu>
@@ -419,7 +427,7 @@
                                             VerticalAlignment="Center"
                                             Margin="10,0,0,0"
                                             Panel.ZIndex="2">
-                                    <Ellipse x:Name="CompatibilityLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#9EBDFF" ToolTip="Codex 兼容性" />
+                                    <Ellipse x:Name="RuntimeLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#9EBDFF" ToolTip="Codex 运行时握手" />
                                     <Ellipse x:Name="DriverLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#B8B98B" ToolTip="虚拟 HID 驱动" />
                                     <Ellipse x:Name="ActivityLed" Width="7" Height="7" Fill="#B8B98B" ToolTip="事件状态" />
                                 </StackPanel>
@@ -429,7 +437,7 @@
                                         Style="{StaticResource DarkKnobButton}"
                                         Click="Settings_Click"
                                         PreviewMouseRightButtonUp="Settings_PreviewMouseRightButtonUp"
-                                        ToolTip="打开 Codex Micro 设置 · 右键重新连接虚拟 HID&#x0a;三灯：Codex 兼容性 / HID 连接 / 最近事件" />
+                                        ToolTip="打开 Codex Micro 设置 · 右键重新连接虚拟 HID&#x0a;三灯：Codex 运行时握手 / HID 连接 / 最近事件" />
                             </Grid>
                             <Button x:Name="ActionKey10"
                                     Grid.Row="3"

@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
 using AgentController.Domain.Actions;
+using AgentController.MicroSurface.Wpf;
 using AgentController.Platform.Windowing;
 using CodexController.Agents;
 using CodexController.Composition;
@@ -65,6 +66,7 @@ public partial class MainWindow : Window
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
+    private readonly MicroSurfaceController _microSurface;
     private readonly CodexCurrentControlExecutor _currentControlExecutor;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
@@ -167,6 +169,7 @@ public partial class MainWindow : Window
     internal MainWindow(MainWindowDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
+        _microSurface = dependencies.MicroSurface;
         _settingsService = dependencies.Settings;
         _settings = dependencies.CurrentSettings;
         _activeAgent = dependencies.ActiveAgent;
@@ -5555,6 +5558,10 @@ public partial class MainWindow : Window
             null,
             (_, _) => RestoreWindow());
         menu.Items.Add(
+            strings.TrayOpenMicroSurface,
+            null,
+            (_, _) => _microSurface.Show());
+        menu.Items.Add(
             strings.TrayOpenAgent(_activeAgent.DisplayName),
             null,
             (_, _) => WakeCodex());
@@ -5621,6 +5628,11 @@ public partial class MainWindow : Window
         ShowPage(SettingsPage);
         SetSelectedNav(SettingsNavButton);
     }
+
+    private void MicroSurfaceButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        _microSurface.Toggle();
 
     private void TitleBar_MouseLeftButtonDown(
         object sender,

@@ -32,8 +32,8 @@ public sealed class MicroDriverOwnershipRulesTests
     [Theory]
     [InlineData("app/AgentController.csproj")]
     [InlineData(
-        "virtual-micro/src/CodexMicro.Desktop/" +
-        "CodexMicro.Desktop.csproj")]
+        "virtual-micro/src/AgentController.MicroSurface.Wpf/" +
+        "AgentController.MicroSurface.Wpf.csproj")]
     public void DesktopClientsReferenceTheSharedBroker(string projectPath)
     {
         var document = XDocument.Load(Resolve(projectPath));
@@ -45,6 +45,42 @@ public sealed class MicroDriverOwnershipRulesTests
             .ToArray();
 
         Assert.Contains("AgentController.MicroBroker", references);
+    }
+
+    [Fact]
+    public void MicroSurfaceIsHostedWithoutAProductVersionGate()
+    {
+        Assert.False(File.Exists(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/" +
+            "CodexMicro.Desktop.csproj")));
+        Assert.False(File.Exists(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/App.xaml.cs")));
+
+        var project = XDocument.Load(Resolve(
+            "virtual-micro/src/AgentController.MicroSurface.Wpf/" +
+            "AgentController.MicroSurface.Wpf.csproj"));
+        Assert.DoesNotContain(
+            project.Descendants("OutputType"),
+            element => string.Equals(
+                element.Value,
+                "WinExe",
+                StringComparison.OrdinalIgnoreCase));
+
+        var runtimeSource = string.Join(
+            '\n',
+            Directory.EnumerateFiles(
+                    Resolve("virtual-micro/src/CodexMicro.Desktop"),
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Select(File.ReadAllText));
+        Assert.DoesNotContain(
+            "FileVersionInfo.GetVersionInfo",
+            runtimeSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "CodexCompatibilityProbe",
+            runtimeSource,
+            StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,8 +1,5 @@
-<Application x:Class="CodexMicro.Desktop.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
-    <Application.Resources>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
         <SolidColorBrush x:Key="InkBrush" Color="#2F3438" />
         <SolidColorBrush x:Key="MutedInkBrush" Color="#737C82" />
         <SolidColorBrush x:Key="KeyEdgeBrush" Color="#F7FFFFFF" />
@@ -485,5 +482,4 @@
             </Setter>
         </Style>
 
-    </Application.Resources>
-</Application>
+</ResourceDictionary>

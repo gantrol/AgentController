@@ -19,13 +19,12 @@ public sealed class WindowDesignTests
         {
             try
             {
-                var app = new App
+                _ = Application.Current ?? new Application
                 {
                     ShutdownMode = ShutdownMode.OnExplicitShutdown,
                 };
-                app.InitializeComponent();
 
-                var window = new MainWindow();
+                var window = new MicroSurfaceWindow();
                 window.DesignSurface.Measure(new Size(590, 610));
                 window.DesignSurface.Arrange(new Rect(0, 0, 590, 610));
                 window.DesignSurface.UpdateLayout();
@@ -43,7 +42,8 @@ public sealed class WindowDesignTests
                 Assert.False(window.ShowActivated);
                 Assert.Equal(442.5, window.Width, 3);
                 Assert.Equal(457.5, window.Height, 3);
-                Assert.NotNull(window.Icon);
+                Assert.False(window.ShowInTaskbar);
+                Assert.Contains("Micro Surface", window.Title);
                 Assert.True(window.TopmostMenuItem.IsCheckable);
                 Assert.NotNull(window.DeviceFrame.ContextMenu);
                 Assert.Equal(Visibility.Collapsed, window.DialSelectionHud.Visibility);
@@ -177,7 +177,7 @@ public sealed class WindowDesignTests
                     Assert.IsType<SolidColorBrush>(settingsKnob.Fill).Color);
                 Assert.Null(settingsKnob.Stroke);
 
-                var compatibilityLedTop = window.CompatibilityLed
+                var runtimeLedTop = window.RuntimeLed
                     .TranslatePoint(new Point(), window.DesignSurface)
                     .Y;
                 var driverLedTop = window.DriverLed
@@ -186,7 +186,7 @@ public sealed class WindowDesignTests
                 var activityLedTop = window.ActivityLed
                     .TranslatePoint(new Point(), window.DesignSurface)
                     .Y;
-                Assert.True(compatibilityLedTop < driverLedTop);
+                Assert.True(runtimeLedTop < driverLedTop);
                 Assert.True(driverLedTop < activityLedTop);
 
                 var leftSilkRight = window.LeftSilkScreen
@@ -225,8 +225,7 @@ public sealed class WindowDesignTests
                     encoder.Save(stream);
                 }
 
-                window.Close();
-                app.Shutdown();
+                window.CloseForApplicationExit();
             }
             catch (Exception exception)
             {

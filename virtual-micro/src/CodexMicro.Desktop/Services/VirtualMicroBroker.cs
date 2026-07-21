@@ -1,20 +1,28 @@
-using CodexMicro.Desktop.Driver;
+using AgentController.MicroBroker;
 using CodexMicro.Protocol;
 
 namespace CodexMicro.Desktop.Services;
 
+/// <summary>
+/// Logical Micro Surface client. It shares the process-wide broker child with
+/// Agent Controller while retaining an independent client id and held-input
+/// lease, so either surface can disappear without releasing the other's state.
+/// </summary>
 internal sealed class VirtualMicroBroker : IDisposable
 {
-    private readonly VirtualMicroDriverClient _driver = new();
+    private const uint InfoFlagDialogKeyboard = 0x00000002;
+
+    private readonly MicroBrokerClient _driver =
+        new("AgentController Micro Surface");
     private readonly object _heldSync = new();
     private readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
-    private bool _compatible;
+    private bool _supportsDialogKeyboard;
     private bool _disposed;
 
     public VirtualMicroBroker()
     {
-        _driver.SlotLightingObserved += (_, snapshot) =>
-            SlotLightingObserved?.Invoke(this, snapshot);
+        _driver.SlotLightingObserved += Driver_SlotLightingObserved;
+        _driver.StateChanged += Driver_StateChanged;
     }
 
     public event EventHandler<string>? Log;
@@ -23,26 +31,24 @@ internal sealed class VirtualMicroBroker : IDisposable
 
     public event EventHandler<SlotLightingSnapshot>? SlotLightingObserved;
 
-    public bool IsReady => _compatible && _driver.IsConnected;
+    public bool IsReady =>
+        !_disposed && _driver.State == MicroBrokerClientState.Ready;
 
     public bool SupportsDialogKeyboard =>
-        IsReady && _driver.SupportsDialogKeyboard;
+        IsReady && _supportsDialogKeyboard;
 
-    public DriverInfo Connect(CodexCompatibilityResult compatibility)
+    public BrokerDriverInfo Connect()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(compatibility);
-        if (!compatibility.IsCompatible)
-        {
-            throw new InvalidOperationException(compatibility.Detail);
-        }
-
         var info = _driver.Connect();
-        _compatible = true;
-        StateChanged?.Invoke(this, "ready");
+        _supportsDialogKeyboard =
+            (info.Flags & InfoFlagDialogKeyboard) != 0;
+        PublishState(_driver.State);
         Log?.Invoke(
             this,
-            $"{info.TransportName} ready · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}");
+            info.CodexLinkObserved
+                ? $"{info.TransportName} ready · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}"
+                : $"{info.TransportName} connected · waiting for Codex runtime handshake");
         return info;
     }
 
@@ -51,8 +57,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         if (key == "ACT10_ACT11")
         {
-            // Current renderer treats the double keycap as ACT10 and ignores
-            // ACT11 to prevent a duplicate command.
             key = "ACT10";
         }
 
@@ -71,8 +75,6 @@ internal sealed class VirtualMicroBroker : IDisposable
             MicroRpcCodec.EncodeHid(key, pressed ? 1 : 0),
             $"{key} {(pressed ? "down" : "up")}").ConfigureAwait(false);
 
-        // OutcomeUnknown is tracked as held on key-down so shutdown still
-        // attempts a neutral report. Release always clears local hold state.
         lock (_heldSync)
         {
             if (pressed && result.Disposition is not (
@@ -95,22 +97,24 @@ internal sealed class VirtualMicroBroker : IDisposable
             MicroRpcCodec.EncodeHid(
                 clockwise ? "ENC_CW" : "ENC_CC",
                 2),
-            clockwise ? "encoder clockwise" : "encoder counter-clockwise");
+            clockwise
+                ? "encoder clockwise"
+                : "encoder counter-clockwise");
 
     public Task<MicroSendResult> TapDialogKeyAsync(
-        VhfKeyboardKey key,
+        BrokerKeyboardKey key,
         bool shift = false)
     {
-        EnsureReady();
-        if (!_driver.SupportsDialogKeyboard)
+        if (!SupportsDialogKeyboard)
         {
-            throw new InvalidOperationException(
-                "The installed VHF driver does not expose the restricted dialog keyboard collection.");
+            return Task.FromResult(MicroSendResult.NotSent(
+                "The installed VHF driver does not expose the restricted " +
+                "dialog keyboard collection."));
         }
 
         return Task.Run(() =>
         {
-            var result = _driver.TapKeyboardKey(key, shift);
+            var result = _driver.TapKeyboard(key, shift);
             Log?.Invoke(
                 this,
                 $"VHF dialog key · {(shift ? "Shift+" : string.Empty)}{key} · {result.Disposition}");
@@ -121,7 +125,6 @@ internal sealed class VirtualMicroBroker : IDisposable
     public async Task<MicroSendResult> OpenCodexMicroSettingsAsync(
         CancellationToken cancellationToken = default)
     {
-        EnsureReady();
         var press = await SubmitAsync(
             MicroRpcCodec.EncodeHid("ENC", 1),
             "encoder hold press").ConfigureAwait(false);
@@ -139,8 +142,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         MicroSendResult release = default;
         try
         {
-            // Codex 26.715.3651.0 uses a 500 ms hold timer before navigating
-            // to /settings/codex-micro. Keep a small scheduling margin.
             await Task.Delay(650, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -152,7 +153,6 @@ internal sealed class VirtualMicroBroker : IDisposable
             {
                 _heldKeys.Remove("ENC");
             }
-
         }
 
         if (
@@ -166,7 +166,7 @@ internal sealed class VirtualMicroBroker : IDisposable
                 release.NativeStatus != 0
                     ? release.NativeStatus
                     : press.NativeStatus,
-                "The 650 ms encoder hold may have reached Codex; it is not retried.");
+                "The encoder hold may have reached Codex; it is not retried.");
         }
 
         return new MicroSendResult(
@@ -180,8 +180,8 @@ internal sealed class VirtualMicroBroker : IDisposable
     public Task<MicroSendResult> SetJoystickStateAsync(
         double angle,
         double distance,
-        string direction)
-        => SubmitAsync(
+        string direction) =>
+        SubmitAsync(
             MicroRpcCodec.EncodeJoystick(angle, distance),
             $"analog {direction} {distance:F2}");
 
@@ -204,17 +204,25 @@ internal sealed class VirtualMicroBroker : IDisposable
             return;
         }
 
-        _disposed = true;
         BestEffortNeutralize();
+        _disposed = true;
+        _driver.SlotLightingObserved -= Driver_SlotLightingObserved;
+        _driver.StateChanged -= Driver_StateChanged;
         _driver.Dispose();
-        _compatible = false;
+        _supportsDialogKeyboard = false;
     }
 
     private Task<MicroSendResult> SubmitAsync(
         IReadOnlyList<byte[]> reports,
         string label)
     {
-        EnsureReady();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!IsReady)
+        {
+            return Task.FromResult(MicroSendResult.NotSent(
+                "Codex has not completed the runtime Micro handshake."));
+        }
+
         return Task.Run(() =>
         {
             var result = _driver.Submit(reports);
@@ -227,7 +235,7 @@ internal sealed class VirtualMicroBroker : IDisposable
 
     private void BestEffortNeutralize()
     {
-        if (!_driver.IsConnected)
+        if (!IsReady)
         {
             return;
         }
@@ -250,17 +258,27 @@ internal sealed class VirtualMicroBroker : IDisposable
         }
         catch
         {
-            // Shutdown neutralization is best effort and is never retried.
         }
     }
 
-    private void EnsureReady()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!IsReady)
-        {
-            throw new InvalidOperationException(
-                "Codex compatibility and the virtual HID connection must both be ready.");
-        }
-    }
+    private void Driver_SlotLightingObserved(
+        object? sender,
+        SlotLightingSnapshot snapshot) =>
+        SlotLightingObserved?.Invoke(this, snapshot);
+
+    private void Driver_StateChanged(
+        object? sender,
+        MicroBrokerClientState state) =>
+        PublishState(state);
+
+    private void PublishState(MicroBrokerClientState state) =>
+        StateChanged?.Invoke(
+            this,
+            state switch
+            {
+                MicroBrokerClientState.Ready => "ready",
+                MicroBrokerClientState.Faulted =>
+                    "faulted:Micro Broker is unavailable.",
+                _ => "waiting-runtime-handshake",
+            });
 }

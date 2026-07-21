@@ -325,4 +325,4 @@ AgentController.Application/
 
 ### 2026-07-18：本轮迁移里程碑
 
-本轮定义的 thread navigation、controller hold、radial layer、Composer 四角色拆分和 composition/platform ports 已完成。目标架构本身尚未完成：virtual-dial/右摇杆、PTT、状态聚合、剩余 Codex facade、Avalonia 与 macOS 仍按 `todo/` 中独立大任务渐进迁移。旧 WPF 发布路径保持可构建、可测试，且 `virtual-micro/` 参考实现未并入本轮产品代码或提交历史。
+本轮定义的 thread navigation、controller hold、radial layer、Composer 四角色拆分和 composition/platform ports 已完成。Windows 端已把 `virtual-micro` 的面板作为 `AgentController.MicroSurface.Wpf` 合入同一进程，并由单一 Broker 子进程服务两个逻辑客户端；旧独立模拟器入口、互斥锁和托盘已删除。目标架构本身尚未完成：PTT、状态聚合、剩余 Codex facade、Avalonia 与 macOS 仍按 `todo/` 中独立大任务渐进迁移。

@@ -254,6 +254,8 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} closes / undoes; hold 3s to cancel turn",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
+            [StringKeys.TrayOpenMicroSurface] =
+                "Open Micro Surface",
             [StringKeys.TrayOpenAgent] = "Open {0}",
             [StringKeys.TrayExit] = "Exit",
 

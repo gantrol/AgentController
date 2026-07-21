@@ -188,6 +188,15 @@
                                       IsChecked="True"
                                       Checked="BridgeEnabledCheckBox_Changed"
                                       Unchecked="BridgeEnabledCheckBox_Changed" />
+                            <Button Width="58"
+                                    Margin="0,0,4,0"
+                                    Style="{StaticResource Shell.CaptionButton}"
+                                    Content="MICRO"
+                                    FontSize="9"
+                                    FontWeight="SemiBold"
+                                    ToolTip="{loc:Loc tray.open-micro-surface}"
+                                    AutomationProperties.Name="{loc:Loc tray.open-micro-surface}"
+                                    Click="MicroSurfaceButton_Click" />
                             <Button Style="{StaticResource Shell.CaptionButton}"
                                     Content="—"
                                     ToolTip="Minimize"

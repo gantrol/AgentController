@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <AssemblyName>AgentController.MicroSurface.Wpf</AssemblyName>
+    <RootNamespace>AgentController.MicroSurface.Wpf</RootNamespace>
+    <Description>Non-activating Codex Micro surface hosted by Agent Controller.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="MicroSurfaceController.cs" />
+    <Compile Include="..\CodexMicro.Desktop\MainWindow.xaml.cs"
+             Link="MicroSurfaceWindow.xaml.cs">
+      <DependentUpon>MicroSurfaceWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\CodexMicro.Desktop\Controls\*.cs"
+             Link="Controls\%(Filename)%(Extension)" />
+    <Compile Include="..\CodexMicro.Desktop\Services\*.cs"
+             Link="Services\%(Filename)%(Extension)" />
+    <Page Include="..\CodexMicro.Desktop\MainWindow.xaml"
+          Link="MicroSurfaceWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="..\CodexMicro.Desktop\App.xaml"
+          Link="MicroSurfaceResources.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CodexMicro.Protocol\CodexMicro.Protocol.csproj" />
+    <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CodexMicro.Desktop.Tests" />
+  </ItemGroup>
+
+</Project>

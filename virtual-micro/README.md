@@ -1,8 +1,8 @@
-# Codex Micro Desktop Simulator
+# Codex Micro Surface and Virtual HID
 
 [简体中文](./README.zh-CN.md)
 
-An independent Windows desktop simulator for Codex Micro:
+The Windows device support and hostable Micro surface used by Agent Controller:
 
 - `CodexMicroVhfUm.dll` is a UMDF2 HID source driver built on Microsoft's
   official Virtual HID Framework (VHF). The system `Vhf.sys` enumerates
@@ -11,18 +11,18 @@ An independent Windows desktop simulator for Codex Micro:
   (`VID 303A / PID 8361`) for the Full access confirmation dialog. Its control
   contract permits only Tab, Shift+Tab, and Enter; it cannot inject text or
   arbitrary keys.
-- `CodexMicroSimulator.exe` connects directly to that HID, sends key, encoder,
-  and joystick reports to Codex, and receives Agent lighting output.
-- The transparent WPF window renders only the keypad body and supports uniform
-  resizing, dragging, the taskbar, Always on Top, and a notification-area menu.
+- `AgentController.exe` hosts the transparent WPF surface. The surface and the
+  physical controller use separate logical client IDs and held-input leases,
+  while one process-wide Broker child owns the HID and output stream.
+- The surface renders only the keypad body and supports uniform resizing,
+  dragging, Always on Top, and non-activating pointer input. It is opened from
+  Agent Controller's title bar or tray; closing it hides it.
 - The window opens at 75% of the 590 x 610 design surface and can be resized
   from approximately 60% upward.
-- A named single-instance guard keeps exactly one global pointer hook and one
-  driver-output consumer alive, preventing duplicate encoder steps and split
-  Agent-light snapshots.
-- The app and notification-area entry use an original rounded-square keypad icon
-  with a physical knob in its upper-left corner, not an OpenAI or Codex app icon.
-- The simulator accepts pointer input without activating itself. Use the mouse
+- Agent Controller's existing single-instance lifetime keeps exactly one
+  pointer hook owner and Broker output consumer alive. There is no standalone
+  Micro executable, mutex, or second notification-area icon.
+- The surface accepts pointer input without activating itself. Use the mouse
   wheel or a vertical drag on the white encoder to move through Codex options;
   click once to open or confirm. Right-clicking the white encoder does nothing.
 - A compact live capsule beside the encoder mirrors the focused Codex item as
@@ -51,14 +51,13 @@ An independent Windows desktop simulator for Codex Micro:
 The complete visual, driver, interaction, and acceptance specification is in
 [`DESIGN.zh-CN.md`](./DESIGN.zh-CN.md).
 
-## Portable desktop app
+## Legacy standalone release
 
-The [`v1.0.0` release](../../../releases/tag/codex-micro-v1.0.0) includes a
-self-contained Windows x64 portable app and a separate unsigned developer
-driver package. The app does not require a separate .NET runtime and does not
-import a self-signed root certificate. The unsigned driver package saves the
-C/C++ compilation step, but must be signed locally before installation. See
-[`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for the exact signing order.
+The historical [`v1.0.0` release](../../../releases/tag/codex-micro-v1.0.0)
+included a standalone portable simulator. Current source no longer builds or
+ships that executable; the surface is part of Agent Controller. The separate
+unsigned developer driver package remains useful, but must be signed locally
+before installation. See [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md).
 
 ## Unsigned developer driver package
 
@@ -80,7 +79,7 @@ only prebuilt developer-driver distribution.
 Prerequisites:
 
 - Windows 11 x64 is the tested build host;
-- .NET SDK 9 for the desktop app and tests;
+- .NET SDK 10 for Agent Controller, the hosted surface, and tests;
 - the reproducible driver route is Visual Studio/Build Tools 2022 with
   **Desktop development with C++**, MSVC v143 x64/x86 build tools, x64/x86
   Spectre-mitigated libraries, Windows SDK `10.0.26100.0`, and MSBuild;
@@ -92,11 +91,11 @@ Visual Studio 2026 can drive the build when the v143 toolset and matching
 26100 SDK components are also installed. The project intentionally pins the
 26100 toolchain instead of silently moving to a newer WDK.
 
-From the repository root, build the desktop app first:
+From the repository root, build Agent Controller and its hosted surface first:
 
 ```powershell
-dotnet restore .\virtual-micro\src\CodexMicro.Desktop\CodexMicro.Desktop.csproj
-dotnet build .\virtual-micro\src\CodexMicro.Desktop\CodexMicro.Desktop.csproj -c Release --no-restore
+dotnet restore .\AgentController.sln
+dotnet build .\app\AgentController.csproj -c Release --no-restore
 ```
 
 Then locate the installed 64-bit MSBuild and compile both the UMDF2 source
@@ -118,7 +117,7 @@ if (-not $msbuild) { throw 'Visual Studio MSBuild was not found.' }
 
 Main outputs:
 
-- Desktop app: `src/CodexMicro.Desktop/bin/Release/net9.0-windows10.0.19041.0/`
+- Hosted surface: `src/AgentController.MicroSurface.Wpf/bin/Release/net10.0-windows10.0.19041.0/`
 - Microsoft UMDF2 VHF driver package: `driver/CodexMicroVhfUm/x64/Release/`
 - Native installer: `tools/CodexMicro.DriverInstaller.Native/bin/Release/`
 

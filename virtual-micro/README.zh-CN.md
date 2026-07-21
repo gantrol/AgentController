@@ -1,6 +1,6 @@
-# Codex Micro 桌面模拟器
+# Codex Micro 面板与虚拟 HID
 
-这是一个与 AgentController 完全独立的 Windows Codex Micro 模拟器：
+这里包含 Agent Controller 使用的 Windows 设备支持和可承载 Micro 面板：
 
 - `CodexMicroVhfUm.dll` 是 UMDF2 HID source driver，直接调用微软正式 VHF
   接口并由系统内置 `Vhf.sys` 枚举 HID，暴露
@@ -8,15 +8,15 @@
 - 同一个 UMDF2 source 另创建一个仅服务于 Full access 二次确认框的受限 VHF
   键盘子设备（`VID 303A / PID 8361`）；控制协议只允许 Tab、Shift+Tab 和 Enter，
   不能输入文字或任意按键；
-- `CodexMicroSimulator.exe` 直接连接该 HID，向 Codex 发送按键、旋钮和摇杆
-  报告，并接收 Agent 灯光输出；
-- 透明 WPF 窗口只显示键盘本体，支持等比缩放、拖动、任务栏、置顶和系统托盘；
+- `AgentController.exe` 直接承载透明 WPF 面板。面板与实体手柄各自使用独立的
+  Broker 逻辑客户端 ID 和 held-input 租约，但由同一个进程级 Broker 子进程独占
+  HID 和输出流；
+- 面板只显示键盘本体，支持等比缩放、拖动、置顶和不激活输入；通过 Agent
+  Controller 标题栏或托盘打开，关闭只会隐藏；
 - 窗口默认以 `590 × 610` 设计画布的 75% 打开，可从约 60% 起继续缩放；
-- 命名单实例锁确保系统中只有一套全局鼠标钩子和驱动输出读取器，避免旋钮事件
-  重复，以及多个进程拆分 Agent 灯光快照；
-- 应用与托盘使用自制的“圆角方块底座 + 左上旋钮”图标，不复用 OpenAI
-  或 Codex 应用图标；
-- 右击机身可以重新连接、切换置顶状态和退出；托盘提供同样入口并可恢复窗口；
+- Agent Controller 现有的单实例生命周期确保只有一个鼠标钩子所有者和 Broker
+  输出消费者；不再存在独立 Micro 可执行文件、互斥锁或第二个托盘图标；
+- 右击机身可以重新连接、切换置顶状态或隐藏面板；
 - 模拟器接收鼠标但不激活自身，白色旋钮可用滚轮或上下拖动选择 Codex
   菜单项，短按打开或确认，且不会关闭当前 Codex 弹出菜单；白色旋钮右键
   不执行操作，Micro 设置只由左下黑色旋钮打开；
@@ -44,12 +44,12 @@
 完整界面尺寸、驱动身份、交互和验收条件见
 [`DESIGN.zh-CN.md`](./DESIGN.zh-CN.md)。
 
-## 便携应用
+## 历史独立版本
 
-[`v1.0.0` 正式版](../../../releases/tag/codex-micro-v1.0.0) 提供 self-contained
-Windows x64 便携应用和单独的未签名开发者驱动包。桌面应用不需要另外安装 .NET
-Runtime，也不会导入自签名根证书。未签名驱动包省掉 C/C++ 编译步骤，但安装前仍须
-在本机签名；完整顺序见 [`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
+历史 [`v1.0.0` 正式版](../../../releases/tag/codex-micro-v1.0.0) 曾提供独立便携
+模拟器。当前源码不再构建或分发该可执行文件，面板已经并入 Agent Controller。
+单独的未签名开发者驱动包仍可使用，但安装前必须在本机签名；完整顺序见
+[`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
 
 ## 未签名开发者驱动包
 
@@ -69,7 +69,7 @@ Git 仓库仍然只提交驱动源码；生成的 `.dll`、`.sys`、`.cat`、`.c
 准备环境：
 
 - 已验证的构建主机是 Windows 11 x64；
-- 用于桌面端和测试的 .NET SDK 9；
+- 用于 Agent Controller、内嵌面板和测试的 .NET SDK 10；
 - 可复现的驱动构建路线是 Visual Studio/Build Tools 2022，并安装 **使用 C++ 的
   桌面开发**、MSVC v143 x64/x86 工具、x64/x86 Spectre 缓解库、Windows SDK
   `10.0.26100.0` 和 MSBuild；
@@ -79,11 +79,11 @@ Git 仓库仍然只提交驱动源码；生成的 `.dll`、`.sys`、`.cat`、`.c
 Visual Studio 2026 也可以调度构建，但还需要安装 v143 工具集和匹配的 26100 SDK
 组件；项目有意固定 26100 工具链，不会静默切换到更新的 WDK。
 
-在仓库根目录先构建桌面端：
+在仓库根目录先构建 Agent Controller 和内嵌面板：
 
 ```powershell
-dotnet restore .\virtual-micro\src\CodexMicro.Desktop\CodexMicro.Desktop.csproj
-dotnet build .\virtual-micro\src\CodexMicro.Desktop\CodexMicro.Desktop.csproj -c Release --no-restore
+dotnet restore .\AgentController.sln
+dotnet build .\app\AgentController.csproj -c Release --no-restore
 ```
 
 再定位已安装的 64 位 MSBuild，编译 UMDF2 source driver 和原生安装器：
@@ -104,7 +104,7 @@ if (-not $msbuild) { throw '未找到 Visual Studio MSBuild。' }
 
 主要输出：
 
-- 桌面端：`src/CodexMicro.Desktop/bin/Release/net9.0-windows10.0.19041.0/`
+- 内嵌面板：`src/AgentController.MicroSurface.Wpf/bin/Release/net10.0-windows10.0.19041.0/`
 - Microsoft UMDF2 VHF 驱动包：`driver/CodexMicroVhfUm/x64/Release/`
 - 原生安装器：`tools/CodexMicro.DriverInstaller.Native/bin/Release/`
 

@@ -273,6 +273,8 @@ public static class StringKeys
 
     public const string TrayOpenApplication =
         "tray.open-application";
+    public const string TrayOpenMicroSurface =
+        "tray.open-micro-surface";
     public const string TrayOpenAgent = "tray.open-agent";
     public const string TrayExit = "tray.exit";
 
@@ -688,6 +690,7 @@ public static class StringKeys
         StatusAgentNotForeground,
         StatusControllerHelp,
         TrayOpenApplication,
+        TrayOpenMicroSurface,
         TrayOpenAgent,
         TrayExit,
         FeedbackStatusUpdated,

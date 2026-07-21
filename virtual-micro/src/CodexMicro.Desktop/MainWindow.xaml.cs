@@ -10,16 +10,15 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using AgentController.MicroBroker;
 using CodexMicro.Desktop.Controls;
-using CodexMicro.Desktop.Driver;
 using CodexMicro.Desktop.Services;
 using CodexMicro.Protocol;
 
 namespace CodexMicro.Desktop;
 
-public partial class MainWindow : Window
+public partial class MicroSurfaceWindow : Window
 {
     private static readonly TimeSpan EncoderStepInterval =
         TimeSpan.FromMilliseconds(24);
@@ -31,7 +30,6 @@ public partial class MainWindow : Window
         double Distance,
         string Label);
 
-    private readonly CodexCompatibilityProbe _compatibilityProbe = new();
     private readonly VirtualMicroBroker _broker = new();
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
     private readonly CodexAgentRosterObserver _agentRosterObserver = new();
@@ -50,8 +48,6 @@ public partial class MainWindow : Window
     private readonly IReadOnlyDictionary<string, Button> _joystickButtons;
     private readonly KeycapIcon[] _brandAwareIcons;
     private Button[] _agentKeys = [];
-    private CodexCompatibilityResult? _compatibility;
-    private TrayIconController? _trayIcon;
     private InactiveDialInputRouter? _inactiveDialInputRouter;
     private HwndSource? _windowSource;
     private bool _connecting;
@@ -73,16 +69,16 @@ public partial class MainWindow : Window
     private long _dialSurfaceNotBeforeTimestamp;
     private CodexMenuSelection? _cachedDialSelection;
     private bool _windowClosed;
+    private bool _allowApplicationClose;
     private Point _joystickDragOrigin;
     private string? _joystickActiveDirection;
     private double _dialVisualAngle = 42;
     private string _transportName = "虚拟 HID";
     private string _status = "正在检查 Codex 与虚拟 HID。";
 
-    public MainWindow()
+    public MicroSurfaceWindow()
     {
         InitializeComponent();
-        ApplyApplicationIcon();
         _agentKeys =
         [
             AgentKey0,
@@ -151,19 +147,13 @@ public partial class MainWindow : Window
             SettingsKey,
             "Codex Micro 设置",
             "左键：长按 ENC 并打开 Micro 设置。\n右键：重新连接虚拟 HID。");
-        SetHelp(CompatibilityLed, "Codex 兼容性", "正在等待兼容性检查。");
+        SetHelp(RuntimeLed, "Codex 运行时握手", "正在等待 Codex 运行时能力信号。");
         SetHelp(DriverLed, "虚拟 HID", "正在等待驱动连接。");
         SetHelp(ActivityLed, "最近事件", "尚未发送事件。");
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        _trayIcon ??= new TrayIconController(
-            RequestShowFromTray,
-            RequestReconnectFromTray,
-            RequestTopmostFromTray,
-            RequestExitFromTray,
-            Topmost);
         _inactiveDialInputRouter ??= new InactiveDialInputRouter(
             RouteInactiveDialWheel,
             RouteInactiveDialPointer);
@@ -224,8 +214,6 @@ public partial class MainWindow : Window
 
         _inactiveDialInputRouter?.Dispose();
         _inactiveDialInputRouter = null;
-        _trayIcon?.Dispose();
-        _trayIcon = null;
         _joystickReportQueue.Clear();
         _layoutObserver.LayoutChanged -= LayoutObserver_LayoutChanged;
         _layoutObserver.Dispose();
@@ -242,38 +230,34 @@ public partial class MainWindow : Window
         }
 
         _connecting = true;
-        SetLed(CompatibilityLed, "#B8B98B", "正在核对 Codex 指纹");
+        SetLed(RuntimeLed, "#B8B98B", "正在探测 Codex 运行时能力");
         SetLed(DriverLed, "#B8B98B", "正在查找 Codex Micro HID");
         SetLed(ActivityLed, "#B8B98B", "等待");
-        SetStatus("正在核对当前 Codex Micro 协议并连接独立虚拟 HID。\n右键左下旋钮可重新连接。");
+        SetStatus("正在连接共享 Micro Broker，并等待 Codex 运行时握手。\n右键左下旋钮可重新连接。");
         try
         {
-            _compatibility = await _compatibilityProbe.ProbeAsync();
-            ApplyPackageAssets(_compatibility.PackageRoot);
-            if (!_compatibility.IsCompatible)
-            {
-                SetLed(CompatibilityLed, "#FF7994", $"Codex {_compatibility.Build} · 指纹不兼容");
-                SetLed(DriverLed, "#B8B98B", "兼容性门未通过，未连接驱动");
-                SetStatus(_compatibility.Detail);
-                return;
-            }
-
-            SetLed(
-                CompatibilityLed,
-                _compatibility.IsReviewed ? "#9EBDFF" : "#FFD66E",
-                _compatibility.IsReviewed
-                    ? $"Codex {_compatibility.Build} · 已验证\n{_compatibility.Fingerprint}"
-                    : $"Codex {_compatibility.Build} · 未审核，兼容模式\n{_compatibility.Detail}");
+            await Task.Yield();
+            ApplyPackageAssets(packageRoot: null);
             try
             {
-                var info = _broker.Connect(_compatibility);
+                var info = _broker.Connect();
                 _transportName = info.TransportName;
-                SetLed(DriverLed, "#B8B98B", $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16}");
-                SetLed(ActivityLed, "#B8B98B", "HID / RPC 已就绪");
-                SetStatus(
-                    $"Codex {_compatibility.Build} 已连接。\n" +
-                    $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}。\n" +
-                    "点击黑色设置旋钮打开设置；Codex 键会将 Codex 切到前台。");
+                SetLed(
+                    DriverLed,
+                    "#9EBDFF",
+                    $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16}");
+                if (_broker.IsReady)
+                {
+                    ApplyRuntimeReadyState();
+                }
+                else
+                {
+                    SetLed(RuntimeLed, "#FFD66E", "等待 Codex 运行时握手；不检查应用版本号");
+                    SetLed(ActivityLed, "#B8B98B", "HID 已连接 · RPC 等待中");
+                    SetStatus(
+                        $"{info.TransportName} 已连接；正在等待 Codex 发出首个 RPC。\n" +
+                        "面板不会按 Codex 版本号启停，握手成功后自动就绪。");
+                }
             }
             catch (Exception exception) when (
                 exception is InvalidOperationException or
@@ -734,7 +718,7 @@ public partial class MainWindow : Window
 
             Func<Task<MicroSendResult>> sendStep = routesDialog
                 ? () => _broker.TapDialogKeyAsync(
-                    VhfKeyboardKey.Tab,
+                    BrokerKeyboardKey.Tab,
                     shift: clockwise)
                 : () => _broker.StepEncoderAsync(clockwise);
             var stepLabel = routesDialog
@@ -787,7 +771,7 @@ public partial class MainWindow : Window
             };
             var result = await RunActionAsync(
                 routesDialog
-                    ? () => _broker.TapDialogKeyAsync(VhfKeyboardKey.Enter)
+                    ? () => _broker.TapDialogKeyAsync(BrokerKeyboardKey.Enter)
                     : () => _broker.TapKeyAsync("ENC"),
                 routesDialog
                     ? "确认当前对话框选项 · VHF Enter"
@@ -870,7 +854,7 @@ public partial class MainWindow : Window
             {
                 observedVersion = _dialSelectionFeedbackVersion;
                 var selection = await _menuSelectionObserver.ObserveAsync(
-                    _compatibility?.PackageRoot);
+                    packageRoot: null);
                 if (_windowClosed)
                 {
                     return;
@@ -1026,7 +1010,7 @@ public partial class MainWindow : Window
             try
             {
                 if (CodexWindowActivator.TryActivate(
-                    _compatibility?.PackageRoot))
+                    packageRoot: null))
                 {
                     return true;
                 }
@@ -1493,13 +1477,12 @@ public partial class MainWindow : Window
     private async void ReconnectMenuItem_Click(object sender, RoutedEventArgs e) =>
         await ConnectAsync();
 
-    private void ExitMenuItem_Click(object sender, RoutedEventArgs e) => Close();
+    private void ExitMenuItem_Click(object sender, RoutedEventArgs e) => Hide();
 
     private void SetTopmostState(bool value)
     {
         Topmost = value;
         TopmostMenuItem.IsChecked = value;
-        _trayIcon?.SetTopmost(value);
         SetStatus(value
             ? "窗口已置顶。右击机身空白处可取消置顶。"
             : "窗口已取消置顶。右击机身空白处可再次置顶。");
@@ -1517,7 +1500,16 @@ public partial class MainWindow : Window
     {
         _ = Dispatcher.InvokeAsync(() =>
         {
-            if (state.StartsWith("faulted:", StringComparison.Ordinal))
+            if (state == "ready")
+            {
+                ApplyRuntimeReadyState();
+            }
+            else if (state == "waiting-runtime-handshake")
+            {
+                SetLed(RuntimeLed, "#FFD66E", "等待 Codex 运行时握手；版本号不参与判断");
+                SetLed(ActivityLed, "#B8B98B", "RPC 等待中");
+            }
+            else if (state.StartsWith("faulted:", StringComparison.Ordinal))
             {
                 var detail = state["faulted:".Length..];
                 SetLed(DriverLed, "#FF7994", "虚拟 HID 链路故障");
@@ -1527,6 +1519,16 @@ public partial class MainWindow : Window
                     detail);
             }
         });
+    }
+
+    private void ApplyRuntimeReadyState()
+    {
+        SetLed(RuntimeLed, "#9EBDFF", "Codex 运行时握手已确认 · 无版本白名单");
+        SetLed(DriverLed, "#9EBDFF", $"{_transportName} 已连接");
+        SetLed(ActivityLed, "#9EBDFF", "HID / RPC 已就绪");
+        SetStatus(
+            $"{_transportName} 与 Codex 运行时握手已完成。\n" +
+            "点击黑色设置旋钮打开设置；Codex 键会将 Codex 切到前台。");
     }
 
     private void Broker_SlotLightingObserved(
@@ -1666,28 +1668,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyApplicationIcon()
-    {
-        using var icon = TrayIconController.CreateApplicationIcon();
-        var image = Imaging.CreateBitmapSourceFromHIcon(
-            icon.Handle,
-            Int32Rect.Empty,
-            BitmapSizeOptions.FromEmptyOptions());
-        image.Freeze();
-        Icon = image;
-    }
-
     private void SetStatus(string value)
     {
         _status = value;
         AutomationProperties.SetHelpText(this, value);
         SetHelp(
             DeviceFrame,
-            "Codex Micro Simulator",
+            "Agent Controller · Micro Surface",
             $"{value}\n\n拖动机身移动 · 拖动边缘缩放 · 右击机身打开窗口菜单");
     }
 
-    private void RequestShowFromTray() => DispatchToWindow(() =>
+    internal void ShowSurface()
     {
         if (!IsVisible)
         {
@@ -1702,31 +1693,23 @@ public partial class MainWindow : Window
         NonActivatingWindow.ShowWithoutActivation(
             _windowSource?.Handle ?? IntPtr.Zero,
             Topmost);
-    });
+    }
 
-    private void RequestReconnectFromTray() =>
-        DispatchToWindow(() => _ = ConnectAsync());
-
-    private void RequestTopmostFromTray(bool value) =>
-        DispatchToWindow(() => SetTopmostState(value));
-
-    private void RequestExitFromTray() => DispatchToWindow(Close);
-
-    private void DispatchToWindow(Action action)
+    internal void CloseForApplicationExit()
     {
-        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        _allowApplicationClose = true;
+        Close();
+    }
+
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_allowApplicationClose)
         {
             return;
         }
 
-        if (Dispatcher.CheckAccess())
-        {
-            action();
-        }
-        else
-        {
-            _ = Dispatcher.InvokeAsync(action);
-        }
+        e.Cancel = true;
+        Hide();
     }
 
     private void SetLed(
@@ -1736,8 +1719,8 @@ public partial class MainWindow : Window
     {
         led.Fill = new SolidColorBrush(
             (Color)ColorConverter.ConvertFromString(color));
-        var title = led == CompatibilityLed
-            ? "Codex 兼容性"
+        var title = led == RuntimeLed
+            ? "Codex 运行时握手"
             : led == DriverLed
                 ? "虚拟 HID"
                 : "最近事件";
