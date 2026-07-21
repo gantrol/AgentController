@@ -37,6 +37,7 @@ public sealed class MicroBrokerClient : IDisposable
     private volatile bool _connected;
     private bool _disposed;
     private int _state = (int)MicroBrokerClientState.Unavailable;
+    private int _codexLinkObserved;
 
     public MicroBrokerClient(
         string clientName,
@@ -69,11 +70,17 @@ public sealed class MicroBrokerClient : IDisposable
     public event EventHandler<MicroBrokerClientState>?
         StateChanged;
 
+    public event EventHandler<bool>?
+        CodexLinkObservedChanged;
+
     public MicroBrokerClientState State
     {
         get => (MicroBrokerClientState)Volatile.Read(ref _state);
         private set => SetState(value);
     }
+
+    public bool CodexLinkObserved =>
+        Volatile.Read(ref _codexLinkObserved) != 0;
 
     public BrokerDriverInfo Connect()
     {
@@ -186,13 +193,6 @@ public sealed class MicroBrokerClient : IDisposable
                 "AgentController Micro Broker is unavailable.");
         }
 
-        if (State != MicroBrokerClientState.Ready)
-        {
-            return MicroSendResult.NotSent(
-                "Codex has not completed a Micro HID handshake; use the " +
-                "non-Micro fallback until runtime capability is observed.");
-        }
-
         try
         {
             var response = SendRequest(
@@ -218,12 +218,6 @@ public sealed class MicroBrokerClient : IDisposable
         {
             return MicroSendResult.NotSent(
                 "AgentController Micro Broker is unavailable.");
-        }
-
-        if (State != MicroBrokerClientState.Ready)
-        {
-            return MicroSendResult.NotSent(
-                "Codex has not completed a Micro HID handshake.");
         }
 
         try
@@ -572,10 +566,15 @@ public sealed class MicroBrokerClient : IDisposable
         return response.Send.Value;
     }
 
-    private void UpdateDriverState(BrokerDriverInfo driver) =>
-        State = driver.CodexLinkObserved
-            ? MicroBrokerClientState.Ready
-            : MicroBrokerClientState.Unavailable;
+    private void UpdateDriverState(BrokerDriverInfo driver)
+    {
+        SetCodexLinkObserved(driver.CodexLinkObserved);
+        // Driver availability is the transport capability. Codex output is
+        // useful telemetry, but cannot gate input: some Codex builds emit no
+        // device-to-host RPC until after the first host input, so gating here
+        // creates a circular dependency and incorrectly forces UIA fallback.
+        State = MicroBrokerClientState.Ready;
+    }
 
     private void MarkDisconnected()
     {
@@ -583,7 +582,34 @@ public sealed class MicroBrokerClient : IDisposable
         Volatile.Write(
             ref _retryAfter,
             Environment.TickCount64 + ConnectFailureBackoffMs);
+        SetCodexLinkObserved(false);
         State = MicroBrokerClientState.Faulted;
+    }
+
+    private void SetCodexLinkObserved(bool value)
+    {
+        var next = value ? 1 : 0;
+        if (Interlocked.Exchange(ref _codexLinkObserved, next) == next)
+        {
+            return;
+        }
+
+        var handlers = CodexLinkObservedChanged;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<bool> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(this, value);
+            }
+            catch
+            {
+            }
+        }
     }
 
     private void PublishSlotLighting(SlotLightingSnapshot snapshot)

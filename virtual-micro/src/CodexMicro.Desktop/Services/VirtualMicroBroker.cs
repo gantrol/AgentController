@@ -23,6 +23,8 @@ internal sealed class VirtualMicroBroker : IDisposable
     {
         _driver.SlotLightingObserved += Driver_SlotLightingObserved;
         _driver.StateChanged += Driver_StateChanged;
+        _driver.CodexLinkObservedChanged +=
+            Driver_CodexLinkObservedChanged;
     }
 
     public event EventHandler<string>? Log;
@@ -33,6 +35,9 @@ internal sealed class VirtualMicroBroker : IDisposable
 
     public bool IsReady =>
         !_disposed && _driver.State == MicroBrokerClientState.Ready;
+
+    public bool CodexLinkObserved =>
+        !_disposed && _driver.CodexLinkObserved;
 
     public bool SupportsDialogKeyboard =>
         IsReady && _supportsDialogKeyboard;
@@ -48,7 +53,7 @@ internal sealed class VirtualMicroBroker : IDisposable
             this,
             info.CodexLinkObserved
                 ? $"{info.TransportName} ready · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}"
-                : $"{info.TransportName} connected · waiting for Codex runtime handshake");
+                : $"{info.TransportName} connected · direct HID ready; Codex output not yet observed");
         return info;
     }
 
@@ -208,6 +213,8 @@ internal sealed class VirtualMicroBroker : IDisposable
         _disposed = true;
         _driver.SlotLightingObserved -= Driver_SlotLightingObserved;
         _driver.StateChanged -= Driver_StateChanged;
+        _driver.CodexLinkObservedChanged -=
+            Driver_CodexLinkObservedChanged;
         _driver.Dispose();
         _supportsDialogKeyboard = false;
     }
@@ -220,7 +227,7 @@ internal sealed class VirtualMicroBroker : IDisposable
         if (!IsReady)
         {
             return Task.FromResult(MicroSendResult.NotSent(
-                "Codex has not completed the runtime Micro handshake."));
+                "The shared Micro Broker is not connected to the virtual HID."));
         }
 
         return Task.Run(() =>
@@ -271,14 +278,20 @@ internal sealed class VirtualMicroBroker : IDisposable
         MicroBrokerClientState state) =>
         PublishState(state);
 
+    private void Driver_CodexLinkObservedChanged(
+        object? sender,
+        bool observed) =>
+        PublishState(_driver.State);
+
     private void PublishState(MicroBrokerClientState state) =>
         StateChanged?.Invoke(
             this,
             state switch
             {
-                MicroBrokerClientState.Ready => "ready",
+                MicroBrokerClientState.Ready =>
+                    CodexLinkObserved ? "ready" : "transport-ready",
                 MicroBrokerClientState.Faulted =>
                     "faulted:Micro Broker is unavailable.",
-                _ => "waiting-runtime-handshake",
+                _ => "unavailable",
             });
 }

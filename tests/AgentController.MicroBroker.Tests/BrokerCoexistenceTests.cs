@@ -418,7 +418,7 @@ public sealed class BrokerCoexistenceTests
     }
 
     [Fact]
-    public async Task InputFallsBackUntilCodexRuntimeHandshakeIsObserved()
+    public async Task InputUsesHidBeforeCodexOutputTelemetryIsObserved()
     {
         var suffix = Guid.NewGuid().ToString("N");
         var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
@@ -444,25 +444,29 @@ public sealed class BrokerCoexistenceTests
         var initial = client.Connect();
         Assert.False(initial.CodexLinkObserved);
         Assert.Equal(
-            MicroBrokerClientState.Unavailable,
+            MicroBrokerClientState.Ready,
             client.State);
+        Assert.False(client.CodexLinkObserved);
         Assert.Equal(
-            MicroSendDisposition.NotSent,
+            MicroSendDisposition.Accepted,
             client.Submit(
                 MicroRpcCodec.EncodeHid("ENC_CW", 2)).Disposition);
-        Assert.Empty(driver.Messages);
+        Assert.Contains(
+            driver.Messages,
+            message => message.Contains("\"k\":\"ENC_CW\""));
 
         driver.EnqueueHostRpc(
             "{\"id\":7,\"method\":\"v.oai.config.get\",\"params\":[]}");
         var deadline = Environment.TickCount64 + 3_000;
         while (
-            client.State != MicroBrokerClientState.Ready &&
+            !client.CodexLinkObserved &&
             Environment.TickCount64 < deadline)
         {
             await Task.Delay(20);
         }
 
         Assert.Equal(MicroBrokerClientState.Ready, client.State);
+        Assert.True(client.CodexLinkObserved);
         Assert.Equal(
             MicroSendDisposition.Accepted,
             client.Submit(

@@ -233,7 +233,7 @@ public partial class MicroSurfaceWindow : Window
         SetLed(RuntimeLed, "#B8B98B", "正在探测 Codex 运行时能力");
         SetLed(DriverLed, "#B8B98B", "正在查找 Codex Micro HID");
         SetLed(ActivityLed, "#B8B98B", "等待");
-        SetStatus("正在连接共享 Micro Broker，并等待 Codex 运行时握手。\n右键左下旋钮可重新连接。");
+        SetStatus("正在连接共享 Micro Broker 与 Codex Micro HID。\n右键左下旋钮可重新连接。");
         try
         {
             await Task.Yield();
@@ -246,17 +246,13 @@ public partial class MicroSurfaceWindow : Window
                     DriverLed,
                     "#9EBDFF",
                     $"{info.TransportName} 已连接 · epoch {info.ConnectionEpoch:X16}");
-                if (_broker.IsReady)
+                if (_broker.CodexLinkObserved)
                 {
                     ApplyRuntimeReadyState();
                 }
                 else
                 {
-                    SetLed(RuntimeLed, "#FFD66E", "等待 Codex 运行时握手；不检查应用版本号");
-                    SetLed(ActivityLed, "#B8B98B", "HID 已连接 · RPC 等待中");
-                    SetStatus(
-                        $"{info.TransportName} 已连接；正在等待 Codex 发出首个 RPC。\n" +
-                        "面板不会按 Codex 版本号启停，握手成功后自动就绪。");
+                    ApplyTransportReadyState();
                 }
             }
             catch (Exception exception) when (
@@ -1504,10 +1500,9 @@ public partial class MicroSurfaceWindow : Window
             {
                 ApplyRuntimeReadyState();
             }
-            else if (state == "waiting-runtime-handshake")
+            else if (state == "transport-ready")
             {
-                SetLed(RuntimeLed, "#FFD66E", "等待 Codex 运行时握手；版本号不参与判断");
-                SetLed(ActivityLed, "#B8B98B", "RPC 等待中");
+                ApplyTransportReadyState();
             }
             else if (state.StartsWith("faulted:", StringComparison.Ordinal))
             {
@@ -1529,6 +1524,16 @@ public partial class MicroSurfaceWindow : Window
         SetStatus(
             $"{_transportName} 与 Codex 运行时握手已完成。\n" +
             "点击黑色设置旋钮打开设置；Codex 键会将 Codex 切到前台。");
+    }
+
+    private void ApplyTransportReadyState()
+    {
+        SetLed(RuntimeLed, "#FFD66E", "尚未观察到 Codex 输出；这不会阻止 HID 输入");
+        SetLed(DriverLed, "#9EBDFF", $"{_transportName} 已连接");
+        SetLed(ActivityLed, "#9EBDFF", "Micro HID 输入已就绪");
+        SetStatus(
+            $"{_transportName} 已连接，输入会直接走 Micro HID。\n" +
+            "Codex 输出握手仅用于诊断，不参与路由，也不会触发 UIA 降级。");
     }
 
     private void Broker_SlotLightingObserved(
