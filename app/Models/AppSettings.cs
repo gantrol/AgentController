@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace CodexController.Models;
 
 public sealed class AppSettings
@@ -6,6 +8,14 @@ public sealed class AppSettings
     public string Language { get; set; } = "auto";
     public string TextSize { get; set; } = UiTextSizes.Medium;
     public string ActiveAgentId { get; set; } = "codex";
+    /// <summary>
+    /// Emergency pause for the current process only. Controller input starts
+    /// enabled on every launch; exiting Agent Controller is the persistent
+    /// hard-off switch. Keeping this out of settings prevents a stale or
+    /// accidentally toggled value from disabling every Micro control after an
+    /// app update.
+    /// </summary>
+    [JsonIgnore]
     public bool BridgeEnabled { get; set; } = true;
     public bool OnlyWhenCodexForeground { get; set; } = true;
     public bool HapticFeedback { get; set; } = true;

@@ -15,6 +15,43 @@ public sealed class SettingsServiceTests
     }
 
     [Fact]
+    public void LegacyPersistedBridgeOffCannotDisableTheNextSession()
+    {
+        using var store = new TemporarySettingsStore();
+        store.WriteJson(
+            """
+            {
+              "Version": 3,
+              "BridgeEnabled": false,
+              "OnlyWhenCodexForeground": true
+            }
+            """);
+
+        var settings = store.Service.Load();
+
+        Assert.True(settings.BridgeEnabled);
+        Assert.True(settings.OnlyWhenCodexForeground);
+    }
+
+    [Fact]
+    public void SaveDoesNotPersistTheSessionBridgeSwitch()
+    {
+        using var store = new TemporarySettingsStore();
+        var settings = new AppSettings
+        {
+            BridgeEnabled = false,
+        };
+
+        store.Service.Save(settings);
+
+        Assert.DoesNotContain(
+            "BridgeEnabled",
+            File.ReadAllText(store.Service.SettingsPath));
+        Assert.True(store.Service.Load().BridgeEnabled);
+        Assert.False(settings.BridgeEnabled);
+    }
+
+    [Fact]
     public void LoadNormalizesInvalidLanguageAndBlankAgentId()
     {
         using var store = new TemporarySettingsStore();
@@ -334,6 +371,12 @@ public sealed class SettingsServiceTests
             File.WriteAllText(
                 Service.SettingsPath,
                 JsonSerializer.Serialize(settings));
+        }
+
+        public void WriteJson(string json)
+        {
+            Directory.CreateDirectory(Service.SettingsDirectory);
+            File.WriteAllText(Service.SettingsPath, json);
         }
 
         public void Dispose()

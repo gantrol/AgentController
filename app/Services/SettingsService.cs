@@ -137,7 +137,6 @@ public sealed class SettingsService
             Language = settings.Language,
             TextSize = settings.TextSize,
             ActiveAgentId = settings.ActiveAgentId,
-            BridgeEnabled = settings.BridgeEnabled,
             OnlyWhenCodexForeground =
                 settings.OnlyWhenCodexForeground,
             HapticFeedback = settings.HapticFeedback,

@@ -25,7 +25,8 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.DeviceConnected] = "Connected · {0}",
             [StringKeys.DeviceDisconnected] =
                 "Controller disconnected",
-            [StringKeys.DeviceEnableBridge] = "Enable bridge",
+            [StringKeys.DeviceEnableBridge] =
+                "Controller input (this session)",
             [StringKeys.DeviceGamepadBridge] = "Gamepad bridge",
             [StringKeys.DeviceLiveInput] = "Live input",
             [StringKeys.DeviceIdle] = "Idle",
@@ -450,13 +451,15 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.MessageDataLoadFailed] =
                 "Data load failed · {0}",
             [StringKeys.MessageExecuted] = "Executed",
-            [StringKeys.MessageSafePreview] = "Bridge is off",
+            [StringKeys.MessageSafePreview] =
+                "Controller input paused for this session",
             [StringKeys.MessageWaitingForAgentForeground] =
                 "Waiting for {0} to enter the foreground",
             [StringKeys.MessageNotExecuted] = "Not executed",
-            [StringKeys.MessageBridgeEnabled] = "Bridge enabled",
+            [StringKeys.MessageBridgeEnabled] =
+                "Controller input enabled",
             [StringKeys.MessageBridgeSafePreview] =
-                "The controller will not control Codex. Re-enable it at the top of Agent Controller.",
+                "The controller will not control Codex for now. Re-enable it at the top; it also resets on restart.",
             [StringKeys.MessageAgentDataRefreshed] =
                 "Refreshed local {0} tasks",
             [StringKeys.MessageAgentShortcutsOpened] =

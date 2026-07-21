@@ -24,7 +24,8 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.DeviceWaiting] = "等待手柄",
             [StringKeys.DeviceConnected] = "手柄已连接：{0}",
             [StringKeys.DeviceDisconnected] = "手柄连接已断开",
-            [StringKeys.DeviceEnableBridge] = "启用桥接",
+            [StringKeys.DeviceEnableBridge] =
+                "手柄控制（仅本次运行）",
             [StringKeys.DeviceGamepadBridge] = "手柄桥接",
             [StringKeys.DeviceLiveInput] = "实时输入",
             [StringKeys.DeviceIdle] = "空闲",
@@ -433,13 +434,13 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.MessageDataLoadFailed] =
                 "数据读取失败 · {0}",
             [StringKeys.MessageExecuted] = "已执行",
-            [StringKeys.MessageSafePreview] = "桥接已关闭",
+            [StringKeys.MessageSafePreview] = "本次运行已暂停手柄控制",
             [StringKeys.MessageWaitingForAgentForeground] =
                 "等待 {0} 前台",
             [StringKeys.MessageNotExecuted] = "未执行",
-            [StringKeys.MessageBridgeEnabled] = "桥接已启用",
+            [StringKeys.MessageBridgeEnabled] = "手柄控制已启用",
             [StringKeys.MessageBridgeSafePreview] =
-                "手柄不会控制 Codex。请在 Agent Controller 顶部重新启用。",
+                "手柄暂时不会控制 Codex；可在顶部重新启用，重启后也会自动启用。",
             [StringKeys.MessageAgentDataRefreshed] =
                 "已刷新 {0} 本机任务",
             [StringKeys.MessageAgentShortcutsOpened] =
