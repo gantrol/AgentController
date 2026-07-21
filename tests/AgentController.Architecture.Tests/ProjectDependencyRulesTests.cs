@@ -21,6 +21,14 @@ public sealed class ProjectDependencyRulesTests
             "src/AgentController.Application/AgentController.Application.csproj",
             ["AgentController.Domain", "AgentController.Platform.Abstractions"]
         },
+        {
+            "src/AgentController.Platform.MacOS/AgentController.Platform.MacOS.csproj",
+            ["AgentController.Platform.Abstractions"]
+        },
+        {
+            "src/AgentController.Desktop/AgentController.Desktop.csproj",
+            ["AgentController.Application", "AgentController.Platform.MacOS"]
+        },
     };
 
     [Theory]
@@ -41,6 +49,8 @@ public sealed class ProjectDependencyRulesTests
     [InlineData("src/AgentController.Domain/AgentController.Domain.csproj")]
     [InlineData("src/AgentController.Application/AgentController.Application.csproj")]
     [InlineData("src/AgentController.Platform.Abstractions/AgentController.Platform.Abstractions.csproj")]
+    [InlineData("src/AgentController.Platform.MacOS/AgentController.Platform.MacOS.csproj")]
+    [InlineData("src/AgentController.Desktop/AgentController.Desktop.csproj")]
     public void CoreProjectsRemainCrossPlatform(string relativeProjectPath)
     {
         var document = XDocument.Load(Resolve(relativeProjectPath));

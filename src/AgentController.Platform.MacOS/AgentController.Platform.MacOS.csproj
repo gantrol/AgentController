@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AgentController.Platform.MacOS</AssemblyName>
+    <RootNamespace>AgentController.Platform.MacOS</RootNamespace>
+    <Description>Native macOS platform services for Agent Controller Foundation Preview.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentController.Platform.Abstractions\AgentController.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgentController.Platform.MacOS.Tests" />
+  </ItemGroup>
+</Project>

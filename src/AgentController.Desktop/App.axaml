@@ -1,0 +1,30 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgentController.Desktop.App"
+             Name="Agent Controller"
+             RequestedThemeVariant="Dark">
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="About Agent Controller…"
+                      Click="About_OnClick" />
+      <NativeMenuItem Header="Refresh"
+                      Gesture="Meta+R"
+                      Click="Refresh_OnClick" />
+      <NativeMenuItem Header="Privacy Settings…"
+                      Click="Privacy_OnClick" />
+    </NativeMenu>
+  </NativeMenu.Menu>
+
+  <NativeDock.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="Show Agent Controller"
+                      Click="ShowMainWindow_OnClick" />
+      <NativeMenuItem Header="Refresh"
+                      Click="Refresh_OnClick" />
+    </NativeMenu>
+  </NativeDock.Menu>
+</Application>

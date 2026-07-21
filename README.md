@@ -3,7 +3,7 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-1.0.2-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![version](https://img.shields.io/badge/version-1.0.2-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
 
 Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex, and perhaps you wanted one. But consider the evidence:
 
@@ -81,6 +81,15 @@ Unfortunately, it also depends on an **unsigned developer driver package**. The 
 
 The tested controllers are the 8BitDo Ultimate 2, Xbox Series controller, and Flydigi Vader 4 Pro. Compatibility with other XInput devices depends on their XInput implementation and still needs physical validation.
 
+### macOS Foundation Preview
+
+The repository now contains an unsigned, read-only macOS 14+ Foundation
+Preview. Its Avalonia shell observes Apple Game Controller input, separates
+platform permissions, detects the Codex CLI, provides native menu/Dock entries,
+and can be cross-published for Apple Silicon and Intel. It does not yet send
+Codex actions and does not claim virtual Micro parity. Build and validation
+instructions are in the [macOS Foundation Preview guide](docs/macos-foundation-preview.md).
+
 ### Install from Releases
 
 1. Download the latest zip from [Releases](../../releases).
@@ -145,7 +154,8 @@ For implementation status and edge cases, see the [v1 control reference](public/
 - The Simple model list uses the official command shortcut; conflicts are blocked. Restart Codex once if it does not hot-load a newly written binding.
 - Unit tests and a successful Release build do not replace physical end-to-end testing against the current Codex app, account, and model options.
 - Agent slots currently use the first six tasks in the live snapshot; Agent and Command slots are not yet user-configurable.
-- v1 does not yet provide a macOS build, commercially signed driver installer, configurable Agent/Command slots, or complete Plan-mode controller routing.
+- macOS currently provides only the unsigned, read-only Foundation Preview; App Server actions, voice, native Micro, signing/notarization, and physical Mac acceptance remain open.
+- v1 does not yet provide a commercially signed driver installer, configurable Agent/Command slots, or complete Plan-mode controller routing.
 
 ### Beyond Codex
 
@@ -164,6 +174,16 @@ dotnet test AgentController.sln -c Release
 ```
 
 Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The packaging script creates a self-contained Windows x64 zip and SHA-256 checksum under `dist/`.
+
+To cross-build the unsigned macOS Foundation Preview for Apple Silicon and
+Intel, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
+```
+
+See the
+[preview guide](docs/macos-foundation-preview.md) before testing it on a Mac.
 
 To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
 

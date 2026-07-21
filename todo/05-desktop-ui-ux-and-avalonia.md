@@ -1,6 +1,6 @@
 # 05 — 桌面 UI/UX 与 Avalonia
 
-> Status: Planned
+> Status: In Progress — Foundation Preview shell
 > Priority: P1
 > Depends on: 01-core-architecture, 04-custom-bindings-and-device-profiles
 
@@ -56,10 +56,10 @@ Onboarding / Live Control / Bindings / Integrations / Diagnostics / Settings
 
 ### Avalonia 技术验证
 
-- [ ] 建立最小 Windows/macOS 双平台 shell。
+- [x] 建立最小 Windows/macOS 双平台 shell；`AgentController.Desktop` 使用 Avalonia 12.1/.NET 10，当前仅承载只读 Foundation Preview。
 - [ ] 验证透明置顶 Overlay、点击穿透、多显示器、DPI 和全屏应用行为。
 - [ ] 验证平台原生菜单、托盘/Menu Bar、单实例和后台启动。
-- [ ] 决定最低 Windows/macOS 版本并写入支持矩阵。
+- [x] 决定最低 Windows/macOS 版本并写入支持矩阵：旧 WPF 为 Windows 10 build 19041+，Foundation Preview 为 macOS 14+。
 - [ ] Windows 先完成一个真实 Live Control 垂直切片，再迁移全部页面。
 
 ### Feature 组织

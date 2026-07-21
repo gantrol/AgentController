@@ -23,6 +23,8 @@
 !/public/
 !/public/docs/
 !/public/docs/**
+!/packaging/
+!/packaging/**
 !/scripts/
 !/scripts/**
 !/virtual-micro/

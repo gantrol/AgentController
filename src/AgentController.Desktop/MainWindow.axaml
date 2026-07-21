@@ -1,0 +1,235 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AgentController.Desktop.ViewModels"
+        x:Class="AgentController.Desktop.MainWindow"
+        x:DataType="vm:FoundationViewModel"
+        Title="Agent Controller · Foundation Preview"
+        Width="1040"
+        Height="760"
+        MinWidth="760"
+        MinHeight="560"
+        Background="#0B0D12">
+  <Window.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="#131722" />
+      <Setter Property="BorderBrush" Value="#273044" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="18" />
+    </Style>
+    <Style Selector="Border.row">
+      <Setter Property="Background" Value="#0E1119" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="Margin" Value="0,5,0,0" />
+    </Style>
+    <Style Selector="TextBlock.eyebrow">
+      <Setter Property="Foreground" Value="#91A3C9" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="Foreground" Value="#F5F7FF" />
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.detail">
+      <Setter Property="Foreground" Value="#A7B0C3" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </Window.Styles>
+
+  <ScrollViewer>
+    <StackPanel Margin="28" Spacing="18">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="5">
+          <TextBlock Classes="eyebrow"
+                     Text="AGENT CONTROLLER · macOS" />
+          <TextBlock FontSize="30"
+                     FontWeight="SemiBold"
+                     Foreground="#FFFFFF"
+                     Text="Foundation Preview" />
+          <TextBlock Classes="detail"
+                     MaxWidth="720"
+                     Text="A read-only platform slice for controller, permission, and Codex CLI validation. It does not claim Windows Full Micro parity." />
+        </StackPanel>
+        <Border Grid.Column="1"
+                VerticalAlignment="Top"
+                Padding="11,6"
+                CornerRadius="999"
+                Background="#3A2B12"
+                BorderBrush="#8E682A"
+                BorderThickness="1">
+          <TextBlock Foreground="#FFD894"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Text="LIMITED PREVIEW" />
+        </Border>
+      </Grid>
+
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+          <StackPanel Spacing="5">
+            <TextBlock Classes="eyebrow" Text="PLATFORM" />
+            <TextBlock Classes="sectionTitle"
+                       Text="{Binding PlatformSummary}" />
+            <TextBlock Classes="detail"
+                       Text="{Binding CodexSummary}" />
+          </StackPanel>
+          <Button Grid.Column="1"
+                  Padding="16,9"
+                  VerticalAlignment="Center"
+                  Command="{Binding RefreshCommand}"
+                  Content="Refresh"
+                  AutomationProperties.Name="Refresh platform status" />
+          <TextBlock Grid.Row="1"
+                     Grid.ColumnSpan="2"
+                     Margin="0,12,0,0"
+                     Foreground="#8290AA"
+                     FontSize="11"
+                     Text="{Binding LastUpdated}" />
+        </Grid>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="9">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="eyebrow" Text="APPLE GAME CONTROLLER" />
+              <TextBlock Classes="sectionTitle"
+                         Text="{Binding ControllerSummary}" />
+            </StackPanel>
+            <TextBlock Grid.Column="1"
+                       VerticalAlignment="Center"
+                       Foreground="#72D7A6"
+                       Text="Live polling · 120 ms" />
+          </Grid>
+
+          <ItemsControl ItemsSource="{Binding Controllers}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ControllerRowViewModel">
+                <Border Classes="row">
+                  <Grid ColumnDefinitions="1.25*,1.25*,1*,Auto">
+                    <StackPanel>
+                      <TextBlock Foreground="#FFFFFF"
+                                 FontWeight="SemiBold"
+                                 Text="{Binding DisplayName}" />
+                      <TextBlock Classes="detail"
+                                 Text="{Binding Identity}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Classes="eyebrow" Text="STICKS" />
+                      <TextBlock Foreground="#DDE5F5"
+                                 Text="{Binding Sticks}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Classes="eyebrow" Text="INPUT" />
+                      <TextBlock Foreground="#DDE5F5"
+                                 Text="{Binding Input}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="3"
+                                HorizontalAlignment="Right">
+                      <TextBlock Foreground="#91E6BC"
+                                 HorizontalAlignment="Right"
+                                 Text="{Binding CurrentState}" />
+                      <TextBlock Classes="detail"
+                                 HorizontalAlignment="Right"
+                                 Text="{Binding Battery}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Classes="detail"
+                     Text="{Binding ControllerEmptyState}" />
+        </StackPanel>
+      </Border>
+
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="18">
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="eyebrow" Text="CAPABILITIES" />
+            <TextBlock Classes="sectionTitle" Text="What this build can prove" />
+            <ItemsControl ItemsSource="{Binding Capabilities}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CapabilityRowViewModel">
+                  <Border Classes="row">
+                    <StackPanel Spacing="3">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Foreground="#F4F6FC"
+                                   Text="{Binding Name}" />
+                        <TextBlock Grid.Column="1"
+                                   Foreground="#9FB6E8"
+                                   Text="{Binding State}" />
+                      </Grid>
+                      <TextBlock Classes="detail"
+                                 Text="{Binding Detail}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Column="1" Classes="card">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Classes="eyebrow" Text="PERMISSIONS" />
+                <TextBlock Classes="sectionTitle" Text="Requested only when needed" />
+              </StackPanel>
+              <Button Grid.Column="1"
+                      Padding="12,7"
+                      Command="{Binding OpenPrivacySettingsCommand}"
+                      Content="Open Settings…"
+                      AutomationProperties.Name="Open macOS privacy settings" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Permissions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PermissionRowViewModel">
+                  <Border Classes="row">
+                    <StackPanel Spacing="3">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Foreground="#F4F6FC"
+                                   Text="{Binding Name}" />
+                        <TextBlock Grid.Column="1"
+                                   Foreground="#9FB6E8"
+                                   Text="{Binding State}" />
+                      </Grid>
+                      <TextBlock Classes="detail"
+                                 Text="{Binding Purpose}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Border Padding="16"
+              CornerRadius="12"
+              Background="#211722"
+              BorderBrush="#604163"
+              BorderThickness="1">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+          <TextBlock Foreground="#E7A8EB"
+                     FontWeight="Bold"
+                     Text="MICRO" />
+          <TextBlock Grid.Column="1"
+                     Foreground="#D8C6DB"
+                     TextWrapping="Wrap"
+                     Text="Virtual Micro is unavailable in this preview. Windows VHF is not reused on macOS; CoreHID/entitlement validation remains a separate release gate." />
+        </Grid>
+      </Border>
+
+      <TextBlock Foreground="#91A0BB"
+                 TextWrapping="Wrap"
+                 Text="{Binding StatusMessage}" />
+    </StackPanel>
+  </ScrollViewer>
+</Window>

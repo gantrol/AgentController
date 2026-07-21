@@ -21,8 +21,8 @@
 | 02 | [Codex App Server 集成](02-codex-app-server.md) | Planned | 01 的 Action/State 契约 |
 | 03 | [Codex Micro 兼容层](03-codex-micro-compatibility.md) | Accepted / Planned | 01、02；身份与驱动发行 Gate |
 | 04 | [自定义按键与设备 Profile](04-custom-bindings-and-device-profiles.md) | Planned | 01 的输入和 Action 契约 |
-| 05 | [桌面 UI/UX 与 Avalonia](05-desktop-ui-ux-and-avalonia.md) | Planned | 01、04 |
-| 06 | [macOS 平台](06-macos-platform.md) | Planned | 01、02、05 |
+| 05 | [桌面 UI/UX 与 Avalonia](05-desktop-ui-ux-and-avalonia.md) | In Progress | 01、04 |
+| 06 | [macOS 平台](06-macos-platform.md) | In Progress / Foundation Preview | 01、02、05 |
 | 07 | [安全、发行与商业化](07-security-packaging-and-commercialization.md) | Planned | 全局 |
 | 08 | [测试、诊断与发布工程](08-testing-observability-and-release.md) | Planned | 全局 |
 | 09 | [渐进迁移与兼容策略](09-migration-and-compatibility.md) | In Progress | 01–08 |
