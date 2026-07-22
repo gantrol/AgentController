@@ -2,6 +2,8 @@
 
 更新时间：2026-07-21
 
+> 视觉实现的最高优先级、原始 HTML／JSX 位置和 WPF 文件映射，统一见 [Paper HTML 复刻上下文](paper-replication-context.zh-CN.md)。本文只补充交互语义与虚拟状态，不得覆盖 Paper 导出的布局、材质、比例或图标参数。
+
 - 官方行为参考：[Codex Micro](https://learn.chatgpt.com/docs/features/codex-micro)
 - Paper 原始导出：[paper-openai-micro-export.jsx](paper-openai-micro-export.jsx)
 - GPT Image 2 光影探索（只作风格参考）：[codex-micro-virtual-crystal-concept.png](codex-micro-virtual-crystal-concept.png)
