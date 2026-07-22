@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.2",
+    [string]$Version = "1.1",
     [string]$Runtime = "win-x64"
 )
 
@@ -92,7 +92,7 @@ Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\controller-operations.md") `
     -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "public\docs\release-v1.0.2.md") `
+    Join-Path $repoRoot "public\docs\release-v1.1.md") `
     -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\architecture-and-input-flow.md") `

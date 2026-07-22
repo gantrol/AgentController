@@ -354,7 +354,7 @@
                                        Visibility="Collapsed" />
                         </StackPanel>
                         <TextBlock x:Name="FooterVersionText"
-                                   Text="v1.0.2"
+                                   Text="v1.1"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Top"
                                    Foreground="{StaticResource Brush.Text.Tertiary}"

@@ -4908,7 +4908,7 @@ public partial class MainWindow : Window
             _activeControllerProfile.DisplayName,
             agentName);
         FooterVersionText.Text =
-            $"v1.0.2 · {strings.StatusLocalBridge}";
+            $"v1.1 · {strings.StatusLocalBridge}";
 
         UpdateSelectedScopeText();
         UpdateRightModeUi();
