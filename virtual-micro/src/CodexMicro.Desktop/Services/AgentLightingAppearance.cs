@@ -6,9 +6,7 @@ namespace CodexMicro.Desktop.Services;
 internal readonly record struct AgentLightingAppearance(
     bool IsActive,
     Color Color,
-    double MaximumOpacity,
-    double MinimumOpacity,
-    TimeSpan? PulseHalfCycle,
+    double DisplayOpacity,
     string StatusName,
     string EffectName)
 {
@@ -27,43 +25,23 @@ internal readonly record struct AgentLightingAppearance(
                 false,
                 InactiveColor,
                 0,
-                0,
-                null,
                 "未分配",
                 "off");
         }
 
+        // Protocol brightness scales a translucent glass layer in the
+        // template; it never becomes an opaque circular fill.
         var brightness = Math.Clamp(lighting.Brightness, 0, 1);
         var color = Color.FromRgb(
             (byte)(lighting.Color >> 16),
             (byte)(lighting.Color >> 8),
             (byte)lighting.Color);
-        var pulseFloor = lighting.Effect switch
-        {
-            4 => brightness * 0.18,
-            6 => brightness * 0.55,
-            _ => brightness,
-        };
-        TimeSpan? pulseHalfCycle = lighting.Effect is 4 or 6
-            ? ResolvePulseHalfCycle(lighting.Speed)
-            : null;
-
         return new AgentLightingAppearance(
             true,
             color,
             brightness,
-            pulseFloor,
-            pulseHalfCycle,
             ResolveStatusName(lighting.Color),
             ResolveEffectName(lighting.Effect));
-    }
-
-    private static TimeSpan ResolvePulseHalfCycle(double speed)
-    {
-        var normalizedSpeed = double.IsFinite(speed)
-            ? Math.Clamp(speed, 0, 1)
-            : 0;
-        return TimeSpan.FromMilliseconds(1100 - (normalizedSpeed * 550));
     }
 
     private static string ResolveStatusName(int color) => color switch

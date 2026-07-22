@@ -118,7 +118,7 @@ if (-not $msbuild) { throw '未找到 Visual Studio MSBuild。' }
 
 脚本会自行弹出 UAC，并完成本机签名、安装/更新和健康检查。驱动不检查 Codex 或
 AgentController 版本；INF 版本只供 Windows 更新驱动包。简明步骤与验证命令见
-[驱动安装说明](../docs/CodexMicroSimulator-安装教程.zh-CN.md)，构建和证书细节见
+[本地安装说明](../docs/CodexMicroSimulator-安装教程.zh-CN.md)，构建和证书细节见
 [`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
 
 ## 验证

@@ -400,6 +400,10 @@ public partial class MicroSurfaceWindow : Window
         VoiceFlowScale.ScaleX = recording ? 0.98 : 0.97;
         VoiceFlowScale.ScaleY = recording ? 0.98 : 0.97;
         VoiceReadyFlash.Opacity = 0;
+        ActionIcon10.IconBrush = new SolidColorBrush(
+            recording
+                ? Color.FromRgb(0x20, 0x8F, 0x80)
+                : Color.FromRgb(0x17, 0x17, 0x17));
 
         if (!recording)
         {
@@ -1668,21 +1672,8 @@ public partial class MicroSurfaceWindow : Window
             var appearance = AgentLightingAppearance.From(lighting);
             var lightBrush = new SolidColorBrush(appearance.Color)
             {
-                Opacity = appearance.MaximumOpacity,
+                Opacity = appearance.DisplayOpacity,
             };
-            if (appearance.PulseHalfCycle is { } pulseHalfCycle)
-            {
-                lightBrush.BeginAnimation(
-                    Brush.OpacityProperty,
-                    new DoubleAnimation(
-                        appearance.MinimumOpacity,
-                        appearance.MaximumOpacity,
-                        new Duration(pulseHalfCycle))
-                    {
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                    });
-            }
 
             _agentKeys[slotId].BorderBrush = lightBrush;
 
@@ -1691,7 +1682,7 @@ public partial class MicroSurfaceWindow : Window
             var state = appearance.IsActive
                 ? $"{appearance.StatusName} · #{lighting!.Color:X6} · " +
                     $"{appearance.EffectName} · " +
-                    $"亮度 {appearance.MaximumOpacity:P0}"
+                    $"显示亮度 {appearance.DisplayOpacity:P0}"
                 : appearance.StatusName;
             var localMatch = rosterEntry is null
                 ? string.Empty

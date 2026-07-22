@@ -22,19 +22,16 @@ public sealed class AgentLightingAppearanceTests
 
         Assert.True(appearance.IsActive);
         Assert.Equal(Color.FromRgb(0x30, 0x4F, 0xFE), appearance.Color);
-        Assert.Equal(0.42, appearance.MaximumOpacity, 3);
-        Assert.Equal(appearance.MaximumOpacity, appearance.MinimumOpacity);
-        Assert.Null(appearance.PulseHalfCycle);
+        Assert.Equal(0.42, appearance.DisplayOpacity, 3);
         Assert.Equal("思考中", appearance.StatusName);
         Assert.Equal("solid", appearance.EffectName);
     }
 
     [Theory]
-    [InlineData(4, 0.18, "breath")]
-    [InlineData(6, 0.55, "shallow breath")]
-    public void BreathingLightingPulsesInsteadOfShowingAStaticPurpleDot(
+    [InlineData(4, "breath")]
+    [InlineData(6, "shallow breath")]
+    public void BreathingLightingUsesStableVirtualPreview(
         int effect,
-        double expectedFloor,
         string expectedName)
     {
         var appearance = AgentLightingAppearance.From(new SlotLighting(
@@ -49,8 +46,7 @@ public sealed class AgentLightingAppearanceTests
 
         Assert.True(appearance.IsActive);
         Assert.Equal(Color.FromRgb(0x00, 0xFF, 0x4C), appearance.Color);
-        Assert.Equal(expectedFloor, appearance.MinimumOpacity, 3);
-        Assert.Equal(TimeSpan.FromMilliseconds(880), appearance.PulseHalfCycle);
+        Assert.Equal(1, appearance.DisplayOpacity, 3);
         Assert.Equal("已完成", appearance.StatusName);
         Assert.Equal(expectedName, appearance.EffectName);
     }
@@ -75,7 +71,7 @@ public sealed class AgentLightingAppearanceTests
             color == 0));
 
         Assert.False(appearance.IsActive);
-        Assert.Equal(0, appearance.MaximumOpacity);
+        Assert.Equal(0, appearance.DisplayOpacity);
         Assert.Equal("未分配", appearance.StatusName);
         Assert.Equal("off", appearance.EffectName);
     }

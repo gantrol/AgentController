@@ -97,7 +97,7 @@ instructions are in the [macOS Foundation Preview guide](docs/macos-foundation-p
 3. Because the binary is unsigned, Windows SmartScreen may warn you. Choose **More info → Run anyway** only after reviewing the security notice above; alternatively, build from source.
 4. Connect the controller in XInput mode, launch Codex, and make sure the Bridge is enabled. When connected, the Device page shows the controller name and a localized **Live input** / **实时输入** badge.
 5. Some features may require restarting the Codex desktop app (**ChatGPT**), especially after Agent Controller first provisions or updates Codex keybindings.
-6. For the complete Micro-first HID path, separately install the repository's only supported device component: `CodexMicroVhfUm` (UMDF2/VHF). The current release provides an unsigned developer workflow only; read the [installation tutorial](docs/CodexMicroSimulator-installation.md) and [unsigned-driver guide](virtual-micro/UNSIGNED-DRIVER.md) first.
+6. For the complete Micro-first HID path, separately install the repository's only supported device component: `CodexMicroVhfUm` (UMDF2/VHF). The current release provides an unsigned developer workflow only; read the [local installation guide](docs/CodexMicroSimulator-installation.md) and [unsigned-driver guide](virtual-micro/UNSIGNED-DRIVER.md) first.
 
 The v1.0.2 Windows package is self-contained and does not require a separate .NET runtime. Agent Controller still launches without the driver, but its limited `NotSent` fallbacks are not full Micro compatibility.
 

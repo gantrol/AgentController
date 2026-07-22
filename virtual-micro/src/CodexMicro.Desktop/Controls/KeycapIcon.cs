@@ -35,18 +35,36 @@ public sealed class KeycapIcon : FrameworkElement
     private static readonly ConcurrentDictionary<string, BitmapSource?>
         LogoCache = new(StringComparer.OrdinalIgnoreCase);
 
+    // The default Codex Micro command glyphs are authored in a 24 x 24
+    // viewBox. Keep their exact filled paths instead of approximating them
+    // with 20 x 20 strokes; the outer KeycapIcon size already follows the
+    // 18.1277 / 62.44 ratio exported by Paper.
+    private static readonly IReadOnlyList<Geometry> PaperFastGeometry =
+        CreateGeometry(
+            "M15.24 3.486v.002l-1.056 4.517h5.823c1.726 0 2.596 2.021 1.518 3.3l-.002.003-9.308 10.965-.002.002c-1.397 1.656-3.922.223-3.454-1.76v-.003l1.057-4.517H3.993c-1.726 0-2.596-2.021-1.519-3.3l.003-.003 9.308-10.965.002-.002c1.397-1.656 3.922-.223 3.454 1.76Zm-1.95-.444-1.34 5.735a.998.998 0 0 0 .973 1.226h7.074a.04.04 0 0 1 .003.01.045.045 0 0 1-.004.005l-9.287 10.94 1.341-5.735a.998.998 0 0 0-.973-1.226H4.003a.041.041 0 0 1-.003-.01l.004-.005 9.287-10.94Z");
+
+    private static readonly IReadOnlyList<Geometry> PaperApproveGeometry =
+        CreateGeometry(
+            "M12 4C7.582 4 4 7.582 4 12C4 16.418 7.582 20 12 20C16.418 20 20 16.418 20 12C20 7.582 16.418 4 12 4ZM2 12C2 6.477 6.477 2 12 2C17.523 2 22 6.477 22 12C22 17.523 17.523 22 12 22C6.477 22 2 17.523 2 12ZM16.076 7.932C16.527 8.25 16.636 8.874 16.318 9.325L11.568 16.076C11.393 16.324 11.115 16.479 10.812 16.498C10.509 16.517 10.214 16.397 10.01 16.173L7.51 13.423C7.139 13.014 7.169 12.382 7.577 12.01C7.986 11.639 8.618 11.669 8.99 12.077L10.65 13.904L14.682 8.175C15 7.723 15.624 7.614 16.076 7.932Z");
+
+    private static readonly IReadOnlyList<Geometry> PaperRejectGeometry =
+        CreateGeometry(
+            "M10.207 8.793a1 1 0 0 0-1.414 1.414L10.586 12l-1.793 1.793a1 1 0 1 0 1.414 1.414L12 13.414l1.793 1.793a1 1 0 0 0 1.414-1.414L13.414 12l1.793-1.793a1 1 0 0 0-1.414-1.414L12 10.586l-1.793-1.793Z",
+            "M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2ZM4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0Z");
+
+    private static readonly IReadOnlyList<Geometry> PaperForkGeometry =
+        CreateGeometry(
+            "M7.75 18C7.75 17.31 7.19 16.75 6.5 16.75C5.81 16.75 5.25 17.31 5.25 18C5.25 18.69 5.81 19.25 6.5 19.25C7.19 19.25 7.75 18.69 7.75 18ZM7.75 6C7.75 5.31 7.19 4.75 6.5 4.75C5.81 4.75 5.25 5.31 5.25 6C5.25 6.69 5.81 7.25 6.5 7.25C7.19 7.25 7.75 6.69 7.75 6ZM18.75 6C18.75 5.31 18.19 4.75 17.5 4.75C16.81 4.75 16.25 5.31 16.25 6C16.25 6.69 16.81 7.25 17.5 7.25C18.19 7.25 18.75 6.69 18.75 6ZM20.75 6C20.75 7.446 19.805 8.67 18.5 9.092V10C18.5 11.657 17.157 13 15.5 13H8.5C7.948 13 7.5 13.448 7.5 14V14.907C8.806 15.329 9.75 16.554 9.75 18C9.75 19.795 8.295 21.25 6.5 21.25C4.705 21.25 3.25 19.795 3.25 18C3.25 16.554 4.194 15.329 5.5 14.907V9.092C4.195 8.67 3.25 7.446 3.25 6C3.25 4.205 4.705 2.75 6.5 2.75C8.295 2.75 9.75 4.205 9.75 6C9.75 7.446 8.805 8.67 7.5 9.092V11.174C7.813 11.063 8.149 11 8.5 11H15.5C16.052 11 16.5 10.552 16.5 10V9.092C15.195 8.67 14.25 7.446 14.25 6C14.25 4.205 15.705 2.75 17.5 2.75C19.295 2.75 20.75 4.205 20.75 6Z");
+
+    private static readonly IReadOnlyList<Geometry> PaperMicrophoneGeometry =
+        CreateGeometry(
+            "M18.995 11.541C19.525 11.699 19.826 12.256 19.669 12.785C18.777 15.78 16.179 18.042 13 18.438V19.5H14.5C15.052 19.5 15.5 19.948 15.5 20.5C15.5 21.052 15.052 21.5 14.5 21.5H9.5C8.948 21.5 8.5 21.052 8.5 20.5C8.5 19.948 8.948 19.5 9.5 19.5H11V18.438C7.821 18.042 5.223 15.78 4.331 12.785C4.174 12.256 4.475 11.699 5.005 11.541C5.534 11.384 6.091 11.685 6.248 12.215C6.986 14.694 9.283 16.5 12 16.5C14.716 16.5 17.014 14.694 17.752 12.215C17.909 11.685 18.466 11.384 18.995 11.541Z",
+            "M14.5 10.5V7C14.5 5.619 13.381 4.5 12 4.5C10.619 4.5 9.5 5.619 9.5 7V10.5C9.5 11.881 10.619 13 12 13C13.381 13 14.5 11.881 14.5 10.5ZM12 2.5C9.515 2.5 7.5 4.515 7.5 7V10.5C7.5 12.985 9.515 15 12 15C14.485 15 16.5 12.985 16.5 10.5V7C16.5 4.515 14.485 2.5 12 2.5Z");
+
     private static readonly IReadOnlyList<Geometry> CodexGeometry = CreateGeometry(
         "M13.333 11.418C13.7002 11.418 13.9978 11.7159 13.998 12.083C13.998 12.4503 13.7003 12.748 13.333 12.748H10.833C10.4657 12.748 10.168 12.4503 10.168 12.083C10.1682 11.7159 10.4659 11.418 10.833 11.418H13.333Z",
         "M6.74121 7.34668C7.0561 7.15796 7.46442 7.26036 7.65332 7.5752L8.90332 9.6582C9.02949 9.86874 9.02961 10.1323 8.90332 10.3428L7.65332 12.4258C7.46441 12.7403 7.05597 12.8427 6.74121 12.6543C6.42637 12.4654 6.32396 12.0561 6.5127 11.7412L7.55664 10L6.5127 8.25879C6.324 7.94395 6.4265 7.53562 6.74121 7.34668Z",
         "M9.00195 1.75C10.1157 1.75021 11.1362 2.15467 11.9238 2.82227C12.1849 2.77516 12.455 2.74903 12.7295 2.74902C15.2262 2.74978 17.2507 4.77449 17.251 7.27148C17.2509 7.54581 17.2238 7.81473 17.1768 8.0752C17.8448 8.86317 18.2499 9.88479 18.25 10.999C18.2496 12.9609 16.9996 14.6284 15.2549 15.2549C14.6285 16.9998 12.9608 18.2497 10.999 18.25C9.88486 18.25 8.86411 17.8448 8.07617 17.1768C7.8155 17.2239 7.54592 17.2509 7.27148 17.251C4.77445 17.2507 2.7504 15.2257 2.75 12.7285C2.75003 12.4539 2.77608 12.1848 2.82324 11.9238C2.20237 11.1913 1.80895 10.2574 1.75684 9.23438L1.75 9.00098C1.75022 7.03932 2.99952 5.36992 4.74414 4.74316C5.37104 2.99851 7.04034 1.75002 9.00195 1.75ZM9.00195 3.07812C7.52474 3.07814 6.27967 4.08156 5.91504 5.44531C5.85362 5.67419 5.67418 5.85363 5.44531 5.91504C4.08208 6.27984 3.07836 7.52408 3.07812 9.00098C3.07826 9.88321 3.43594 10.682 4.01465 11.2607C4.1816 11.4283 4.24663 11.6728 4.18555 11.9014C4.11505 12.1653 4.07719 12.4429 4.07715 12.7285C4.07755 14.4925 5.50753 15.9225 7.27148 15.9229C7.55712 15.9228 7.83548 15.886 8.09961 15.8154L8.18652 15.7979C8.38833 15.7722 8.59297 15.8403 8.73926 15.9863C9.31801 16.5649 10.1168 16.9218 10.999 16.9219C12.4759 16.9216 13.7203 15.9183 14.085 14.5547L14.1133 14.4707C14.1918 14.2821 14.3542 14.1386 14.5547 14.085C15.9181 13.7203 16.9225 12.4758 16.9229 10.999C16.9228 10.1168 16.5648 9.31802 15.9863 8.73926C15.819 8.57175 15.7544 8.3274 15.8154 8.09863C15.886 7.83454 15.9238 7.5568 15.9238 7.27148C15.9235 5.50751 14.4924 4.07762 12.7285 4.07715C12.4424 4.0772 12.164 4.11412 11.9004 4.18457C11.672 4.24541 11.4282 4.18048 11.2607 4.01367C10.7183 3.47141 9.98306 3.12271 9.16699 3.08105L9.00195 3.07812Z");
-
-    private static readonly IReadOnlyList<Geometry> ApproveGeometry = CreateGeometry(
-        "M12.1599 7.13617C12.3713 6.83596 12.7863 6.76372 13.0866 6.97504C13.3867 7.18642 13.4589 7.60153 13.2477 7.90179L9.28876 13.5268C9.17264 13.6917 8.98808 13.7954 8.7868 13.808C8.61044 13.819 8.43764 13.7592 8.30634 13.644L8.25262 13.5912L6.16962 11.2993L6.08954 11.1918C5.93136 10.9259 5.97666 10.5761 6.21454 10.3598C6.45225 10.1439 6.80379 10.1326 7.05341 10.3149L7.15399 10.4047L8.67841 12.0815L12.1599 7.13617Z",
-        "M9.99506 2.31226C14.3664 2.31226 17.9101 5.85596 17.9101 10.2273C17.9101 14.5986 14.3664 18.1423 9.99506 18.1423C5.62372 18.1423 2.08002 14.5986 2.08002 10.2273C2.08002 5.85596 5.62372 2.31226 9.99506 2.31226ZM9.99506 3.64233C6.35826 3.64233 3.4101 6.5905 3.4101 10.2273C3.4101 13.8641 6.35826 16.8123 9.99506 16.8123C13.6319 16.8123 16.58 13.8641 16.58 10.2273C16.58 6.5905 13.6319 3.64233 9.99506 3.64233Z");
-
-    private static readonly IReadOnlyList<Geometry> RejectGeometry = CreateGeometry(
-        "M7.231 7.231A.665.665 0 0 1 8.171 7.231L10 9.06L11.828 7.231L11.932 7.146A.666.666 0 0 1 12.853 8.068L12.769 8.172L10.94 10L12.769 11.828A.665.665 0 0 1 11.829 12.768L10 10.94L8.172 12.77A.665.665 0 0 1 7.232 11.83L9.06 10L7.23 8.172A.665.665 0 0 1 7.231 7.231Z",
-        "M10 2.085A7.915 7.915 0 1 1 10 17.915A7.915 7.915 0 0 1 10 2.085ZM10 3.415A6.585 6.585 0 1 0 10 16.585A6.585 6.585 0 0 0 10 3.415Z");
 
     private string? _packageRoot;
 
@@ -103,20 +121,23 @@ public sealed class KeycapIcon : FrameworkElement
         switch (KeycapId)
         {
             case "FAST":
-                DrawLightning(drawingContext, pen);
+                DrawPaperGeometry(drawingContext, brush, PaperFastGeometry);
                 break;
             case "APPR":
-                DrawGeometry(drawingContext, brush, ApproveGeometry);
+                DrawPaperGeometry(drawingContext, brush, PaperApproveGeometry);
                 break;
             case "REJ":
-                DrawGeometry(drawingContext, brush, RejectGeometry);
+                DrawPaperGeometry(drawingContext, brush, PaperRejectGeometry);
                 break;
             case "SPLIT":
             case "BRCH":
-                DrawBranch(drawingContext, pen, merge: false);
+                DrawPaperGeometry(drawingContext, brush, PaperForkGeometry);
                 break;
             case "MIC":
-                DrawMicrophone(drawingContext, pen);
+                DrawPaperGeometry(
+                    drawingContext,
+                    brush,
+                    PaperMicrophoneGeometry);
                 break;
             case "CODEX":
                 DrawGeometry(drawingContext, brush, CodexGeometry);
@@ -248,6 +269,16 @@ public sealed class KeycapIcon : FrameworkElement
         }
     }
 
+    private static void DrawPaperGeometry(
+        DrawingContext context,
+        Brush brush,
+        IEnumerable<Geometry> geometry)
+    {
+        context.PushTransform(new ScaleTransform(20.0 / 24.0, 20.0 / 24.0));
+        DrawGeometry(context, brush, geometry);
+        context.Pop();
+    }
+
     private bool DrawOpenAiLogo(DrawingContext context)
     {
         if (string.IsNullOrWhiteSpace(PackageRoot))
@@ -301,12 +332,6 @@ public sealed class KeycapIcon : FrameworkElement
         }
     }
 
-    private static void DrawLightning(DrawingContext context, Pen pen)
-    {
-        var geometry = Geometry.Parse("M11.6 2.4 L4.6 11.1 L9.2 11.1 L8.4 17.6 L15.5 8.9 L10.8 8.9 Z");
-        context.DrawGeometry(null, pen, geometry);
-    }
-
     private static void DrawBranch(DrawingContext context, Pen pen, bool merge)
     {
         context.DrawEllipse(null, pen, new Point(5.3, 4.2), 1.8, 1.8);
@@ -317,12 +342,6 @@ public sealed class KeycapIcon : FrameworkElement
             ? "M14.7 14 C14.7 9.3 5.3 10.7 5.3 6"
             : "M5.3 10 C5.3 7 14.7 9 14.7 6";
         context.DrawGeometry(null, pen, Geometry.Parse(path));
-    }
-
-    private static void DrawMicrophone(DrawingContext context, Pen pen)
-    {
-        context.DrawRoundedRectangle(null, pen, new Rect(7.2, 2.1, 5.6, 9.6), 2.8, 2.8);
-        context.DrawGeometry(null, pen, Geometry.Parse("M4.8 9.8 C4.8 13.1 7.1 15.1 10 15.1 C12.9 15.1 15.2 13.1 15.2 9.8 M10 15.1 V18 M7.7 18 H12.3"));
     }
 
     private static void DrawBug(DrawingContext context, Pen pen)

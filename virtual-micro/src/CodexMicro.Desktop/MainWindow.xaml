@@ -13,6 +13,7 @@
         ResizeMode="CanResize"
         ShowActivated="False"
         ShowInTaskbar="False"
+        Topmost="True"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
@@ -279,65 +280,73 @@
                                   ToolTip="拖动黑色圆帽模拟摇杆，或单击四周方向键">
                                 <Border x:Name="JoystickSeat"
                                         Margin="4"
-                                        BorderBrush="#D6FFFFFF"
-                                        BorderThickness="1"
+                                        Background="Transparent"
+                                        BorderThickness="0"
                                         CornerRadius="18">
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                            <GradientStop Color="#FFF8F8F5" Offset="0" />
-                                            <GradientStop Color="#FFECEFF0" Offset="0.5" />
-                                            <GradientStop Color="#FFDDD9E2" Offset="0.76" />
-                                            <GradientStop Color="#FFC7CFD2" Offset="1" />
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="4"
-                                                          Direction="270"
-                                                          ShadowDepth="1"
-                                                          Opacity="0.18"
-                                                          Color="#594F43" />
-                                    </Border.Effect>
                                     <Grid>
-                                        <Border Margin="1"
-                                                BorderBrush="#85FFFFFF"
-                                                BorderThickness="1"
-                                                CornerRadius="17" />
-                                        <Ellipse x:Name="JoystickCap"
-                                                 Width="54"
-                                                 Height="54"
-                                                 Fill="#FF111111"
-                                                 Cursor="SizeAll"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
-                                                 MouseLeftButtonDown="JoystickCap_MouseLeftButtonDown"
-                                                 MouseMove="JoystickCap_MouseMove"
-                                                 MouseLeftButtonUp="JoystickCap_MouseLeftButtonUp"
-                                                 LostMouseCapture="JoystickCap_LostMouseCapture"
-                                                 ToolTip="按住并向任意方向拖动">
-                                            <Ellipse.Effect>
-                                                <DropShadowEffect BlurRadius="4"
+                                        <Grid x:Name="JoystickCap"
+                                              Width="67"
+                                              Height="67"
+                                              Background="Transparent"
+                                              Cursor="SizeAll"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              MouseLeftButtonDown="JoystickCap_MouseLeftButtonDown"
+                                              MouseMove="JoystickCap_MouseMove"
+                                              MouseLeftButtonUp="JoystickCap_MouseLeftButtonUp"
+                                              LostMouseCapture="JoystickCap_LostMouseCapture"
+                                              ToolTip="按住并向任意方向拖动">
+                                            <Grid.Effect>
+                                                <DropShadowEffect BlurRadius="5"
                                                                   Direction="270"
-                                                                  ShadowDepth="1"
-                                                                  Opacity="0.28"
-                                                                  Color="#2C2823" />
-                                            </Ellipse.Effect>
-                                            <Ellipse.RenderTransform>
+                                                                  ShadowDepth="3"
+                                                                  Opacity="0.42"
+                                                                  Color="#232624" />
+                                            </Grid.Effect>
+                                            <Grid.RenderTransform>
                                                 <TransformGroup>
                                                     <ScaleTransform x:Name="JoystickScale"
-                                                                    CenterX="27"
-                                                                    CenterY="27" />
+                                                                    CenterX="33.5"
+                                                                    CenterY="33.5" />
                                                     <TranslateTransform x:Name="JoystickTranslate" />
                                                 </TransformGroup>
-                                            </Ellipse.RenderTransform>
-                                        </Ellipse>
-                                        <Ellipse Width="50"
-                                                 Height="50"
-                                                 Fill="Transparent"
-                                                 Stroke="#1FFFFFFF"
-                                                 StrokeThickness="1"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
-                                                 IsHitTestVisible="False" />
+                                            </Grid.RenderTransform>
+
+                                            <Ellipse Stroke="#CC000000"
+                                                     StrokeThickness="1">
+                                                <Ellipse.Fill>
+                                                    <RadialGradientBrush Center="0.34,0.27"
+                                                                         GradientOrigin="0.34,0.27"
+                                                                         RadiusX="0.76"
+                                                                         RadiusY="0.76">
+                                                        <GradientStop Color="#FF50524F" Offset="0" />
+                                                        <GradientStop Color="#FF363936" Offset="0.44" />
+                                                        <GradientStop Color="#FF222422" Offset="1" />
+                                                    </RadialGradientBrush>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <Ellipse Margin="1"
+                                                     Fill="Transparent"
+                                                     Stroke="#1AFFFFFF"
+                                                     StrokeThickness="1" />
+
+                                            <Grid IsHitTestVisible="False">
+                                                <Path Data="M 15.5,17.8 L 26.9,29.2 M 51.5,17.8 L 40.1,29.2 M 15.5,51.2 L 26.9,39.8 M 51.5,51.2 L 40.1,39.8"
+                                                      Stroke="#0DFFFFFF"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round">
+                                                    <Path.RenderTransform>
+                                                        <TranslateTransform Y="1" />
+                                                    </Path.RenderTransform>
+                                                </Path>
+                                                <Path Data="M 15.5,17.8 L 26.9,29.2 M 51.5,17.8 L 40.1,29.2 M 15.5,51.2 L 26.9,39.8 M 51.5,51.2 L 40.1,39.8"
+                                                      Stroke="#B3000000"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round" />
+                                            </Grid>
+                                        </Grid>
                                     </Grid>
                                 </Border>
 
@@ -527,7 +536,7 @@
                                                          HorizontalAlignment="Center"
                                                          VerticalAlignment="Center"
                                                          KeycapId="MIC"
-                                                         IconBrush="#208F80" />
+                                                         IconBrush="#171717" />
                                 </Grid>
                             </Button>
                             <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">

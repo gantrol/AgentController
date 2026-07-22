@@ -132,7 +132,7 @@ Exit AgentController, then run from an ordinary PowerShell:
 The script opens UAC itself and completes local signing, installation/update,
 and the health check. The driver does not check Codex or AgentController
 versions; its INF version is only for Windows driver-package updates. See the
-[short installation guide](../docs/CodexMicroSimulator-installation.md) for
+[local installation guide](../docs/CodexMicroSimulator-installation.md) for
 verification commands and [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for
 build and certificate details.
 
