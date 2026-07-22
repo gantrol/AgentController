@@ -48,6 +48,8 @@ public partial class MicroSurfaceWindow : Window
     private readonly IReadOnlyDictionary<string, Button> _joystickButtons;
     private readonly KeycapIcon[] _brandAwareIcons;
     private Button[] _agentKeys = [];
+    private Border[] _agentWideGlows = [];
+    private Border[] _agentNearGlows = [];
     private InactiveDialInputRouter? _inactiveDialInputRouter;
     private HwndSource? _windowSource;
     private bool _connecting;
@@ -61,6 +63,7 @@ public partial class MicroSurfaceWindow : Window
     private long _lastSlotLightingSequence;
     private SlotLightingSnapshot? _latestSlotLighting;
     private CodexAgentRosterSnapshot? _latestAgentRoster;
+    private int? _currentAgentSlotId;
     private int _dialSelectionFeedbackVersion;
     private int _dialSelectionHudVersion;
     private bool _dialSelectionFeedbackRunning;
@@ -87,6 +90,24 @@ public partial class MicroSurfaceWindow : Window
             AgentKey3,
             AgentKey4,
             AgentKey5,
+        ];
+        _agentWideGlows =
+        [
+            AgentGlowWide0,
+            AgentGlowWide1,
+            AgentGlowWide2,
+            AgentGlowWide3,
+            AgentGlowWide4,
+            AgentGlowWide5,
+        ];
+        _agentNearGlows =
+        [
+            AgentGlowNear0,
+            AgentGlowNear1,
+            AgentGlowNear2,
+            AgentGlowNear3,
+            AgentGlowNear4,
+            AgentGlowNear5,
         ];
         _actionKeys = new Dictionary<string, (Button, KeycapIcon)>(StringComparer.Ordinal)
         {
@@ -177,6 +198,7 @@ public partial class MicroSurfaceWindow : Window
         _layoutObserver.Start();
         _agentRosterObserver.Start();
         _latestAgentRoster = _agentRosterObserver.Current;
+        ResolveCurrentAgentSlot();
         RefreshAgentSlotPresentation();
         await ConnectAsync();
     }
@@ -276,41 +298,63 @@ public partial class MicroSurfaceWindow : Window
     {
         if (sender is Button { Tag: string key })
         {
-            if (key == "AG00")
+            var isAgentKey = TryParseAgentSlot(key, out var selectedSlot);
+            try
             {
-                CodexRequestCardCancellationResult cancellation;
-                try
+                if (key == "AG00")
                 {
-                    cancellation = await Task.Run(
-                        () => CodexRequestCardCancellation
-                            .TryCancelForegroundRequestCard());
-                }
-                catch
-                {
-                    cancellation = CodexRequestCardCancellationResult.Failed;
+                    CodexRequestCardCancellationResult cancellation;
+                    try
+                    {
+                        cancellation = await Task.Run(
+                            () => CodexRequestCardCancellation
+                                .TryCancelForegroundRequestCard());
+                    }
+                    catch
+                    {
+                        cancellation = CodexRequestCardCancellationResult.Failed;
+                    }
+
+                    switch (cancellation)
+                    {
+                        case CodexRequestCardCancellationResult.Cancelled:
+                            SetLed(ActivityLed, "#9EBDFF", "Plan 提问已取消");
+                            SetStatus("已向当前 Plan 提问卡片发送一次 Escape；未追加 AG00。");
+                            return;
+                        case CodexRequestCardCancellationResult.Blocked:
+                            SetLed(ActivityLed, "#FF7994", "Plan 提问卡片无法安全确认");
+                            SetStatus("检测到疑似或不唯一的 Plan 提问卡片；本次操作已消费，未发送 AG00。");
+                            return;
+                        case CodexRequestCardCancellationResult.Failed:
+                            SetLed(ActivityLed, "#FF7994", "Plan 取消未发送");
+                            SetStatus("Plan 提问卡片取消失败；本次操作已消费，未发送 AG00。");
+                            return;
+                    }
                 }
 
-                switch (cancellation)
+                var result = await RunActionAsync(
+                    () => _broker.TapKeyAsync(key),
+                    key);
+                if (
+                    result is { WasPossiblySent: true } &&
+                    isAgentKey)
                 {
-                    case CodexRequestCardCancellationResult.Cancelled:
-                        SetLed(ActivityLed, "#9EBDFF", "Plan 提问已取消");
-                        SetStatus("已向当前 Plan 提问卡片发送一次 Escape；未追加 AG00。");
-                        return;
-                    case CodexRequestCardCancellationResult.Blocked:
-                        SetLed(ActivityLed, "#FF7994", "Plan 提问卡片无法安全确认");
-                        SetStatus("检测到疑似或不唯一的 Plan 提问卡片；本次操作已消费，未发送 AG00。");
-                        return;
-                    case CodexRequestCardCancellationResult.Failed:
-                        SetLed(ActivityLed, "#FF7994", "Plan 取消未发送");
-                        SetStatus("Plan 提问卡片取消失败；本次操作已消费，未发送 AG00。");
-                        return;
+                    _currentAgentSlotId = selectedSlot;
+                    RefreshAgentSlotPresentation();
                 }
+
             }
-
-            await RunActionAsync(() => _broker.TapKeyAsync(key), key);
-            if (key == "ACT12")
+            finally
             {
-                await ActivateCodexAsync();
+                // AG00's Plan-card compatibility branch can consume the input
+                // before HID delivery. Foreground activation is an independent
+                // part of every Agent click, including a repeated click on the
+                // already-selected slot, so it must survive every early return.
+                if (ShouldActivateCodexForKey(key))
+                {
+                    await ActivateCodexAsync(
+                        initialDelayMilliseconds: isAgentKey ? 0 : 90);
+                }
             }
         }
     }
@@ -416,85 +460,29 @@ public partial class MicroSurfaceWindow : Window
         }
     }
 
+    private static bool TryParseAgentSlot(string key, out int slotId)
+    {
+        slotId = -1;
+        return
+            key.Length == 4 &&
+            key.StartsWith("AG", StringComparison.Ordinal) &&
+            int.TryParse(
+                key.AsSpan(2),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out slotId) &&
+            slotId is >= 0 and < 6;
+    }
+
+    internal static bool ShouldActivateCodexForKey(string key) =>
+        key == "ACT12" || TryParseAgentSlot(key, out _);
+
     internal void SetVoiceRecordingVisual(bool recording)
     {
-        VoiceFlowGlow.BeginAnimation(OpacityProperty, null);
-        VoiceWaveLayer.BeginAnimation(OpacityProperty, null);
-        VoiceWaveParticles.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
-        VoiceFlowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        VoiceFlowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        VoiceReadyFlash.BeginAnimation(OpacityProperty, null);
-
-        VoiceFlowGlow.Opacity = recording ? 0.52 : 0.34;
-        VoiceWaveLayer.Opacity = recording ? 0.86 : 0.72;
-        VoiceWaveParticles.StrokeDashOffset = 0;
-        VoiceFlowScale.ScaleX = recording ? 0.99 : 0.98;
-        VoiceFlowScale.ScaleY = recording ? 0.99 : 0.98;
-        VoiceReadyFlash.Opacity = 0;
         ActionIcon10.IconBrush = new SolidColorBrush(
             recording
                 ? Color.FromRgb(0x0C, 0x8E, 0x7E)
-                : Color.FromRgb(0x17, 0xA8, 0x8F));
-
-        if (!recording)
-        {
-            VoiceReadyFlash.BeginAnimation(
-                OpacityProperty,
-                new DoubleAnimation(0.72, 0, TimeSpan.FromMilliseconds(520))
-                {
-                    EasingFunction = new QuadraticEase
-                    {
-                        EasingMode = EasingMode.EaseOut,
-                    },
-                });
-            return;
-        }
-
-        var pulseDuration = new Duration(TimeSpan.FromMilliseconds(720));
-        VoiceFlowGlow.BeginAnimation(
-            OpacityProperty,
-            new DoubleAnimation(0.52, 0.88, pulseDuration)
-            {
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever,
-                EasingFunction = new SineEase
-                {
-                    EasingMode = EasingMode.EaseInOut,
-                },
-            });
-        VoiceWaveLayer.BeginAnimation(
-            OpacityProperty,
-            new DoubleAnimation(0.86, 1, pulseDuration)
-            {
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever,
-                EasingFunction = new SineEase
-                {
-                    EasingMode = EasingMode.EaseInOut,
-                },
-            });
-        VoiceWaveParticles.BeginAnimation(
-            Shape.StrokeDashOffsetProperty,
-            new DoubleAnimation(0, -16, TimeSpan.FromMilliseconds(1050))
-            {
-                RepeatBehavior = RepeatBehavior.Forever,
-            });
-
-        var scaleAnimation = new DoubleAnimation(0.99, 1.035, pulseDuration)
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase
-            {
-                EasingMode = EasingMode.EaseInOut,
-            },
-        };
-        VoiceFlowScale.BeginAnimation(
-            ScaleTransform.ScaleXProperty,
-            scaleAnimation);
-        VoiceFlowScale.BeginAnimation(
-            ScaleTransform.ScaleYProperty,
-            scaleAnimation.Clone());
+                : Color.FromRgb(0x17, 0x17, 0x17));
     }
 
     private void Dial_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -1669,11 +1657,19 @@ public partial class MicroSurfaceWindow : Window
 
             _lastSlotLightingSequence = snapshot.Sequence;
             _latestSlotLighting = snapshot;
+            ResolveCurrentAgentSlot();
             RefreshAgentSlotPresentation();
 
-            var litSlots = snapshot.Slots.Count(slot =>
-                slot.SlotId is >= 0 and < 6 &&
-                AgentLightingAppearance.From(slot).IsActive);
+            var lightingBySlot = snapshot.Slots
+                .Where(slot => slot.SlotId is >= 0 and < 6)
+                .ToDictionary(slot => slot.SlotId);
+            var litSlots = Enumerable.Range(0, _agentKeys.Length).Count(slotId =>
+            {
+                lightingBySlot.TryGetValue(slotId, out var slot);
+                return AgentLightingAppearance.From(
+                    slot,
+                    slotId == _currentAgentSlotId).IsActive;
+            });
 
             SetHelp(
                 DriverLed,
@@ -1689,8 +1685,17 @@ public partial class MicroSurfaceWindow : Window
         _ = Dispatcher.InvokeAsync(() =>
         {
             _latestAgentRoster = snapshot;
+            ResolveCurrentAgentSlot();
             RefreshAgentSlotPresentation();
         });
+    }
+
+    private void ResolveCurrentAgentSlot()
+    {
+        _currentAgentSlotId = AgentLightingAppearance.ResolveCurrentSessionSlot(
+            _latestSlotLighting?.Slots ?? [],
+            _currentAgentSlotId,
+            _latestAgentRoster?.Entries.Select(entry => entry.SlotId));
     }
 
     private void RefreshAgentSlotPresentation()
@@ -1702,21 +1707,25 @@ public partial class MicroSurfaceWindow : Window
         for (var slotId = 0; slotId < _agentKeys.Length; slotId++)
         {
             lightingBySlot.TryGetValue(slotId, out var lighting);
-            var appearance = AgentLightingAppearance.From(lighting);
-            var lightBrush = new SolidColorBrush(appearance.Color)
-            {
-                Opacity = appearance.DisplayOpacity,
-            };
-
-            _agentKeys[slotId].BorderBrush = lightBrush;
+            var appearance = AgentLightingAppearance.From(
+                lighting,
+                slotId == _currentAgentSlotId);
+            ApplyAgentLightingAppearance(slotId, appearance);
 
             var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
             var title = rosterEntry?.DisplayTitle ?? $"Agent 槽位 {slotId + 1}";
-            var state = appearance.IsActive
+            var state = appearance.UsesWhiteFallback
+                ? $"{appearance.StatusName} · 白光选择提示"
+                : appearance.IsActive
                 ? $"{appearance.StatusName} · #{lighting!.Color:X6} · " +
                     $"{appearance.EffectName} · " +
                     $"显示亮度 {appearance.DisplayOpacity:P0}"
                 : appearance.StatusName;
+            if (appearance.IsCurrentSession && !appearance.UsesWhiteFallback)
+            {
+                state = $"当前会话 · {state}";
+            }
+
             var localMatch = rosterEntry is null
                 ? string.Empty
                 : "\n项目与标题来自 Codex 本地最近任务索引。";
@@ -1725,6 +1734,57 @@ public partial class MicroSurfaceWindow : Window
                 title,
                 $"Agent 槽位 {slotId + 1} · AG{slotId:00} · {state} · 单击切换。" +
                 localMatch);
+        }
+    }
+
+    internal static void ApplyAgentLightingAppearance(
+        Button key,
+        AgentLightingAppearance appearance)
+    {
+        key.BorderBrush = new SolidColorBrush(appearance.Color)
+        {
+            Opacity = appearance.DisplayOpacity,
+        };
+        key.ApplyTemplate();
+        SetTemplatePartOpacity(key, "GlowWide", appearance.WideGlowOpacity);
+        SetTemplatePartOpacity(key, "Glow", appearance.OuterGlowOpacity);
+        SetTemplatePartOpacity(key, "StatusCapWash", appearance.CapWashOpacity);
+        SetTemplatePartOpacity(
+            key,
+            "StatusLightField",
+            appearance.LightFieldOpacity);
+        SetTemplatePartOpacity(key, "StatusWellWash", appearance.WellWashOpacity);
+    }
+
+    internal void ApplyAgentLightingAppearance(
+        int slotId,
+        AgentLightingAppearance appearance)
+    {
+        var key = _agentKeys[slotId];
+        ApplyAgentLightingAppearance(key, appearance);
+
+        // The window renders all outer light before any physical key. Disable
+        // the self-contained template bloom so later siblings cannot paint a
+        // colored outline over earlier keycaps.
+        SetTemplatePartOpacity(key, "GlowWide", 0);
+        SetTemplatePartOpacity(key, "Glow", 0);
+
+        var wideGlow = _agentWideGlows[slotId];
+        var nearGlow = _agentNearGlows[slotId];
+        wideGlow.Background = key.BorderBrush;
+        nearGlow.Background = key.BorderBrush;
+        wideGlow.Opacity = appearance.WideGlowOpacity;
+        nearGlow.Opacity = appearance.OuterGlowOpacity;
+    }
+
+    private static void SetTemplatePartOpacity(
+        Button key,
+        string partName,
+        double opacity)
+    {
+        if (key.Template.FindName(partName, key) is UIElement part)
+        {
+            part.Opacity = opacity;
         }
     }
 

@@ -6,14 +6,18 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using CodexMicro.Desktop.Services;
+using CodexMicro.Protocol;
 using Xunit;
 
 namespace CodexMicro.Desktop.Tests;
 
 public sealed class WindowDesignTests
 {
+    private const int IsolatedAgentRenderSize = 166;
+
     [Fact]
-    public void VoiceRecordingVisualAnimatesWithoutChangingTheInputSurface()
+    public void VoiceRecordingVisualUsesTheStandardCommandKeySurface()
     {
         Exception? error = null;
         var thread = new Thread(() =>
@@ -26,13 +30,14 @@ public sealed class WindowDesignTests
                 };
 
                 var window = new MicroSurfaceWindow();
+                window.ActionKey10.ApplyTemplate();
+                Assert.Same(window.ActionIcon10, window.ActionKey10.Content);
+                Assert.Null(window.FindName("VoiceFlowGlow"));
+                Assert.Null(window.FindName("VoiceWaveLayer"));
+                Assert.Null(window.FindName("VoiceReadyFlash"));
+
                 window.SetVoiceRecordingVisual(recording: true);
 
-                Assert.True(window.VoiceFlowGlow.HasAnimatedProperties);
-                Assert.True(window.VoiceWaveLayer.HasAnimatedProperties);
-                Assert.True(window.VoiceWaveParticles.HasAnimatedProperties);
-                Assert.False(window.VoiceReadyFlash.HasAnimatedProperties);
-                Assert.False(window.VoiceWaveLayer.IsHitTestVisible);
                 Assert.Equal("ACT10_ACT11", window.ActionKey10.Tag);
                 Assert.Equal(
                     Color.FromRgb(0x0C, 0x8E, 0x7E),
@@ -40,20 +45,10 @@ public sealed class WindowDesignTests
 
                 window.SetVoiceRecordingVisual(recording: false);
 
-                Assert.False(window.VoiceFlowGlow.HasAnimatedProperties);
-                Assert.False(window.VoiceWaveLayer.HasAnimatedProperties);
-                Assert.False(window.VoiceWaveParticles.HasAnimatedProperties);
-                Assert.True(window.VoiceReadyFlash.HasAnimatedProperties);
                 Assert.Equal("ACT10_ACT11", window.ActionKey10.Tag);
                 Assert.Equal(
-                    Color.FromRgb(0x17, 0xA8, 0x8F),
+                    Color.FromRgb(0x17, 0x17, 0x17),
                     Assert.IsType<SolidColorBrush>(window.ActionIcon10.IconBrush).Color);
-                Assert.Equal(0.34, window.VoiceFlowGlow.Opacity, 3);
-                Assert.Equal(0.72, window.VoiceWaveLayer.Opacity, 3);
-                Assert.IsType<RadialGradientBrush>(window.VoiceFlowGlow.Background);
-                Assert.IsType<DropShadowEffect>(window.VoiceFlowGlow.Effect);
-                Assert.IsType<LinearGradientBrush>(window.VoiceGlassSurface.Background);
-                Assert.IsType<BlurEffect>(window.VoiceWaveAura.Effect);
                 window.CloseForApplicationExit();
             }
             catch (Exception exception)
@@ -87,6 +82,7 @@ public sealed class WindowDesignTests
                 window.DesignSurface.UpdateLayout();
 
                 AssertSquare(window.AgentKey0);
+                Assert.Equal(96, window.AgentKey0.ActualWidth, 3);
                 AssertSquare(window.ActionKey06);
                 AssertSquare(window.SettingsKey);
                 AssertSquare(window.ActionKey12);
@@ -167,9 +163,21 @@ public sealed class WindowDesignTests
                     window.AgentKey0.Template.FindName(
                         "StatusLightField",
                         window.AgentKey0));
+                var statusCapWash = Assert.IsType<Border>(
+                    window.AgentKey0.Template.FindName(
+                        "StatusCapWash",
+                        window.AgentKey0));
                 var agentWell = Assert.IsType<Ellipse>(
                     window.AgentKey0.Template.FindName(
                         "AgentWell",
+                        window.AgentKey0));
+                var statusWellWash = Assert.IsType<Ellipse>(
+                    window.AgentKey0.Template.FindName(
+                        "StatusWellWash",
+                        window.AgentKey0));
+                var agentWideGlow = Assert.IsType<Border>(
+                    window.AgentKey0.Template.FindName(
+                        "GlowWide",
                         window.AgentKey0));
                 var agentGlow = Assert.IsType<Border>(
                     window.AgentKey0.Template.FindName(
@@ -187,9 +195,11 @@ public sealed class WindowDesignTests
                     window.AgentKey0.Template.FindName(
                         "Cap",
                         window.AgentKey0));
+                Assert.Equal(96, agentCap.Width, 3);
+                Assert.Equal(96, agentCap.Height, 3);
 
-                // Paper agent keys carry state color only in the outer glow and
-                // the inner circular light field (export lines 32-107). There is
+                // Paper agent keys use separate light carriers for the outer
+                // bloom, full cap, circular field, and flat well wash. There is
                 // no extra stroked status ring — it must stay removed.
                 Assert.Null(window.AgentKey0.Template.FindName(
                     "StatusLightRing",
@@ -199,28 +209,75 @@ public sealed class WindowDesignTests
                 // state color reads as a soft halo instead of a flat fill.
                 Assert.Equal(82, statusLightField.Width, 3);
                 Assert.Equal(76, agentWell.Width, 3);
-                Assert.Equal(74, agentWellHighlight.Width, 3);
+                Assert.Equal(76, agentWellHighlight.Width, 3);
                 Assert.True(statusLightField.Width > agentWell.Width);
-                Assert.IsType<RadialGradientBrush>(agentWell.Fill);
-                Assert.IsType<LinearGradientBrush>(agentWellHighlight.Stroke);
                 Assert.Equal(2, agentGlyph.Children.Count);
                 Assert.Equal(18, agentGlyph.Width, 3);
 
-                var activeLight = new SolidColorBrush(
-                    Color.FromRgb(0x30, 0x4F, 0xFE));
-                window.AgentKey0.BorderBrush = activeLight;
+                var backgroundAppearance = CreateLightingAppearance(
+                    slotId: 0,
+                    color: 0x304FFE);
+                MicroSurfaceWindow.ApplyAgentLightingAppearance(
+                    window.AgentKey0,
+                    backgroundAppearance);
+                var activeLight = Assert.IsType<SolidColorBrush>(
+                    window.AgentKey0.BorderBrush);
                 Assert.False(activeLight.HasAnimatedProperties);
                 Assert.Same(activeLight, statusLightField.Fill);
+                Assert.Same(activeLight, agentWideGlow.Background);
                 Assert.Same(activeLight, agentGlow.Background);
+                Assert.Same(activeLight, statusCapWash.Background);
+                Assert.Same(activeLight, statusWellWash.Fill);
 
-                // Keep the translucent Paper cap but lift the neutral tone so
-                // inactive slots stay glassy instead of reading as grey blocks.
+                // The center uses the exact same flat brush as the surrounding
+                // keycap. A single solid ring is the only recessed cue.
                 var agentCapFill = Assert.IsType<SolidColorBrush>(agentCap.Background);
                 Assert.Equal(
-                    Color.FromArgb(0xA3, 0xE8, 0xEE, 0xEB),
+                    Color.FromRgb(0xF7, 0xF8, 0xF6),
                     agentCapFill.Color);
-                Assert.Equal(0.32, statusLightField.Opacity, 3);
-                Assert.IsType<BlurEffect>(statusLightField.Effect);
+                Assert.Same(agentCap.Background, agentWell.Fill);
+                AssertRecessedRingBrush(agentWellHighlight.Stroke);
+                Assert.Equal(1.6, agentWellHighlight.StrokeThickness, 3);
+                Assert.Equal(0.30, agentWideGlow.Opacity, 3);
+                Assert.Equal(0.14, agentGlow.Opacity, 3);
+                Assert.Equal(0.07, statusCapWash.Opacity, 3);
+                Assert.Equal(0.34, statusLightField.Opacity, 3);
+                Assert.Equal(0.42, statusWellWash.Opacity, 3);
+                Assert.Equal(
+                    28,
+                    Assert.IsType<BlurEffect>(agentWideGlow.Effect).Radius,
+                    3);
+                Assert.Equal(
+                    16,
+                    Assert.IsType<BlurEffect>(agentGlow.Effect).Radius,
+                    3);
+                Assert.Equal(
+                    6.5,
+                    Assert.IsType<BlurEffect>(statusCapWash.Effect).Radius,
+                    3);
+
+                // In the real surface, outer light belongs to a shared layer
+                // below all keycaps. Template bloom is retained only so the
+                // reusable key style still renders correctly in isolation.
+                window.ApplyAgentLightingAppearance(0, backgroundAppearance);
+                Assert.Equal(0, agentWideGlow.Opacity, 3);
+                Assert.Equal(0, agentGlow.Opacity, 3);
+                Assert.Same(window.AgentKey0.BorderBrush, window.AgentGlowWide0.Background);
+                Assert.Same(window.AgentKey0.BorderBrush, window.AgentGlowNear0.Background);
+                Assert.Equal(0.30, window.AgentGlowWide0.Opacity, 3);
+                Assert.Equal(0.14, window.AgentGlowNear0.Opacity, 3);
+                Assert.Equal(
+                    28,
+                    Assert.IsType<BlurEffect>(window.AgentGlowWide0.Effect).Radius,
+                    3);
+                Assert.Equal(
+                    16,
+                    Assert.IsType<BlurEffect>(window.AgentGlowNear0.Effect).Radius,
+                    3);
+                Assert.Equal(
+                    5.5,
+                    Assert.IsType<BlurEffect>(statusLightField.Effect).Radius,
+                    3);
                 var hoverTrigger = window.AgentKey0.Template.Triggers
                     .OfType<Trigger>()
                     .Single(trigger => trigger.Property.Name == "IsMouseOver");
@@ -244,7 +301,18 @@ public sealed class WindowDesignTests
                         "Cap",
                         window.ActionKey06));
                 Assert.Equal(76, commandWell.Width, 3);
-                Assert.IsType<RadialGradientBrush>(commandWell.Background);
+                Assert.Same(commandCap.Background, commandWell.Background);
+                Assert.Equal(
+                    Color.FromRgb(0xF7, 0xF8, 0xF6),
+                    Assert.IsType<SolidColorBrush>(commandWell.Background).Color);
+                AssertRecessedRingBrush(commandWell.BorderBrush);
+                Assert.Equal(1.6, commandWell.BorderThickness.Left, 3);
+                Assert.Null(window.ActionKey06.Template.FindName(
+                    "KeyWellDark",
+                    window.ActionKey06));
+                Assert.Null(window.ActionKey06.Template.FindName(
+                    "KeyWellHighlight",
+                    window.ActionKey06));
                 Assert.Equal(new CornerRadius(14), commandCap.CornerRadius);
                 Assert.Equal(28, window.ActionIcon06.Width, 3);
 
@@ -254,16 +322,10 @@ public sealed class WindowDesignTests
                         "KeyWell",
                         window.ActionKey10));
                 Assert.Equal(160, voiceWell.Width, 3);
-                Assert.Equal(40, window.ActionIcon10.Width, 3);
-                Assert.False(window.VoiceWaveLayer.IsHitTestVisible);
-                Assert.Equal(0.72, window.VoiceWaveLayer.Opacity, 3);
-                Assert.Equal(0.34, window.VoiceFlowGlow.Opacity, 3);
-                Assert.Equal(0, window.VoiceReadyFlash.Opacity, 3);
+                Assert.Equal(28, window.ActionIcon10.Width, 3);
+                Assert.Same(window.ActionIcon10, window.ActionKey10.Content);
                 Assert.Equal(
-                    DoubleCollection.Parse("0.1 2.5"),
-                    window.VoiceWaveParticles.StrokeDashArray);
-                Assert.Equal(
-                    Color.FromRgb(0x17, 0xA8, 0x8F),
+                    Color.FromRgb(0x17, 0x17, 0x17),
                     Assert.IsType<SolidColorBrush>(window.ActionIcon10.IconBrush).Color);
 
                 Assert.InRange(window.JoystickCap.ActualWidth, 66.5, 67.5);
@@ -349,18 +411,28 @@ public sealed class WindowDesignTests
                 // (blue, green, white, amber, red, unassigned) right before
                 // visual QA rendering so the snapshot mirrors the Paper export
                 // row order (AgentKey0..5 == Paper cols).
-                window.AgentKey0.BorderBrush =
-                    new SolidColorBrush(Color.FromRgb(0x30, 0x4F, 0xFE));
-                window.AgentKey1.BorderBrush =
-                    new SolidColorBrush(Color.FromRgb(0x00, 0xFF, 0x4C));
-                window.AgentKey2.BorderBrush =
-                    new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
-                window.AgentKey3.BorderBrush =
-                    new SolidColorBrush(Color.FromRgb(0xFF, 0x6D, 0x00));
-                window.AgentKey4.BorderBrush =
-                    new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x33));
-                window.AgentKey5.BorderBrush =
-                    new SolidColorBrush(Color.FromArgb(0x00, 0x8D, 0xB5, 0xFF));
+                window.ApplyAgentLightingAppearance(
+                    0,
+                    CreateLightingAppearance(0, 0x304FFE));
+                window.ApplyAgentLightingAppearance(
+                    1,
+                    CreateLightingAppearance(1, 0x00FF4C));
+                window.ApplyAgentLightingAppearance(
+                    2,
+                    CreateLightingAppearance(2, 0xFFFFFF));
+                window.ApplyAgentLightingAppearance(
+                    3,
+                    CreateLightingAppearance(3, 0xFF6D00));
+                window.ApplyAgentLightingAppearance(
+                    4,
+                    CreateLightingAppearance(
+                        4,
+                        0xFF0033,
+                        isCurrentSession: true,
+                        effect: 4));
+                window.ApplyAgentLightingAppearance(
+                    5,
+                    AgentLightingAppearance.From(null));
                 window.DesignSurface.UpdateLayout();
                 bitmap.Render(window.DesignSurface);
                 var previewPath = Environment.GetEnvironmentVariable(
@@ -382,7 +454,7 @@ public sealed class WindowDesignTests
                 // frosted wash (Paper's light field + glow), not a hard ring.
                 var activeKeyPixels = RenderIsolatedAgentKey(
                     window.AgentKey0.Style,
-                    activeLight,
+                    backgroundAppearance,
                     out var activeKeyBitmap);
                 var activeKeyPreviewPath = Environment.GetEnvironmentVariable(
                     "CODEX_MICRO_ACTIVE_KEY_PREVIEW_PATH");
@@ -399,27 +471,129 @@ public sealed class WindowDesignTests
                 }
 
                 // The same key with no assigned state is the neutral reference.
-                // Paper's active color must clearly paint the keycap versus the
-                // unlit crystal base.
+                // A background session concentrates its light in the flat
+                // circular well while keeping a quieter wash on the cap.
                 var inactiveKeyPixels = RenderIsolatedAgentKey(
                     window.AgentKey0.Style,
-                    new SolidColorBrush(Color.FromArgb(0x00, 0x8D, 0xB5, 0xFF)),
+                    AgentLightingAppearance.From(null),
                     out _);
 
-                const int wellSampleX = 30; // left of the centered plus glyph
-                const int wellSampleY = 48;
+                const int wellSampleX = 65; // left of the centered plus glyph
+                const int wellSampleY = 83;
                 var activeWellBlue = BlueEmphasisAt(
-                    activeKeyPixels, width: 96, x: wellSampleX, y: wellSampleY);
+                    activeKeyPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: wellSampleX,
+                    y: wellSampleY);
                 var inactiveWellBlue = BlueEmphasisAt(
-                    inactiveKeyPixels, width: 96, x: wellSampleX, y: wellSampleY);
-                Assert.True(
-                    activeWellBlue > 30,
-                    $"Active agent key should read blue; was {activeWellBlue}.");
-                Assert.InRange(inactiveWellBlue, -25, 25);
+                    inactiveKeyPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: wellSampleX,
+                    y: wellSampleY);
+                Assert.InRange(inactiveWellBlue, -10, 10);
                 Assert.True(
                     activeWellBlue > inactiveWellBlue + 25,
-                    $"Active {activeWellBlue} not clearly bluer than " +
-                    $"inactive {inactiveWellBlue}.");
+                    $"Background-session well {activeWellBlue} not clearly " +
+                    $"bluer than inactive {inactiveWellBlue}.");
+
+                const int glowSampleX = 24;
+                const int glowSampleY = 83;
+                var activeGlowBlue = BlueEmphasisAt(
+                    activeKeyPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: glowSampleX,
+                    y: glowSampleY);
+                var inactiveGlowBlue = BlueEmphasisAt(
+                    inactiveKeyPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: glowSampleX,
+                    y: glowSampleY);
+                Assert.True(
+                    activeGlowBlue > inactiveGlowBlue + 12,
+                    $"Active perimeter glow {activeGlowBlue} not clearly bluer " +
+                    $"than inactive {inactiveGlowBlue}.");
+
+                var currentKeyPixels = RenderIsolatedAgentKey(
+                    window.AgentKey0.Style,
+                    CreateLightingAppearance(
+                        0,
+                        0xFF0033,
+                        isCurrentSession: true,
+                        effect: 4),
+                    out var currentKeyBitmap);
+                var currentKeyPreviewPath = Environment.GetEnvironmentVariable(
+                    "CODEX_MICRO_CURRENT_KEY_PREVIEW_PATH");
+                if (!string.IsNullOrWhiteSpace(currentKeyPreviewPath))
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(currentKeyBitmap));
+                    using var stream = new FileStream(
+                        currentKeyPreviewPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read);
+                    encoder.Save(stream);
+                }
+
+                const int capSampleX = 50;
+                const int capSampleY = 50;
+                var currentCapRed = RedEmphasisAt(
+                    currentKeyPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: capSampleX,
+                    y: capSampleY);
+                var inactiveCapRed = RedEmphasisAt(
+                    inactiveKeyPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: capSampleX,
+                    y: capSampleY);
+                Assert.True(
+                    currentCapRed > inactiveCapRed + 20,
+                    $"Current-session cap {currentCapRed} not clearly redder " +
+                    $"than inactive {inactiveCapRed}.");
+
+                var panelBrush = new SolidColorBrush(
+                    Color.FromRgb(0xD7, 0xDC, 0xDA));
+                var fallbackPixels = RenderIsolatedAgentKey(
+                    window.AgentKey0.Style,
+                    AgentLightingAppearance.From(
+                        lighting: null,
+                        isCurrentSession: true),
+                    out var fallbackBitmap,
+                    panelBrush);
+                var inactivePanelPixels = RenderIsolatedAgentKey(
+                    window.AgentKey0.Style,
+                    AgentLightingAppearance.From(null),
+                    out _,
+                    panelBrush);
+                var fallbackPreviewPath = Environment.GetEnvironmentVariable(
+                    "CODEX_MICRO_FALLBACK_KEY_PREVIEW_PATH");
+                if (!string.IsNullOrWhiteSpace(fallbackPreviewPath))
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(fallbackBitmap));
+                    using var stream = new FileStream(
+                        fallbackPreviewPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read);
+                    encoder.Save(stream);
+                }
+
+                var fallbackGlowLuminance = LuminanceAt(
+                    fallbackPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: glowSampleX,
+                    y: glowSampleY);
+                var inactivePanelLuminance = LuminanceAt(
+                    inactivePanelPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: glowSampleX,
+                    y: glowSampleY);
+                Assert.True(
+                    fallbackGlowLuminance > inactivePanelLuminance + 3,
+                    $"White fallback glow {fallbackGlowLuminance} not visibly " +
+                    $"brighter than inactive {inactivePanelLuminance}.");
 
                 window.CloseForApplicationExit();
             }
@@ -448,33 +622,117 @@ public sealed class WindowDesignTests
         return blue - ((red + green) / 2.0);
     }
 
+    private static double RedEmphasisAt(
+        byte[] pixels,
+        int width,
+        int x,
+        int y)
+    {
+        var offset = ((y * width) + x) * 4;
+        var blue = pixels[offset];
+        var green = pixels[offset + 1];
+        var red = pixels[offset + 2];
+        return red - ((green + blue) / 2.0);
+    }
+
+    private static double LuminanceAt(
+        byte[] pixels,
+        int width,
+        int x,
+        int y)
+    {
+        var offset = ((y * width) + x) * 4;
+        var blue = pixels[offset];
+        var green = pixels[offset + 1];
+        var red = pixels[offset + 2];
+        return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+    }
+
+    private static void AssertRecessedRingBrush(Brush brush)
+    {
+        var ring = Assert.IsType<LinearGradientBrush>(brush);
+        Assert.Equal(new Point(0, 0), ring.StartPoint);
+        Assert.Equal(new Point(1, 1), ring.EndPoint);
+        Assert.Collection(
+            ring.GradientStops.OrderBy(stop => stop.Offset),
+            stop =>
+            {
+                Assert.Equal(0, stop.Offset, 3);
+                Assert.Equal(Color.FromArgb(0x28, 0x74, 0x7B, 0x77), stop.Color);
+            },
+            stop =>
+            {
+                Assert.Equal(0.42, stop.Offset, 3);
+                Assert.Equal(Color.FromArgb(0x14, 0x74, 0x7B, 0x77), stop.Color);
+            },
+            stop =>
+            {
+                Assert.Equal(0.58, stop.Offset, 3);
+                Assert.Equal(Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF), stop.Color);
+            },
+            stop =>
+            {
+                Assert.Equal(1, stop.Offset, 3);
+                Assert.Equal(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF), stop.Color);
+            });
+    }
+
     private static byte[] RenderIsolatedAgentKey(
         Style style,
-        Brush borderBrush,
-        out RenderTargetBitmap bitmap)
+        AgentLightingAppearance appearance,
+        out RenderTargetBitmap bitmap,
+        Brush? stageBackground = null)
     {
         var stage = new Grid
         {
-            Width = 96,
-            Height = 96,
-            Background = Brushes.White,
+            Width = IsolatedAgentRenderSize,
+            Height = IsolatedAgentRenderSize,
+            Background = stageBackground ?? Brushes.White,
         };
-        stage.Children.Add(new Button
+        var key = new Button
         {
-            Width = 96,
-            Height = 96,
+            Width = IsolatedAgentRenderSize,
+            Height = IsolatedAgentRenderSize,
             Style = style,
-            BorderBrush = borderBrush,
-        });
-        stage.Measure(new Size(96, 96));
-        stage.Arrange(new Rect(0, 0, 96, 96));
+        };
+        stage.Children.Add(key);
+        stage.Measure(new Size(IsolatedAgentRenderSize, IsolatedAgentRenderSize));
+        stage.Arrange(new Rect(
+            0,
+            0,
+            IsolatedAgentRenderSize,
+            IsolatedAgentRenderSize));
+        MicroSurfaceWindow.ApplyAgentLightingAppearance(key, appearance);
         stage.UpdateLayout();
-        bitmap = new RenderTargetBitmap(96, 96, 96, 96, PixelFormats.Pbgra32);
+        bitmap = new RenderTargetBitmap(
+            IsolatedAgentRenderSize,
+            IsolatedAgentRenderSize,
+            96,
+            96,
+            PixelFormats.Pbgra32);
         bitmap.Render(stage);
-        var pixels = new byte[96 * 96 * 4];
-        bitmap.CopyPixels(pixels, 96 * 4, 0);
+        var pixels = new byte[
+            IsolatedAgentRenderSize * IsolatedAgentRenderSize * 4];
+        bitmap.CopyPixels(pixels, IsolatedAgentRenderSize * 4, 0);
         return pixels;
     }
+
+    private static AgentLightingAppearance CreateLightingAppearance(
+        int slotId,
+        int color,
+        bool isCurrentSession = false,
+        int effect = 1) =>
+        AgentLightingAppearance.From(
+            new SlotLighting(
+                slotId,
+                color,
+                1,
+                effect,
+                effect == 4 ? 0.4 : 0,
+                false,
+                false,
+                false),
+            isCurrentSession);
 
     private static void AssertSquare(FrameworkElement element) =>
         Assert.Equal(element.ActualWidth, element.ActualHeight, 3);

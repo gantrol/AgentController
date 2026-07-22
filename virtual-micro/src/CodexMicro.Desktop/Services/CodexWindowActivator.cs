@@ -22,6 +22,14 @@ internal static class CodexWindowActivator
             return false;
         }
 
+        if (
+            GetForegroundWindow() == candidate.Handle &&
+            IsWindowVisible(candidate.Handle) &&
+            !IsIconic(candidate.Handle))
+        {
+            return true;
+        }
+
         // A Codex build can own both the real application window (currently
         // titled "ChatGPT") and a small "Codex" tool window.  Always raise the
         // selected main window in the normal, non-topmost Z-order band.

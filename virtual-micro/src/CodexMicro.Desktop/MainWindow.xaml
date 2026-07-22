@@ -209,6 +209,23 @@
                                 <RowDefinition Height="106" />
                             </Grid.RowDefinitions>
 
+                            <!-- Status bloom is a shared layer below every physical
+                                 control. Keeping it outside the buttons lets adjacent
+                                 colors overlap naturally without one halo painting
+                                 over another keycap. -->
+                            <Border x:Name="AgentGlowWide0" Grid.Row="0" Grid.Column="1" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" />
+                            <Border x:Name="AgentGlowWide1" Grid.Row="0" Grid.Column="2" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" />
+                            <Border x:Name="AgentGlowWide2" Grid.Row="1" Grid.Column="0" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" />
+                            <Border x:Name="AgentGlowWide3" Grid.Row="1" Grid.Column="1" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" />
+                            <Border x:Name="AgentGlowWide4" Grid.Row="1" Grid.Column="2" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" />
+                            <Border x:Name="AgentGlowWide5" Grid.Row="1" Grid.Column="3" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" />
+                            <Border x:Name="AgentGlowNear0" Grid.Row="0" Grid.Column="1" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" />
+                            <Border x:Name="AgentGlowNear1" Grid.Row="0" Grid.Column="2" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" />
+                            <Border x:Name="AgentGlowNear2" Grid.Row="1" Grid.Column="0" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" />
+                            <Border x:Name="AgentGlowNear3" Grid.Row="1" Grid.Column="1" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" />
+                            <Border x:Name="AgentGlowNear4" Grid.Row="1" Grid.Column="2" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" />
+                            <Border x:Name="AgentGlowNear5" Grid.Row="1" Grid.Column="3" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" />
+
                             <Button x:Name="DialButton"
                                     Grid.Row="0"
                                     Grid.Column="0"
@@ -463,164 +480,11 @@
                                     PreviewKeyDown="Voice_PreviewKeyDown"
                                     PreviewKeyUp="Voice_PreviewKeyUp"
                                     ToolTip="Push to talk · 按住说话 · ACT10">
-                                <Grid Width="160"
-                                      Height="76"
-                                      IsHitTestVisible="False">
-                                    <Border x:Name="VoiceFlowGlow"
-                                            Width="154"
-                                            Height="70"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            BorderBrush="#705FE4C1"
-                                            BorderThickness="1"
-                                            CornerRadius="35"
-                                            Opacity="0.34"
-                                            RenderTransformOrigin="0.5,0.5">
-                                        <Border.Background>
-                                            <RadialGradientBrush Center="0.5,0.5"
-                                                                 GradientOrigin="0.5,0.5"
-                                                                 RadiusX="0.72"
-                                                                 RadiusY="0.9">
-                                                <GradientStop Color="#B05FE4C1" Offset="0" />
-                                                <GradientStop Color="#667FE9D1" Offset="0.56" />
-                                                <GradientStop Color="#1A5FE4C1" Offset="1" />
-                                            </RadialGradientBrush>
-                                        </Border.Background>
-                                        <Border.Effect>
-                                            <DropShadowEffect Color="#5FE4C1"
-                                                              BlurRadius="13"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.62" />
-                                        </Border.Effect>
-                                        <Border.RenderTransform>
-                                            <ScaleTransform x:Name="VoiceFlowScale"
-                                                            ScaleX="0.98"
-                                                            ScaleY="0.98" />
-                                        </Border.RenderTransform>
-                                    </Border>
-
-                                    <Border x:Name="VoiceGlassSurface"
-                                            Width="154"
-                                            Height="70"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            BorderBrush="#D8FFFFFF"
-                                            BorderThickness="1.25"
-                                            CornerRadius="35">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0"
-                                                                 EndPoint="1,1">
-                                                <GradientStop Color="#D8FBFFFD" Offset="0" />
-                                                <GradientStop Color="#8FC0F3E5" Offset="0.48" />
-                                                <GradientStop Color="#B8F4FFFB" Offset="1" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                        <Border.Effect>
-                                            <DropShadowEffect Color="#79DCC7"
-                                                              BlurRadius="7"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.34" />
-                                        </Border.Effect>
-                                    </Border>
-
-                                    <Border Width="148"
-                                            Height="64"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Background="Transparent"
-                                            BorderBrush="#8CFFFFFF"
-                                            BorderThickness="1"
-                                            CornerRadius="32" />
-
-                                    <Grid x:Name="VoiceWaveLayer"
-                                          Width="160"
-                                          Height="76"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center"
-                                          Opacity="0.72">
-                                        <Path x:Name="VoiceWaveAura"
-                                              Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38 M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
-                                              Fill="Transparent"
-                                              Stroke="#805FE4C1"
-                                              StrokeThickness="5.5">
-                                            <Path.Effect>
-                                                <BlurEffect Radius="4.5" />
-                                            </Path.Effect>
-                                        </Path>
-                                        <Path x:Name="VoiceWaveA"
-                                              Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38"
-                                              Fill="Transparent"
-                                              Stroke="#D65FE4C1"
-                                              StrokeEndLineCap="Round"
-                                              StrokeStartLineCap="Round"
-                                              StrokeThickness="1.6" />
-                                        <Path x:Name="VoiceWaveB"
-                                              Data="M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
-                                              Fill="Transparent"
-                                              Stroke="#E8FFFFFF"
-                                              StrokeEndLineCap="Round"
-                                              StrokeStartLineCap="Round"
-                                              StrokeThickness="1.35" />
-                                        <Path x:Name="VoiceWaveParticles"
-                                              Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38 M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
-                                              Fill="Transparent"
-                                              Stroke="#F2FFFFFF"
-                                              StrokeDashArray="0.1 2.5"
-                                              StrokeDashCap="Round"
-                                              StrokeThickness="2.35" />
-                                        <Path Data="M 12,45 C 38,27 59,27 80,38 S 122,49 148,31"
-                                              Fill="Transparent"
-                                              Opacity="0.78"
-                                              Stroke="#C8FFFFFF"
-                                              StrokeDashArray="0.1 3.2"
-                                              StrokeDashCap="Round"
-                                              StrokeThickness="1.8" />
-                                    </Grid>
-
-                                    <Border x:Name="VoiceReadyFlash"
-                                            Width="156"
-                                            Height="72"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            BorderBrush="#F2FFFFFF"
-                                            BorderThickness="1.4"
-                                            CornerRadius="36"
-                                            Opacity="0">
-                                        <Border.Effect>
-                                            <BlurEffect Radius="4" />
-                                        </Border.Effect>
-                                    </Border>
-
-                                    <Ellipse Width="39"
-                                             Height="39"
-                                             HorizontalAlignment="Center"
-                                             VerticalAlignment="Center"
-                                             Fill="#28FFFFFF"
-                                             Stroke="#72FFFFFF"
-                                             StrokeThickness="0.8">
-                                        <Ellipse.Effect>
-                                            <DropShadowEffect Color="#FFFFFF"
-                                                              BlurRadius="5"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.9" />
-                                        </Ellipse.Effect>
-                                    </Ellipse>
-
-                                    <controls:KeycapIcon x:Name="ActionIcon10"
-                                                         Width="40"
-                                                         Height="40"
-                                                         HorizontalAlignment="Center"
-                                                         VerticalAlignment="Center"
-                                                         KeycapId="MIC"
-                                                         IconBrush="#17A88F">
-                                        <controls:KeycapIcon.Effect>
-                                            <DropShadowEffect Color="#FFFFFF"
-                                                              BlurRadius="2.5"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.95" />
-                                        </controls:KeycapIcon.Effect>
-                                    </controls:KeycapIcon>
-                                </Grid>
+                                <controls:KeycapIcon x:Name="ActionIcon10"
+                                                     Width="28"
+                                                     Height="28"
+                                                     KeycapId="MIC"
+                                                     IconBrush="#171717" />
                             </Button>
                             <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">
                                 <controls:KeycapIcon x:Name="ActionIcon12" Width="28" Height="28" KeycapId="CODEX" IconBrush="#171717" />

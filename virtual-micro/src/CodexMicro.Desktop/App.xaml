@@ -18,40 +18,19 @@
             <GradientStop Color="#FFF9F8F4" Offset="0.52" />
             <GradientStop Color="#F3E8EEEE" Offset="1" />
         </LinearGradientBrush>
-        <!-- Keep the Paper translucent keycap, lifted one cool-white tone so
-             inactive Agent keys do not read as a solid grey block. -->
-        <SolidColorBrush x:Key="PaperAgentKeyBaseBrush" Color="#A3E8EEEB" />
-        <LinearGradientBrush x:Key="PaperCommandKeyBaseBrush"
+        <SolidColorBrush x:Key="PaperAgentKeyBaseBrush" Color="#FFF7F8F6" />
+        <SolidColorBrush x:Key="PaperCommandKeyBaseBrush" Color="#FFF7F8F6" />
+        <!-- Paper expresses the recessed well with two opposing inset shadows:
+             a cool grey lobe on the upper-left and a white return light on the
+             lower-right. WPF has no native inset shadow, so the rim carries the
+             same directional lighting while the well itself stays a flat fill. -->
+        <LinearGradientBrush x:Key="PaperRecessRingBrush"
                              StartPoint="0,0"
                              EndPoint="1,1">
-            <GradientStop Color="#FFFFFFFF" Offset="0" />
-            <GradientStop Color="#FFF9FAF9" Offset="0.48" />
-            <GradientStop Color="#FFE8EBE9" Offset="1" />
-        </LinearGradientBrush>
-        <RadialGradientBrush x:Key="PaperAgentWellBrush"
-                             Center="0.42,0.34"
-                             GradientOrigin="0.42,0.34"
-                             RadiusX="0.76"
-                             RadiusY="0.76">
-            <GradientStop Color="#70FFFFFF" Offset="0" />
-            <GradientStop Color="#28FFFFFF" Offset="0.46" />
-            <GradientStop Color="#12606663" Offset="1" />
-        </RadialGradientBrush>
-        <RadialGradientBrush x:Key="PaperCommandWellBrush"
-                             Center="0.43,0.35"
-                             GradientOrigin="0.43,0.35"
-                             RadiusX="0.76"
-                             RadiusY="0.76">
-            <GradientStop Color="#EBFFFFFF" Offset="0" />
-            <GradientStop Color="#D1F7F8F7" Offset="0.48" />
-            <GradientStop Color="#7AD7DCDA" Offset="1" />
-        </RadialGradientBrush>
-        <LinearGradientBrush x:Key="PaperKeyWellEdgeBrush"
-                             StartPoint="0,0"
-                             EndPoint="1,1">
-            <GradientStop Color="#70FFFFFF" Offset="0" />
-            <GradientStop Color="#24FFFFFF" Offset="0.45" />
-            <GradientStop Color="#264B514E" Offset="1" />
+            <GradientStop Color="#28747B77" Offset="0" />
+            <GradientStop Color="#14747B77" Offset="0.42" />
+            <GradientStop Color="#8CFFFFFF" Offset="0.58" />
+            <GradientStop Color="#CCFFFFFF" Offset="1" />
         </LinearGradientBrush>
         <Geometry x:Key="JoystickChevronGeometry">M 1,7 L 6,2 L 11,7</Geometry>
 
@@ -134,35 +113,15 @@
                                             BorderBrush="#F2FFFFFF"
                                             BorderThickness="1.5,1.5,0,0"
                                             CornerRadius="13" />
-                                    <Border x:Name="KeyWellDark"
-                                            Width="78"
-                                            Height="78"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Background="#14747B77"
-                                            CornerRadius="39">
-                                        <Border.RenderTransform>
-                                            <TranslateTransform X="1" Y="1" />
-                                        </Border.RenderTransform>
-                                    </Border>
                                     <Border x:Name="KeyWell"
-                                             Width="76"
-                                             Height="76"
+                                            Width="76"
+                                            Height="76"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
-                                            Background="{StaticResource PaperCommandWellBrush}"
-                                            BorderBrush="#8CFFFFFF"
-                                            BorderThickness="1"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{StaticResource PaperRecessRingBrush}"
+                                            BorderThickness="1.6"
                                             CornerRadius="38" />
-                                    <Border x:Name="KeyWellHighlight"
-                                             Width="74"
-                                             Height="74"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Background="Transparent"
-                                            BorderBrush="{StaticResource PaperKeyWellEdgeBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="37" />
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Center" />
                                 </Grid>
@@ -177,13 +136,10 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="Tag" Value="ACT10_ACT11">
-                                <Setter TargetName="KeyWellDark" Property="Width" Value="162" />
                                 <Setter TargetName="KeyWell" Property="Width" Value="160" />
-                                <Setter TargetName="KeyWellHighlight" Property="Width" Value="158" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Cap" Property="BorderBrush" Value="#FFFFFFFF" />
-                                <Setter TargetName="KeyWellHighlight" Property="Opacity" Value="0.82" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Trigger.EnterActions>
@@ -233,6 +189,38 @@
             </Setter>
         </Style>
 
+        <Style x:Key="AgentWideHalo" TargetType="Border">
+            <Setter Property="Width" Value="106" />
+            <Setter Property="Height" Value="106" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="21" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="28"
+                                RenderingBias="Quality" />
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AgentNearHalo" TargetType="Border">
+            <Setter Property="Width" Value="100" />
+            <Setter Property="Height" Value="100" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <BlurEffect Radius="16"
+                                RenderingBias="Quality" />
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="AgentKey" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource PaperAgentKeyBaseBrush}" />
             <Setter Property="BorderBrush" Value="#008DB5FF" />
@@ -244,28 +232,36 @@
                     <ControlTemplate TargetType="Button">
                         <Grid Margin="0.5">
                             <Border x:Name="FarShadow"
-                                    Margin="2,4,2,0"
+                                    Width="92"
+                                    Height="92"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
                                     Background="#243A403D"
                                     CornerRadius="14"
                                     Opacity="1">
+                                <Border.RenderTransform>
+                                    <TranslateTransform Y="3" />
+                                </Border.RenderTransform>
                                 <Border.Effect>
                                     <BlurEffect Radius="8" />
                                 </Border.Effect>
                             </Border>
-                            <!-- Paper outer colored glow (export lines 33-35): a
-                                 rounded-rect bloom behind the cap, inset ~-9%,
-                                 blur(5.2735px). Carries the state color at the
-                                 keycap's perimeter. -->
-                            <Border x:Name="Glow"
-                                    Margin="-5,-5,-5,-5"
+                            <!-- Self-contained bloom for isolated/reused key
+                                 rendering. MainWindow moves the same two kernels
+                                 into a shared layer below all physical keycaps. -->
+                            <Border x:Name="GlowWide"
+                                    Style="{StaticResource AgentWideHalo}"
                                     Background="{TemplateBinding BorderBrush}"
-                                    CornerRadius="14"
-                                    Opacity="0.32">
-                                <Border.Effect>
-                                    <BlurEffect Radius="5.3" />
-                                </Border.Effect>
-                            </Border>
+                                    Opacity="0" />
+                            <Border x:Name="Glow"
+                                    Style="{StaticResource AgentNearHalo}"
+                                    Background="{TemplateBinding BorderBrush}"
+                                    Opacity="0" />
                             <Border x:Name="Cap"
+                                    Width="96"
+                                    Height="96"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
                                     Margin="0"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="#99FFFFFF"
@@ -274,7 +270,20 @@
                                 <Border.RenderTransform>
                                     <TranslateTransform />
                                 </Border.RenderTransform>
-                                <Grid>
+                                 <Grid>
+                                    <!-- Non-selected sessions tint the circular
+                                         well most strongly. The current session
+                                         raises this full-cap wash so its light
+                                         reaches the entire key, as in Paper. -->
+                                    <Border x:Name="StatusCapWash"
+                                            Margin="4"
+                                            Background="{TemplateBinding BorderBrush}"
+                                            CornerRadius="10"
+                                            Opacity="0.07">
+                                        <Border.Effect>
+                                            <BlurEffect Radius="6.5" />
+                                        </Border.Effect>
+                                    </Border>
                                     <!-- Paper inset dark: #4E545133 -2px -2px 3px inset -->
                                     <Border Margin="1,1,0,0"
                                             BorderBrush="#334E5451"
@@ -296,25 +305,26 @@
                                              Width="82"
                                              Height="82"
                                              Fill="{TemplateBinding BorderBrush}"
-                                             Opacity="0.32">
+                                             Opacity="0.36">
                                         <Ellipse.Effect>
-                                            <BlurEffect Radius="4" />
+                                            <BlurEffect Radius="5.5" />
                                         </Ellipse.Effect>
                                     </Ellipse>
-                                    <!-- Paper neutral glass well (export line 38):
-                                         inset ~10%, radial white highlight, translucent
-                                         #FFFFFF38 border. No state tint of its own; the
-                                         light field behind it bleeds through. -->
                                     <Ellipse x:Name="AgentWell"
                                              Width="76"
                                              Height="76"
-                                             Fill="{StaticResource PaperAgentWellBrush}" />
+                                             Fill="{TemplateBinding Background}" />
+                                    <Ellipse x:Name="StatusWellWash"
+                                             Width="76"
+                                             Height="76"
+                                             Fill="{TemplateBinding BorderBrush}"
+                                             Opacity="0.42" />
                                     <Ellipse x:Name="AgentWellHighlight"
-                                             Width="74"
-                                             Height="74"
+                                             Width="76"
+                                             Height="76"
                                              Fill="Transparent"
-                                             Stroke="{StaticResource PaperKeyWellEdgeBrush}"
-                                             StrokeThickness="1" />
+                                             Stroke="{StaticResource PaperRecessRingBrush}"
+                                             StrokeThickness="1.6" />
                                     <Grid x:Name="AgentGlyph"
                                           Width="18"
                                           Height="18"
@@ -352,7 +362,6 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Glow" Property="Opacity" Value="0.36" />
                                 <Setter TargetName="Cap" Property="BorderBrush" Value="#F7FFFFFF" />
                                 <Setter TargetName="AgentWellHighlight" Property="Opacity" Value="0.86" />
                             </Trigger>
