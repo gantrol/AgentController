@@ -1,6 +1,7 @@
 using CodexController.Services;
 using CodexController.Models;
 using CodexController.Services.Micro;
+using CodexMicro.Desktop.Services;
 using System.Text.Json;
 
 namespace CodexController.Tests;
@@ -102,7 +103,8 @@ public sealed class ComposerDialNativeInputPolicyTests
             {
                 keys.Add(key);
                 return true;
-            });
+            },
+            () => CodexRequestCardCancellationResult.NotPresent);
         var settings = new AppSettings
         {
             BridgeEnabled = true,
@@ -153,7 +155,8 @@ public sealed class ComposerDialNativeInputPolicyTests
             {
                 keys.Add(key);
                 return true;
-            });
+            },
+            () => CodexRequestCardCancellationResult.NotPresent);
         var settings = new AppSettings
         {
             BridgeEnabled = true,
@@ -256,7 +259,8 @@ public sealed class ComposerDialNativeInputPolicyTests
             {
                 keys.Add(key);
                 return true;
-            });
+            },
+            () => CodexRequestCardCancellationResult.NotPresent);
         var settings = new AppSettings
         {
             BridgeEnabled = true,
@@ -274,6 +278,65 @@ public sealed class ComposerDialNativeInputPolicyTests
         Assert.Equal(
             [("AG00", 1), ("AG00", 0)],
             DecodeHidEvents(transport.Reports));
+    }
+
+    [Fact]
+    public void VerifiedRequestCardConsumesCancelWithoutAg00Fallback()
+    {
+        using var transport = new RecordingTransport();
+        using var micro = new MicroInputService(transport);
+        var nativeKeys = new List<ushort>();
+        var cancelCalls = 0;
+        var service = new CodexComposerService(
+            micro,
+            _ => true,
+            key =>
+            {
+                nativeKeys.Add(key);
+                return true;
+            },
+            () =>
+            {
+                cancelCalls++;
+                return CodexRequestCardCancellationResult.Cancelled;
+            });
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        var result = service.DialCancel(settings);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, cancelCalls);
+        Assert.Empty(nativeKeys);
+        Assert.Empty(transport.Reports);
+    }
+
+    [Theory]
+    [InlineData(CodexRequestCardCancellationResult.Blocked)]
+    [InlineData(CodexRequestCardCancellationResult.Failed)]
+    public void UnsafeRequestCardProbeNeverFallsBackToAg00(
+        CodexRequestCardCancellationResult cancellation)
+    {
+        using var transport = new RecordingTransport();
+        using var micro = new MicroInputService(transport);
+        var service = new CodexComposerService(
+            micro,
+            _ => true,
+            _ => true,
+            () => cancellation);
+        var settings = new AppSettings
+        {
+            BridgeEnabled = true,
+            OnlyWhenCodexForeground = false,
+        };
+
+        var result = service.DialCancel(settings, menuExpected: true);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(transport.Reports);
     }
 
     private static IReadOnlyList<(string Key, int Action)> DecodeHidEvents(

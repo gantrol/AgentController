@@ -10,25 +10,36 @@ internal sealed class DialGestureTracker
     internal const double StepDistance = 12;
     internal const int WheelStepDelta = 120;
 
+    private enum DragAxis
+    {
+        None,
+        Horizontal,
+        Vertical,
+    }
+
+    private double _dragOriginX;
     private double _dragOriginY;
     private double _dragRemainder;
-    private double _lastDragY;
+    private double _lastDragPosition;
     private int _wheelRemainder;
+    private DragAxis _dragAxis;
 
     public bool IsPointerDown { get; private set; }
 
     public bool IsDragging { get; private set; }
 
-    public void Begin(double pointerY)
+    public void Begin(double pointerX, double pointerY)
     {
         IsPointerDown = true;
         IsDragging = false;
+        _dragAxis = DragAxis.None;
+        _dragOriginX = pointerX;
         _dragOriginY = pointerY;
-        _lastDragY = pointerY;
+        _lastDragPosition = 0;
         _dragRemainder = 0;
     }
 
-    public DialGestureUpdate Move(double pointerY)
+    public DialGestureUpdate Move(double pointerX, double pointerY)
     {
         if (!IsPointerDown)
         {
@@ -38,21 +49,35 @@ internal sealed class DialGestureTracker
         var beganDragging = false;
         if (!IsDragging)
         {
-            var totalMovement = pointerY - _dragOriginY;
-            if (Math.Abs(totalMovement) < DragThreshold)
+            var horizontalMovement = pointerX - _dragOriginX;
+            var verticalMovement = pointerY - _dragOriginY;
+            if (Math.Sqrt(
+                    (horizontalMovement * horizontalMovement) +
+                    (verticalMovement * verticalMovement)) < DragThreshold)
             {
                 return default;
             }
 
             IsDragging = true;
             beganDragging = true;
-            _lastDragY = _dragOriginY + (Math.Sign(totalMovement) * DragThreshold);
+            _dragAxis = Math.Abs(horizontalMovement) > Math.Abs(verticalMovement)
+                ? DragAxis.Horizontal
+                : DragAxis.Vertical;
+            _lastDragPosition = _dragAxis == DragAxis.Horizontal
+                ? _dragOriginX + (Math.Sign(horizontalMovement) * DragThreshold)
+                : _dragOriginY + (Math.Sign(verticalMovement) * DragThreshold);
         }
 
-        // Moving upward is clockwise/ArrowUp; moving downward is
-        // counter-clockwise/ArrowDown.
-        _dragRemainder += _lastDragY - pointerY;
-        _lastDragY = pointerY;
+        // A held pointer may turn the virtual knob along either dominant axis:
+        // right/up is clockwise, left/down is counter-clockwise. Locking the
+        // axis after the threshold avoids diagonal jitter changing direction.
+        var pointerPosition = _dragAxis == DragAxis.Horizontal
+            ? pointerX
+            : pointerY;
+        _dragRemainder += _dragAxis == DragAxis.Horizontal
+            ? pointerPosition - _lastDragPosition
+            : _lastDragPosition - pointerPosition;
+        _lastDragPosition = pointerPosition;
         var steps = (int)(_dragRemainder / StepDistance);
         _dragRemainder -= steps * StepDistance;
         return new DialGestureUpdate(beganDragging, steps);
@@ -74,6 +99,7 @@ internal sealed class DialGestureTracker
     {
         IsPointerDown = false;
         IsDragging = false;
+        _dragAxis = DragAxis.None;
         _dragRemainder = 0;
     }
 

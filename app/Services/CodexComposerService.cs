@@ -5,6 +5,7 @@ using CodexController.Agents;
 using CodexController.Models;
 using CodexController.Native;
 using CodexController.Services.Micro;
+using CodexMicro.Desktop.Services;
 using static CodexController.Services.CodexAutomationLocator;
 using static CodexController.Services.CodexComposerDialProbe;
 using static CodexController.Services.CodexComposerStateVerifier;
@@ -108,6 +109,8 @@ public sealed partial class CodexComposerService
     private readonly MicroInputService _microInput;
     private readonly Func<string, bool> _sendShortcut;
     private readonly Func<ushort, bool> _sendKey;
+    private readonly Func<CodexRequestCardCancellationResult>
+        _cancelForegroundRequestCard;
     private readonly Dictionary<string, OwnedDialSurface>
         _dialOwnedSurfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string>
@@ -149,7 +152,9 @@ public sealed partial class CodexComposerService
     internal CodexComposerService(
         MicroInputService microInput,
         Func<string, bool> sendShortcut,
-        Func<ushort, bool> sendKey)
+        Func<ushort, bool> sendKey,
+        Func<CodexRequestCardCancellationResult>?
+            cancelForegroundRequestCard = null)
     {
         _microInput = microInput ??
             throw new ArgumentNullException(nameof(microInput));
@@ -157,6 +162,9 @@ public sealed partial class CodexComposerService
             throw new ArgumentNullException(nameof(sendShortcut));
         _sendKey = sendKey ??
             throw new ArgumentNullException(nameof(sendKey));
+        _cancelForegroundRequestCard = cancelForegroundRequestCard ??
+            (() => CodexRequestCardCancellation
+                .TryCancelForegroundRequestCard());
         _commands = new CodexComposerAutomationExecutor(_sendShortcut);
         _catalog = new CodexComposerCatalogService(
             TryReadComposerButtonName);
@@ -1706,6 +1714,57 @@ public sealed partial class CodexComposerService
         if (gate is not null)
         {
             return gate;
+        }
+
+        // Codex 26.715.10079 does not include request-navigation cards in
+        // the official AG00 contextual-Escape route. Handle only a strictly
+        // verified foreground card here; ambiguous or failed probes consume
+        // the action so an AG00 report cannot switch tasks by mistake.
+        CodexRequestCardCancellationResult requestCard;
+        try
+        {
+            requestCard = _cancelForegroundRequestCard();
+        }
+        catch (Exception)
+        {
+            requestCard = CodexRequestCardCancellationResult.Failed;
+        }
+
+        if (requestCard == CodexRequestCardCancellationResult.Cancelled)
+        {
+            lock (_dialSync)
+            {
+                ClearOwnedDialPopup();
+            }
+
+            return new(
+                true,
+                "Plan request",
+                IsMenuOpen: false,
+                MenuWasPresent: true,
+                StateVerified: false);
+        }
+
+        if (requestCard == CodexRequestCardCancellationResult.Blocked)
+        {
+            return new(
+                false,
+                "Plan request",
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.ElementUnsupported,
+                ErrorDetail: "request-card-ambiguous",
+                MenuWasPresent: true);
+        }
+
+        if (requestCard == CodexRequestCardCancellationResult.Failed)
+        {
+            return new(
+                false,
+                "Plan request",
+                IsMenuOpen: true,
+                Error: AgentAutomationErrorCodes.InputInjectionFailed,
+                ErrorDetail: "request-card-cancel",
+                MenuWasPresent: true);
         }
 
         if (menuExpected)

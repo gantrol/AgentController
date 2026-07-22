@@ -216,10 +216,10 @@
                                     Height="88"
                                     Margin="4"
                                     Style="{StaticResource DialButton}"
-                                    ToolTip="滚轮/上下拖动：选择 · 左键：打开或确认"
+                                    ToolTip="滚轮选择 · 按住左键上下或左右拖动旋转 · 短按确认"
                                     PreviewMouseLeftButtonDown="Dial_PreviewMouseLeftButtonDown"
                                     PreviewMouseLeftButtonUp="Dial_PreviewMouseLeftButtonUp"
-                                    MouseMove="Dial_MouseMove"
+                                    PreviewMouseMove="Dial_MouseMove"
                                     LostMouseCapture="Dial_LostMouseCapture"
                                     MouseWheel="Dial_MouseWheel" />
 
@@ -353,7 +353,7 @@
                                 <Button x:Name="JoystickUp"
                                         Width="24"
                                         Height="24"
-                                        Margin="0,1,0,0"
+                                        Margin="0,-6,0,0"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Top"
                                         Panel.ZIndex="3"
@@ -363,7 +363,7 @@
                                 <Button x:Name="JoystickLeft"
                                         Width="24"
                                         Height="24"
-                                        Margin="1,0,0,0"
+                                        Margin="-6,0,0,0"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
                                         Panel.ZIndex="3"
@@ -378,7 +378,7 @@
                                 <Button x:Name="JoystickRight"
                                         Width="24"
                                         Height="24"
-                                        Margin="0,0,1,0"
+                                        Margin="0,0,-6,0"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center"
                                         Panel.ZIndex="3"
@@ -393,7 +393,7 @@
                                 <Button x:Name="JoystickDown"
                                         Width="24"
                                         Height="24"
-                                        Margin="0,0,0,1"
+                                        Margin="0,0,0,-6"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Bottom"
                                         Panel.ZIndex="3"
@@ -471,49 +471,110 @@
                                             Height="70"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
-                                            Background="#365FE4C1"
                                             BorderBrush="#705FE4C1"
                                             BorderThickness="1"
                                             CornerRadius="35"
-                                            Opacity="0.12"
+                                            Opacity="0.34"
                                             RenderTransformOrigin="0.5,0.5">
+                                        <Border.Background>
+                                            <RadialGradientBrush Center="0.5,0.5"
+                                                                 GradientOrigin="0.5,0.5"
+                                                                 RadiusX="0.72"
+                                                                 RadiusY="0.9">
+                                                <GradientStop Color="#B05FE4C1" Offset="0" />
+                                                <GradientStop Color="#667FE9D1" Offset="0.56" />
+                                                <GradientStop Color="#1A5FE4C1" Offset="1" />
+                                            </RadialGradientBrush>
+                                        </Border.Background>
                                         <Border.Effect>
-                                            <BlurEffect Radius="7" />
+                                            <DropShadowEffect Color="#5FE4C1"
+                                                              BlurRadius="13"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.62" />
                                         </Border.Effect>
                                         <Border.RenderTransform>
                                             <ScaleTransform x:Name="VoiceFlowScale"
-                                                            ScaleX="0.97"
-                                                            ScaleY="0.97" />
+                                                            ScaleX="0.98"
+                                                            ScaleY="0.98" />
                                         </Border.RenderTransform>
                                     </Border>
+
+                                    <Border x:Name="VoiceGlassSurface"
+                                            Width="154"
+                                            Height="70"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            BorderBrush="#D8FFFFFF"
+                                            BorderThickness="1.25"
+                                            CornerRadius="35">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0"
+                                                                 EndPoint="1,1">
+                                                <GradientStop Color="#D8FBFFFD" Offset="0" />
+                                                <GradientStop Color="#8FC0F3E5" Offset="0.48" />
+                                                <GradientStop Color="#B8F4FFFB" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="#79DCC7"
+                                                              BlurRadius="7"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.34" />
+                                        </Border.Effect>
+                                    </Border>
+
+                                    <Border Width="148"
+                                            Height="64"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent"
+                                            BorderBrush="#8CFFFFFF"
+                                            BorderThickness="1"
+                                            CornerRadius="32" />
 
                                     <Grid x:Name="VoiceWaveLayer"
                                           Width="160"
                                           Height="76"
                                           HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
-                                          Opacity="0.22">
+                                          Opacity="0.72">
+                                        <Path x:Name="VoiceWaveAura"
+                                              Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38 M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
+                                              Fill="Transparent"
+                                              Stroke="#805FE4C1"
+                                              StrokeThickness="5.5">
+                                            <Path.Effect>
+                                                <BlurEffect Radius="4.5" />
+                                            </Path.Effect>
+                                        </Path>
                                         <Path x:Name="VoiceWaveA"
                                               Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38"
                                               Fill="Transparent"
-                                              Stroke="#9C5FE4C1"
+                                              Stroke="#D65FE4C1"
                                               StrokeEndLineCap="Round"
                                               StrokeStartLineCap="Round"
-                                              StrokeThickness="1.35" />
+                                              StrokeThickness="1.6" />
                                         <Path x:Name="VoiceWaveB"
                                               Data="M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
                                               Fill="Transparent"
-                                              Stroke="#8CFFFFFF"
+                                              Stroke="#E8FFFFFF"
                                               StrokeEndLineCap="Round"
                                               StrokeStartLineCap="Round"
-                                              StrokeThickness="1.15" />
+                                              StrokeThickness="1.35" />
                                         <Path x:Name="VoiceWaveParticles"
                                               Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38 M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
                                               Fill="Transparent"
-                                              Stroke="#E8FFFFFF"
-                                              StrokeDashArray="0.1 4"
+                                              Stroke="#F2FFFFFF"
+                                              StrokeDashArray="0.1 2.5"
                                               StrokeDashCap="Round"
-                                              StrokeThickness="2.7" />
+                                              StrokeThickness="2.35" />
+                                        <Path Data="M 12,45 C 38,27 59,27 80,38 S 122,49 148,31"
+                                              Fill="Transparent"
+                                              Opacity="0.78"
+                                              Stroke="#C8FFFFFF"
+                                              StrokeDashArray="0.1 3.2"
+                                              StrokeDashCap="Round"
+                                              StrokeThickness="1.8" />
                                     </Grid>
 
                                     <Border x:Name="VoiceReadyFlash"
@@ -530,13 +591,35 @@
                                         </Border.Effect>
                                     </Border>
 
+                                    <Ellipse Width="39"
+                                             Height="39"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"
+                                             Fill="#28FFFFFF"
+                                             Stroke="#72FFFFFF"
+                                             StrokeThickness="0.8">
+                                        <Ellipse.Effect>
+                                            <DropShadowEffect Color="#FFFFFF"
+                                                              BlurRadius="5"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.9" />
+                                        </Ellipse.Effect>
+                                    </Ellipse>
+
                                     <controls:KeycapIcon x:Name="ActionIcon10"
-                                                         Width="28"
-                                                         Height="28"
+                                                         Width="40"
+                                                         Height="40"
                                                          HorizontalAlignment="Center"
                                                          VerticalAlignment="Center"
                                                          KeycapId="MIC"
-                                                         IconBrush="#171717" />
+                                                         IconBrush="#17A88F">
+                                        <controls:KeycapIcon.Effect>
+                                            <DropShadowEffect Color="#FFFFFF"
+                                                              BlurRadius="2.5"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.95" />
+                                        </controls:KeycapIcon.Effect>
+                                    </controls:KeycapIcon>
                                 </Grid>
                             </Button>
                             <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">

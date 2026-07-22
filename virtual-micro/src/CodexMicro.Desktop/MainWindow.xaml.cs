@@ -171,7 +171,7 @@ public partial class MicroSurfaceWindow : Window
             SetHelp(
                 DialButton,
                 "选择旋钮",
-                "全局旋钮捕获未启动；仍可上下拖动选择。\n左键：打开或确认。");
+                "全局旋钮捕获未启动；仍可按住左键上下或左右拖动选择。\n短按：打开或确认。");
         }
 
         _layoutObserver.Start();
@@ -276,6 +276,37 @@ public partial class MicroSurfaceWindow : Window
     {
         if (sender is Button { Tag: string key })
         {
+            if (key == "AG00")
+            {
+                CodexRequestCardCancellationResult cancellation;
+                try
+                {
+                    cancellation = await Task.Run(
+                        () => CodexRequestCardCancellation
+                            .TryCancelForegroundRequestCard());
+                }
+                catch
+                {
+                    cancellation = CodexRequestCardCancellationResult.Failed;
+                }
+
+                switch (cancellation)
+                {
+                    case CodexRequestCardCancellationResult.Cancelled:
+                        SetLed(ActivityLed, "#9EBDFF", "Plan 提问已取消");
+                        SetStatus("已向当前 Plan 提问卡片发送一次 Escape；未追加 AG00。");
+                        return;
+                    case CodexRequestCardCancellationResult.Blocked:
+                        SetLed(ActivityLed, "#FF7994", "Plan 提问卡片无法安全确认");
+                        SetStatus("检测到疑似或不唯一的 Plan 提问卡片；本次操作已消费，未发送 AG00。");
+                        return;
+                    case CodexRequestCardCancellationResult.Failed:
+                        SetLed(ActivityLed, "#FF7994", "Plan 取消未发送");
+                        SetStatus("Plan 提问卡片取消失败；本次操作已消费，未发送 AG00。");
+                        return;
+                }
+            }
+
             await RunActionAsync(() => _broker.TapKeyAsync(key), key);
             if (key == "ACT12")
             {
@@ -394,16 +425,16 @@ public partial class MicroSurfaceWindow : Window
         VoiceFlowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         VoiceReadyFlash.BeginAnimation(OpacityProperty, null);
 
-        VoiceFlowGlow.Opacity = recording ? 0.18 : 0.12;
-        VoiceWaveLayer.Opacity = recording ? 0.42 : 0.22;
+        VoiceFlowGlow.Opacity = recording ? 0.52 : 0.34;
+        VoiceWaveLayer.Opacity = recording ? 0.86 : 0.72;
         VoiceWaveParticles.StrokeDashOffset = 0;
-        VoiceFlowScale.ScaleX = recording ? 0.98 : 0.97;
-        VoiceFlowScale.ScaleY = recording ? 0.98 : 0.97;
+        VoiceFlowScale.ScaleX = recording ? 0.99 : 0.98;
+        VoiceFlowScale.ScaleY = recording ? 0.99 : 0.98;
         VoiceReadyFlash.Opacity = 0;
         ActionIcon10.IconBrush = new SolidColorBrush(
             recording
-                ? Color.FromRgb(0x20, 0x8F, 0x80)
-                : Color.FromRgb(0x17, 0x17, 0x17));
+                ? Color.FromRgb(0x0C, 0x8E, 0x7E)
+                : Color.FromRgb(0x17, 0xA8, 0x8F));
 
         if (!recording)
         {
@@ -422,7 +453,7 @@ public partial class MicroSurfaceWindow : Window
         var pulseDuration = new Duration(TimeSpan.FromMilliseconds(720));
         VoiceFlowGlow.BeginAnimation(
             OpacityProperty,
-            new DoubleAnimation(0.18, 0.56, pulseDuration)
+            new DoubleAnimation(0.52, 0.88, pulseDuration)
             {
                 AutoReverse = true,
                 RepeatBehavior = RepeatBehavior.Forever,
@@ -433,7 +464,7 @@ public partial class MicroSurfaceWindow : Window
             });
         VoiceWaveLayer.BeginAnimation(
             OpacityProperty,
-            new DoubleAnimation(0.42, 0.9, pulseDuration)
+            new DoubleAnimation(0.86, 1, pulseDuration)
             {
                 AutoReverse = true,
                 RepeatBehavior = RepeatBehavior.Forever,
@@ -449,7 +480,7 @@ public partial class MicroSurfaceWindow : Window
                 RepeatBehavior = RepeatBehavior.Forever,
             });
 
-        var scaleAnimation = new DoubleAnimation(0.98, 1.035, pulseDuration)
+        var scaleAnimation = new DoubleAnimation(0.99, 1.035, pulseDuration)
         {
             AutoReverse = true,
             RepeatBehavior = RepeatBehavior.Forever,
@@ -543,10 +574,10 @@ public partial class MicroSurfaceWindow : Window
 
     private void ProcessInactiveDialPointer(RoutedDialPointerInput input)
     {
-        double localY;
+        Point localPoint;
         try
         {
-            localY = DialButton.PointFromScreen(input.ScreenPoint).Y;
+            localPoint = DialButton.PointFromScreen(input.ScreenPoint);
         }
         catch (InvalidOperationException)
         {
@@ -567,7 +598,7 @@ public partial class MicroSurfaceWindow : Window
 
                 if (!_dialGesture.IsPointerDown)
                 {
-                    _dialGesture.Begin(localY);
+                    _dialGesture.Begin(localPoint.X, localPoint.Y);
                 }
 
                 break;
@@ -577,7 +608,7 @@ public partial class MicroSurfaceWindow : Window
                     return;
                 }
 
-                var update = _dialGesture.Move(localY);
+                var update = _dialGesture.Move(localPoint.X, localPoint.Y);
                 if (update.Steps != 0)
                 {
                     EnqueueEncoderSteps(update.Steps, "旋钮拖动");
@@ -634,7 +665,8 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        _dialGesture.Begin(e.GetPosition(DialButton).Y);
+        var pointer = e.GetPosition(DialButton);
+        _dialGesture.Begin(pointer.X, pointer.Y);
         _ = DialButton.CaptureMouse();
     }
 
@@ -652,7 +684,8 @@ public partial class MicroSurfaceWindow : Window
         }
 
         e.Handled = true;
-        var update = _dialGesture.Move(e.GetPosition(DialButton).Y);
+        var pointer = e.GetPosition(DialButton);
+        var update = _dialGesture.Move(pointer.X, pointer.Y);
         if (update.Steps != 0)
         {
             EnqueueEncoderSteps(update.Steps, "旋钮拖动");
@@ -1728,8 +1761,8 @@ public partial class MicroSurfaceWindow : Window
                 ? "推理强度旋钮"
                 : "选择旋钮",
             snapshot.EncoderMode == "reasoning"
-                ? "滚轮/上下拖动：调节推理强度或移动菜单选项。\n左键：打开或确认。"
-                : "滚轮/上下拖动：移动输入区控件或菜单选项。\n左键：打开或确认。");
+                ? "滚轮/按住左键上下或左右拖动：调节推理强度或移动菜单选项。\n短按：打开或确认。"
+                : "滚轮/按住左键上下或左右拖动：移动输入区控件或菜单选项。\n短按：打开或确认。");
 
         var defaultAnalog = new Dictionary<string, string>(StringComparer.Ordinal)
         {
