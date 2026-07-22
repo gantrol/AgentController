@@ -18,6 +18,39 @@
             <GradientStop Color="#FFF9F8F4" Offset="0.52" />
             <GradientStop Color="#F3E8EEEE" Offset="1" />
         </LinearGradientBrush>
+        <SolidColorBrush x:Key="PaperAgentKeyBaseBrush" Color="#A3DCE2DF" />
+        <LinearGradientBrush x:Key="PaperCommandKeyBaseBrush"
+                             StartPoint="0,0"
+                             EndPoint="1,1">
+            <GradientStop Color="#FFFFFFFF" Offset="0" />
+            <GradientStop Color="#FFF9FAF9" Offset="0.48" />
+            <GradientStop Color="#FFE8EBE9" Offset="1" />
+        </LinearGradientBrush>
+        <RadialGradientBrush x:Key="PaperAgentWellBrush"
+                             Center="0.42,0.34"
+                             GradientOrigin="0.42,0.34"
+                             RadiusX="0.76"
+                             RadiusY="0.76">
+            <GradientStop Color="#57FFFFFF" Offset="0" />
+            <GradientStop Color="#14FFFFFF" Offset="0.46" />
+            <GradientStop Color="#1F606663" Offset="1" />
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="PaperCommandWellBrush"
+                             Center="0.43,0.35"
+                             GradientOrigin="0.43,0.35"
+                             RadiusX="0.76"
+                             RadiusY="0.76">
+            <GradientStop Color="#EBFFFFFF" Offset="0" />
+            <GradientStop Color="#D1F7F8F7" Offset="0.48" />
+            <GradientStop Color="#7AD7DCDA" Offset="1" />
+        </RadialGradientBrush>
+        <LinearGradientBrush x:Key="PaperKeyWellEdgeBrush"
+                             StartPoint="0,0"
+                             EndPoint="1,1">
+            <GradientStop Color="#70FFFFFF" Offset="0" />
+            <GradientStop Color="#24FFFFFF" Offset="0.45" />
+            <GradientStop Color="#264B514E" Offset="1" />
+        </LinearGradientBrush>
         <Geometry x:Key="JoystickChevronGeometry">M 1,7 L 6,2 L 11,7</Geometry>
 
         <Style TargetType="TextBlock">
@@ -55,7 +88,7 @@
         </Style>
 
         <Style x:Key="CommandKey" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource CrystalKeyTopBrush}" />
+            <Setter Property="Background" Value="{StaticResource PaperCommandKeyBaseBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource KeyEdgeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
@@ -64,65 +97,88 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid Margin="2">
-                            <Border x:Name="SwitchShadow"
-                                    Margin="8,78,8,2"
-                                    Background="{StaticResource CrystalShadowBrush}"
-                                    CornerRadius="8"
-                                    Opacity="0.34">
+                        <Grid Margin="0.5">
+                            <Border x:Name="FarShadow"
+                                    Margin="4,7,4,-1"
+                                    Background="#33363C39"
+                                    CornerRadius="14"
+                                    Opacity="1">
                                 <Border.Effect>
-                                    <BlurEffect Radius="5" />
+                                    <BlurEffect Radius="8" />
                                 </Border.Effect>
                             </Border>
+                            <Border x:Name="SwitchShadow"
+                                    Margin="1,3,1,0"
+                                    Background="#B8ADB4B0"
+                                    CornerRadius="14"
+                                    Opacity="1" />
                             <Border x:Name="CrystalSide"
-                                    Margin="1,4,1,0"
-                                    Background="{StaticResource CrystalKeySideBrush}"
-                                    BorderBrush="#B4FFFFFF"
+                                    Margin="1,3,1,0"
+                                    Background="#D9E7EAE8"
+                                    BorderBrush="#8CFFFFFF"
                                     BorderThickness="1"
-                                    CornerRadius="18" />
+                                    CornerRadius="14" />
                             <Border x:Name="Cap"
-                                    Margin="1,0,1,4"
+                                    Margin="1,0,1,3"
                                     Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderBrush="#F2FFFFFF"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="18">
+                                    CornerRadius="14">
                                 <Grid>
                                     <Border Margin="1"
-                                            BorderBrush="#ADE4E4E4"
-                                            BorderThickness="1"
-                                            CornerRadius="17" />
-                                    <Border Margin="2"
-                                            BorderBrush="#70FFFFFF"
-                                            BorderThickness="1,1,0,0"
-                                            CornerRadius="16" />
-                                    <Border Margin="5,4,5,0"
-                                            Height="18"
-                                            VerticalAlignment="Top"
-                                            CornerRadius="12"
-                                            Opacity="0.45">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                <GradientStop Color="#BFFFFFFF" Offset="0" />
-                                                <GradientStop Color="#00FFFFFF" Offset="1" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
+                                            BorderBrush="#8CFFFFFF"
+                                            BorderThickness="1,1,0.5,0.5"
+                                            CornerRadius="13" />
+                                    <Border x:Name="KeyWellDark"
+                                            Width="78"
+                                            Height="78"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Background="#145F6662"
+                                            CornerRadius="39">
+                                        <Border.RenderTransform>
+                                            <TranslateTransform X="1" Y="1" />
+                                        </Border.RenderTransform>
                                     </Border>
+                                    <Border x:Name="KeyWell"
+                                            Width="76"
+                                            Height="76"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Background="{StaticResource PaperCommandWellBrush}"
+                                            BorderBrush="#8CFFFFFF"
+                                            BorderThickness="1"
+                                            CornerRadius="38" />
+                                    <Border x:Name="KeyWellHighlight"
+                                            Width="74"
+                                            Height="74"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent"
+                                            BorderBrush="{StaticResource PaperKeyWellEdgeBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="37" />
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Center" />
                                 </Grid>
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="4"
+                                    <DropShadowEffect BlurRadius="2"
                                                       Direction="270"
                                                       ShadowDepth="1"
-                                                      Opacity="0.18"
-                                                      Color="#4F483F" />
+                                                      Opacity="0.12"
+                                                      Color="#5F6662" />
                                 </Border.Effect>
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="ACT10_ACT11">
+                                <Setter TargetName="KeyWellDark" Property="Width" Value="162" />
+                                <Setter TargetName="KeyWell" Property="Width" Value="160" />
+                                <Setter TargetName="KeyWellHighlight" Property="Width" Value="158" />
+                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Cap" Property="BorderBrush" Value="#FFFFFFFF" />
-                                <Setter TargetName="Cap" Property="Background" Value="#FFFCFAF7" />
+                                <Setter TargetName="KeyWellHighlight" Property="Opacity" Value="0.82" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Trigger.EnterActions>
@@ -130,15 +186,19 @@
                                         <Storyboard>
                                             <ThicknessAnimation Storyboard.TargetName="Cap"
                                                                 Storyboard.TargetProperty="Margin"
-                                                                To="1,3,1,1"
+                                                                To="1,2,1,1"
                                                                 Duration="0:0:0.08" />
                                             <DoubleAnimation Storyboard.TargetName="CrystalSide"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             To="0.5"
+                                                             To="0.42"
                                                              Duration="0:0:0.08" />
                                             <DoubleAnimation Storyboard.TargetName="SwitchShadow"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             To="0.2"
+                                                             To="0.35"
+                                                             Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="FarShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.45"
                                                              Duration="0:0:0.08" />
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -148,7 +208,7 @@
                                         <Storyboard>
                                             <ThicknessAnimation Storyboard.TargetName="Cap"
                                                                 Storyboard.TargetProperty="Margin"
-                                                                To="1,0,1,4"
+                                                                To="1,0,1,3"
                                                                 Duration="0:0:0.11">
                                                 <ThicknessAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
@@ -160,7 +220,11 @@
                                                              Duration="0:0:0.11" />
                                             <DoubleAnimation Storyboard.TargetName="SwitchShadow"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             To="0.34"
+                                                             To="1"
+                                                             Duration="0:0:0.11" />
+                                            <DoubleAnimation Storyboard.TargetName="FarShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
                                                              Duration="0:0:0.11" />
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -173,7 +237,7 @@
         </Style>
 
         <Style x:Key="AgentKey" TargetType="Button">
-            <Setter Property="Background" Value="#75FFFFFF" />
+            <Setter Property="Background" Value="{StaticResource PaperAgentKeyBaseBrush}" />
             <Setter Property="BorderBrush" Value="#008DB5FF" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Cursor" Value="Hand" />
@@ -181,100 +245,116 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid Margin="2">
-                            <Border x:Name="SwitchShadow"
-                                    Margin="8,78,8,2"
-                                    Background="{StaticResource CrystalShadowBrush}"
-                                    CornerRadius="8"
-                                    Opacity="0.32">
+                        <Grid Margin="0.5">
+                            <Border x:Name="FarShadow"
+                                    Margin="4,7,4,-1"
+                                    Background="#243A403D"
+                                    CornerRadius="14"
+                                    Opacity="1">
                                 <Border.Effect>
-                                    <BlurEffect Radius="5" />
+                                    <BlurEffect Radius="8" />
+                                </Border.Effect>
+                            </Border>
+                            <Border x:Name="SwitchShadow"
+                                    Margin="2,3,2,0"
+                                    Background="#3D3A403D"
+                                    CornerRadius="14"
+                                    Opacity="1">
+                                <Border.Effect>
+                                    <BlurEffect Radius="3" />
                                 </Border.Effect>
                             </Border>
                             <Border x:Name="Glow"
-                                    Margin="-2,2,-2,-4"
+                                    Margin="-4,-1,-4,-5"
                                     Background="{TemplateBinding BorderBrush}"
-                                    CornerRadius="20"
-                                    Opacity="0.28">
+                                    CornerRadius="16"
+                                    Opacity="0.95">
                                 <Border.Effect>
                                     <BlurEffect Radius="8" />
                                 </Border.Effect>
                             </Border>
                             <Border x:Name="CrystalSide"
-                                    Margin="1,4,1,0"
-                                    Background="{StaticResource CrystalKeySideBrush}"
-                                    BorderBrush="#C9FFFFFF"
+                                    Margin="1,3,1,0"
+                                    Background="#B8D4DAD7"
+                                    BorderBrush="#99FFFFFF"
                                     BorderThickness="1"
-                                    CornerRadius="18"
+                                    CornerRadius="14"
                                     Opacity="0.86" />
                             <Border x:Name="Cap"
-                                    Margin="1,0,1,4"
+                                    Margin="1,0,1,3"
                                     Background="{TemplateBinding Background}"
-                                    BorderBrush="#D1FFFFFF"
+                                    BorderBrush="#99FFFFFF"
                                     BorderThickness="1"
-                                    CornerRadius="18">
+                                    CornerRadius="14">
                                 <Grid>
-                                    <Ellipse x:Name="StatusLightField"
-                                             Margin="7"
-                                             Fill="{TemplateBinding BorderBrush}"
-                                             Opacity="0.58">
-                                        <Ellipse.OpacityMask>
-                                            <RadialGradientBrush>
-                                                <GradientStop Color="#FFFFFFFF" Offset="0" />
-                                                <GradientStop Color="#B8FFFFFF" Offset="0.3" />
-                                                <GradientStop Color="#46FFFFFF" Offset="0.66" />
-                                                <GradientStop Color="#00FFFFFF" Offset="1" />
-                                            </RadialGradientBrush>
-                                        </Ellipse.OpacityMask>
-                                    </Ellipse>
-                                    <Border Margin="1" CornerRadius="17">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                <GradientStop Color="#A8FFFFFF" Offset="0" />
-                                                <GradientStop Color="#36FFFFFF" Offset="0.52" />
-                                                <GradientStop Color="#0AE9FFFF" Offset="1" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                    </Border>
                                     <Border Margin="1"
-                                            BorderBrush="#66E4E4E4"
-                                            BorderThickness="1"
-                                            CornerRadius="17" />
+                                            BorderBrush="#8CFFFFFF"
+                                            BorderThickness="1,1,0.5,0.5"
+                                            CornerRadius="13" />
                                     <Ellipse x:Name="StatusDotGlow"
-                                             Width="24"
-                                             Height="24"
+                                             Width="82"
+                                             Height="82"
                                              Fill="{TemplateBinding BorderBrush}"
-                                             Opacity="0.42"
+                                             Opacity="0.72"
                                              IsHitTestVisible="False">
                                         <Ellipse.Effect>
-                                            <BlurEffect Radius="5" />
+                                            <BlurEffect Radius="8" />
                                         </Ellipse.Effect>
                                     </Ellipse>
-                                    <Ellipse x:Name="StatusDot"
-                                             Width="20"
-                                             Height="20"
+                                    <Ellipse x:Name="StatusLightField"
+                                             Width="80"
+                                             Height="80"
                                              Fill="{TemplateBinding BorderBrush}"
-                                             Stroke="#334F477F"
+                                             Opacity="0.86" />
+                                    <Ellipse x:Name="AgentWell"
+                                             Width="78"
+                                             Height="78"
+                                             Fill="{StaticResource PaperAgentWellBrush}" />
+                                    <Ellipse x:Name="StatusDot"
+                                             Width="78"
+                                             Height="78"
+                                             Fill="{TemplateBinding BorderBrush}"
+                                             Opacity="0.08" />
+                                    <Ellipse x:Name="AgentWellHighlight"
+                                             Width="76"
+                                             Height="76"
+                                             Fill="Transparent"
+                                             Stroke="{StaticResource PaperKeyWellEdgeBrush}"
                                              StrokeThickness="1" />
-                                    <ContentPresenter HorizontalAlignment="Center"
-                                                      VerticalAlignment="Bottom"
-                                                      Margin="0,0,0,4"
-                                                      Opacity="0" />
+                                    <Grid x:Name="AgentGlyph"
+                                          Width="18"
+                                          Height="18"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Opacity="0.6">
+                                        <Border Width="18"
+                                                Height="5"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Background="#FF685FAE"
+                                                CornerRadius="2.5" />
+                                        <Border Width="5"
+                                                Height="18"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Background="#FF685FAE"
+                                                CornerRadius="2.5" />
+                                    </Grid>
                                 </Grid>
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="4"
+                                    <DropShadowEffect BlurRadius="3"
                                                       Direction="270"
-                                                      ShadowDepth="1"
-                                                      Opacity="0.16"
-                                                      Color="#4F483F" />
+                                                      ShadowDepth="3"
+                                                      Opacity="0.24"
+                                                      Color="#3A403D" />
                                 </Border.Effect>
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Glow" Property="Opacity" Value="0.38" />
-                                <Setter TargetName="Cap" Property="Background" Value="#8FFFFFFF" />
+                                <Setter TargetName="Glow" Property="Opacity" Value="1" />
                                 <Setter TargetName="Cap" Property="BorderBrush" Value="#F7FFFFFF" />
+                                <Setter TargetName="AgentWellHighlight" Property="Opacity" Value="0.86" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Trigger.EnterActions>
@@ -282,15 +362,19 @@
                                         <Storyboard>
                                             <ThicknessAnimation Storyboard.TargetName="Cap"
                                                                 Storyboard.TargetProperty="Margin"
-                                                                To="1,3,1,1"
+                                                                To="1,2,1,1"
                                                                 Duration="0:0:0.08" />
                                             <DoubleAnimation Storyboard.TargetName="CrystalSide"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             To="0.52"
+                                                             To="0.42"
                                                              Duration="0:0:0.08" />
                                             <DoubleAnimation Storyboard.TargetName="SwitchShadow"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             To="0.18"
+                                                             To="0.35"
+                                                             Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="FarShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.45"
                                                              Duration="0:0:0.08" />
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -300,7 +384,7 @@
                                         <Storyboard>
                                             <ThicknessAnimation Storyboard.TargetName="Cap"
                                                                 Storyboard.TargetProperty="Margin"
-                                                                To="1,0,1,4"
+                                                                To="1,0,1,3"
                                                                 Duration="0:0:0.11">
                                                 <ThicknessAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
@@ -312,7 +396,11 @@
                                                              Duration="0:0:0.11" />
                                             <DoubleAnimation Storyboard.TargetName="SwitchShadow"
                                                              Storyboard.TargetProperty="Opacity"
-                                                             To="0.32"
+                                                             To="1"
+                                                             Duration="0:0:0.11" />
+                                            <DoubleAnimation Storyboard.TargetName="FarShadow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
                                                              Duration="0:0:0.11" />
                                         </Storyboard>
                                     </BeginStoryboard>

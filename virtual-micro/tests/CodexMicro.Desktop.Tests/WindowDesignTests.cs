@@ -12,6 +12,50 @@ namespace CodexMicro.Desktop.Tests;
 public sealed class WindowDesignTests
 {
     [Fact]
+    public void VoiceRecordingVisualAnimatesWithoutChangingTheInputSurface()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                _ = Application.Current ?? new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+
+                var window = new MicroSurfaceWindow();
+                window.SetVoiceRecordingVisual(recording: true);
+
+                Assert.True(window.VoiceFlowGlow.HasAnimatedProperties);
+                Assert.True(window.VoiceWaveLayer.HasAnimatedProperties);
+                Assert.True(window.VoiceWaveParticles.HasAnimatedProperties);
+                Assert.False(window.VoiceReadyFlash.HasAnimatedProperties);
+                Assert.False(window.VoiceWaveLayer.IsHitTestVisible);
+                Assert.Equal("ACT10_ACT11", window.ActionKey10.Tag);
+
+                window.SetVoiceRecordingVisual(recording: false);
+
+                Assert.False(window.VoiceFlowGlow.HasAnimatedProperties);
+                Assert.False(window.VoiceWaveLayer.HasAnimatedProperties);
+                Assert.False(window.VoiceWaveParticles.HasAnimatedProperties);
+                Assert.True(window.VoiceReadyFlash.HasAnimatedProperties);
+                Assert.Equal("ACT10_ACT11", window.ActionKey10.Tag);
+                window.CloseForApplicationExit();
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(error);
+    }
+
+    [Fact]
     public void KeyboardLayoutRendersOffscreenWithSquareKeycaps()
     {
         Exception? error = null;
@@ -116,12 +160,29 @@ public sealed class WindowDesignTests
                     window.AgentKey0.Template.FindName(
                         "StatusDotGlow",
                         window.AgentKey0));
+                var agentWell = Assert.IsType<Ellipse>(
+                    window.AgentKey0.Template.FindName(
+                        "AgentWell",
+                        window.AgentKey0));
+                var agentWellHighlight = Assert.IsType<Ellipse>(
+                    window.AgentKey0.Template.FindName(
+                        "AgentWellHighlight",
+                        window.AgentKey0));
+                var agentGlyph = Assert.IsType<Grid>(
+                    window.AgentKey0.Template.FindName(
+                        "AgentGlyph",
+                        window.AgentKey0));
                 var agentCap = Assert.IsType<Border>(
                     window.AgentKey0.Template.FindName(
                         "Cap",
                         window.AgentKey0));
-                Assert.IsType<RadialGradientBrush>(
-                    statusLightField.OpacityMask);
+                Assert.Equal(80, statusLightField.Width, 3);
+                Assert.Equal(78, agentWell.Width, 3);
+                Assert.Equal(76, agentWellHighlight.Width, 3);
+                Assert.IsType<RadialGradientBrush>(agentWell.Fill);
+                Assert.IsType<LinearGradientBrush>(agentWellHighlight.Stroke);
+                Assert.Equal(2, agentGlyph.Children.Count);
+                Assert.Equal(18, agentGlyph.Width, 3);
                 var activeLight = new SolidColorBrush(
                     Color.FromRgb(0x63, 0xD9, 0x84));
                 window.AgentKey0.BorderBrush = activeLight;
@@ -131,8 +192,8 @@ public sealed class WindowDesignTests
                 Assert.NotEqual(
                     activeLight.Color,
                     Assert.IsType<SolidColorBrush>(agentCap.Background).Color);
-                Assert.Equal(20, statusDot.ActualWidth, 3);
-                Assert.Equal(24, statusDotGlow.ActualWidth, 3);
+                Assert.Equal(78, statusDot.Width, 3);
+                Assert.Equal(82, statusDotGlow.Width, 3);
                 var hoverTrigger = window.AgentKey0.Template.Triggers
                     .OfType<Trigger>()
                     .Single(trigger => trigger.Property.Name == "IsMouseOver");
@@ -144,6 +205,38 @@ public sealed class WindowDesignTests
                     .Single(trigger => trigger.Property.Name == "IsPressed");
                 Assert.NotEmpty(pressTrigger.EnterActions);
                 Assert.NotEmpty(pressTrigger.ExitActions);
+
+                window.ActionKey06.ApplyTemplate();
+                var commandWell = Assert.IsType<Border>(
+                    window.ActionKey06.Template.FindName(
+                        "KeyWell",
+                        window.ActionKey06));
+                var commandCap = Assert.IsType<Border>(
+                    window.ActionKey06.Template.FindName(
+                        "Cap",
+                        window.ActionKey06));
+                Assert.Equal(76, commandWell.Width, 3);
+                Assert.IsType<RadialGradientBrush>(commandWell.Background);
+                Assert.Equal(new CornerRadius(14), commandCap.CornerRadius);
+                Assert.Equal(28, window.ActionIcon06.Width, 3);
+
+                window.ActionKey10.ApplyTemplate();
+                var voiceWell = Assert.IsType<Border>(
+                    window.ActionKey10.Template.FindName(
+                        "KeyWell",
+                        window.ActionKey10));
+                Assert.Equal(160, voiceWell.Width, 3);
+                Assert.Equal(28, window.ActionIcon10.Width, 3);
+                Assert.False(window.VoiceWaveLayer.IsHitTestVisible);
+                Assert.Equal(0.22, window.VoiceWaveLayer.Opacity, 3);
+                Assert.Equal(0.12, window.VoiceFlowGlow.Opacity, 3);
+                Assert.Equal(0, window.VoiceReadyFlash.Opacity, 3);
+                Assert.Equal(
+                    DoubleCollection.Parse("0.1 4"),
+                    window.VoiceWaveParticles.StrokeDashArray);
+                Assert.Equal(
+                    Color.FromRgb(0x20, 0x8F, 0x80),
+                    Assert.IsType<SolidColorBrush>(window.ActionIcon10.IconBrush).Color);
 
                 Assert.InRange(window.JoystickCap.ActualWidth, 53.5, 54.5);
                 Assert.InRange(window.JoystickCap.ActualHeight, 53.5, 54.5);

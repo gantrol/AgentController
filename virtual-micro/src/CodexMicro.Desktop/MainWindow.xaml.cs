@@ -301,6 +301,7 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _voicePressed = true;
+        SetVoiceRecordingVisual(recording: true);
         _ = ActionKey10.CaptureMouse();
         await RunActionAsync(
             () => _broker.SetKeyAsync("ACT10", true),
@@ -345,6 +346,7 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _voicePressed = true;
+        SetVoiceRecordingVisual(recording: true);
         await RunActionAsync(
             () => _broker.SetKeyAsync("ACT10", true),
             "voice down");
@@ -369,6 +371,7 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _voicePressed = false;
+        SetVoiceRecordingVisual(recording: false);
         if (releaseCapture && Mouse.Captured == ActionKey10)
         {
             ActionKey10.ReleaseMouseCapture();
@@ -380,6 +383,83 @@ public partial class MicroSurfaceWindow : Window
                 () => _broker.SetKeyAsync("ACT10", false),
                 "voice up");
         }
+    }
+
+    internal void SetVoiceRecordingVisual(bool recording)
+    {
+        VoiceFlowGlow.BeginAnimation(OpacityProperty, null);
+        VoiceWaveLayer.BeginAnimation(OpacityProperty, null);
+        VoiceWaveParticles.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+        VoiceFlowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        VoiceFlowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        VoiceReadyFlash.BeginAnimation(OpacityProperty, null);
+
+        VoiceFlowGlow.Opacity = recording ? 0.18 : 0.12;
+        VoiceWaveLayer.Opacity = recording ? 0.42 : 0.22;
+        VoiceWaveParticles.StrokeDashOffset = 0;
+        VoiceFlowScale.ScaleX = recording ? 0.98 : 0.97;
+        VoiceFlowScale.ScaleY = recording ? 0.98 : 0.97;
+        VoiceReadyFlash.Opacity = 0;
+
+        if (!recording)
+        {
+            VoiceReadyFlash.BeginAnimation(
+                OpacityProperty,
+                new DoubleAnimation(0.72, 0, TimeSpan.FromMilliseconds(520))
+                {
+                    EasingFunction = new QuadraticEase
+                    {
+                        EasingMode = EasingMode.EaseOut,
+                    },
+                });
+            return;
+        }
+
+        var pulseDuration = new Duration(TimeSpan.FromMilliseconds(720));
+        VoiceFlowGlow.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0.18, 0.56, pulseDuration)
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase
+                {
+                    EasingMode = EasingMode.EaseInOut,
+                },
+            });
+        VoiceWaveLayer.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0.42, 0.9, pulseDuration)
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase
+                {
+                    EasingMode = EasingMode.EaseInOut,
+                },
+            });
+        VoiceWaveParticles.BeginAnimation(
+            Shape.StrokeDashOffsetProperty,
+            new DoubleAnimation(0, -16, TimeSpan.FromMilliseconds(1050))
+            {
+                RepeatBehavior = RepeatBehavior.Forever,
+            });
+
+        var scaleAnimation = new DoubleAnimation(0.98, 1.035, pulseDuration)
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase
+            {
+                EasingMode = EasingMode.EaseInOut,
+            },
+        };
+        VoiceFlowScale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            scaleAnimation);
+        VoiceFlowScale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            scaleAnimation.Clone());
     }
 
     private void Dial_MouseWheel(object sender, MouseWheelEventArgs e)

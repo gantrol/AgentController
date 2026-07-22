@@ -404,16 +404,16 @@
                             <Button x:Name="AgentKey5" Grid.Row="1" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="AG05" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 6 · AG05" />
 
                             <Button x:Name="ActionKey06" Grid.Row="2" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="ACT06" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Fast · ACT06">
-                                <controls:KeycapIcon x:Name="ActionIcon06" Width="35" Height="35" KeycapId="FAST" IconBrush="#171717" />
+                                <controls:KeycapIcon x:Name="ActionIcon06" Width="28" Height="28" KeycapId="FAST" IconBrush="#171717" />
                             </Button>
                             <Button x:Name="ActionKey07" Grid.Row="2" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="ACT07" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Approve · ACT07">
-                                <controls:KeycapIcon x:Name="ActionIcon07" Width="35" Height="35" KeycapId="APPR" IconBrush="#171717" />
+                                <controls:KeycapIcon x:Name="ActionIcon07" Width="28" Height="28" KeycapId="APPR" IconBrush="#171717" />
                             </Button>
                             <Button x:Name="ActionKey08" Grid.Row="2" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="ACT08" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Decline · ACT08">
-                                <controls:KeycapIcon x:Name="ActionIcon08" Width="35" Height="35" KeycapId="REJ" IconBrush="#171717" />
+                                <controls:KeycapIcon x:Name="ActionIcon08" Width="28" Height="28" KeycapId="REJ" IconBrush="#171717" />
                             </Button>
                             <Button x:Name="ActionKey09" Grid.Row="2" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT09" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Fork · ACT09">
-                                <controls:KeycapIcon x:Name="ActionIcon09" Width="35" Height="35" KeycapId="SPLIT" IconBrush="#171717" />
+                                <controls:KeycapIcon x:Name="ActionIcon09" Width="28" Height="28" KeycapId="SPLIT" IconBrush="#171717" />
                             </Button>
 
                             <Grid Grid.Row="3"
@@ -454,10 +454,84 @@
                                     PreviewKeyDown="Voice_PreviewKeyDown"
                                     PreviewKeyUp="Voice_PreviewKeyUp"
                                     ToolTip="Push to talk · 按住说话 · ACT10">
-                                <controls:KeycapIcon x:Name="ActionIcon10" Width="38" Height="38" KeycapId="MIC" IconBrush="#171717" />
+                                <Grid Width="160"
+                                      Height="76"
+                                      IsHitTestVisible="False">
+                                    <Border x:Name="VoiceFlowGlow"
+                                            Width="154"
+                                            Height="70"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Background="#365FE4C1"
+                                            BorderBrush="#705FE4C1"
+                                            BorderThickness="1"
+                                            CornerRadius="35"
+                                            Opacity="0.12"
+                                            RenderTransformOrigin="0.5,0.5">
+                                        <Border.Effect>
+                                            <BlurEffect Radius="7" />
+                                        </Border.Effect>
+                                        <Border.RenderTransform>
+                                            <ScaleTransform x:Name="VoiceFlowScale"
+                                                            ScaleX="0.97"
+                                                            ScaleY="0.97" />
+                                        </Border.RenderTransform>
+                                    </Border>
+
+                                    <Grid x:Name="VoiceWaveLayer"
+                                          Width="160"
+                                          Height="76"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Opacity="0.22">
+                                        <Path x:Name="VoiceWaveA"
+                                              Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38"
+                                              Fill="Transparent"
+                                              Stroke="#9C5FE4C1"
+                                              StrokeEndLineCap="Round"
+                                              StrokeStartLineCap="Round"
+                                              StrokeThickness="1.35" />
+                                        <Path x:Name="VoiceWaveB"
+                                              Data="M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
+                                              Fill="Transparent"
+                                              Stroke="#8CFFFFFF"
+                                              StrokeEndLineCap="Round"
+                                              StrokeStartLineCap="Round"
+                                              StrokeThickness="1.15" />
+                                        <Path x:Name="VoiceWaveParticles"
+                                              Data="M 8,38 C 32,14 56,14 80,38 S 128,62 152,38 M 8,38 C 32,62 56,62 80,38 S 128,14 152,38"
+                                              Fill="Transparent"
+                                              Stroke="#E8FFFFFF"
+                                              StrokeDashArray="0.1 4"
+                                              StrokeDashCap="Round"
+                                              StrokeThickness="2.7" />
+                                    </Grid>
+
+                                    <Border x:Name="VoiceReadyFlash"
+                                            Width="156"
+                                            Height="72"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            BorderBrush="#F2FFFFFF"
+                                            BorderThickness="1.4"
+                                            CornerRadius="36"
+                                            Opacity="0">
+                                        <Border.Effect>
+                                            <BlurEffect Radius="4" />
+                                        </Border.Effect>
+                                    </Border>
+
+                                    <controls:KeycapIcon x:Name="ActionIcon10"
+                                                         Width="28"
+                                                         Height="28"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"
+                                                         KeycapId="MIC"
+                                                         IconBrush="#208F80" />
+                                </Grid>
                             </Button>
                             <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">
-                                <controls:KeycapIcon x:Name="ActionIcon12" Width="37" Height="37" KeycapId="CODEX" IconBrush="#171717" />
+                                <controls:KeycapIcon x:Name="ActionIcon12" Width="28" Height="28" KeycapId="CODEX" IconBrush="#171717" />
                             </Button>
 
                         </Grid>
