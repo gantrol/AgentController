@@ -240,19 +240,22 @@
                                             BorderBrush="#66E4E4E4"
                                             BorderThickness="1"
                                             CornerRadius="17" />
+                                    <Ellipse x:Name="StatusDotGlow"
+                                             Width="24"
+                                             Height="24"
+                                             Fill="{TemplateBinding BorderBrush}"
+                                             Opacity="0.42"
+                                             IsHitTestVisible="False">
+                                        <Ellipse.Effect>
+                                            <BlurEffect Radius="5" />
+                                        </Ellipse.Effect>
+                                    </Ellipse>
                                     <Ellipse x:Name="StatusDot"
                                              Width="20"
                                              Height="20"
-                                             Fill="#D9685FAE"
+                                             Fill="{TemplateBinding BorderBrush}"
                                              Stroke="#334F477F"
-                                             StrokeThickness="1">
-                                        <Ellipse.Effect>
-                                            <DropShadowEffect BlurRadius="5"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.42"
-                                                              Color="#574C97" />
-                                        </Ellipse.Effect>
-                                    </Ellipse>
+                                             StrokeThickness="1" />
                                     <ContentPresenter HorizontalAlignment="Center"
                                                       VerticalAlignment="Bottom"
                                                       Margin="0,0,0,4"

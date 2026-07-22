@@ -15,6 +15,22 @@ DEFINE_GUID(
     0x51,
     0xd1);
 
+// VHF's default first hardware ID is HID_DEVICE_SYSTEM_VHF.  That makes the
+// resulting HID interface path generic, so consumers which prefilter device
+// arrival notifications by VID/PID never rescan the device.  Keep the
+// Microsoft class ID as the fallback driver match, but advertise the stable,
+// product-specific ID first so both startup enumeration and hot-plug
+// enumeration expose the same identity.
+static WCHAR MicroVendorInstanceId[] = L"CODEX_MICRO_VENDOR";
+static WCHAR MicroVendorHardwareIds[] =
+    L"VHF\\VID_303A&PID_8360\0"
+    L"HID_DEVICE_SYSTEM_VHF\0";
+
+static WCHAR DialogKeyboardInstanceId[] = L"CODEX_MICRO_DIALOG_KEYBOARD";
+static WCHAR DialogKeyboardHardwareIds[] =
+    L"VHF\\VID_303A&PID_8361\0"
+    L"HID_DEVICE_SYSTEM_VHF\0";
+
 static UCHAR MicroReportDescriptor[] = {
     0x06, 0x00, 0xFF,       // Usage Page (Vendor 0xFF00)
     0x09, 0x01,             // Usage 1
@@ -514,6 +530,12 @@ VmicroCreateUserModeVhf(
     vhfConfig.VendorID = VMICRO_VENDOR_ID;
     vhfConfig.ProductID = VMICRO_VENDOR_PRODUCT_ID;
     vhfConfig.VersionNumber = VMICRO_USB_RELEASE_NUMBER;
+    vhfConfig.InstanceIDLength =
+        (USHORT)(sizeof(MicroVendorInstanceId) - sizeof(WCHAR));
+    vhfConfig.InstanceID = MicroVendorInstanceId;
+    vhfConfig.HardwareIDsLength =
+        (USHORT)sizeof(MicroVendorHardwareIds);
+    vhfConfig.HardwareIDs = MicroVendorHardwareIds;
     vhfConfig.EvtVhfAsyncOperationWriteReport = VmicroEvtVhfWriteReport;
 
     status = VhfCreate(&vhfConfig, &Context->VhfHandle);
@@ -544,6 +566,12 @@ VmicroCreateUserModeVhf(
     vhfConfig.VendorID = VMICRO_VENDOR_ID;
     vhfConfig.ProductID = VMICRO_DIALOG_KEYBOARD_PRODUCT_ID;
     vhfConfig.VersionNumber = VMICRO_USB_RELEASE_NUMBER;
+    vhfConfig.InstanceIDLength =
+        (USHORT)(sizeof(DialogKeyboardInstanceId) - sizeof(WCHAR));
+    vhfConfig.InstanceID = DialogKeyboardInstanceId;
+    vhfConfig.HardwareIDsLength =
+        (USHORT)sizeof(DialogKeyboardHardwareIds);
+    vhfConfig.HardwareIDs = DialogKeyboardHardwareIds;
 
     status = VhfCreate(&vhfConfig, &Context->KeyboardVhfHandle);
     if (!NT_SUCCESS(status)) {

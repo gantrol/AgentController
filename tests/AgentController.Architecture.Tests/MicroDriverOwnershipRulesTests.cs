@@ -138,6 +138,42 @@ public sealed class MicroDriverOwnershipRulesTests
             driver);
     }
 
+    [Fact]
+    public void VirtualMicroHidIdentityIsStableAndVidPidFirstForHotPlug()
+    {
+        var driver = File.ReadAllText(Resolve(
+            "virtual-micro/driver/CodexMicroVhfUm/Driver.c"));
+
+        var vendorSpecificId = driver.IndexOf(
+            "L\"VHF\\\\VID_303A&PID_8360\\0\"",
+            StringComparison.Ordinal);
+        var vendorClassId = driver.IndexOf(
+            "L\"HID_DEVICE_SYSTEM_VHF\\0\"",
+            vendorSpecificId,
+            StringComparison.Ordinal);
+        var keyboardSpecificId = driver.IndexOf(
+            "L\"VHF\\\\VID_303A&PID_8361\\0\"",
+            StringComparison.Ordinal);
+        var keyboardClassId = driver.IndexOf(
+            "L\"HID_DEVICE_SYSTEM_VHF\\0\"",
+            keyboardSpecificId,
+            StringComparison.Ordinal);
+
+        Assert.True(vendorSpecificId >= 0);
+        Assert.True(vendorClassId > vendorSpecificId);
+        Assert.True(keyboardSpecificId >= 0);
+        Assert.True(keyboardClassId > keyboardSpecificId);
+        Assert.Equal(
+            2,
+            Regex.Matches(driver, @"InstanceIDLength\s*=").Count);
+        Assert.Equal(
+            2,
+            Regex.Matches(driver, @"HardwareIDsLength\s*=").Count);
+        Assert.Equal(
+            2,
+            Regex.Matches(driver, @"HardwareIDs\s*=\s*[A-Za-z]").Count);
+    }
+
     private static IEnumerable<string> RuntimeSourceFiles()
     {
         foreach (var root in new[] { "app", "src", "virtual-micro/src" })

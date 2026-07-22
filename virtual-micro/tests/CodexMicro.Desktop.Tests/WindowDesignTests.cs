@@ -112,6 +112,10 @@ public sealed class WindowDesignTests
                     window.AgentKey0.Template.FindName(
                         "StatusDot",
                         window.AgentKey0));
+                var statusDotGlow = Assert.IsType<Ellipse>(
+                    window.AgentKey0.Template.FindName(
+                        "StatusDotGlow",
+                        window.AgentKey0));
                 var agentCap = Assert.IsType<Border>(
                     window.AgentKey0.Template.FindName(
                         "Cap",
@@ -122,13 +126,13 @@ public sealed class WindowDesignTests
                     Color.FromRgb(0x63, 0xD9, 0x84));
                 window.AgentKey0.BorderBrush = activeLight;
                 Assert.Same(activeLight, statusLightField.Fill);
+                Assert.Same(activeLight, statusDot.Fill);
+                Assert.Same(activeLight, statusDotGlow.Fill);
                 Assert.NotEqual(
                     activeLight.Color,
                     Assert.IsType<SolidColorBrush>(agentCap.Background).Color);
                 Assert.Equal(20, statusDot.ActualWidth, 3);
-                Assert.Equal(
-                    Color.FromArgb(0xD9, 0x68, 0x5F, 0xAE),
-                    Assert.IsType<SolidColorBrush>(statusDot.Fill).Color);
+                Assert.Equal(24, statusDotGlow.ActualWidth, 3);
                 var hoverTrigger = window.AgentKey0.Template.Triggers
                     .OfType<Trigger>()
                     .Single(trigger => trigger.Property.Name == "IsMouseOver");

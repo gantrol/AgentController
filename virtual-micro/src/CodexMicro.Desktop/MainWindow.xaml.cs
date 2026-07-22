@@ -1528,12 +1528,15 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplyTransportReadyState()
     {
-        SetLed(RuntimeLed, "#FFD66E", "尚未观察到 Codex 输出；这不会阻止 HID 输入");
+        SetLed(
+            RuntimeLed,
+            "#FFD66E",
+            "驱动已就绪，但尚未确认 Codex 已连接；Fast、语音和旋钮可能不会生效");
         SetLed(DriverLed, "#9EBDFF", $"{_transportName} 已连接");
-        SetLed(ActivityLed, "#9EBDFF", "Micro HID 输入已就绪");
+        SetLed(ActivityLed, "#FFD66E", "等待 Codex 识别 Micro HID");
         SetStatus(
-            $"{_transportName} 已连接，输入会直接走 Micro HID。\n" +
-            "Codex 输出握手仅用于诊断，不参与路由，也不会触发 UIA 降级。");
+            $"{_transportName} 已连接，输入只走 Micro HID，不会降级到 UIA。\n" +
+            "黄灯表示 Codex 尚未回传连接信号；此时驱动接受按键，不代表 Codex 已处理。");
     }
 
     private void Broker_SlotLightingObserved(
@@ -1551,15 +1554,14 @@ public partial class MicroSurfaceWindow : Window
             _latestSlotLighting = snapshot;
             RefreshAgentSlotPresentation();
 
-            var activeSlots = snapshot.Slots.Count(slot =>
+            var litSlots = snapshot.Slots.Count(slot =>
                 slot.SlotId is >= 0 and < 6 &&
-                slot.Color != 0 &&
-                slot.Brightness > 0);
+                AgentLightingAppearance.From(slot).IsActive);
 
             SetHelp(
                 DriverLed,
                 "虚拟 HID",
-                $"{_transportName} · Agent 状态已同步 · {activeSlots} 个活动槽位");
+                $"{_transportName} · Agent 状态已同步 · {litSlots} 个亮灯槽位");
         });
     }
 
@@ -1583,22 +1585,34 @@ public partial class MicroSurfaceWindow : Window
         for (var slotId = 0; slotId < _agentKeys.Length; slotId++)
         {
             lightingBySlot.TryGetValue(slotId, out var lighting);
-            var active = lighting is not null &&
-                lighting.Color != 0 &&
-                lighting.Brightness > 0;
-            var color = !active
-                ? Color.FromArgb(0, 0x8D, 0xB5, 0xFF)
-                : Color.FromRgb(
-                    (byte)(lighting!.Color >> 16),
-                    (byte)(lighting.Color >> 8),
-                    (byte)lighting.Color);
-            _agentKeys[slotId].BorderBrush = new SolidColorBrush(color);
+            var appearance = AgentLightingAppearance.From(lighting);
+            var lightBrush = new SolidColorBrush(appearance.Color)
+            {
+                Opacity = appearance.MaximumOpacity,
+            };
+            if (appearance.PulseHalfCycle is { } pulseHalfCycle)
+            {
+                lightBrush.BeginAnimation(
+                    Brush.OpacityProperty,
+                    new DoubleAnimation(
+                        appearance.MinimumOpacity,
+                        appearance.MaximumOpacity,
+                        new Duration(pulseHalfCycle))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = RepeatBehavior.Forever,
+                    });
+            }
+
+            _agentKeys[slotId].BorderBrush = lightBrush;
 
             var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
             var title = rosterEntry?.DisplayTitle ?? $"Agent 槽位 {slotId + 1}";
-            var state = active
-                ? $"活动 · #{lighting!.Color:X6} · effect {lighting.Effect}"
-                : "空闲";
+            var state = appearance.IsActive
+                ? $"{appearance.StatusName} · #{lighting!.Color:X6} · " +
+                    $"{appearance.EffectName} · " +
+                    $"亮度 {appearance.MaximumOpacity:P0}"
+                : appearance.StatusName;
             var localMatch = rosterEntry is null
                 ? string.Empty
                 : "\n项目与标题来自 Codex 本地最近任务索引。";
