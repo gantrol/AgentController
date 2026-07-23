@@ -41,7 +41,8 @@ public sealed class MacGameControllerBackend : IControllerInputSource
 
     public bool IsAvailable => !_disposed && _interop is not null;
 
-    public bool SupportsBackgroundEvents => IsAvailable;
+    public bool SupportsBackgroundEvents =>
+        IsAvailable && _interop?.MonitorsBackgroundEvents == true;
 
     public string? LastError { get; private set; }
 
@@ -88,6 +89,7 @@ internal sealed class MacGameControllerInterop : IDisposable
 
     private readonly nint _frameworkHandle;
     private readonly nint _controllerClass;
+    private readonly MacControllerIdentityMap _identities = new();
     private bool _disposed;
 
     internal MacGameControllerInterop()
@@ -101,14 +103,20 @@ internal sealed class MacGameControllerInterop : IDisposable
                 "GameController.framework did not expose GCController.");
         }
 
-        if (RespondsTo(_controllerClass, Selectors.SetBackgroundEvents))
+        if (RespondsTo(_controllerClass, Selectors.SetBackgroundEvents) &&
+            RespondsTo(_controllerClass, Selectors.BackgroundEvents))
         {
             SendVoidBool(
                 _controllerClass,
                 Selectors.SetBackgroundEvents,
                 value: true);
+            MonitorsBackgroundEvents = SendBool(
+                _controllerClass,
+                Selectors.BackgroundEvents);
         }
     }
+
+    internal bool MonitorsBackgroundEvents { get; }
 
     internal IReadOnlyList<ControllerInputSnapshot> Poll()
     {
@@ -119,12 +127,14 @@ internal sealed class MacGameControllerInterop : IDisposable
             var array = SendIntPtr(_controllerClass, Selectors.Controllers);
             if (array == 0)
             {
+                _identities.RetainOnly(Array.Empty<nint>());
                 return [];
             }
 
             var count = checked((int)SendNUInt(array, Selectors.Count));
             if (count == 0)
             {
+                _identities.RetainOnly(Array.Empty<nint>());
                 return [];
             }
 
@@ -132,27 +142,35 @@ internal sealed class MacGameControllerInterop : IDisposable
                 _controllerClass,
                 Selectors.Current);
             var snapshots = new List<ControllerInputSnapshot>(count);
+            var connectedControllers = new HashSet<nint>();
             for (var index = 0; index < count; index++)
             {
                 var controller = SendIntPtrNUInt(
                     array,
                     Selectors.ObjectAtIndex,
                     (nuint)index);
+                if (controller == 0)
+                {
+                    continue;
+                }
+
+                connectedControllers.Add(controller);
                 var profile = GetOptional(
                     controller,
                     Selectors.ExtendedGamepad);
-                if (controller == 0 || profile == 0)
+                if (profile == 0)
                 {
                     continue;
                 }
 
                 snapshots.Add(ReadController(
+                    _identities.GetOrAdd(controller),
                     controller,
                     profile,
-                    current,
-                    index));
+                    current));
             }
 
+            _identities.RetainOnly(connectedControllers);
             return snapshots;
         }
         finally
@@ -170,10 +188,10 @@ internal sealed class MacGameControllerInterop : IDisposable
     }
 
     private static ControllerInputSnapshot ReadController(
+        string identity,
         nint controller,
         nint profile,
-        nint current,
-        int index)
+        nint current)
     {
         var vendorName = ReadString(
             GetOptional(controller, Selectors.VendorName));
@@ -182,7 +200,7 @@ internal sealed class MacGameControllerInterop : IDisposable
         var displayName = FirstNonEmpty(
             vendorName,
             productCategory,
-            $"Game Controller {index + 1}");
+            identity);
 
         var features =
             ControllerFeatures.ExtendedGamepad |
@@ -293,7 +311,7 @@ internal sealed class MacGameControllerInterop : IDisposable
         }
 
         return new ControllerInputSnapshot(
-            $"apple-gamecontroller:{index}",
+            identity,
             displayName,
             productCategory ?? "Extended Gamepad",
             buttons,
@@ -377,6 +395,8 @@ internal sealed class MacGameControllerInterop : IDisposable
         internal static readonly nint Current = Sel("current");
         internal static readonly nint SetBackgroundEvents =
             Sel("setShouldMonitorBackgroundEvents:");
+        internal static readonly nint BackgroundEvents =
+            Sel("shouldMonitorBackgroundEvents");
         internal static readonly nint Count = Sel("count");
         internal static readonly nint ObjectAtIndex = Sel("objectAtIndex:");
         internal static readonly nint RespondsToSelector =

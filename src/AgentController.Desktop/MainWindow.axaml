@@ -145,6 +145,8 @@
 
           <TextBlock Classes="detail"
                      Text="{Binding ControllerEmptyState}" />
+          <TextBlock Foreground="#9FB6E8"
+                     Text="{Binding ControllerActivity}" />
         </StackPanel>
       </Border>
 

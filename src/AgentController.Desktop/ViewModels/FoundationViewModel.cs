@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using AgentController.Platform.Capabilities;
 using AgentController.Platform.Controllers;
 using AgentController.Platform.MacOS;
+using AgentController.Platform.MacOS.Controllers;
 using AgentController.Platform.Permissions;
 
 namespace AgentController.Desktop.ViewModels;
@@ -22,6 +23,8 @@ public sealed class FoundationViewModel : INotifyPropertyChanged, IDisposable
     private string _controllerSummary = "No controller detected";
     private string _controllerEmptyState =
         "Connect a controller supported by Apple Game Controller.";
+    private string _controllerActivity =
+        "Waiting for controller connection or current-device changes.";
     private string _statusMessage =
         "Read-only preview: no Codex action has been sent.";
     private IReadOnlyList<ControllerRowViewModel> _controllers = [];
@@ -76,6 +79,12 @@ public sealed class FoundationViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _controllerEmptyState;
         private set => SetField(ref _controllerEmptyState, value);
+    }
+
+    public string ControllerActivity
+    {
+        get => _controllerActivity;
+        private set => SetField(ref _controllerActivity, value);
     }
 
     public string StatusMessage
@@ -164,15 +173,32 @@ public sealed class FoundationViewModel : INotifyPropertyChanged, IDisposable
         Controllers = snapshot.Controllers
             .Select(ControllerRowViewModel.From)
             .ToArray();
+        var currentController = snapshot.Controllers.FirstOrDefault(
+            controller => string.Equals(
+                controller.Id,
+                snapshot.CurrentControllerId,
+                StringComparison.Ordinal));
         ControllerSummary = Controllers.Count switch
         {
             0 => "No controller detected",
+            1 when currentController is not null =>
+                $"1 controller detected · {currentController.DisplayName} current",
             1 => "1 controller detected",
+            _ when currentController is not null =>
+                $"{Controllers.Count} controllers detected · {currentController.DisplayName} current",
             _ => $"{Controllers.Count} controllers detected",
         };
         ControllerEmptyState = Controllers.Count == 0
             ? "Connect a controller supported by Apple Game Controller."
             : "Standard profile input is active; non-standard back buttons are not claimed.";
+        if (snapshot.ControllerChanges.Count > 0)
+        {
+            ControllerActivity =
+                $"Topology r{snapshot.ControllerTopologyRevision}: " +
+                string.Join(
+                    " · ",
+                    snapshot.ControllerChanges.Select(Describe));
+        }
 
         Capabilities = snapshot.Capabilities
             .Select(CapabilityRowViewModel.From)
@@ -181,6 +207,20 @@ public sealed class FoundationViewModel : INotifyPropertyChanged, IDisposable
             .Select(PermissionRowViewModel.From)
             .ToArray();
     }
+
+    private static string Describe(MacControllerLifecycleChange change) =>
+        change.Kind switch
+        {
+            MacControllerLifecycleChangeKind.Connected =>
+                $"{change.DisplayName} connected",
+            MacControllerLifecycleChangeKind.Disconnected =>
+                $"{change.DisplayName} disconnected",
+            MacControllerLifecycleChangeKind.BecameCurrent =>
+                $"{change.DisplayName} became current",
+            MacControllerLifecycleChangeKind.StoppedBeingCurrent =>
+                $"{change.DisplayName} stopped being current",
+            _ => change.DisplayName,
+        };
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

@@ -10,6 +10,9 @@ namespace AgentController.Platform.MacOS;
 public sealed record MacFoundationSnapshot(
     MacPlatformAvailability Platform,
     IReadOnlyList<ControllerInputSnapshot> Controllers,
+    IReadOnlyList<MacControllerLifecycleChange> ControllerChanges,
+    string? CurrentControllerId,
+    long ControllerTopologyRevision,
     CodexExecutableProbe CodexExecutable,
     IReadOnlyList<PlatformCapability> Capabilities,
     IReadOnlyList<PlatformPermissionSnapshot> Permissions,
@@ -18,17 +21,22 @@ public sealed record MacFoundationSnapshot(
 public sealed class MacFoundationRuntime : IDisposable
 {
     private readonly MacGameControllerBackend _controllers = new();
+    private readonly MacControllerTopologyTracker _controllerTopology = new();
     private bool _disposed;
 
     public MacFoundationSnapshot Capture()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var platform = MacPlatformSupport.Current;
-        var controllers = _controllers.Poll();
+        var controllerTopology = _controllerTopology.Update(
+            _controllers.Poll());
         var codex = MacCodexExecutableLocator.Locate();
         return new MacFoundationSnapshot(
             platform,
-            controllers,
+            controllerTopology.Controllers,
+            controllerTopology.Changes,
+            controllerTopology.CurrentControllerId,
+            controllerTopology.Revision,
             codex,
             BuildCapabilities(platform, codex),
             MacPermissionProbe.Capture(),
@@ -83,7 +91,7 @@ public sealed class MacFoundationRuntime : IDisposable
                     ? PlatformCapabilityState.Available
                     : PlatformCapabilityState.Unavailable,
                 _controllers.IsAvailable
-                    ? "Extended profiles, multiple controllers, battery, haptics, light, and current-controller state are polled through GameController.framework."
+                    ? "Extended profiles, session-stable controller identities, battery, haptics, light, and current-controller state are polled through GameController.framework."
                     : _controllers.LastError ?? "The native framework could not be loaded."),
             new(
                 "controller.background",
@@ -91,7 +99,9 @@ public sealed class MacFoundationRuntime : IDisposable
                 _controllers.SupportsBackgroundEvents
                     ? PlatformCapabilityState.Limited
                     : PlatformCapabilityState.Unavailable,
-                "Requested from Apple Game Controller; sleep/wake and hardware matrices still require a physical Mac validation run."),
+                _controllers.SupportsBackgroundEvents
+                    ? "Enabled and read back from Apple Game Controller; sleep/wake and hardware matrices still require a physical Mac validation run."
+                    : "Apple Game Controller did not confirm background monitoring."),
             new(
                 "codex.app-server",
                 "Codex App Server",

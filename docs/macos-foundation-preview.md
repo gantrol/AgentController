@@ -2,6 +2,8 @@
 
 [简体中文](./macos-foundation-preview.zh-CN.md)
 
+[Cross-machine physical Mac test handoff (简体中文)](./macos-test-handoff.zh-CN.md)
+
 This is the roadmap's runnable macOS foundation, not a port claiming parity
 with Windows Full Micro mode. It validates the shared desktop shell, Apple Game
 Controller, permission presentation, and the local Codex CLI environment. It
@@ -12,7 +14,8 @@ does not install Windows VHF or present Accessibility as a Micro substitute.
 - Avalonia 12.1 / .NET 10 shared shell, targeting macOS 14 or later;
 - native menu bar, Dock menu, and process-level single instance;
 - Apple Game Controller extended profiles, multiple/current controllers,
-  sticks, buttons, triggers, battery, haptics, and light capability observation;
+  session-stable identities, topology revisions, sticks, buttons, triggers,
+  battery, haptics, and light capability observation;
 - separate Accessibility, Input Monitoring, and Microphone status rows plus a
   Privacy & Security settings entry;
 - Codex CLI path detection;
@@ -30,6 +33,11 @@ The current UI is read-only and sends no action to Codex. It remains visibly
 labelled `LIMITED PREVIEW` until physical Mac, signing, and security acceptance
 is complete.
 
+The controller panel keeps the last connection, disconnection, or
+current-controller transition visible. Array reordering does not change a
+controller's process-session identity. Background monitoring is shown as
+available only when `shouldMonitorBackgroundEvents` reads back as enabled.
+
 ## Build both app bundles
 
 From the repository root:
@@ -38,6 +46,9 @@ From the repository root:
 dotnet restore .\AgentController.sln
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
 ```
+
+On macOS with PowerShell 7, use `pwsh -NoProfile -File
+./scripts/publish-macos.ps1 -Runtime osx-arm64` (or `osx-x64`).
 
 Outputs:
 

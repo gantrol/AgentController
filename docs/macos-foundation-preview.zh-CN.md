@@ -2,6 +2,8 @@
 
 [English](./macos-foundation-preview.md)
 
+[跨电脑 Mac 真机测试接力说明](./macos-test-handoff.zh-CN.md)
+
 这是按路线图新增的 macOS 可运行基础版本，不是 Windows Full Micro 的等价移植。
 它用于在真机上验证共享桌面壳、Apple Game Controller、权限和 Codex CLI 环境，
 不会安装 Windows VHF，也不会用 Accessibility 冒充 Micro。
@@ -11,7 +13,7 @@
 - Avalonia 12.1 / .NET 10 共享桌面壳，最低 macOS 14；
 - 原生 Menu Bar、Dock 菜单和进程级单实例；
 - Apple Game Controller 标准扩展 Profile、多手柄/current controller、摇杆、按键、
-  扳机、battery、haptics 与 light 能力观察；
+  会话内稳定身份、拓扑修订号、扳机、battery、haptics 与 light 能力观察；
 - Accessibility、Input Monitoring、Microphone 分项状态与系统隐私设置入口；
 - Codex CLI 路径探测；
 - Apple Silicon (`osx-arm64`) 与 Intel (`osx-x64`) 两个自包含 `.app` 包。
@@ -26,6 +28,10 @@
 因此当前 UI 只读展示手柄与平台状态，不向 Codex 发送动作。上述能力完成真机、签名和
 安全验收前，产品内始终显示 `LIMITED PREVIEW`。
 
+控制器面板会保留最近一次连接、断开或 current-controller 切换记录；数组顺序变化不会
+改变手柄的进程会话身份。只有 `shouldMonitorBackgroundEvents` 启用后 readback 为真，
+界面才会声明后台监控可用。
+
 ## 构建双架构应用包
 
 在仓库根目录运行：
@@ -34,6 +40,9 @@
 dotnet restore .\AgentController.sln
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
 ```
+
+在安装了 PowerShell 7 的 macOS 上，使用 `pwsh -NoProfile -File
+./scripts/publish-macos.ps1 -Runtime osx-arm64`；Intel Mac 改为 `osx-x64`。
 
 输出：
 

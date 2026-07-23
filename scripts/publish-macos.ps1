@@ -11,9 +11,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repoRoot `
-    'src\AgentController.Desktop\AgentController.Desktop.csproj'
-$plistTemplate = Join-Path $repoRoot 'packaging\macos\Info.plist'
+$project = [IO.Path]::Combine(
+    $repoRoot,
+    'src',
+    'AgentController.Desktop',
+    'AgentController.Desktop.csproj')
+$plistTemplate = [IO.Path]::Combine(
+    $repoRoot,
+    'packaging',
+    'macos',
+    'Info.plist')
 $shortVersion = '0.1.0'
 $buildVersion = '1'
 $executableName = 'AgentController.Desktop'
