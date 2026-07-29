@@ -114,13 +114,13 @@ public sealed class ControllerTutorialViewDesignTests
                     BridgeEventKeys.LegacyMessage,
                     timestamp,
                     BridgeEventSeverity.Warning),
-                "侧边栏焦点未同步 · 目标 Agent 未在前台"),
+                "本地光标已移动 · 提取微信加仓动图"),
             new(
                 new BridgeEvent(
                     BridgeEventKeys.LegacyMessage,
                     timestamp.AddSeconds(-1),
                     BridgeEventSeverity.Info),
-                "侧边栏焦点已同步 · Codex"),
+                "范围已切换 · 游离任务"),
         };
         var recentEvents = new ReadOnlyObservableCollection<
             BridgeFeedbackLogRow>(

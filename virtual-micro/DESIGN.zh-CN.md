@@ -76,6 +76,14 @@ VHF source driver 另暴露只供模拟器进程使用的受限设备接口。�
 输出经驱动有界队列回传桌面端，Agent 灯光以六槽位快照原子更新，不经过
 AgentController。桌面端只连接 VHF 设备接口，不再回退到另一种虚拟 HID。
 
+Broker 把任何有效 Codex Output report 视为链路心跳，并在该心跳仍新鲜时保持后台
+读取器存活，即使面板客户端暂时退出也不会中断 `device.status` 等 RPC。驱动控制
+接口提供受限的 transport-reset IOCTL：先同步 `VhfDelete` 两个 child，清空旧输出
+与 held-input 状态，再重新 `VhfCreate` / `VhfStart` 并生成新的 connection epoch，
+从而制造真实的 HID 拓扑变化，让 Codex 丢弃卡死句柄并重新枚举。输入已进入 VHF
+但 12 秒没有握手，或已建立链路 90 秒没有心跳时，Broker 以 20 秒冷却最多自动
+尝试三次；手动“重新连接”直接调用同一路径。
+
 同一个 UMDF2 source 创建两个独立 VHF HID child，各自拥有报告描述符和句柄：
 vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windows
 专用打开，只补齐 Codex Micro bridge 对原生 Full access 二次确认框不处理旋转的缺口。键盘 IOCTL 严格拒绝
@@ -149,6 +157,10 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 `v.oai.thstatus` 先清空六个槽位，再按同一快照全部应用，避免上一帧残留或只
 更新一个任务；灯光提示同时给出当前活动槽位数。
 
+第一颗灯为黄色、第二颗灯为蓝色时表示 VHF 已就绪但 Codex 握手尚未恢复；第三颗
+灯变蓝只表示最近输入已被驱动接受，并不等于 Codex 已处理。此状态会触发上述有界
+自动恢复，握手重新出现后第一颗灯自动恢复为蓝色。
+
 所有交互控件使用统一的非抢焦点悬停卡片。卡片第一行显示控件标题，第二部分
 显示当前 Codex 映射、鼠标操作和实时状态；动作键、旋钮模式、摇杆方向以及
 Agent 槽位状态变化时同步更新。相同内容写入自动化名称和帮助文本。
@@ -177,6 +189,8 @@ Agent 键第一行优先显示“所属项目 › 会话标题”：项目与标
   `Confirm` 并短按确认，全程不调用界面点击。
 - 单击 Codex 键后，真实 Codex 主窗口进入普通 Z 序最前方。
 - 窗口可缩放、移动、置顶，并能从机身菜单或托盘重连和退出。
+- 面板客户端退出后，活跃 Codex 心跳仍由唯一 Broker 持续响应；模拟 Codex 握手
+  超时或心跳中断时会重建 VHF topology，并在新 epoch 上重新变为就绪。
 - 重复启动模拟器时只保留一个进程，旋钮每次只产生一个步进，Agent 六槽位快照
   始终由同一读取器完整接收。
 - 每个按钮、旋钮、方向键和状态灯悬停时均显示标题与当前功能。

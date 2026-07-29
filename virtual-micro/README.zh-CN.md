@@ -11,6 +11,10 @@
 - `AgentController.exe` 直接承载透明 WPF 面板。面板与实体手柄各自使用独立的
   Broker 逻辑客户端 ID 和 held-input 租约，但由同一个进程级 Broker 子进程独占
   HID 和输出流；
+- Codex 输出同时作为 Broker 的链路心跳；隐藏或重启面板不会再让仍活跃的 Codex
+  RPC 会话失去响应者。输入已被 HID 接受但 12 秒内没有 Codex 握手，或已建立的
+  链路连续 90 秒没有输出时，Broker 会按 20 秒冷却最多自动重建三次 VHF 子设备；
+  右键“重新连接”也调用同一套真实 HID 重建，不再只重连 Broker 管道；
 - 面板只显示键盘本体，支持等比缩放、拖动、置顶和不激活输入；通过 Agent
   Controller 标题栏或托盘打开，关闭只会隐藏；
 - 窗口默认以 `590 × 610` 设计画布的 75% 打开，可从约 60% 起继续缩放；
@@ -110,7 +114,8 @@ if (-not $msbuild) { throw '未找到 Visual Studio MSBuild。' }
 
 ## 安装虚拟 HID
 
-先退出 AgentController，再用普通 PowerShell 运行：
+先同时退出 Codex 和 AgentController，再用普通 PowerShell 运行。这样 Windows
+才能卸载旧 UMDF 二进制，不会把新版驱动延迟到重启后才真正启用：
 
 ```powershell
 .\virtual-micro\Install-CodexMicroDriver.ps1
@@ -120,6 +125,10 @@ if (-not $msbuild) { throw '未找到 Visual Studio MSBuild。' }
 AgentController 版本；INF 版本只供 Windows 更新驱动包。简明步骤与验证命令见
 [本地安装说明](../docs/CodexMicroSimulator-安装教程.zh-CN.md)，构建和证书细节见
 [`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
+
+如果 Windows 仍要求重启，脚本会以 `3010` 退出且不会显示 `Ready`。请先重启
+Windows 一次再打开 Codex 或 AgentController；新版 transport recovery 此后才会
+真正生效。
 
 ## 验证
 

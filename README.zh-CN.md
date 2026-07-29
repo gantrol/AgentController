@@ -72,7 +72,7 @@ Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想�
 > - 读取 `~/.codex` 下的本机任务数据；启用降级绑定时，可以向 Codex 的快捷键配置追加 F17/F18/F20/F22；
 > - 在 `%LOCALAPPDATA%` 写入自身设置；
 > - 可选注册开机自启（默认关闭）；
-> - **不发起任何网络请求**，唯一涉网行为是在浏览器中打开厂商或 Codex 链接。
+> - 会短暂启动本机 `codex app-server`，读取当前登录账号可用 Full reset 的过期时间；Codex CLI 处理该请求时可能访问 OpenAI。除此之外，涉网行为只是在浏览器中打开厂商或 Codex 链接。
 >
 > Agent Controller 是独立实验项目，与 OpenAI、Codex、Work Louder 没有隶属、授权或背书关系。
 

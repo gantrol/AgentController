@@ -15,6 +15,19 @@ $pnputil = Join-Path $env:SystemRoot 'System32\pnputil.exe'
 $subject = 'CN=Codex Micro Simulator Driver'
 $vhfHardwareId = 'Root\CodexMicroHidUm'
 $legacyHardwareIds = @('Root\CodexMicroVhfUm', 'Root\CodexMicroVhf')
+$restartRequired = $false
+
+$blockingProcesses = @(Get-Process `
+    -Name 'AgentController', 'ChatGPT' `
+    -ErrorAction SilentlyContinue)
+if ($blockingProcesses.Count -gt 0) {
+    $blockingLabels = $blockingProcesses |
+        ForEach-Object { "$($_.ProcessName) ($($_.Id))" }
+    throw (
+        'Close Codex and Agent Controller before installing the Micro driver. ' +
+        'Otherwise Windows can keep the old UMDF binary loaded until reboot. ' +
+        "Running: $($blockingLabels -join ', ')")
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -94,17 +107,22 @@ try {
     foreach ($existingVhfSource in $existingVhfSources) {
         Write-Host "Refreshing simulator device $($existingVhfSource.PNPDeviceID)"
         & $pnputil /remove-device $existingVhfSource.PNPDeviceID /subtree
-        # pnputil returns ERROR_SUCCESS_REBOOT_REQUIRED (3010) even though the
-        # devnode is already gone. Continue with a fresh root enumeration; the
-        # new instance does not require a system restart.
+        # Preserve ERROR_SUCCESS_REBOOT_REQUIRED. A fresh root can appear healthy
+        # while WUDFHost is still serving the previous driver binary.
         if ($LASTEXITCODE -notin @(0, 3010)) {
             throw "Failed to refresh simulator device $($existingVhfSource.PNPDeviceID)."
+        }
+        if ($LASTEXITCODE -eq 3010) {
+            $restartRequired = $true
         }
     }
 
     & $installer install $inf $vhfHardwareId
-    if ($LASTEXITCODE -ne 0) {
+    if ($LASTEXITCODE -notin @(0, 3010)) {
         throw 'VHF PnP installation failed.'
+    }
+    if ($LASTEXITCODE -eq 3010) {
+        $restartRequired = $true
     }
 
     $vhfSource = Get-CimInstance Win32_PnPEntity |
@@ -144,9 +162,21 @@ try {
     else {
         'unknown'
     }
-    Write-Host "Ready: $($vhfSource.PNPDeviceID) (driver $driverVersion)"
+    if ($restartRequired) {
+        Write-Warning (
+            "Installed: $($vhfSource.PNPDeviceID) (driver $driverVersion), " +
+            'but Windows is still using the previous driver binary. ' +
+            'Restart Windows before starting Codex or Agent Controller.')
+    }
+    else {
+        Write-Host "Ready: $($vhfSource.PNPDeviceID) (driver $driverVersion)"
+    }
     Write-Host "Log: $transcriptPath"
 }
 finally {
     Stop-Transcript | Out-Null
+}
+
+if ($restartRequired) {
+    exit 3010
 }

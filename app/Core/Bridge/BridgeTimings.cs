@@ -13,7 +13,6 @@ public static class BridgeTimings
     public const int WakeInputGuardMs = 220;
     public const int ForegroundLossGraceMs = 300;
     public const int GestureInputGuardMs = 180;
-    public const int SidebarFocusSettleMs = 150;
     public const int NavigationConfirmTimeoutMs = 8000;
     public const int NavigationConfirmPollMs = 130;
     public const int ComposerSettleMs = 520;

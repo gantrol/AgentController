@@ -10,9 +10,14 @@ public static class MicroBrokerProtocol
     public const int MaximumBatchReports = 64;
     public const int ClientLeaseTimeoutMs = 3_500;
 
+    public const uint DriverInfoFlagReady = 0x00000001;
+    public const uint DriverInfoFlagDialogKeyboard = 0x00000002;
+    public const uint DriverInfoFlagTransportReset = 0x00000004;
+
     public const string Hello = "hello";
     public const string Submit = "submit";
     public const string Keyboard = "keyboard";
+    public const string Recover = "recover";
     public const string Poll = "poll";
     public const string Disconnect = "disconnect";
 }

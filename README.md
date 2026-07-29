@@ -68,7 +68,7 @@ Unfortunately, it also depends on an **unsigned developer driver package**. The 
 > - reads local Codex task data under `~/.codex`; if fallback bindings are enabled, it can append F17/F18/F20/F22 bindings to Codex's keybindings file;
 > - writes its own settings under `%LOCALAPPDATA%`;
 > - can register itself to start with Windows (off by default);
-> - makes no network requests; its only web-related action is opening vendor or Codex links in your browser.
+> - starts the local `codex app-server` briefly to read the signed-in account's available Full reset expiration times; the Codex CLI may contact OpenAI while serving that request. Other web-related actions only open vendor or Codex links in your browser.
 >
 > Agent Controller is an independent experiment and is not affiliated with, authorized by, or endorsed by OpenAI, Codex, or Work Louder.
 

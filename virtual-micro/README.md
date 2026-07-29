@@ -14,6 +14,12 @@ The Windows device support and hostable Micro surface used by Agent Controller:
 - `AgentController.exe` hosts the transparent WPF surface. The surface and the
   physical controller use separate logical client IDs and held-input leases,
   while one process-wide Broker child owns the HID and output stream.
+- Codex output is also the Broker's link heartbeat, so hiding or restarting the
+  surface cannot abandon an active Codex RPC session. If an accepted HID input
+  receives no Codex handshake within 12 seconds, or an established link emits
+  no output for 90 seconds, the Broker rebuilds the VHF children up to three
+  times with a 20-second cooldown. Right-click **Reconnect** uses the same real
+  HID transport rebuild instead of reconnecting only the Broker pipe.
 - The surface renders only the keypad body and supports uniform resizing,
   dragging, Always on Top, and non-activating pointer input. It is opened from
   Agent Controller's title bar or tray; closing it hides it.
@@ -123,7 +129,9 @@ Main outputs:
 
 ## Install the virtual HID
 
-Exit AgentController, then run from an ordinary PowerShell:
+Exit both Codex and AgentController, then run from an ordinary PowerShell. This
+lets Windows unload the previous UMDF binary instead of deferring activation
+until a reboot:
 
 ```powershell
 .\virtual-micro\Install-CodexMicroDriver.ps1
@@ -135,6 +143,10 @@ versions; its INF version is only for Windows driver-package updates. See the
 [local installation guide](../docs/CodexMicroSimulator-installation.md) for
 verification commands and [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for
 build and certificate details.
+
+If Windows still reports that a restart is required, the script exits with
+code `3010` and does not print `Ready`. Restart Windows once before opening
+Codex or AgentController; only then is the new transport-recovery code active.
 
 ## Verify
 

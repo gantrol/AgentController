@@ -480,6 +480,172 @@ public sealed class BrokerCoexistenceTests
     }
 
     [Fact]
+    public async Task ObservedCodexLinkKeepsBrokerAliveWithoutUiClient()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint(
+            codexLinkObservedOnConnect: false);
+        driver.EnqueueHostRpc(
+            "{\"id\":9,\"method\":\"v.oai.config.get\",\"params\":[]}");
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromMilliseconds(40),
+            leaseSweepInterval: TimeSpan.FromMilliseconds(10),
+            codexLinkTimeout: TimeSpan.FromMilliseconds(300));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+
+        await Task.Delay(120);
+
+        Assert.False(hostTask.IsCompleted);
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
+    public async Task MissingCodexHandshakeAutomaticallyRebuildsTransport()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint(
+            codexLinkObservedOnConnect: false,
+            supportsTransportReset: true);
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30),
+            leaseSweepInterval: TimeSpan.FromMilliseconds(10),
+            codexLinkTimeout: TimeSpan.FromMilliseconds(300),
+            codexHandshakeTimeout: TimeSpan.FromMilliseconds(50),
+            recoveryCooldown: TimeSpan.FromMilliseconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var client = new MicroBrokerClient(
+            "automatic-recovery-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        _ = client.Connect();
+
+        Assert.Equal(
+            MicroSendDisposition.Accepted,
+            client.Submit(
+                MicroRpcCodec.EncodeHid("ENC_CW", 2)).Disposition);
+        var deadline = Environment.TickCount64 + 3_000;
+        while (
+            driver.ResetCount == 0 &&
+            Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(driver.ResetCount >= 1);
+        Assert.False(client.CodexLinkObserved);
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
+    public async Task StaleObservedCodexLinkAutomaticallyRebuildsTransport()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint(
+            codexLinkObservedOnConnect: false,
+            supportsTransportReset: true);
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30),
+            leaseSweepInterval: TimeSpan.FromMilliseconds(10),
+            codexLinkTimeout: TimeSpan.FromMilliseconds(1_200),
+            codexHandshakeTimeout: TimeSpan.FromMilliseconds(300),
+            recoveryCooldown: TimeSpan.FromMilliseconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var client = new MicroBrokerClient(
+            "stale-link-recovery-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        _ = client.Connect();
+        driver.EnqueueHostRpc(
+            "{\"id\":10,\"method\":\"v.oai.config.get\",\"params\":[]}");
+        var readyDeadline = Environment.TickCount64 + 3_000;
+        while (
+            !client.CodexLinkObserved &&
+            Environment.TickCount64 < readyDeadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(client.CodexLinkObserved);
+        var recoveryDeadline = Environment.TickCount64 + 3_000;
+        while (
+            driver.ResetCount == 0 &&
+            Environment.TickCount64 < recoveryDeadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(driver.ResetCount >= 1);
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
+    public async Task ManualRecoveryRebuildsTransportAndChangesEpoch()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint(
+            codexLinkObservedOnConnect: false,
+            supportsTransportReset: true);
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        using var client = new MicroBrokerClient(
+            "manual-recovery-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+        var initial = client.Connect();
+
+        var recovered = client.RecoverCodexLink();
+
+        Assert.Equal(1, driver.ResetCount);
+        Assert.NotEqual(initial.ConnectionEpoch, recovered.ConnectionEpoch);
+        Assert.False(recovered.CodexLinkObserved);
+        cancellation.Cancel();
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
     public async Task RequestCompletionRenewsLeaseBeforeExpiryCanNeutralizeIt()
     {
         var suffix = Guid.NewGuid().ToString("N");
@@ -571,16 +737,21 @@ public sealed class BrokerCoexistenceTests
         private int _blockNextSubmit;
         private long _outputSequence;
         private readonly bool _codexLinkObservedOnConnect;
+        private readonly bool _supportsTransportReset;
+        private long _connectionEpoch = 0x1234;
 
         public FakeDriverEndpoint(
-            bool codexLinkObservedOnConnect = true)
+            bool codexLinkObservedOnConnect = true,
+            bool supportsTransportReset = false)
         {
             _codexLinkObservedOnConnect =
                 codexLinkObservedOnConnect;
+            _supportsTransportReset = supportsTransportReset;
         }
 
         public bool IsConnected { get; private set; }
         public int ConnectCount { get; private set; }
+        public int ResetCount { get; private set; }
         public IReadOnlyList<string> Messages => _messages.ToArray();
 
         public void BlockNextSubmit()
@@ -601,11 +772,13 @@ public sealed class BrokerCoexistenceTests
             IsConnected = true;
             ConnectCount++;
             return new(
-                0x1234,
+                checked((ulong)_connectionEpoch),
                 0,
                 0,
                 0,
-                3,
+                3U | (_supportsTransportReset
+                    ? MicroBrokerProtocol.DriverInfoFlagTransportReset
+                    : 0U),
                 "fake-broker-driver",
                 _codexLinkObservedOnConnect);
         }
@@ -649,6 +822,27 @@ public sealed class BrokerCoexistenceTests
 
         public DriverOutputReport? TryReadOutput() =>
             _output.TryDequeue(out var report) ? report : null;
+
+        public BrokerDriverInfo ResetTransport()
+        {
+            if (!_supportsTransportReset)
+            {
+                throw new NotSupportedException();
+            }
+
+            ResetCount++;
+            _connectionEpoch++;
+            _output.Clear();
+            Interlocked.Exchange(ref _outputSequence, 0);
+            return new(
+                checked((ulong)_connectionEpoch),
+                0,
+                0,
+                0,
+                3U | MicroBrokerProtocol.DriverInfoFlagTransportReset,
+                "fake-broker-driver",
+                CodexLinkObserved: false);
+        }
 
         public void EnqueueHostRpc(string json)
         {

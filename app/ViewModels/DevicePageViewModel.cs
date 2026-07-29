@@ -62,6 +62,8 @@ public sealed class DevicePageViewModel : ObservableObject
     private bool _isProjectDirectory;
     private string _sidebarProjectName = string.Empty;
     private string _sidebarProjectFilterText = string.Empty;
+    private string _fullResetExpirationText = string.Empty;
+    private string _fullResetExpirationToolTip = string.Empty;
 
     public DevicePageViewModel(
         ObservableCollection<SidebarEntry> sidebarEntries,
@@ -107,6 +109,30 @@ public sealed class DevicePageViewModel : ObservableObject
     public ICommand SelectProjectsCommand { get; }
 
     public ICommand SelectProjectlessTasksCommand { get; }
+
+    public string FullResetExpirationText
+    {
+        get => _fullResetExpirationText;
+        private set => SetProperty(
+            ref _fullResetExpirationText,
+            value);
+    }
+
+    public string FullResetExpirationToolTip
+    {
+        get => _fullResetExpirationToolTip;
+        private set => SetProperty(
+            ref _fullResetExpirationToolTip,
+            value);
+    }
+
+    public void UpdateFullResetExpiration(
+        string text,
+        string toolTip)
+    {
+        FullResetExpirationText = text;
+        FullResetExpirationToolTip = toolTip;
+    }
 
     public string AgentName
     {

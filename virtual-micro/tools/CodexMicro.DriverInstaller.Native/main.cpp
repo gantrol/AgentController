@@ -211,5 +211,7 @@ int wmain(int argc, wchar_t** argv)
             ? L"Codex Micro HID %s installed; Windows requested a restart.\n"
             : L"Codex Micro HID %s installed and started.\n",
         hardwareId);
-    return 0;
+    return rebootRequired
+        ? ERROR_SUCCESS_REBOOT_REQUIRED
+        : ERROR_SUCCESS;
 }

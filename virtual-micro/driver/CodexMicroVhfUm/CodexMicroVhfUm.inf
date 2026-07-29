@@ -3,7 +3,7 @@ Signature="$WINDOWS NT$"
 Class=HIDClass
 ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
 Provider=%ProviderName%
-DriverVer=07/21/2026,1.0.0.7
+DriverVer=07/28/2026,1.0.0.8
 CatalogFile=CodexMicroVhfUm.cat
 PnpLockdown=1
 

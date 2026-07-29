@@ -1,0 +1,26 @@
+<UserControl x:Class="CodexController.Views.FullResetStatusView"
+             x:Name="Root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MaxWidth="720"
+             ToolTip="{Binding ToolTipText, ElementName=Root}"
+             AutomationProperties.Name="{Binding Text, ElementName=Root}">
+    <UserControl.Style>
+        <Style TargetType="UserControl">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasCredits, ElementName=Root}"
+                             Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Style>
+
+    <TextBlock Text="{Binding Text, ElementName=Root}"
+               Foreground="{StaticResource Brush.Text.Secondary}"
+               FontFamily="{StaticResource Font.Mono}"
+               FontSize="{StaticResource Font.Size.Caption}"
+               TextTrimming="CharacterEllipsis"
+               TextWrapping="NoWrap" />
+</UserControl>

@@ -85,7 +85,7 @@ The controller will not control Codex. Re-enable it in Agent Controller.
 
 | 输入 | 当前实际行为 | 状态与差异 |
 | --- | --- | --- |
-| 左摇杆上/下 | 移动 Agent Controller 自有侧边栏目录焦点；可重复；同步尝试聚焦 Codex 侧边栏 | 已实现 |
+| 左摇杆上/下 | 只移动 Agent Controller 自有侧边栏目录光标；可重复；不触碰 Codex 原生焦点，不打开任务 | 已实现 |
 | 左摇杆左 | 退出当前项目任务目录 | 已实现 |
 | 左摇杆右 | 进入当前项目目录 | 已实现；与 v0.4b 最新文字“A 确认、右推无动作”不一致 |
 | L3 | 循环根目录：置顶任务、置顶项目、项目、未归项目任务 | 已实现 |

@@ -19,7 +19,14 @@ public sealed class MicroBrokerHost : IDisposable
             MicroBrokerProtocol.ClientLeaseTimeoutMs);
     private static readonly TimeSpan DefaultIdleExitDelay =
         TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultCodexLinkTimeout =
+        TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan DefaultCodexHandshakeTimeout =
+        TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan DefaultRecoveryCooldown =
+        TimeSpan.FromSeconds(20);
     private const int MaximumConcurrentConnections = 16;
+    private const int MaximumAutomaticRecoveryAttempts = 3;
 
     private readonly IMicroDriverEndpoint _driver;
     private readonly string _pipeName;
@@ -27,10 +34,14 @@ public sealed class MicroBrokerHost : IDisposable
     private readonly TimeSpan _idleExitDelay;
     private readonly TimeSpan _clientLeaseTimeout;
     private readonly TimeSpan _leaseSweepInterval;
+    private readonly TimeSpan _codexLinkTimeout;
+    private readonly TimeSpan _codexHandshakeTimeout;
+    private readonly TimeSpan _recoveryCooldown;
     private readonly DeviceRpcHandler _rpc = new();
     private readonly ConcurrentDictionary<Guid, ClientLease> _clients = new();
     private readonly object _inputSync = new();
     private readonly object _eventSync = new();
+    private readonly object _recoverySync = new();
     private readonly Queue<BrokerEvent> _events = new();
     private readonly Dictionary<Guid, long> _analogActivationOrder = [];
     private Guid? _analogOwner;
@@ -38,6 +49,11 @@ public sealed class MicroBrokerHost : IDisposable
     private BrokerDriverInfo? _driverInfo;
     private long _eventSequence;
     private long _lastActivity = Environment.TickCount64;
+    private long _lastCodexOutput;
+    private long _codexHandshakeStarted;
+    private long _lastRecoveryAttempt;
+    private long _transportGeneration;
+    private int _automaticRecoveryAttempts;
     private bool _disposed;
 
     public MicroBrokerHost()
@@ -55,7 +71,10 @@ public sealed class MicroBrokerHost : IDisposable
         string instanceLeasePath,
         TimeSpan idleExitDelay,
         TimeSpan? clientLeaseTimeout = null,
-        TimeSpan? leaseSweepInterval = null)
+        TimeSpan? leaseSweepInterval = null,
+        TimeSpan? codexLinkTimeout = null,
+        TimeSpan? codexHandshakeTimeout = null,
+        TimeSpan? recoveryCooldown = null)
     {
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
@@ -69,6 +88,12 @@ public sealed class MicroBrokerHost : IDisposable
             clientLeaseTimeout ?? DefaultClientLeaseTimeout;
         var resolvedLeaseSweepInterval =
             leaseSweepInterval ?? LeaseSweepInterval;
+        var resolvedCodexLinkTimeout =
+            codexLinkTimeout ?? DefaultCodexLinkTimeout;
+        var resolvedCodexHandshakeTimeout =
+            codexHandshakeTimeout ?? DefaultCodexHandshakeTimeout;
+        var resolvedRecoveryCooldown =
+            recoveryCooldown ?? DefaultRecoveryCooldown;
         if (resolvedClientLeaseTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
@@ -81,11 +106,30 @@ public sealed class MicroBrokerHost : IDisposable
                 nameof(leaseSweepInterval));
         }
 
+        if (resolvedCodexLinkTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(codexLinkTimeout));
+        }
+
+        if (resolvedCodexHandshakeTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(codexHandshakeTimeout));
+        }
+
+        if (resolvedRecoveryCooldown <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(recoveryCooldown));
+        }
+
         _pipeName = pipeName;
         _instanceLeasePath = instanceLeasePath;
         _idleExitDelay = idleExitDelay;
         _clientLeaseTimeout = resolvedClientLeaseTimeout;
         _leaseSweepInterval = resolvedLeaseSweepInterval;
+        _codexLinkTimeout = resolvedCodexLinkTimeout;
+        _codexHandshakeTimeout = resolvedCodexHandshakeTimeout;
+        _recoveryCooldown = resolvedRecoveryCooldown;
         _rpc.SlotLightingObserved += (_, snapshot) =>
             PublishEvent("slot-lighting", snapshot);
     }
@@ -116,6 +160,12 @@ public sealed class MicroBrokerHost : IDisposable
         try
         {
             _driverInfo = _driver.Connect();
+            if (_driverInfo.CodexLinkObserved)
+            {
+                Volatile.Write(
+                    ref _lastCodexOutput,
+                    Environment.TickCount64);
+            }
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
@@ -266,6 +316,7 @@ public sealed class MicroBrokerHost : IDisposable
                 MicroBrokerProtocol.Hello => Success(request, client),
                 MicroBrokerProtocol.Submit => Submit(request, client),
                 MicroBrokerProtocol.Keyboard => Keyboard(request, client),
+                MicroBrokerProtocol.Recover => Recover(request, client),
                 MicroBrokerProtocol.Poll => Poll(request, client),
                 MicroBrokerProtocol.Disconnect => Disconnect(request, client),
                 _ => Failure(
@@ -316,6 +367,10 @@ public sealed class MicroBrokerHost : IDisposable
                     CommitAnalogLease(
                         client.ClientId,
                         prepared.AnalogMutation);
+                    if (prepared.Reports.Count > 0)
+                    {
+                        MarkCodexHandshakeExpected();
+                    }
                 }
             }
             catch (Exception exception) when (
@@ -489,6 +544,17 @@ public sealed class MicroBrokerHost : IDisposable
         return Success(request, client) with { Send = result };
     }
 
+    private BrokerResponse Recover(
+        BrokerRequest request,
+        ClientLease client)
+    {
+        return TryResetCodexTransport(automatic: false, out var error)
+            ? Success(request, client)
+            : Failure(
+                request,
+                error ?? "Codex Micro transport recovery failed.");
+    }
+
     private BrokerResponse Poll(
         BrokerRequest request,
         ClientLease client)
@@ -543,11 +609,24 @@ public sealed class MicroBrokerHost : IDisposable
     private async Task PumpOutputAsync(CancellationToken cancellationToken)
     {
         var assembler = new HostRpcAssembler();
+        var generation = Volatile.Read(ref _transportGeneration);
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 var output = _driver.TryReadOutput();
+                var currentGeneration =
+                    Volatile.Read(ref _transportGeneration);
+                if (currentGeneration != generation)
+                {
+                    assembler.Reset();
+                    generation = currentGeneration;
+                    if (output is not null)
+                    {
+                        continue;
+                    }
+                }
+
                 if (output is null)
                 {
                     await Task.Delay(OutputPollInterval, cancellationToken)
@@ -571,6 +650,13 @@ public sealed class MicroBrokerHost : IDisposable
                 }
 
                 var response = _rpc.Handle(json);
+                if (generation != Volatile.Read(ref _transportGeneration))
+                {
+                    assembler.Reset();
+                    generation = Volatile.Read(ref _transportGeneration);
+                    continue;
+                }
+
                 var result = _driver.Submit(response);
                 if (result.Disposition != MicroSendDisposition.Accepted)
                 {
@@ -630,8 +716,11 @@ public sealed class MicroBrokerHost : IDisposable
                     detail: pair.Value.ClientName);
             }
 
+            MaintainCodexLink(now);
+
             if (
                 _clients.IsEmpty &&
+                !HasRecentCodexActivity(now) &&
                 now - Volatile.Read(ref _lastActivity) >=
                     _idleExitDelay.TotalMilliseconds)
             {
@@ -729,6 +818,9 @@ public sealed class MicroBrokerHost : IDisposable
 
     private void MarkCodexLinkObserved(ulong outputSequence)
     {
+        Volatile.Write(ref _lastCodexOutput, Environment.TickCount64);
+        Volatile.Write(ref _codexHandshakeStarted, 0);
+        Volatile.Write(ref _automaticRecoveryAttempts, 0);
         var current = Volatile.Read(ref _driverInfo);
         if (current is null)
         {
@@ -747,6 +839,158 @@ public sealed class MicroBrokerHost : IDisposable
         {
             PublishEvent("codex-link-ready");
         }
+    }
+
+    private void MarkCodexHandshakeExpected()
+    {
+        var current = Volatile.Read(ref _driverInfo);
+        if (current?.CodexLinkObserved != false)
+        {
+            return;
+        }
+
+        _ = Interlocked.CompareExchange(
+            ref _codexHandshakeStarted,
+            Environment.TickCount64,
+            0);
+    }
+
+    private void MaintainCodexLink(long now)
+    {
+        var current = Volatile.Read(ref _driverInfo);
+        if (
+            current is null ||
+            (current.Flags &
+             MicroBrokerProtocol.DriverInfoFlagTransportReset) == 0 ||
+            Volatile.Read(ref _automaticRecoveryAttempts) >=
+                MaximumAutomaticRecoveryAttempts)
+        {
+            return;
+        }
+
+        var lastRecovery = Volatile.Read(ref _lastRecoveryAttempt);
+        if (
+            lastRecovery > 0 &&
+            now - lastRecovery < _recoveryCooldown.TotalMilliseconds)
+        {
+            return;
+        }
+
+        var lastOutput = Volatile.Read(ref _lastCodexOutput);
+        var handshakeStarted = Volatile.Read(ref _codexHandshakeStarted);
+        var linkIsStale =
+            current.CodexLinkObserved &&
+            lastOutput > 0 &&
+            now - lastOutput >= _codexLinkTimeout.TotalMilliseconds;
+        var handshakeTimedOut =
+            !current.CodexLinkObserved &&
+            handshakeStarted > 0 &&
+            now - handshakeStarted >=
+                _codexHandshakeTimeout.TotalMilliseconds;
+        if (!linkIsStale && !handshakeTimedOut)
+        {
+            return;
+        }
+
+        _ = TryResetCodexTransport(automatic: true, out _);
+    }
+
+    private bool HasRecentCodexActivity(long now)
+    {
+        var lastOutput = Volatile.Read(ref _lastCodexOutput);
+        if (
+            lastOutput > 0 &&
+            now - lastOutput < _codexLinkTimeout.TotalMilliseconds)
+        {
+            return true;
+        }
+
+        var lastRecovery = Volatile.Read(ref _lastRecoveryAttempt);
+        return lastRecovery > 0 &&
+            now - lastRecovery < _codexHandshakeTimeout.TotalMilliseconds;
+    }
+
+    private bool TryResetCodexTransport(
+        bool automatic,
+        out string? error)
+    {
+        lock (_recoverySync)
+        {
+            var current = Volatile.Read(ref _driverInfo);
+            if (
+                current is null ||
+                (current.Flags &
+                 MicroBrokerProtocol.DriverInfoFlagTransportReset) == 0)
+            {
+                error =
+                    "The installed Codex Micro driver does not support HID transport recovery.";
+                return false;
+            }
+
+            var now = Environment.TickCount64;
+            Volatile.Write(ref _lastRecoveryAttempt, now);
+            if (automatic)
+            {
+                _ = Interlocked.Increment(
+                    ref _automaticRecoveryAttempts);
+            }
+            else
+            {
+                Volatile.Write(ref _automaticRecoveryAttempts, 0);
+            }
+
+            Volatile.Write(
+                ref _driverInfo,
+                current with { CodexLinkObserved = false });
+            Volatile.Write(ref _lastCodexOutput, 0);
+            Volatile.Write(ref _codexHandshakeStarted, now);
+            _ = Interlocked.Increment(ref _transportGeneration);
+
+            try
+            {
+                BrokerDriverInfo refreshed;
+                lock (_inputSync)
+                {
+                    ClearInputLeasesForRecovery();
+                    refreshed = _driver.ResetTransport();
+                }
+
+                Volatile.Write(
+                    ref _driverInfo,
+                    refreshed with { CodexLinkObserved = false });
+                PublishEvent(
+                    "codex-link-reconnecting",
+                    detail: automatic ? "automatic" : "manual");
+                error = null;
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    InvalidDataException or
+                    InvalidOperationException or
+                    NotSupportedException or
+                    Win32Exception)
+            {
+                PublishEvent(
+                    "codex-link-recovery-failed",
+                    detail: exception.Message);
+                error = exception.Message;
+                return false;
+            }
+        }
+    }
+
+    private void ClearInputLeasesForRecovery()
+    {
+        foreach (var client in _clients.Values)
+        {
+            _ = client.TakeNeutralReports(
+                shouldReleaseKey: _ => true,
+                releaseAnalog: true);
+        }
+
+        _analogOwner = null;
+        _analogActivationOrder.Clear();
     }
 
     private sealed record PreparedInput(

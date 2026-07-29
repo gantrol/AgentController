@@ -27,4 +27,5 @@ internal sealed record MainWindowDependencies(
     ControllerHoldCoordinator ControllerHolds,
     RadialLayerCoordinator RadialLayers,
     ActionDispatcher ActionDispatcher,
-    ThreadNavigationCoordinator ThreadNavigation);
+    ThreadNavigationCoordinator ThreadNavigation,
+    CodexRateLimitResetService RateLimitResets);

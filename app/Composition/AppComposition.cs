@@ -170,7 +170,8 @@ internal sealed class AppComposition : IDisposable
             new ControllerHoldCoordinator(),
             new RadialLayerCoordinator(),
             actionDispatcher,
-            threadNavigation);
+            threadNavigation,
+            new CodexRateLimitResetService());
         return new AppComposition(desktop);
     }
 

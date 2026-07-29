@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Controller · Codex Micro UI 视觉参考</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f4f5f3;
+      --surface: #ffffff;
+      --surface-glass: rgba(255, 255, 255, 0.86);
+      --surface-soft: #f7f8f6;
+      --ink: #171917;
+      --ink-muted: #626864;
+      --ink-faint: #8b928d;
+      --line: rgba(44, 55, 48, 0.12);
+      --line-strong: rgba(44, 55, 48, 0.2);
+      --sage-100: #e9f2ed;
+      --sage-200: #c6dcd1;
+      --sage-600: #477965;
+      --idle: #a2a8a4;
+      --thinking: #5d9de8;
+      --complete: #78b64d;
+      --input: #f09a22;
+      --error: #e24b4b;
+      --off: transparent;
+      --key-top: #ffffff;
+      --key-mid: #f7f8f7;
+      --key-bottom: #dfe4e1;
+      --key-rim: #adb4b0;
+      --radius-panel: 24px;
+      --radius-key: 9px;
+      --key-size: 62px;
+      --key-gap: 5px;
+      --shadow-key:
+        inset 1px 1px 2px rgba(255, 255, 255, 0.95),
+        inset -1px -1px 2px rgba(95, 102, 98, 0.16),
+        0 3px 0 rgba(173, 180, 176, 0.72),
+        0 7px 10px rgba(54, 60, 57, 0.18);
+      --shadow-panel: 0 18px 54px rgba(46, 66, 56, 0.14);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 72% 12%, rgba(171, 222, 200, 0.24), transparent 31rem),
+        var(--page);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    a { color: var(--sage-600); }
+
+    code {
+      padding: 0.12em 0.38em;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.7);
+      font: 0.9em/1.4 "SFMono-Regular", Consolas, monospace;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 56px 0 96px;
+    }
+
+    .eyebrow,
+    .micro-label {
+      color: var(--ink-faint);
+      font: 700 11px/1.3 "SFMono-Regular", Consolas, monospace;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 780px;
+      margin: 10px 0 16px;
+      font-size: clamp(38px, 6vw, 68px);
+      line-height: 1.02;
+      letter-spacing: -0.055em;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: -0.035em;
+    }
+
+    h3 { margin: 0; font-size: 15px; }
+
+    .lead {
+      max-width: 720px;
+      margin: 0;
+      color: var(--ink-muted);
+      font-size: 18px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .pill {
+      padding: 6px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.64);
+      color: var(--ink-muted);
+      font-size: 12px;
+    }
+
+    .section { margin-top: 72px; }
+
+    .showcase {
+      display: grid;
+      grid-template-columns: minmax(330px, 0.84fr) minmax(430px, 1.16fr);
+      gap: 18px;
+      padding: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: 30px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(247, 250, 248, 0.93));
+      box-shadow: var(--shadow-panel), inset 0 0 0 3px rgba(201, 225, 216, 0.65);
+    }
+
+    .micro {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, var(--key-size));
+      grid-template-rows: repeat(4, var(--key-size));
+      gap: var(--key-gap);
+      place-content: center;
+      min-height: 326px;
+      padding: 22px;
+      border: 4px solid rgba(197, 218, 209, 0.78);
+      border-radius: var(--radius-panel);
+      background: linear-gradient(180deg, #fafbf9, #f2f5f3);
+      box-shadow:
+        inset 0 1px 0 #fff,
+        0 14px 38px rgba(66, 87, 76, 0.12);
+      isolation: isolate;
+    }
+
+    .micro::after {
+      content: "WORK LOUDER  |  OPENAI";
+      position: absolute;
+      right: -43px;
+      top: 50%;
+      color: #a1aaa5;
+      font: 600 7px/1 "SFMono-Regular", Consolas, monospace;
+      letter-spacing: 0.08em;
+      transform: rotate(90deg);
+    }
+
+    .key,
+    .dial,
+    .stick {
+      position: relative;
+      width: var(--key-size);
+      height: var(--key-size);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: var(--radius-key);
+      color: var(--ink);
+      background: linear-gradient(145deg, var(--key-top), var(--key-mid) 48%, var(--key-bottom));
+      box-shadow: var(--shadow-key);
+    }
+
+    .key {
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+
+    .key::before {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      border-radius: 7px;
+      pointer-events: none;
+    }
+
+    .key svg { width: 22px; height: 22px; }
+
+    .key.wide {
+      grid-column: span 2;
+      width: calc(var(--key-size) * 2 + var(--key-gap));
+    }
+
+    .dial,
+    .stick {
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+    }
+
+    .dial::after {
+      content: "";
+      width: 44px;
+      height: 44px;
+      border: 1px solid #d5dbd8;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #fbfbf8, #e9ecea);
+      box-shadow: 0 3px 5px rgba(54, 60, 57, 0.18);
+    }
+
+    .stick::after {
+      content: "";
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background:
+        repeating-conic-gradient(from 0deg, #171917 0deg 6deg, #121412 6deg 12deg);
+      box-shadow: inset 0 0 0 2px #090a09, 0 3px 5px rgba(0, 0, 0, 0.35);
+    }
+
+    .agent-key { --status: var(--idle); }
+    .agent-key[data-status="thinking"] { --status: var(--thinking); }
+    .agent-key[data-status="complete"] { --status: var(--complete); }
+    .agent-key[data-status="input"] { --status: var(--input); }
+    .agent-key[data-status="error"] { --status: var(--error); }
+    .agent-key[data-status="off"] { --status: var(--off); opacity: 0.62; }
+
+    .agent-key::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      inset: -12px;
+      border-radius: 22px;
+      background: radial-gradient(circle, color-mix(in srgb, var(--status) 58%, transparent), transparent 66%);
+      filter: blur(4px);
+    }
+
+    .status-dot {
+      position: absolute;
+      right: 7px;
+      bottom: 7px;
+      width: 7px;
+      height: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: 50%;
+      background: var(--status);
+    }
+
+    .agent-key[data-status="thinking"]::after {
+      animation: breathe 1.6s ease-in-out infinite alternate;
+    }
+
+    @keyframes breathe {
+      from { opacity: 0.52; transform: scale(0.94); }
+      to { opacity: 1; transform: scale(1.04); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .agent-key[data-status="thinking"]::after { animation: none; }
+    }
+
+    .task-panel {
+      min-width: 0;
+      padding: 8px 2px 2px 0;
+    }
+
+    .task-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .task-heading p { margin: 3px 0 0; }
+
+    .modifier {
+      min-width: 40px;
+      padding: 5px 9px;
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: 8px;
+      background: linear-gradient(145deg, #fff, #e7ebe8);
+      box-shadow: 0 2px 5px rgba(54, 60, 57, 0.16);
+      color: var(--sage-600);
+      font: 700 11px/1.2 "SFMono-Regular", Consolas, monospace;
+      text-align: center;
+    }
+
+    .tasks {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .task {
+      --status: var(--idle);
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center;
+      min-height: 57px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-glass);
+    }
+
+    .task[data-status="thinking"] { --status: var(--thinking); }
+    .task[data-status="complete"] { --status: var(--complete); }
+    .task[data-status="input"] { --status: var(--input); background: #f2f4f1; }
+    .task[data-status="error"] { --status: var(--error); }
+    .task[data-status="off"] { --status: var(--off); opacity: 0.55; }
+
+    .task-led {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--status);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--status) 72%, transparent);
+    }
+
+    .task-name {
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-key {
+      min-width: 34px;
+      padding: 3px 6px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface-soft);
+      color: var(--ink-faint);
+      font: 700 9px/1.5 "SFMono-Regular", Consolas, monospace;
+      text-align: center;
+    }
+
+    .grid-2,
+    .token-grid,
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.68);
+    }
+
+    .card p { margin: 8px 0 0; color: var(--ink-muted); }
+
+    .status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .status-swatch {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-glass);
+    }
+
+    .status-swatch i {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--swatch);
+      box-shadow: 0 0 16px color-mix(in srgb, var(--swatch) 58%, transparent);
+    }
+
+    .status-swatch span { display: block; font-size: 13px; font-weight: 700; }
+    .status-swatch code { color: var(--ink-faint); font-size: 10px; }
+
+    .token-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .token { min-height: 112px; }
+    .token strong { display: block; margin-bottom: 6px; }
+
+    .code-block {
+      overflow-x: auto;
+      margin: 0;
+      padding: 20px;
+      border-radius: 16px;
+      background: #1d211e;
+      color: #e9efeb;
+      font: 12px/1.65 "SFMono-Regular", Consolas, monospace;
+      white-space: pre;
+    }
+
+    .rules { margin: 0; padding-left: 1.2em; }
+    .rules li + li { margin-top: 8px; }
+
+    footer {
+      margin-top: 72px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--ink-faint);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .showcase { grid-template-columns: 1fr; }
+      .task-panel { padding: 8px; }
+      .token-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 620px) {
+      .page { width: min(100% - 24px, 1180px); padding-top: 32px; }
+      .showcase { padding: 8px; }
+      .micro { transform: scale(0.88); margin: -18px; }
+      .tasks,
+      .grid-2,
+      .status-grid,
+      .token-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="eyebrow">Agent Controller · UX reference / v1</div>
+      <h1>Codex Micro UI<br>视觉与组件规范</h1>
+      <p class="lead">
+        固化 Agent Controller 的 Codex Micro 前端语言：实体键帽、设备布局、任务状态光效和任务列表。
+        本页无外部依赖，可离线打开，并作为 WPF、Web 或设计稿实现时的共同基准。
+      </p>
+      <div class="meta">
+        <span class="pill">基准尺寸：820 × 360</span>
+        <span class="pill">键帽：62 × 62</span>
+        <span class="pill">布局：2 + 4 Agent Keys</span>
+        <span class="pill">更新：2026-07-20</span>
+      </div>
+    </header>
+
+    <section class="section" aria-labelledby="component-title">
+      <h2 id="component-title">标准组件</h2>
+      <div class="showcase">
+        <div class="micro" aria-label="Codex Micro 4×4 键盘视觉参考">
+          <div class="dial" aria-label="旋钮"></div>
+          <div class="key agent-key" data-status="thinking" aria-label="Agent Key 1：思考中">
+            <span>↑</span><i class="status-dot"></i>
+          </div>
+          <div class="key agent-key" data-status="input" aria-label="Agent Key 2：等待输入">
+            <span>→</span><i class="status-dot"></i>
+          </div>
+          <div class="stick" aria-label="模拟摇杆"></div>
+
+          <div class="key agent-key" data-status="complete" aria-label="Agent Key 3：已完成">
+            <span>↓</span><i class="status-dot"></i>
+          </div>
+          <div class="key agent-key" data-status="idle" aria-label="Agent Key 4：空闲">
+            <span>←</span><i class="status-dot"></i>
+          </div>
+          <div class="key agent-key" data-status="error" aria-label="Agent Key 5：错误">
+            <span>▣</span><i class="status-dot"></i>
+          </div>
+          <div class="key agent-key" data-status="off" aria-label="Agent Key 6：未分配">
+            <span>☰</span><i class="status-dot"></i>
+          </div>
+
+          <div class="key" aria-label="Fast">⚡</div>
+          <div class="key" aria-label="Approve">✓</div>
+          <div class="key" aria-label="Decline">×</div>
+          <div class="key" aria-label="Fork">⑂</div>
+
+          <div class="key" aria-label="Layer">●</div>
+          <div class="key wide" aria-label="Push to talk">⌁</div>
+          <div class="key" aria-label="Send">✦</div>
+        </div>
+
+        <div class="task-panel">
+          <div class="task-heading">
+            <div>
+              <h3>Agent tasks</h3>
+              <p class="micro-label">Codex Micro · Agent Keys</p>
+            </div>
+            <span class="modifier">LB</span>
+          </div>
+          <div class="tasks">
+            <div class="task" data-status="thinking"><i class="task-led"></i><span class="task-name">分析大模型产业链趋势</span><span class="task-key">Up</span></div>
+            <div class="task" data-status="input"><i class="task-led"></i><span class="task-name">审计并编译构建流程</span><span class="task-key">Right</span></div>
+            <div class="task" data-status="complete"><i class="task-led"></i><span class="task-name">梳理测评受众与利益相关方</span><span class="task-key">Down</span></div>
+            <div class="task" data-status="idle"><i class="task-led"></i><span class="task-name">调整应用导航路由</span><span class="task-key">Left</span></div>
+            <div class="task" data-status="error"><i class="task-led"></i><span class="task-name">规划项目未来架构</span><span class="task-key">View</span></div>
+            <div class="task" data-status="off"><i class="task-led"></i><span class="task-name">未分配任务</span><span class="task-key">Menu</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="principles-title">
+      <h2 id="principles-title">设计原则</h2>
+      <div class="grid-2">
+        <article class="card">
+          <h3>硬件先于装饰</h3>
+          <p>键位必须保持官方设备的 4×4 空间关系。第一排是旋钮、两个 Agent Key、摇杆；第二排承载其余四个 Agent Key。</p>
+        </article>
+        <article class="card">
+          <h3>状态色不承担选择态</h3>
+          <p>蓝、绿、琥珀和红只表达任务状态。当前选中项使用浅鼠尾草背景和边框，避免语义混淆。</p>
+        </article>
+        <article class="card">
+          <h3>键帽像实体，不像按钮</h3>
+          <p>使用乳白渐变、顶部内高光、3px 底部硬边和低透明投影。默认圆角为 9px，不使用高饱和品牌色填充整颗键。</p>
+        </article>
+        <article class="card">
+          <h3>信息和模型分栏</h3>
+          <p>左侧展示可形成肌肉记忆的硬件模型，右侧展示任务标题。不要把长标题压进 62px 键帽。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="status-title">
+      <h2 id="status-title">任务状态</h2>
+      <div class="status-grid">
+        <div class="status-swatch" style="--swatch: var(--idle)"><i></i><div><span>Idle / 空闲</span><code>#A2A8A4</code></div></div>
+        <div class="status-swatch" style="--swatch: var(--thinking)"><i></i><div><span>Thinking / 工作中</span><code>#5D9DE8</code></div></div>
+        <div class="status-swatch" style="--swatch: var(--complete)"><i></i><div><span>Complete / 已完成</span><code>#78B64D</code></div></div>
+        <div class="status-swatch" style="--swatch: var(--input)"><i></i><div><span>Requires input</span><code>#F09A22</code></div></div>
+        <div class="status-swatch" style="--swatch: var(--error)"><i></i><div><span>Error / 错误</span><code>#E24B4B</code></div></div>
+        <div class="status-swatch" style="--swatch: #d5dad7"><i></i><div><span>Off / 未分配</span><code>transparent</code></div></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="tokens-title">
+      <h2 id="tokens-title">核心设计令牌</h2>
+      <div class="token-grid">
+        <article class="card token"><strong>键帽尺寸</strong><code>--key-size: 62px</code><p>WPF 实现当前为 58px，外部状态光场为 72px。</p></article>
+        <article class="card token"><strong>键间距</strong><code>--key-gap: 5px</code><p>在 820×360 浮层中可放宽到 8px。</p></article>
+        <article class="card token"><strong>键帽圆角</strong><code>--radius-key: 9px</code><p>面板圆角固定为 24px。</p></article>
+        <article class="card token"><strong>任务卡片</strong><code>min-height: 57px</code><p>双栏展示，标题保持单行省略。</p></article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="contract-title">
+      <h2 id="contract-title">Web 实现契约</h2>
+      <div class="grid-2">
+        <pre class="code-block" aria-label="Agent key HTML 示例">&lt;div class="key agent-key"
+     data-status="thinking"
+     aria-label="Agent Key 1：思考中"&gt;
+  &lt;span&gt;↑&lt;/span&gt;
+  &lt;i class="status-dot"&gt;&lt;/i&gt;
+&lt;/div&gt;</pre>
+        <article class="card">
+          <h3>实现检查清单</h3>
+          <ul class="rules">
+            <li>状态通过 <code>data-status</code> 设置，不在组件上写行内颜色。</li>
+            <li>支持 <code>prefers-reduced-motion</code>，关闭 Thinking 呼吸动画。</li>
+            <li>任务标题必须有省略和完整的辅助功能名称。</li>
+            <li>窄屏允许硬件模型与任务面板上下排列，不改变键位顺序。</li>
+            <li>图标优先使用项目内矢量资源，文本符号只用于规范页示意。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      视觉基准参考：
+      <a href="https://learn.chatgpt.com/docs/features/codex-micro">OpenAI · Codex Micro</a>。
+      本规范用于 Agent Controller 内部实现对齐，不复制官方页面内容或品牌素材。
+    </footer>
+  </main>
+</body>
+</html>

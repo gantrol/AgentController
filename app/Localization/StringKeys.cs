@@ -270,6 +270,12 @@ public static class StringKeys
         "status.agent-not-foreground";
     public const string StatusControllerHelp =
         "status.controller-help";
+    public const string StatusFullResetExpirationSource =
+        "status.full-reset-expiration-source";
+    public const string StatusFullResetSummaryOne =
+        "status.full-reset-summary-one";
+    public const string StatusFullResetSummaryMany =
+        "status.full-reset-summary-many";
 
     public const string TrayOpenApplication =
         "tray.open-application";
@@ -689,6 +695,9 @@ public static class StringKeys
         StatusAgentAwayPaused,
         StatusAgentNotForeground,
         StatusControllerHelp,
+        StatusFullResetExpirationSource,
+        StatusFullResetSummaryOne,
+        StatusFullResetSummaryMany,
         TrayOpenApplication,
         TrayOpenMicroSurface,
         TrayOpenAgent,

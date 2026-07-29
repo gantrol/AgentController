@@ -18,6 +18,8 @@ public sealed class MicroBrokerClient : IDisposable
         TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan RequestTimeout =
         TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan RecoveryRequestTimeout =
+        TimeSpan.FromSeconds(8);
     private const int ConnectFailureBackoffMs = 2_000;
 
     private readonly Guid _clientId = Guid.NewGuid();
@@ -235,6 +237,41 @@ public sealed class MicroBrokerClient : IDisposable
         {
             MarkDisconnected();
             return MicroSendResult.NotSent(exception.Message);
+        }
+    }
+
+    public BrokerDriverInfo RecoverCodexLink()
+    {
+        if (!EnsureConnected())
+        {
+            throw new InvalidOperationException(
+                "AgentController Micro Broker is unavailable.");
+        }
+
+        try
+        {
+            var response = SendRequest(
+                MicroBrokerProtocol.Recover,
+                requestTimeout: RecoveryRequestTimeout);
+            if (!response.Succeeded || response.Driver is null)
+            {
+                throw new InvalidOperationException(
+                    response.Error ??
+                    "Codex Micro transport recovery failed.");
+            }
+
+            UpdateDriverState(response.Driver);
+            return response.Driver;
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                TimeoutException or
+                InvalidDataException)
+        {
+            MarkDisconnected();
+            throw new InvalidOperationException(
+                "Codex Micro transport recovery could not reach the broker.",
+                exception);
         }
     }
 
@@ -460,7 +497,8 @@ public sealed class MicroBrokerClient : IDisposable
         BrokerKeyboardKey? keyboardKey = null,
         bool shift = false,
         long eventCursor = 0,
-        bool allowLaunch = true)
+        bool allowLaunch = true,
+        TimeSpan? requestTimeout = null)
     {
         lock (_requestSync)
         {
@@ -470,7 +508,8 @@ public sealed class MicroBrokerClient : IDisposable
                 keyboardKey,
                 shift,
                 eventCursor,
-                allowLaunch);
+                allowLaunch,
+                requestTimeout);
         }
     }
 
@@ -480,9 +519,11 @@ public sealed class MicroBrokerClient : IDisposable
         BrokerKeyboardKey? keyboardKey,
         bool shift,
         long eventCursor,
-        bool allowLaunch)
+        bool allowLaunch,
+        TimeSpan? requestTimeout)
     {
-        using var timeout = new CancellationTokenSource(RequestTimeout);
+        using var timeout = new CancellationTokenSource(
+            requestTimeout ?? RequestTimeout);
         using var pipe = new NamedPipeClientStream(
             ".",
             _pipeName,

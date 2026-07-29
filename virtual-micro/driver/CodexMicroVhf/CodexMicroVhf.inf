@@ -1,0 +1,58 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%ProviderName%
+DriverVer=07/18/2026,1.0.0.0
+CatalogFile=CodexMicroVhf.cat
+PnpLockdown=1
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64.10.0...19041
+
+[Standard.NTamd64.10.0...19041]
+%DeviceName%=Device_Install,Root\CodexMicroVhf
+
+[DestinationDirs]
+DriverCopyFiles=12
+
+[SourceDisksNames]
+1=%DiskName%,,,
+
+[SourceDisksFiles]
+CodexMicroVhf.sys=1
+
+[DriverCopyFiles]
+CodexMicroVhf.sys
+
+[Device_Install.NT]
+CopyFiles=DriverCopyFiles
+
+[Device_Install.NT.HW]
+AddReg=VhfLowerFilter
+
+[VhfLowerFilter]
+HKR,,LowerFilters,0x00010000,"vhf"
+
+[Device_Install.NT.Services]
+AddService=CodexMicroVhf,0x00000002,CodexMicroVhf_Service
+
+[CodexMicroVhf_Service]
+DisplayName=%ServiceName%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\CodexMicroVhf.sys
+
+[Device_Install.NT.Wdf]
+KmdfService=CodexMicroVhf,CodexMicroVhf_Wdf
+
+[CodexMicroVhf_Wdf]
+KmdfLibraryVersion=1.33
+
+[Strings]
+ProviderName="Codex Micro Simulator"
+ManufacturerName="Codex Micro Simulator"
+DeviceName="Codex Micro Microsoft VHF Source Device"
+ServiceName="Codex Micro Microsoft VHF Source Driver"
+DiskName="Codex Micro VHF Driver Package"

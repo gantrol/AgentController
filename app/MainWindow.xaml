@@ -353,6 +353,11 @@
                                        Text="{loc:Loc status.loading-agent-data, Arg0=Codex}"
                                        Visibility="Collapsed" />
                         </StackPanel>
+                        <views:FullResetStatusView
+                            Text="{Binding DataContext.FullResetExpirationText, ElementName=DevicePage}"
+                            ToolTipText="{Binding DataContext.FullResetExpirationToolTip, ElementName=DevicePage}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Top" />
                         <TextBlock x:Name="FooterVersionText"
                                    Text="v1.1"
                                    HorizontalAlignment="Right"

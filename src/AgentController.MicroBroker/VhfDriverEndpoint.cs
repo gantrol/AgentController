@@ -13,6 +13,7 @@ internal interface IMicroDriverEndpoint : IDisposable
     MicroSendResult Submit(IReadOnlyList<byte[]> reports);
     MicroSendResult TapKeyboard(BrokerKeyboardKey key, bool shift);
     DriverOutputReport? TryReadOutput();
+    BrokerDriverInfo ResetTransport();
 }
 
 internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
@@ -22,7 +23,6 @@ internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
 
     private const uint Magic = 0x314D4356;
     private const ushort ContractVersion = 1;
-    private const uint InfoFlagReady = 0x00000001;
     private const uint IoctlGetInfo =
         (0x22u << 16) | (3u << 14) | (0x800u << 2);
     private const uint IoctlSubmitInput =
@@ -31,12 +31,15 @@ internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
         (0x22u << 16) | (3u << 14) | (0x802u << 2);
     private const uint IoctlSubmitKeyboard =
         (0x22u << 16) | (3u << 14) | (0x803u << 2);
+    private const uint IoctlResetTransport =
+        (0x22u << 16) | (3u << 14) | (0x804u << 2);
     private const int ErrorNoMoreItems = 259;
 
     private readonly object _sync = new();
     private SafeFileHandle? _handle;
     private ulong _nextSequence;
     private ulong _lastOutputSequence;
+    private uint _infoFlags;
 
     public bool IsConnected =>
         _handle is { IsInvalid: false, IsClosed: false };
@@ -68,6 +71,7 @@ internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
             var info = GetInfoCore();
             _nextSequence = info.LastBatchSequence;
             _lastOutputSequence = 0;
+            _infoFlags = info.Flags;
             return info;
         }
     }
@@ -240,6 +244,38 @@ internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
         }
     }
 
+    public BrokerDriverInfo ResetTransport()
+    {
+        lock (_sync)
+        {
+            if ((_infoFlags &
+                 MicroBrokerProtocol.DriverInfoFlagTransportReset) == 0)
+            {
+                throw new NotSupportedException(
+                    "The installed Codex Micro driver cannot rebuild its HID transport.");
+            }
+
+            if (!DeviceIoControl(
+                    RequireHandle(),
+                    IoctlResetTransport,
+                    null,
+                    0,
+                    null,
+                    0,
+                    out _,
+                    IntPtr.Zero))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            _lastOutputSequence = 0;
+            var refreshed = GetInfoCore();
+            _nextSequence = refreshed.LastBatchSequence;
+            _infoFlags = refreshed.Flags;
+            return refreshed with { CodexLinkObserved = false };
+        }
+    }
+
     public void Dispose()
     {
         lock (_sync)
@@ -349,7 +385,8 @@ internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
             BinaryPrimitives.ReadUInt16LittleEndian(output.AsSpan(6)) !=
                 output.Length ||
             (BinaryPrimitives.ReadUInt32LittleEndian(
-                output.AsSpan(36)) & InfoFlagReady) == 0)
+                output.AsSpan(36)) &
+                MicroBrokerProtocol.DriverInfoFlagReady) == 0)
         {
             throw new InvalidDataException(
                 "Installed driver does not implement ready protocol v1.");
@@ -375,6 +412,7 @@ internal sealed class VhfDriverEndpoint : IMicroDriverEndpoint
         _handle?.Dispose();
         _handle = null;
         _lastOutputSequence = 0;
+        _infoFlags = 0;
     }
 
     [DllImport(

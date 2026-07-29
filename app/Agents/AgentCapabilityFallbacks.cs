@@ -59,14 +59,6 @@ public static class AgentCapabilityFallbacks
         public static UnavailableSidebarAutomation Instance { get; } =
             new();
 
-        public SidebarAutomationResult FocusEntry(
-            SidebarEntry entry,
-            string? projectName,
-            AppSettings settings,
-            CancellationToken cancellationToken,
-            ProjectDisclosureLease? disclosureLease = null) =>
-            Failed();
-
         public string? TryGetCurrentThreadTitle() => null;
 
         public SidebarAutomationResult RestoreDisclosure(

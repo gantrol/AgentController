@@ -179,6 +179,7 @@ VmicroHandleGetInfo(
     ReleaseSRWLockExclusive(&context->OutputLock);
 
     info->Flags =
+        VMICRO_INFO_FLAG_TRANSPORT_RESET |
         (context->KeyboardVhfHandle != NULL
             ? VMICRO_INFO_FLAG_DIALOG_KEYBOARD
             : 0U) |
@@ -462,6 +463,33 @@ VmicroHandleReadOutput(
 }
 
 static
+VOID
+VmicroInitializeSessionState(
+    _Inout_ PDEVICE_CONTEXT Context
+    )
+{
+    LARGE_INTEGER performanceCounter;
+
+    QueryPerformanceCounter(&performanceCounter);
+    Context->ConnectionEpoch =
+        ((UINT64)performanceCounter.QuadPart) ^ GetTickCount64();
+    Context->LastBatchSequence = 0;
+    Context->LastBatchReportCount = 0;
+    Context->LastBatchDisposition = 0;
+    Context->LastBatchAcceptedReports = 0;
+    Context->LastBatchStatus = STATUS_SUCCESS;
+
+    AcquireSRWLockExclusive(&Context->OutputLock);
+    Context->OutputSequence = 0;
+    Context->DroppedOutputReports = 0;
+    Context->OutputHead = 0;
+    Context->OutputTail = 0;
+    Context->OutputCount = 0;
+    ReleaseSRWLockExclusive(&Context->OutputLock);
+    InterlockedExchange(&Context->Stopping, 0);
+}
+
+static
 NTSTATUS
 VmicroOpenLocalTarget(
     _In_ WDFDEVICE Device,
@@ -630,6 +658,22 @@ VmicroDestroyUserModeVhf(
     }
 }
 
+static
+VOID
+VmicroHandleResetTransport(
+    _In_ WDFDEVICE Device,
+    _In_ WDFREQUEST Request
+    )
+{
+    PDEVICE_CONTEXT context = DeviceGetContext(Device);
+    NTSTATUS status;
+
+    VmicroDestroyUserModeVhf(context);
+    VmicroInitializeSessionState(context);
+    status = VmicroCreateUserModeVhf(Device, context);
+    WdfRequestComplete(Request, status);
+}
+
 NTSTATUS
 DriverEntry(
     _In_ PDRIVER_OBJECT DriverObject,
@@ -712,29 +756,11 @@ VmicroEvtDevicePrepareHardware(
     )
 {
     PDEVICE_CONTEXT context = DeviceGetContext(Device);
-    LARGE_INTEGER performanceCounter;
 
     UNREFERENCED_PARAMETER(ResourcesRaw);
     UNREFERENCED_PARAMETER(ResourcesTranslated);
 
-    QueryPerformanceCounter(&performanceCounter);
-    context->ConnectionEpoch =
-        ((UINT64)performanceCounter.QuadPart) ^ GetTickCount64();
-    context->LastBatchSequence = 0;
-    context->LastBatchReportCount = 0;
-    context->LastBatchDisposition = 0;
-    context->LastBatchAcceptedReports = 0;
-    context->LastBatchStatus = STATUS_SUCCESS;
-
-    AcquireSRWLockExclusive(&context->OutputLock);
-    context->OutputSequence = 0;
-    context->DroppedOutputReports = 0;
-    context->OutputHead = 0;
-    context->OutputTail = 0;
-    context->OutputCount = 0;
-    ReleaseSRWLockExclusive(&context->OutputLock);
-
-    InterlockedExchange(&context->Stopping, 0);
+    VmicroInitializeSessionState(context);
     return VmicroCreateUserModeVhf(Device, context);
 }
 
@@ -783,6 +809,9 @@ VmicroEvtIoDeviceControl(
         break;
     case IOCTL_VMICRO_SUBMIT_KEYBOARD:
         VmicroHandleSubmitKeyboard(device, Request);
+        break;
+    case IOCTL_VMICRO_RESET_TRANSPORT:
+        VmicroHandleResetTransport(device, Request);
         break;
     default:
         WdfRequestComplete(Request, STATUS_INVALID_DEVICE_REQUEST);

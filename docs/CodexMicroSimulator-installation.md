@@ -6,7 +6,7 @@ For Windows 10/11 x64. The driver only provides the HID channel shared by a phys
 
 ## Quick install
 
-1. Extract the Agent Controller application and Micro driver packages, then exit any older Agent Controller process.
+1. Extract the Agent Controller application and Micro driver packages, then close both Codex and every Agent Controller process. Codex can otherwise keep the previous UMDF driver binary loaded.
 2. In an ordinary PowerShell, run this from the repository root:
 
    ```powershell
@@ -19,7 +19,7 @@ For Windows 10/11 x64. The driver only provides the HID channel shared by a phys
    .\Install-CodexMicroDriver.ps1
    ```
 
-3. Approve the Windows UAC prompt opened by the script. A final `Ready` message means installation succeeded.
+3. Approve the Windows UAC prompt opened by the script. A final `Ready` message means installation succeeded and the new driver is active. If the script reports restart required (exit code `3010`), restart Windows before opening Codex or Agent Controller.
 4. Start `AgentController.exe` as a normal user. Click the small keyboard icon in the title bar to open Micro. Micro is always on top by default; right-click an empty part of its body to toggle that setting.
 
 Do not keep Agent Controller elevated, and do not disable Windows driver-signing enforcement.
@@ -32,7 +32,7 @@ Do not keep Agent Controller elevated, and do not disable Windows driver-signing
 
 ## Verify and troubleshoot
 
-The install script ends with `Ready` when successful. You can also check the device directly:
+The install script ends with `Ready` only when the installed binary is active. `Installed ... restart required` means Windows is still serving the old binary even if Device Manager already displays the new INF version. You can also check the device directly:
 
 ```powershell
 Get-PnpDevice -FriendlyName 'Codex Micro Simulator UMDF2 Virtual HID' |

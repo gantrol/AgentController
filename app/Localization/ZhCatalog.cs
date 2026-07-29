@@ -108,7 +108,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "左摇杆 · {0} 侧边栏",
             [StringKeys.ConfigMoveFocus] = "↑↓",
             [StringKeys.ConfigMoveFocusDescription] =
-                "选择当前层级条目，并同步 {0} 原生侧边栏焦点",
+                "移动当前层级的本地光标，不触发 {0} 跳转",
             [StringKeys.ConfigEnterBack] = "→ / ← / A",
             [StringKeys.ConfigEnterBackDescription] =
                 "→ 进入当前焦点项目；← 退出到父级；A 打开当前焦点任务",
@@ -116,7 +116,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ConfigRootProjectDescription] =
                 "{0} 循环四个根区域；{1} 打开动作面板",
             [StringKeys.ConfigSidebarBehavior] =
-                "↑↓ 遵循本程序的稳定滚轮目录，并同步 {0} 原生侧边栏焦点，但不会自动打开对话。任务活动时间不会重排滚轮；→ 进入项目，← 退出项目，A 只打开任务。置顶与项目折叠互相独立。",
+                "↑↓ 只移动本程序的稳定本地光标，不再接触 {0} 原生侧边栏。任务活动时间不会重排滚轮；→ 进入项目，← 退出项目，只有 A 会打开任务。置顶与项目折叠互相独立。",
             [StringKeys.ConfigRightStickComposer] =
                 "右摇杆 · Micro 旋钮",
             [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
@@ -238,6 +238,12 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "{0} 未在前台 · 按 {1} 唤醒",
             [StringKeys.StatusControllerHelp] =
                 "需要时按 {0} 唤醒；进入前台后自动启用 · 左摇杆 ↑↓ 移动焦点、→ 进入项目、← 退出项目、{4} 打开任务、{1} 切根区域 · 右摇杆 ←→ 转动、{3} 打开 / 确认 · {5} 按住说话 · {6} 发送 · {7} 短按关闭 / 撤回、长按 3 秒取消会话",
+            [StringKeys.StatusFullResetExpirationSource] =
+                "可用 Full reset 的过期时间（本地时间），读取自 Codex App Server：{0}",
+            [StringKeys.StatusFullResetSummaryOne] =
+                "Full reset · {0} 过期",
+            [StringKeys.StatusFullResetSummaryMany] =
+                "Full reset ×{0} · 最近到期 {1} · 另 {2} 个",
             [StringKeys.TrayOpenApplication] =
                 "打开 Agent Controller",
             [StringKeys.TrayOpenMicroSurface] =

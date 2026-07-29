@@ -6,7 +6,7 @@
 
 ## 最快安装
 
-1. 解压 Agent Controller 应用包和 Micro 驱动包，退出旧版 Agent Controller。
+1. 解压 Agent Controller 应用包和 Micro 驱动包，同时退出 Codex 和所有 Agent Controller 进程；否则 Codex 可能让 Windows 继续加载旧 UMDF 驱动二进制。
 2. 在普通 PowerShell 中，从仓库根目录运行：
 
    ```powershell
@@ -19,7 +19,7 @@
    .\Install-CodexMicroDriver.ps1
    ```
 
-3. 同意脚本自动弹出的 Windows UAC。末尾出现 `Ready` 即安装成功。
+3. 同意脚本自动弹出的 Windows UAC。末尾出现 `Ready` 才表示新版驱动已经实际加载。如果脚本提示需要重启（退出码 `3010`），请先重启 Windows，再打开 Codex 或 Agent Controller。
 4. 以普通用户身份启动 `AgentController.exe`。点击标题栏的小键盘图标打开 Micro；Micro 默认置顶，右击机身空白处可切换置顶。
 
 不要用管理员身份长期运行 Agent Controller，也不要关闭 Windows 驱动签名强制。
@@ -32,7 +32,7 @@
 
 ## 验证与排错
 
-安装脚本成功时最后显示 `Ready`。也可检查设备：
+只有新版二进制已经生效时，安装脚本才会显示 `Ready`。如果显示“已安装但需要重启”，即使设备管理器已经显示新版 INF 版本，Windows 当前仍可能运行旧二进制。也可检查设备：
 
 ```powershell
 Get-PnpDevice -FriendlyName 'Codex Micro Simulator UMDF2 Virtual HID' |

@@ -71,11 +71,11 @@ public partial class MainWindow : Window
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
     private readonly IForegroundApplication _foregroundApplication;
+    private readonly CodexRateLimitResetService _rateLimitResetService;
     private readonly DevicePageViewModel _devicePageViewModel;
     private readonly ConfigPageViewModel _configPageViewModel;
     private readonly SettingsPageViewModel _settingsPageViewModel;
     private readonly BridgeFeedbackPresenter _feedbackPresenter;
-    private readonly SemaphoreSlim _sidebarFocusGate = new(1, 1);
     private readonly SemaphoreSlim _dataRefreshGate = new(1, 1);
     private readonly SemaphoreSlim _dialAutomationGate = new(1, 1);
     private readonly ObservableCollection<SidebarEntry> _sidebarEntries = [];
@@ -132,7 +132,6 @@ public partial class MainWindow : Window
     private bool _exitRequested;
     private long _leftNavigationBlockedUntil;
     private long _rightAdjustmentBlockedUntil;
-    private CancellationTokenSource? _sidebarFocusCancellation;
     private ControllerState _latestControllerState;
     private ComposerCatalog? _composerCatalog;
     private int _modelIndex;
@@ -141,6 +140,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _composerPickerCancellation;
     private CancellationTokenSource? _rightStickPressCancellation;
     private CancellationTokenSource? _microReadbackCancellation;
+    private CancellationTokenSource? _rateLimitResetCancellation;
     private CodexMicroReadback _microReadback =
         CodexMicroReadback.Closed;
     private readonly CurrentControlIntentBuffer _currentControlIntents =
@@ -174,6 +174,7 @@ public partial class MainWindow : Window
         _settings = dependencies.CurrentSettings;
         _activeAgent = dependencies.ActiveAgent;
         _foregroundApplication = dependencies.ForegroundApplication;
+        _rateLimitResetService = dependencies.RateLimitResets;
         _workspaceReader = _activeAgent.WorkspaceOrEmpty();
         _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
         _composerAutomation = _activeAgent.ComposerOrUnavailable();
@@ -211,7 +212,6 @@ public partial class MainWindow : Window
             QueueSettingsSave,
             ChangeLanguage);
         InitializeComponent();
-        DataContext = _localization.Strings;
         ConfigPage.DataContext = _configPageViewModel;
         ConfigPage.Strings = _localization.Strings;
         SettingsPage.DataContext = _settingsPageViewModel;
@@ -235,6 +235,10 @@ public partial class MainWindow : Window
                 showFeedback: false),
             RefreshTutorialDispatch);
         DevicePage.DataContext = _devicePageViewModel;
+        // Set the shell DataContext only after every page has its own model.
+        // Otherwise DevicePage briefly inherits LocalizedStrings and footer
+        // bindings emit false property-path errors during construction.
+        DataContext = _localization.Strings;
         _feedbackPresenter.PropertyChanged +=
             FeedbackPresenter_PropertyChanged;
 
@@ -279,6 +283,7 @@ public partial class MainWindow : Window
         RefreshCodexData(
             preserveSelection: false,
             forceNavigationRebuild: false);
+        _ = RefreshFullResetCreditsAsync();
         ShowPage(DevicePage);
         SetSelectedNav(DeviceNavButton);
 
@@ -1796,7 +1801,6 @@ public partial class MainWindow : Window
         CancelConversationBoundaryHold();
         if (_controllerSession.IsActive)
         {
-            CancelPendingSidebarFocus();
             CancelPendingComposerSelection();
         }
 
@@ -2084,7 +2088,6 @@ public partial class MainWindow : Window
             }
         }
         UpdateLayerTabs();
-        FocusCurrentSidebarEntry(deferFocus: true);
 
         if (showFeedback)
         {
@@ -2130,15 +2133,6 @@ public partial class MainWindow : Window
         if (selected.Layer == SidebarLayer.Projects)
         {
             _selectedProjectPath = selected.ProjectPath;
-        }
-    }
-
-    private void FocusCurrentSidebarEntry(bool deferFocus = false)
-    {
-        var selected = ActiveSidebarNavigation.SelectedEntry(_sidebarEntries);
-        if (selected is not null)
-        {
-            FocusCodexSidebarEntry(selected, deferFocus);
         }
     }
 
@@ -2252,7 +2246,6 @@ public partial class MainWindow : Window
             fallbackIndexOverride: 0,
             preferredId: preferredThreadId);
         UpdateLayerTabs();
-        FocusCurrentSidebarEntry();
 
         var position = ActiveSidebarNavigation.SelectedIndex >= 0
             ? $"{ActiveSidebarNavigation.SelectedIndex + 1} / {_sidebarEntries.Count}"
@@ -2348,7 +2341,6 @@ public partial class MainWindow : Window
         }
 
         RestoreSidebarSelection(previousId);
-        FocusCurrentSidebarEntry();
         var label = _projectTasksPinnedOnly
             ? _localization.Strings.Get(
                 StringKeys.MessageProjectPinnedOnly)
@@ -2408,10 +2400,7 @@ public partial class MainWindow : Window
         }
 
         SelectSidebarIndex(ActiveSidebarNavigation.SelectedIndex);
-        ActivateSelectedEntry(
-            entry,
-            deferFocus: true,
-            showToast: false);
+        SelectLocalSidebarEntry(entry, showToast: false);
         ShowSidebarNavigationMenu();
     }
 
@@ -2422,9 +2411,8 @@ public partial class MainWindow : Window
         _suppressSelectionActivation = false;
     }
 
-    private void ActivateSelectedEntry(
+    private void SelectLocalSidebarEntry(
         SidebarEntry entry,
-        bool deferFocus = false,
         bool showToast = true)
     {
         if (
@@ -2437,7 +2425,6 @@ public partial class MainWindow : Window
         }
 
         RememberCurrentSidebarCursor();
-        FocusCodexSidebarEntry(entry, deferFocus);
         if (entry.Layer == SidebarLayer.Projects)
         {
             _selectedProjectPath = entry.ProjectPath;
@@ -2533,110 +2520,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private void FocusCodexSidebarEntry(
-        SidebarEntry entry,
-        bool deferFocus = false)
-    {
-        CancelPendingSidebarFocus();
-        if (!_settings.BridgeEnabled)
-        {
-            return;
-        }
-
-        var projectName = entry.NativeListIndex is not null
-            ? null
-            : _snapshot.Projects
-                .FirstOrDefault(project =>
-                    string.Equals(
-                        project.Path,
-                        entry.ProjectPath ?? _selectedProjectPath,
-                        StringComparison.OrdinalIgnoreCase))?.Name;
-        var cancellation = new CancellationTokenSource();
-        _sidebarFocusCancellation = cancellation;
-        var disclosureLease =
-            _scope == SidebarScope.ProjectTasks
-                ? _projectDisclosureLease
-                : null;
-        _ = FocusCodexSidebarEntryAsync(
-            entry,
-            projectName,
-            disclosureLease,
-            cancellation,
-            deferFocus);
-    }
-
-    private async Task FocusCodexSidebarEntryAsync(
-        SidebarEntry entry,
-        string? projectName,
-        ProjectDisclosureLease? disclosureLease,
-        CancellationTokenSource cancellation,
-        bool deferFocus)
-    {
-        var gateEntered = false;
-        try
-        {
-            if (deferFocus)
-            {
-                await Task.Delay(
-                        BridgeTimings.SidebarFocusSettleMs,
-                        cancellation.Token)
-                    .ConfigureAwait(true);
-            }
-
-            await _sidebarFocusGate.WaitAsync(cancellation.Token)
-                .ConfigureAwait(true);
-            gateEntered = true;
-            var result = await Task.Run(
-                    () => _sidebarAutomation.FocusEntry(
-                        entry,
-                        projectName,
-                        _settings,
-                        cancellation.Token,
-                        disclosureLease),
-                    cancellation.Token)
-                .ConfigureAwait(true);
-            if (
-                !result.Succeeded &&
-                !cancellation.IsCancellationRequested &&
-                !string.Equals(
-                    result.Error,
-                    AgentAutomationErrorCodes.OperationCanceled,
-                    StringComparison.Ordinal))
-            {
-                AddEvent(_localization.Strings.Format(
-                    StringKeys.MessageSidebarFocusFailed,
-                    _localization.Strings.ErrorLabel(
-                        result.Error,
-                        result.ErrorDetail)));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer stick movement replaced this focus target.
-        }
-        finally
-        {
-            if (gateEntered)
-            {
-                _sidebarFocusGate.Release();
-            }
-
-            if (ReferenceEquals(_sidebarFocusCancellation, cancellation))
-            {
-                _sidebarFocusCancellation = null;
-            }
-
-            cancellation.Dispose();
-        }
-    }
-
-    private void CancelPendingSidebarFocus()
-    {
-        var cancellation = _sidebarFocusCancellation;
-        _sidebarFocusCancellation = null;
-        cancellation?.Cancel();
-    }
-
     private void RestoreProjectDisclosureLease()
     {
         var lease = _projectDisclosureLease;
@@ -2646,7 +2529,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        CancelPendingSidebarFocus();
         var result = _sidebarAutomation.RestoreDisclosure(lease);
         if (!result.Succeeded)
         {
@@ -4694,7 +4576,6 @@ public partial class MainWindow : Window
             _pushToTalkSuppressedButtons |=
                 _latestControllerState.Buttons &
                 ~ControllerButtons.B;
-            CancelPendingSidebarFocus();
             CancelPendingComposerSelection();
             if (!_pushToTalkAutomation.IsDictating)
             {
@@ -4721,7 +4602,6 @@ public partial class MainWindow : Window
 
         var hadPendingSelection =
             _composerPickerCancellation is not null;
-        CancelPendingSidebarFocus();
         CancelPendingComposerSelection();
         if (hadPendingSelection)
         {
@@ -5781,6 +5661,7 @@ public partial class MainWindow : Window
         RefreshCodexData(
             preserveSelection: true,
             forceNavigationRebuild: false);
+        _ = RefreshFullResetCreditsAsync();
         AddEvent(_localization.Strings.Format(
             StringKeys.MessageAgentDataRefreshed,
             _activeAgent.DisplayName));
@@ -5800,7 +5681,7 @@ public partial class MainWindow : Window
         ActiveSidebarNavigation.Select(
             _sidebarEntries,
             DevicePage.SelectedIndex);
-        ActivateSelectedEntry(entry, deferFocus: true);
+        SelectLocalSidebarEntry(entry);
     }
 
     private void SidebarList_MouseDoubleClick(
@@ -5909,6 +5790,56 @@ public partial class MainWindow : Window
     private void ChangeLanguage(string settingValue)
     {
         _localization.SetLanguage(settingValue);
+        _ = RefreshFullResetCreditsAsync();
+    }
+
+    private async Task RefreshFullResetCreditsAsync()
+    {
+        _rateLimitResetCancellation?.Cancel();
+        _rateLimitResetCancellation?.Dispose();
+        _rateLimitResetCancellation = new CancellationTokenSource();
+        var cancellation = _rateLimitResetCancellation;
+        var credits = await _rateLimitResetService
+            .ReadAvailableFullResetsAsync(cancellation.Token);
+        if (
+            cancellation.IsCancellationRequested ||
+            cancellation != _rateLimitResetCancellation)
+        {
+            return;
+        }
+
+        if (credits.Count == 0)
+        {
+            _devicePageViewModel.UpdateFullResetExpiration(
+                string.Empty,
+                string.Empty);
+            return;
+        }
+
+        var localExpirations = credits
+            .Select(credit => credit.ExpiresAt
+                .ToLocalTime()
+                .ToString("yyyy-MM-dd HH:mm:ss zzz"))
+            .ToArray();
+        var summary = credits.Count == 1
+            ? _localization.Strings.Format(
+                StringKeys.StatusFullResetSummaryOne,
+                localExpirations[0])
+            : _localization.Strings.Format(
+                StringKeys.StatusFullResetSummaryMany,
+                credits.Count,
+                localExpirations[0],
+                credits.Count - 1);
+        _devicePageViewModel.UpdateFullResetExpiration(
+            summary,
+            _localization.Strings.Format(
+                StringKeys.StatusFullResetExpirationSource,
+                Environment.NewLine +
+                string.Join(
+                    Environment.NewLine,
+                    localExpirations.Select(
+                        (expiration, index) =>
+                            $"{index + 1}. {expiration}"))));
     }
 
     private void Window_StateChanged(object? sender, EventArgs e)
@@ -5940,6 +5871,9 @@ public partial class MainWindow : Window
         _statusTimer.Stop();
         _dataTimer.Stop();
         _radialLearningTimer.Stop();
+        _rateLimitResetCancellation?.Cancel();
+        _rateLimitResetCancellation?.Dispose();
+        _rateLimitResetCancellation = null;
         if (_configSaveTimer.IsEnabled)
         {
             PersistConfigSettings();
@@ -5952,7 +5886,6 @@ public partial class MainWindow : Window
         CancelConversationBoundaryHold();
         ResetRadialLayer(clearSuppression: true);
         ResetVirtualDialInput(closeMenu: true);
-        CancelPendingSidebarFocus();
         CancelPendingComposerSelection();
         _pushToTalkAutomation.Reset();
         _dictationInjected = false;

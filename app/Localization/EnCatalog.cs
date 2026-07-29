@@ -114,7 +114,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Left stick · {0}",
             [StringKeys.ConfigMoveFocus] = "↑↓",
             [StringKeys.ConfigMoveFocusDescription] =
-                "Select an item at the current level and sync focus with the native {0} sidebar",
+                "Move the local cursor at the current level without navigating {0}",
             [StringKeys.ConfigEnterBack] = "→ / ← / A",
             [StringKeys.ConfigEnterBackDescription] =
                 "→ enters the focused project; ← exits to its parent; A opens a focused task",
@@ -122,7 +122,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ConfigRootProjectDescription] =
                 "{0} cycles four root scopes; {1} opens the action panel",
             [StringKeys.ConfigSidebarBehavior] =
-                "↑↓ follows this app's stable wheel and syncs {0} sidebar focus without opening a conversation. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A opens tasks only. Pinning and project expansion remain independent.",
+                "↑↓ moves only this app's stable local cursor and never touches the native {0} sidebar. Activity timestamps never reorder the wheel; → enters a project, ← exits it, and A alone opens tasks. Pinning and project expansion remain independent.",
             [StringKeys.ConfigRightStickComposer] =
                 "Right stick · Micro dial",
             [StringKeys.ConfigIncreaseDecrease] = "↔ / ↕",
@@ -253,6 +253,12 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "{0} in background · {1} to wake",
             [StringKeys.StatusControllerHelp] =
                 "{0} wakes the agent when needed · foreground control enables automatically · left stick ↑↓ focus, → enters project, ← exits project, {4} opens task, {1} changes root · right stick ←→ turns, {3} opens / selects · hold {5} to talk · {6} sends · {7} closes / undoes; hold 3s to cancel turn",
+            [StringKeys.StatusFullResetExpirationSource] =
+                "Available Full reset expiration (local time), read from Codex App Server:{0}",
+            [StringKeys.StatusFullResetSummaryOne] =
+                "Full reset · expires {0}",
+            [StringKeys.StatusFullResetSummaryMany] =
+                "Full reset ×{0} · next expires {1} · +{2} more",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
             [StringKeys.TrayOpenMicroSurface] =

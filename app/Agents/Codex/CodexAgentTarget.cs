@@ -192,21 +192,6 @@ public sealed class CodexAgentTarget : IAgentTarget
             _sidebar = sidebar;
         }
 
-        public SidebarAutomationResult FocusEntry(
-            SidebarEntry entry,
-            string? projectName,
-            AppSettings settings,
-            CancellationToken cancellationToken,
-            ProjectDisclosureLease? disclosureLease = null)
-        {
-            return _sidebar.FocusEntry(
-                entry,
-                projectName,
-                settings,
-                cancellationToken,
-                disclosureLease);
-        }
-
         public string? TryGetCurrentThreadTitle()
         {
             return _sidebar.TryGetCurrentThreadTitle();

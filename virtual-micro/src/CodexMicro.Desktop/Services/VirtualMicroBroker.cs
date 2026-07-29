@@ -10,8 +10,6 @@ namespace CodexMicro.Desktop.Services;
 /// </summary>
 internal sealed class VirtualMicroBroker : IDisposable
 {
-    private const uint InfoFlagDialogKeyboard = 0x00000002;
-
     private readonly MicroBrokerClient _driver =
         new("AgentController Micro Surface");
     private readonly object _heldSync = new();
@@ -47,7 +45,8 @@ internal sealed class VirtualMicroBroker : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         var info = _driver.Connect();
         _supportsDialogKeyboard =
-            (info.Flags & InfoFlagDialogKeyboard) != 0;
+            (info.Flags &
+             MicroBrokerProtocol.DriverInfoFlagDialogKeyboard) != 0;
         PublishState(_driver.State);
         Log?.Invoke(
             this,
@@ -55,6 +54,25 @@ internal sealed class VirtualMicroBroker : IDisposable
                 ? $"{info.TransportName} ready · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}"
                 : $"{info.TransportName} connected · direct HID ready; Codex output not yet observed");
         return info;
+    }
+
+    public Task<BrokerDriverInfo> RecoverCodexLinkAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Task.Run(() =>
+        {
+            Log?.Invoke(this, "Rebuilding the Codex Micro HID transport...");
+            var info = _driver.RecoverCodexLink();
+            _supportsDialogKeyboard =
+                (info.Flags &
+                 MicroBrokerProtocol.DriverInfoFlagDialogKeyboard) != 0;
+            PublishState(_driver.State);
+            Log?.Invoke(
+                this,
+                $"Codex Micro HID rebuilt; waiting for Codex handshake " +
+                $"(epoch {info.ConnectionEpoch:X16}).");
+            return info;
+        });
     }
 
     public Task<MicroSendResult> TapKeyAsync(string key)

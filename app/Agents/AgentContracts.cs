@@ -61,13 +61,6 @@ public interface IWorkspaceReader
 
 public interface ISidebarAutomation
 {
-    SidebarAutomationResult FocusEntry(
-        SidebarEntry entry,
-        string? projectName,
-        AppSettings settings,
-        CancellationToken cancellationToken,
-        ProjectDisclosureLease? disclosureLease = null);
-
     string? TryGetCurrentThreadTitle();
 
     SidebarAutomationResult RestoreDisclosure(

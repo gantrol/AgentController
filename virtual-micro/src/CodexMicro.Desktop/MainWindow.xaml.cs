@@ -1575,8 +1575,39 @@ public partial class MicroSurfaceWindow : Window
     private void TopmostMenuItem_Click(object sender, RoutedEventArgs e) =>
         SetTopmostState(TopmostMenuItem.IsChecked);
 
-    private async void ReconnectMenuItem_Click(object sender, RoutedEventArgs e) =>
-        await ConnectAsync();
+    private async void ReconnectMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_broker.IsReady)
+        {
+            await ConnectAsync();
+            return;
+        }
+
+        if (_connecting)
+        {
+            return;
+        }
+
+        _connecting = true;
+        try
+        {
+            var info = await _broker.RecoverCodexLinkAsync();
+            _transportName = info.TransportName;
+            ApplyTransportReadyState();
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+                Win32Exception or
+                InvalidDataException or
+                IOException)
+        {
+            SetStatus(LocalizeDriverError(exception));
+        }
+        finally
+        {
+            _connecting = false;
+        }
+    }
 
     private void ExitMenuItem_Click(object sender, RoutedEventArgs e) => Hide();
 
