@@ -1,5 +1,6 @@
 using System.Windows.Threading;
 using CodexMicro.Desktop;
+using CodexMicro.Desktop.Services;
 
 namespace AgentController.MicroSurface.Wpf;
 
@@ -11,12 +12,14 @@ namespace AgentController.MicroSurface.Wpf;
 public sealed class MicroSurfaceController : IDisposable
 {
     private readonly Dispatcher _dispatcher;
+    private readonly MicroLocalization _localization;
     private MicroSurfaceWindow? _window;
     private bool _disposed;
 
-    public MicroSurfaceController()
+    public MicroSurfaceController(MicroLocalization? localization = null)
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
+        _localization = localization ?? new MicroLocalization();
     }
 
     public bool IsVisible =>
@@ -61,7 +64,7 @@ public sealed class MicroSurfaceController : IDisposable
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return _window ??= new MicroSurfaceWindow();
+            return _window ??= new MicroSurfaceWindow(_localization);
         }
     }
 

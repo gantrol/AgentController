@@ -10,7 +10,7 @@
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
-        ResizeMode="CanResize"
+        ResizeMode="NoResize"
         ShowActivated="False"
         ShowInTaskbar="False"
         Topmost="True"
@@ -21,6 +21,9 @@
         Loaded="Window_Loaded"
         Closing="Window_Closing"
         Closed="Window_Closed"
+        PreviewMouseMove="Window_PreviewMouseMove"
+        PreviewMouseLeftButtonUp="Window_PreviewMouseLeftButtonUp"
+        LostMouseCapture="Window_LostMouseCapture"
         Deactivated="Window_Deactivated">
     <Window.Resources>
         <ResourceDictionary>
@@ -65,9 +68,11 @@
                                       IsCheckable="True"
                                       Click="TopmostMenuItem_Click" />
                             <Separator />
-                            <MenuItem Header="重新连接虚拟 HID"
+                            <MenuItem x:Name="ReconnectMenuItem"
+                                      Header="重新连接虚拟 HID"
                                       Click="ReconnectMenuItem_Click" />
-                            <MenuItem Header="隐藏面板"
+                            <MenuItem x:Name="HidePanelMenuItem"
+                                      Header="隐藏面板"
                                       Click="ExitMenuItem_Click" />
                         </ContextMenu>
                     </Border.ContextMenu>
@@ -346,23 +351,6 @@
                                                      Fill="Transparent"
                                                      Stroke="#1AFFFFFF"
                                                      StrokeThickness="1" />
-
-                                            <Grid IsHitTestVisible="False">
-                                                <Path Data="M 15.5,17.8 L 26.9,29.2 M 51.5,17.8 L 40.1,29.2 M 15.5,51.2 L 26.9,39.8 M 51.5,51.2 L 40.1,39.8"
-                                                      Stroke="#0DFFFFFF"
-                                                      StrokeThickness="2"
-                                                      StrokeStartLineCap="Round"
-                                                      StrokeEndLineCap="Round">
-                                                    <Path.RenderTransform>
-                                                        <TranslateTransform Y="1" />
-                                                    </Path.RenderTransform>
-                                                </Path>
-                                                <Path Data="M 15.5,17.8 L 26.9,29.2 M 51.5,17.8 L 40.1,29.2 M 15.5,51.2 L 26.9,39.8 M 51.5,51.2 L 40.1,39.8"
-                                                      Stroke="#B3000000"
-                                                      StrokeThickness="2"
-                                                      StrokeStartLineCap="Round"
-                                                      StrokeEndLineCap="Round" />
-                                            </Grid>
                                         </Grid>
                                     </Grid>
                                 </Border>

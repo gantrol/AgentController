@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AssemblyName>CodexMicro</AssemblyName>
+    <RootNamespace>CodexMicro.DesktopHost</RootNamespace>
+    <AssemblyTitle>Codex Micro Keypad</AssemblyTitle>
+    <Product>Codex Micro Keypad</Product>
+    <Description>Standalone Codex Micro keypad using the original WPF XAML.</Description>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
+    <ApplicationIcon>..\..\Assets\CodexMicro.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentController.MicroSurface.Wpf\AgentController.MicroSurface.Wpf.csproj" />
+    <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
+  </ItemGroup>
+
+</Project>

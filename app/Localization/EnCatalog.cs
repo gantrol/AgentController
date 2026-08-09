@@ -262,7 +262,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
             [StringKeys.TrayOpenMicroSurface] =
-                "Open Micro Surface",
+                "Launch standalone Micro keypad",
             [StringKeys.TrayOpenAgent] = "Open {0}",
             [StringKeys.TrayExit] = "Exit",
 

@@ -1,6 +1,5 @@
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
-using AgentController.MicroSurface.Wpf;
 using AgentController.Platform.Windowing;
 using CodexController.Agents;
 using CodexController.Controllers;
@@ -21,7 +20,7 @@ internal sealed record MainWindowDependencies(
     SettingsService Settings,
     AppSettings CurrentSettings,
     MicroInputService MicroInput,
-    MicroSurfaceController MicroSurface,
+    MicroKeypadLauncher MicroKeypad,
     XInputService Controller,
     ControllerInteractionCoordinator ControllerInteraction,
     ControllerHoldCoordinator ControllerHolds,

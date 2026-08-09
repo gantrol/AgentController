@@ -12,6 +12,7 @@ using Xunit;
 
 namespace CodexMicro.Desktop.Tests;
 
+[Collection(WpfUiCollection.Name)]
 public sealed class WindowDesignTests
 {
     private const int IsolatedAgentRenderSize = 166;
@@ -29,7 +30,8 @@ public sealed class WindowDesignTests
                     ShutdownMode = ShutdownMode.OnExplicitShutdown,
                 };
 
-                var window = new MicroSurfaceWindow();
+                var window = new MicroSurfaceWindow(
+                    new MicroLocalization(MicroLanguage.ZhCn));
                 window.ActionKey10.ApplyTemplate();
                 Assert.Same(window.ActionIcon10, window.ActionKey10.Content);
                 Assert.Null(window.FindName("VoiceFlowGlow"));
@@ -76,7 +78,8 @@ public sealed class WindowDesignTests
                     ShutdownMode = ShutdownMode.OnExplicitShutdown,
                 };
 
-                var window = new MicroSurfaceWindow();
+                var window = new MicroSurfaceWindow(
+                    new MicroLocalization(MicroLanguage.ZhCn));
                 window.DesignSurface.Measure(new Size(590, 610));
                 window.DesignSurface.Arrange(new Rect(0, 0, 590, 610));
                 window.DesignSurface.UpdateLayout();
@@ -97,7 +100,10 @@ public sealed class WindowDesignTests
                 Assert.Equal(442.5, window.Width, 3);
                 Assert.Equal(457.5, window.Height, 3);
                 Assert.False(window.ShowInTaskbar);
-                Assert.Contains("Micro Surface", window.Title);
+                Assert.Equal(ResizeMode.NoResize, window.ResizeMode);
+                Assert.True(window.AllowsTransparency);
+                Assert.Equal(Brushes.Transparent, window.Background);
+                Assert.Contains("Codex Micro", window.Title);
                 Assert.True(window.TopmostMenuItem.IsCheckable);
                 Assert.NotNull(window.DeviceFrame.ContextMenu);
                 Assert.Equal(Visibility.Collapsed, window.DialSelectionHud.Visibility);
@@ -211,7 +217,8 @@ public sealed class WindowDesignTests
                 Assert.Equal(76, agentWell.Width, 3);
                 Assert.Equal(76, agentWellHighlight.Width, 3);
                 Assert.True(statusLightField.Width > agentWell.Width);
-                Assert.Equal(2, agentGlyph.Children.Count);
+                Assert.Single(agentGlyph.Children);
+                Assert.IsType<Ellipse>(agentGlyph.Children[0]);
                 Assert.Equal(18, agentGlyph.Width, 3);
 
                 var backgroundAppearance = CreateLightingAppearance(
@@ -330,7 +337,7 @@ public sealed class WindowDesignTests
 
                 Assert.InRange(window.JoystickCap.ActualWidth, 66.5, 67.5);
                 Assert.InRange(window.JoystickCap.ActualHeight, 66.5, 67.5);
-                Assert.Equal(3, window.JoystickCap.Children.Count);
+                Assert.Equal(2, window.JoystickCap.Children.Count);
                 Assert.IsType<RadialGradientBrush>(
                     Assert.IsType<Ellipse>(window.JoystickCap.Children[0]).Fill);
                 Assert.InRange(window.JoystickSeat.ActualWidth, 87, 89);
@@ -478,7 +485,7 @@ public sealed class WindowDesignTests
                     AgentLightingAppearance.From(null),
                     out _);
 
-                const int wellSampleX = 65; // left of the centered plus glyph
+                const int wellSampleX = 65; // left of the centered dot glyph
                 const int wellSampleY = 83;
                 var activeWellBlue = BlueEmphasisAt(
                     activeKeyPixels,

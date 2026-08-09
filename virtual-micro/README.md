@@ -1,165 +1,126 @@
-# Codex Micro Surface and Virtual HID
+# Standalone Codex Micro Keypad and Virtual HID
 
 [简体中文](./README.zh-CN.md)
 
-The Windows device support and hostable Micro surface used by Agent Controller:
+`CodexMicro.exe` is a Windows keypad that runs independently of Agent
+Controller. The release window directly reuses the original WPF
+`MainWindow.xaml`, resource dictionary, control templates, and animations. It
+is no longer an approximation drawn by a second graphics stack, so its corners,
+alpha, shadows, typography, and DPI rasterization use the same rendering path
+as the original UI.
 
-- `CodexMicroVhfUm.dll` is a UMDF2 HID source driver built on Microsoft's
-  official Virtual HID Framework (VHF). The system `Vhf.sys` enumerates
-  `VID 303A / PID 8360 / UsagePage FF00 / Usage 01 / ReportId 06`.
-- The same UMDF2 source creates a second restricted VHF keyboard child
-  (`VID 303A / PID 8361`) for the Full access confirmation dialog. Its control
-  contract permits only Tab, Shift+Tab, and Enter; it cannot inject text or
-  arbitrary keys.
-- `AgentController.exe` hosts the transparent WPF surface. The surface and the
-  physical controller use separate logical client IDs and held-input leases,
-  while one process-wide Broker child owns the HID and output stream.
-- Codex output is also the Broker's link heartbeat, so hiding or restarting the
-  surface cannot abandon an active Codex RPC session. If an accepted HID input
-  receives no Codex handshake within 12 seconds, or an established link emits
-  no output for 90 seconds, the Broker rebuilds the VHF children up to three
-  times with a 20-second cooldown. Right-click **Reconnect** uses the same real
-  HID transport rebuild instead of reconnecting only the Broker pipe.
-- The surface renders only the keypad body and supports uniform resizing,
-  dragging, Always on Top, and non-activating pointer input. It is opened from
-  Agent Controller's title bar or tray; closing it hides it.
-- The window opens at 75% of the 590 x 610 design surface and can be resized
-  from approximately 60% upward.
-- Agent Controller's existing single-instance lifetime keeps exactly one
-  pointer hook owner and Broker output consumer alive. There is no standalone
-  Micro executable, mutex, or second notification-area icon.
-- The surface accepts pointer input without activating itself. Use the mouse
-  wheel or a vertical drag on the white encoder to move through Codex options;
-  click once to open or confirm. Right-clicking the white encoder does nothing.
-- A compact live capsule beside the encoder mirrors the focused Codex item as
-  `position / count · label`, including model options and the Full access
-  confirmation buttons. Accessibility is read-only; every action remains HID.
-- Encoder input never waits for accessibility feedback. Wheel and drag packets
-  are reduced to a bounded net intent (at most three pending detents), opposite
-  motion cancels queued motion, and stale history is discarded before a press;
-  intents older than 180 ms and backlog accumulated during a stalled send are
-  discarded. Accessibility remains an asynchronous, read-only status display.
-- Hovering an Agent key shows `project › task title` when Codex's local recent
-  task index can be matched to the default `recent` slot source. This UI-only observer reads
-  `~/.codex/session_index.jsonl` and `.codex-global-state.json`; VHF lighting
-  remains the independent source of slot state and neither file is modified.
-  Non-recent sources stay generically labelled unless their mapping is locally provable.
-- The lower-left black knob is the only Codex Micro settings entry. Its left
-  click sends the real 650 ms `ENC` hold used by Codex to navigate to
-  `/settings/codex-micro`; its right click reconnects the virtual HID.
-- Hover cards show each control's title, current mapping, gesture, or live state.
-- The six action keys observe `desktop.codex-micro-layout` in
-  `~/.codex/config.toml` read-only, so Codex mapping changes update icons and
-  help text automatically.
-- Codex artwork comes from the installed Codex desktop resources instead of
-  shipping duplicated brand bitmaps.
+Agent Controller neither references nor hosts the keypad UI. Its title-bar and
+tray commands only launch a standalone `CodexMicro.exe` from disk, or open the
+Releases page when it is absent. The two products share only the current-user
+Micro Broker protocol and HID driver, so either can run alone and they can
+coexist.
 
-The complete visual, driver, interaction, and acceptance specification is in
-[`DESIGN.zh-CN.md`](./DESIGN.zh-CN.md).
+The release is a framework-dependent single-file app. The measured
+`CodexMicro.exe` is about `24.9 MiB` and the zip is about `6.4 MiB`; packaging
+enforces a `15 MiB` zip ceiling. This retains the exact WPF visuals without the
+roughly `75 MiB` self-contained WPF bundle. Standalone use requires the
+Microsoft .NET 10 Desktop Runtime x64.
 
-## Legacy standalone release
+## Window and notification area
 
-The historical [`v1.0.0` release](../../../releases/tag/codex-micro-v1.0.0)
-included a standalone portable simulator. Current source no longer builds or
-ships that executable; the surface is part of Agent Controller. The separate
-unsigned developer driver package remains useful, but must be signed locally
-before installation. See [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md).
+- Opens at a fixed 75% of the 590 x 610 design surface (`442.5 x 457.5`).
+- The client area is transparent; no opaque rectangle surrounds the device.
+- Drag empty body space to move the window. App-owned coordinate updates avoid
+  the Windows move/size loop.
+- There is no system resize frame, maximize box, or caption, and resizing is
+  disabled. Dragging to a screen edge cannot invoke Snap layouts, docking, or
+  automatic Windows resizing.
+- Right-click empty body space to toggle Always on Top or hide the panel.
+- Closing the window or pressing Alt+F4 hides it to the Windows notification
+  area instead of terminating the process.
+- Double-click the notification-area icon to show/hide the keypad. Its menu has
+  Show/Hide and Exit commands.
+- Start with Windows can be enabled or disabled from the tray menu. When
+  enabled, sign-in starts the keypad quietly in the notification area without
+  opening its panel.
+- Pointer input does not activate the keypad, preserving focus in Codex.
 
-## Unsigned developer driver package
+## Interface language
 
-`CodexMicroVhfUm-v1.0.0-win-x64-UNSIGNED-DEVELOPER.zip` contains the prebuilt
-UMDF2 DLL, INF, unsigned catalog, native PnP installer, source needed for audit,
-and the local signing/install script. It contains no certificate or private
-key and is not installable as a production driver in its downloaded state.
+The tray's Language submenu offers Auto (Agent Controller / Windows), Simplified
+Chinese, and English. Tray text, the body menu, hover help, status messages, and
+errors update immediately. The choice is stored in
+`%LOCALAPPDATA%\CodexMicro\settings.json`. Auto first reads Agent Controller's
+interface language, then falls back to the Windows UI language when that setting
+is also automatic or unavailable.
 
-Use this package when you want to audit and locally re-sign the exact binaries
-without compiling C/C++. See the [unsigned package guide](./UNSIGNED-DRIVER.md).
+## Controls
 
-## Build locally
+- Six Agent keys send `AG00` through `AG05` and render slot lighting returned
+  by Codex.
+- Four command keys send `ACT06` through `ACT09`; the Codex key sends `ACT12`.
+- Push-to-talk sends `ACT10 down` on press and `ACT10 up` on release.
+- The white encoder supports wheel, drag, and click for `ENC_CW`, `ENC_CC`, and
+  `ENC`.
+- The joystick sends continuous analog input and neutralizes on release.
+- The lower-left knob sends the real 650 ms `ENC` hold that asks Codex to open
+  its Micro settings.
 
-The Git repository intentionally stores driver source only. Generated `.dll`,
-`.sys`, `.cat`, `.cer`, and installer binaries remain ignored and must not be
-committed back to the repository. The separately attached Release asset is the
-only prebuilt developer-driver distribution.
+## Virtual HID
 
-Prerequisites:
+`CodexMicroVhfUm.dll` is a UMDF2 source driver built on Microsoft's Virtual HID
+Framework. System `Vhf.sys` enumerates:
 
-- Windows 11 x64 is the tested build host;
-- .NET SDK 10 for Agent Controller, the hosted surface, and tests;
-- the reproducible driver route is Visual Studio/Build Tools 2022 with
-  **Desktop development with C++**, MSVC v143 x64/x86 build tools, x64/x86
-  Spectre-mitigated libraries, Windows SDK `10.0.26100.0`, and MSBuild;
-- internet access for the first restore of pinned NuGet package
-  `Microsoft.Windows.WDK.x64` `10.0.26100.6584`;
-- an elevated PowerShell only for the installation step.
+- primary device: `VID 303A / PID 8360 / UsagePage FF00 / Usage 01 / ReportId 06`;
+- restricted confirmation keyboard: `VID 303A / PID 8361`, limited to Tab,
+  Shift+Tab, and Enter.
 
-Visual Studio 2026 can drive the build when the v143 toolset and matching
-26100 SDK components are also installed. The project intentionally pins the
-26100 toolchain instead of silently moving to a newer WDK.
+The keypad never calls the private driver IOCTL directly. One current-user
+Broker child owns the driver handle, input sequence, held-input leases, and
+output stream. The keypad connects to an existing Agent Controller Broker when
+present; otherwise `CodexMicro.exe --micro-broker` starts the same host.
 
-From the repository root, build Agent Controller and its hosted surface first:
+Only an unsigned developer-driver workflow is currently provided. Never turn
+off Windows driver-signing enforcement or install an untrusted certificate.
+See [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for build, signing, and install
+details.
+
+## Build and package
+
+Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
-dotnet restore .\AgentController.sln
-dotnet build .\app\AgentController.csproj -c Release --no-restore
+dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
+.\scripts\package-micro.ps1 -Version 1.2.0
 ```
 
-Then locate the installed 64-bit MSBuild and compile both the UMDF2 source
-driver and its native installer:
+Outputs:
 
-```powershell
-$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild `
-  -find 'MSBuild\**\Bin\amd64\MSBuild.exe' | Select-Object -First 1
+- single-file executable: `.artifacts/micro-release/1.2.0/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-1.2.0-win-x64.zip`;
+- SHA-256: adjacent `.sha256` file.
 
-if (-not $msbuild) { throw 'Visual Studio MSBuild was not found.' }
-
-& $msbuild '.\virtual-micro\driver\CodexMicroVhfUm\CodexMicroVhfUm.vcxproj' `
-  /restore /t:Build /p:Configuration=Release /p:Platform=x64 /m
-
-& $msbuild '.\virtual-micro\tools\CodexMicro.DriverInstaller.Native\CodexMicro.DriverInstaller.Native.vcxproj' `
-  /restore /t:Build /p:Configuration=Release /p:Platform=x64 /m
-```
-
-Main outputs:
-
-- Hosted surface: `src/AgentController.MicroSurface.Wpf/bin/Release/net10.0-windows10.0.19041.0/`
-- Microsoft UMDF2 VHF driver package: `driver/CodexMicroVhfUm/x64/Release/`
-- Native installer: `tools/CodexMicro.DriverInstaller.Native/bin/Release/`
+The packaging script includes only `CodexMicro.exe`, the READMEs, and the
+license. It does not copy the Desktop Runtime, debug symbols, or driver. The
+driver remains a separately installed security boundary.
 
 ## Install the virtual HID
 
-Exit both Codex and AgentController, then run from an ordinary PowerShell. This
-lets Windows unload the previous UMDF binary instead of deferring activation
-until a reboot:
+Exit Codex, Agent Controller, and CodexMicro, then run from an ordinary
+PowerShell:
 
 ```powershell
 .\virtual-micro\Install-CodexMicroDriver.ps1
 ```
 
-The script opens UAC itself and completes local signing, installation/update,
-and the health check. The driver does not check Codex or AgentController
-versions; its INF version is only for Windows driver-package updates. See the
-[local installation guide](../docs/CodexMicroSimulator-installation.md) for
-verification commands and [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for
-build and certificate details.
-
-If Windows still reports that a restart is required, the script exits with
-code `3010` and does not print `Ready`. Restart Windows once before opening
-Codex or AgentController; only then is the new transport-recovery code active.
+The script opens UAC itself and performs local signing, installation/update,
+and a health check. A final `Ready` means the new driver is loaded; exit code
+`3010` means Windows must be restarted first. See the
+[installation guide](../docs/CodexMicroSimulator-installation.md).
 
 ## Verify
 
 ```powershell
 dotnet test .\virtual-micro\tests\CodexMicro.Protocol.Tests\CodexMicro.Protocol.Tests.csproj -c Release
+dotnet test .\tests\AgentController.MicroBroker.Tests\AgentController.MicroBroker.Tests.csproj -c Release
 dotnet test .\virtual-micro\tests\CodexMicro.Desktop.Tests\CodexMicro.Desktop.Tests.csproj -c Release
 ```
 
-Desktop tests cover the Codex TOML layout, unknown-key fallback, off-screen
-keycap rendering, square geometry, silkscreen safe areas, borderless resizing,
-joystick geometry, encoder gestures, and repeated encoder animation.
-They also cover selection-label formatting and the restricted VHF keyboard
-wire contract.
-
-Set `CODEX_MICRO_PREVIEW_PATH` to an absolute PNG path before running the
-desktop tests to produce an off-screen visual preview.
+Desktop tests freeze the original XAML's transparent window, fixed size,
+`NoResize`, no-activation behavior, and key visual geometry. Broker and protocol
+tests freeze shared leases, input batches, and RPC contracts.

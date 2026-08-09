@@ -337,18 +337,11 @@
                                                               Opacity="0.38"
                                                               Color="#685FAE" />
                                         </Grid.Effect>
-                                        <Border Width="18"
-                                                Height="5"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Background="#FF685FAE"
-                                                CornerRadius="2.5" />
-                                        <Border Width="5"
-                                                Height="18"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Background="#FF685FAE"
-                                                CornerRadius="2.5" />
+                                        <Ellipse Width="18"
+                                                 Height="18"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#FF685FAE" />
                                     </Grid>
                                 </Grid>
                                 <Border.Effect>

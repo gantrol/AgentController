@@ -20,9 +20,24 @@ For Windows 10/11 x64. The driver only provides the HID channel shared by a phys
    ```
 
 3. Approve the Windows UAC prompt opened by the script. A final `Ready` message means installation succeeded and the new driver is active. If the script reports restart required (exit code `3010`), restart Windows before opening Codex or Agent Controller.
-4. Start `AgentController.exe` as a normal user. Click the small keyboard icon in the title bar to open Micro. Micro is always on top by default; right-click an empty part of its body to toggle that setting.
+4. Extract `CodexMicro-Keypad-*-win-x64.zip` and start `CodexMicro.exe` as a
+   normal user. Agent Controller can also launch it when the executable is next
+   to Agent Controller, in its `CodexMicro` subdirectory, or in
+   `%LOCALAPPDATA%\CodexMicro`. Micro is always on top by default; right-click
+   empty body space to toggle that setting. The window has a fixed size and
+   app-owned movement, so it never enters the system move/size loop or invokes
+   Windows Snap. Closing hides it to the notification area; double-click the
+   tray icon to show/hide it, or use its Show/Hide and Exit menu commands.
+5. To change language, open Language in the tray menu and choose Auto,
+   Simplified Chinese, or English. Auto follows Agent Controller first and then
+   Windows when no explicit application language is available; switching is
+   immediate.
+6. To launch after Windows sign-in, enable Start with Windows in the tray menu.
+   Startup stays in the notification area without opening the panel. Disable
+   the item to remove the current-user startup entry; elevation is not needed.
 
-Do not keep Agent Controller elevated, and do not disable Windows driver-signing enforcement.
+Do not keep Agent Controller or CodexMicro elevated, and do not disable Windows
+driver-signing enforcement.
 
 ## Upgrade
 
@@ -48,7 +63,9 @@ There should be one device and its `Status` should be `OK`. If installation fail
 - Windows 10/11 x64;
 - the Codex desktop app installed and signed in;
 - a Windows-recognized XInput controller for physical-controller input, and a working microphone for the voice key;
-- no separate .NET Runtime installation—the Agent Controller Windows release is self-contained.
+- the Agent Controller Windows release is self-contained; the separately
+  downloaded compact Micro keypad package requires Microsoft .NET 10 Desktop
+  Runtime x64.
 
 ### Locally signing and installing the prebuilt driver
 

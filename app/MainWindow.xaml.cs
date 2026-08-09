@@ -8,7 +8,6 @@ using System.Windows.Threading;
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
 using AgentController.Domain.Actions;
-using AgentController.MicroSurface.Wpf;
 using AgentController.Platform.Windowing;
 using CodexController.Agents;
 using CodexController.Composition;
@@ -66,7 +65,7 @@ public partial class MainWindow : Window
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
-    private readonly MicroSurfaceController _microSurface;
+    private readonly MicroKeypadLauncher _microKeypad;
     private readonly CodexCurrentControlExecutor _currentControlExecutor;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly IAgentTarget _activeAgent;
@@ -169,7 +168,7 @@ public partial class MainWindow : Window
     internal MainWindow(MainWindowDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
-        _microSurface = dependencies.MicroSurface;
+        _microKeypad = dependencies.MicroKeypad;
         _settingsService = dependencies.Settings;
         _settings = dependencies.CurrentSettings;
         _activeAgent = dependencies.ActiveAgent;
@@ -5478,7 +5477,7 @@ public partial class MainWindow : Window
         menu.Items.Add(
             strings.TrayOpenMicroSurface,
             null,
-            (_, _) => _microSurface.Show());
+            (_, _) => _microKeypad.LaunchOrOpenDownloadPage());
         menu.Items.Add(
             strings.TrayOpenAgent(_activeAgent.DisplayName),
             null,
@@ -5547,10 +5546,10 @@ public partial class MainWindow : Window
         SetSelectedNav(SettingsNavButton);
     }
 
-    private void MicroSurfaceButton_Click(
+    private void MicroKeypadButton_Click(
         object sender,
         RoutedEventArgs e) =>
-        _microSurface.Toggle();
+        _microKeypad.LaunchOrOpenDownloadPage();
 
     private void TitleBar_MouseLeftButtonDown(
         object sender,

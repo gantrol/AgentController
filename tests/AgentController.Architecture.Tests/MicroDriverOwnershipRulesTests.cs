@@ -32,8 +32,8 @@ public sealed class MicroDriverOwnershipRulesTests
     [Theory]
     [InlineData("app/AgentController.csproj")]
     [InlineData(
-        "virtual-micro/src/AgentController.MicroSurface.Wpf/" +
-        "AgentController.MicroSurface.Wpf.csproj")]
+        "virtual-micro/src/CodexMicro.DesktopHost/" +
+        "CodexMicro.DesktopHost.csproj")]
     public void DesktopClientsReferenceTheSharedBroker(string projectPath)
     {
         var document = XDocument.Load(Resolve(projectPath));
@@ -48,39 +48,90 @@ public sealed class MicroDriverOwnershipRulesTests
     }
 
     [Fact]
-    public void MicroSurfaceIsHostedWithoutAProductVersionGate()
+    public void MicroKeypadIsIndependentWpfHostAndNotHostedByMainApp()
     {
-        Assert.False(File.Exists(Resolve(
-            "virtual-micro/src/CodexMicro.Desktop/" +
-            "CodexMicro.Desktop.csproj")));
-        Assert.False(File.Exists(Resolve(
-            "virtual-micro/src/CodexMicro.Desktop/App.xaml.cs")));
+        var hostProject = XDocument.Load(Resolve(
+            "virtual-micro/src/CodexMicro.DesktopHost/" +
+            "CodexMicro.DesktopHost.csproj"));
+        Assert.Equal(
+            "WinExe",
+            hostProject.Descendants("OutputType").Single().Value);
+        Assert.Equal(
+            "true",
+            hostProject.Descendants("UseWPF").Single().Value);
+        Assert.Equal(
+            "false",
+            hostProject.Descendants("SelfContained").Single().Value);
+        Assert.Equal(
+            "true",
+            hostProject.Descendants("PublishSingleFile").Single().Value);
 
-        var project = XDocument.Load(Resolve(
-            "virtual-micro/src/AgentController.MicroSurface.Wpf/" +
-            "AgentController.MicroSurface.Wpf.csproj"));
+        var mainProject = XDocument.Load(Resolve(
+            "app/AgentController.csproj"));
+        var mainReferences = mainProject
+            .Descendants("ProjectReference")
+            .Select(element => element.Attribute("Include")?.Value ?? "")
+            .ToArray();
         Assert.DoesNotContain(
-            project.Descendants("OutputType"),
-            element => string.Equals(
-                element.Value,
-                "WinExe",
+            mainReferences,
+            value => value.Contains(
+                "MicroSurface.Wpf",
                 StringComparison.OrdinalIgnoreCase));
 
-        var runtimeSource = string.Join(
-            '\n',
-            Directory.EnumerateFiles(
-                    Resolve("virtual-micro/src/CodexMicro.Desktop"),
-                    "*.cs",
-                    SearchOption.AllDirectories)
-                .Select(File.ReadAllText));
-        Assert.DoesNotContain(
-            "FileVersionInfo.GetVersionInfo",
-            runtimeSource,
+        var xaml = XDocument.Load(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/MainWindow.xaml"));
+        var window = xaml.Root!;
+        Assert.Equal("None", window.Attribute("WindowStyle")?.Value);
+        Assert.Equal("NoResize", window.Attribute("ResizeMode")?.Value);
+        Assert.Equal("True", window.Attribute("AllowsTransparency")?.Value);
+        Assert.Equal("Transparent", window.Attribute("Background")?.Value);
+
+        var hostSource = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.DesktopHost/App.xaml.cs"));
+        Assert.Contains("MicroTrayIcon", hostSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "MicroBrokerHost.IsBrokerArgument",
+            hostSource,
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "CodexCompatibilityProbe",
-            runtimeSource,
+    }
+
+    [Fact]
+    public void MicroKeypadTrayCanToggleAndExit()
+    {
+        var traySource = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.DesktopHost/MicroTrayIcon.cs"));
+
+        Assert.Contains("\"收起小键盘\"", traySource, StringComparison.Ordinal);
+        Assert.Contains("\"显示小键盘\"", traySource, StringComparison.Ordinal);
+        Assert.Contains("\"退出\"", traySource, StringComparison.Ordinal);
+        Assert.Contains("\"Hide keypad\"", traySource, StringComparison.Ordinal);
+        Assert.Contains("\"Show keypad\"", traySource, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"Start with Windows\"",
+            traySource,
             StringComparison.Ordinal);
+        Assert.Contains("MicroLanguage.Auto", traySource, StringComparison.Ordinal);
+        Assert.Contains(
+            "_notifyIcon.DoubleClick",
+            traySource,
+            StringComparison.Ordinal);
+
+        var startupSource = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.DesktopHost/" +
+            "MicroStartupRegistration.cs"));
+        Assert.Contains(
+            @"Software\Microsoft\Windows\CurrentVersion\Run",
+            startupSource,
+            StringComparison.Ordinal);
+        Assert.Contains("--background", startupSource, StringComparison.Ordinal);
+
+        var project = XDocument.Load(Resolve(
+            "virtual-micro/src/CodexMicro.DesktopHost/" +
+            "CodexMicro.DesktopHost.csproj"));
+        Assert.EndsWith(
+            @"Assets\CodexMicro.ico",
+            project.Descendants("ApplicationIcon").Single().Value,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

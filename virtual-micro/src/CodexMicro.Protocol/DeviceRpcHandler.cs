@@ -31,16 +31,19 @@ public sealed class DeviceRpcHandler
         {
             "sys.version" => MicroRpcCodec.EncodeResponse(
                 id,
-                new { version = MicroProtocol.FirmwareVersion }),
+                new Dictionary<string, object?>
+                {
+                    ["version"] = MicroProtocol.FirmwareVersion,
+                }),
             "device.status" => MicroRpcCodec.EncodeResponse(
                 id,
-                new
+                new Dictionary<string, object?>
                 {
-                    version = MicroProtocol.FirmwareVersion,
-                    profile_index = 0,
-                    layer_index = 0,
-                    battery = 100,
-                    is_charging = true,
+                    ["version"] = MicroProtocol.FirmwareVersion,
+                    ["profile_index"] = 0,
+                    ["layer_index"] = 0,
+                    ["battery"] = 100,
+                    ["is_charging"] = true,
                 }),
             "v.oai.rgbcfg" => MicroRpcCodec.EncodeResponse(id, true),
             "v.oai.thstatus" => HandleThreadStatus(root, id),

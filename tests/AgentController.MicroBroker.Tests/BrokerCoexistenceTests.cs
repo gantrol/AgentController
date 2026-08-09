@@ -711,7 +711,7 @@ public sealed class BrokerCoexistenceTests
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         await pipe.ConnectAsync(timeout.Token);
         await BrokerWire.WriteAsync(pipe, request, timeout.Token);
-        return await BrokerWire.ReadAsync<BrokerResponse>(
+        return await BrokerWire.ReadResponseAsync(
             pipe,
             timeout.Token);
     }

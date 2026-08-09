@@ -4,14 +4,14 @@ using CodexMicro.Protocol;
 namespace CodexMicro.Desktop.Services;
 
 /// <summary>
-/// Logical Micro Surface client. It shares the process-wide broker child with
-/// Agent Controller while retaining an independent client id and held-input
-/// lease, so either surface can disappear without releasing the other's state.
+/// Logical Micro keypad client. It shares the machine-local broker while
+/// retaining an independent client id and held-input lease, so either product
+/// can disappear without releasing the other's state.
 /// </summary>
 internal sealed class VirtualMicroBroker : IDisposable
 {
     private readonly MicroBrokerClient _driver =
-        new("AgentController Micro Surface");
+        new("Codex Micro Keypad");
     private readonly object _heldSync = new();
     private readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
     private bool _supportsDialogKeyboard;

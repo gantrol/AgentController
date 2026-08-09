@@ -188,13 +188,13 @@
                                       IsChecked="True"
                                       Checked="BridgeEnabledCheckBox_Changed"
                                       Unchecked="BridgeEnabledCheckBox_Changed" />
-                            <Button x:Name="MicroSurfaceButton"
+                            <Button x:Name="MicroKeypadButton"
                                     Width="38"
                                     Margin="0,0,4,0"
                                     Style="{StaticResource Shell.CaptionButton}"
                                     ToolTip="{loc:Loc tray.open-micro-surface}"
                                     AutomationProperties.Name="{loc:Loc tray.open-micro-surface}"
-                                    Click="MicroSurfaceButton_Click">
+                                    Click="MicroKeypadButton_Click">
                                 <!-- Original virtual-micro application mark:
                                      device body, encoder, and three keycaps. -->
                                 <Viewbox Width="21"

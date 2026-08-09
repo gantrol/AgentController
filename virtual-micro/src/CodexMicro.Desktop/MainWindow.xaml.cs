@@ -31,6 +31,9 @@ public partial class MicroSurfaceWindow : Window
         string Label);
 
     private readonly VirtualMicroBroker _broker = new();
+    private readonly MicroLocalization _localization;
+    private readonly Dictionary<FrameworkElement, (string Title, string Detail)>
+        _helpContent = [];
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
     private readonly CodexAgentRosterObserver _agentRosterObserver = new();
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
@@ -71,8 +74,13 @@ public partial class MicroSurfaceWindow : Window
     private bool _dialSurfaceMayBeMounting;
     private long _dialSurfaceNotBeforeTimestamp;
     private CodexMenuSelection? _cachedDialSelection;
+    private string? _dialSelectionText;
     private bool _windowClosed;
     private bool _allowApplicationClose;
+    private bool _windowMoving;
+    private Point _windowMoveStartScreen;
+    private Point _windowMoveStartPosition;
+    private DpiScale _windowMoveDpi;
     private Point _joystickDragOrigin;
     private string? _joystickActiveDirection;
     private double _dialVisualAngle = 42;
@@ -80,7 +88,14 @@ public partial class MicroSurfaceWindow : Window
     private string _status = "正在检查 Codex 与虚拟 HID。";
 
     public MicroSurfaceWindow()
+        : this(new MicroLocalization())
     {
+    }
+
+    internal MicroSurfaceWindow(MicroLocalization localization)
+    {
+        _localization = localization ??
+            throw new ArgumentNullException(nameof(localization));
         InitializeComponent();
         _agentKeys =
         [
@@ -141,6 +156,8 @@ public partial class MicroSurfaceWindow : Window
         _layoutObserver.LayoutChanged += LayoutObserver_LayoutChanged;
         _agentRosterObserver.RosterChanged += AgentRosterObserver_RosterChanged;
         _dialSelectionHideTimer.Tick += DialSelectionHideTimer_Tick;
+        _localization.LanguageChanged += Localization_LanguageChanged;
+        RefreshLocalizedChrome();
         InitializeHoverHelp();
         ApplyLayout(_layoutObserver.Current);
         SetStatus(_status);
@@ -182,13 +199,14 @@ public partial class MicroSurfaceWindow : Window
         {
             AutomationProperties.SetItemStatus(
                 DialButton,
-                "未激活窗口滚轮捕获已就绪");
+                Localize("未激活窗口滚轮捕获已就绪"));
         }
         else
         {
             AutomationProperties.SetItemStatus(
                 DialButton,
-                $"旋钮输入捕获失败 · Win32 {_inactiveDialInputRouter.LastError}");
+                Localize(
+                    $"旋钮输入捕获失败 · Win32 {_inactiveDialInputRouter.LastError}"));
             SetHelp(
                 DialButton,
                 "选择旋钮",
@@ -241,6 +259,7 @@ public partial class MicroSurfaceWindow : Window
         _layoutObserver.Dispose();
         _agentRosterObserver.RosterChanged -= AgentRosterObserver_RosterChanged;
         _agentRosterObserver.Dispose();
+        _localization.LanguageChanged -= Localization_LanguageChanged;
         _broker.Dispose();
     }
 
@@ -505,7 +524,7 @@ public partial class MicroSurfaceWindow : Window
                 var routeSequence = ++_dialWheelRouteSequence;
                 AutomationProperties.SetItemStatus(
                     DialButton,
-                    $"滚轮路由已接收 · #{routeSequence}");
+                    Localize($"滚轮路由已接收 · #{routeSequence}"));
                 QueueDialWheelDelta(delta);
             }));
         return true;
@@ -837,9 +856,9 @@ public partial class MicroSurfaceWindow : Window
                 var sequence = ++_dialInputSequence;
                 AutomationProperties.SetItemStatus(
                     DialButton,
-                    $"{(routesDialog
+                    Localize($"{(routesDialog
                         ? clockwise ? "VHF Shift+Tab" : "VHF Tab"
-                        : clockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}");
+                        : clockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}"));
                 QueueDialSelectionFeedback();
             }
             else
@@ -977,7 +996,7 @@ public partial class MicroSurfaceWindow : Window
         {
             AutomationProperties.SetItemStatus(
                 DialButton,
-                $"菜单位置读取已跳过 · {exception.Message}");
+                Localize($"菜单位置读取已跳过 · {exception.Message}"));
         }
         finally
         {
@@ -1012,11 +1031,13 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _dialSelectionHudVersion++;
-        DialSelectionText.Text = text;
+        _dialSelectionText = text;
+        var localizedText = Localize(text);
+        DialSelectionText.Text = localizedText;
         DialSelectionHud.Visibility = Visibility.Visible;
         DialSelectionHud.BeginAnimation(OpacityProperty, null);
         DialSelectionHud.Opacity = 1;
-        AutomationProperties.SetItemStatus(DialButton, text);
+        AutomationProperties.SetItemStatus(DialButton, localizedText);
         _dialSelectionHideTimer.Stop();
         _dialSelectionHideTimer.Start();
     }
@@ -1512,30 +1533,7 @@ public partial class MicroSurfaceWindow : Window
             return nonActivatingResult;
         }
 
-        if (
-            message != BorderlessResize.WmNcHitTest ||
-            ResizeMode == ResizeMode.NoResize ||
-            WindowState != WindowState.Normal)
-        {
-            return IntPtr.Zero;
-        }
-
-        var packed = longParameter.ToInt64();
-        var screenPoint = new Point(
-            unchecked((short)(packed & 0xFFFF)),
-            unchecked((short)((packed >> 16) & 0xFFFF)));
-        var clientPoint = PointFromScreen(screenPoint);
-        var hit = BorderlessResize.HitTest(
-            new Size(ActualWidth, ActualHeight),
-            clientPoint,
-            10);
-        if (hit == 0)
-        {
-            return IntPtr.Zero;
-        }
-
-        handled = true;
-        return new IntPtr(hit);
+        return IntPtr.Zero;
     }
 
     private void DeviceFrame_MouseLeftButtonDown(
@@ -1548,12 +1546,53 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        try
+        _windowMoving = true;
+        _windowMoveStartScreen = PointToScreen(e.GetPosition(this));
+        _windowMoveStartPosition = new Point(Left, Top);
+        _windowMoveDpi = VisualTreeHelper.GetDpi(this);
+        _ = CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_windowMoving || e.LeftButton != MouseButtonState.Pressed)
         {
-            DragMove();
+            return;
         }
-        catch (InvalidOperationException)
+
+        var screen = PointToScreen(e.GetPosition(this));
+        Left = _windowMoveStartPosition.X +
+            (screen.X - _windowMoveStartScreen.X) /
+            Math.Max(_windowMoveDpi.DpiScaleX, 1);
+        Top = _windowMoveStartPosition.Y +
+            (screen.Y - _windowMoveStartScreen.Y) /
+            Math.Max(_windowMoveDpi.DpiScaleY, 1);
+        e.Handled = true;
+    }
+
+    private void Window_PreviewMouseLeftButtonUp(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        EndWindowMove();
+    }
+
+    private void Window_LostMouseCapture(
+        object sender,
+        MouseEventArgs e) => _windowMoving = false;
+
+    private void EndWindowMove()
+    {
+        if (!_windowMoving)
         {
+            return;
+        }
+
+        _windowMoving = false;
+        if (IsMouseCaptured)
+        {
+            ReleaseMouseCapture();
         }
     }
 
@@ -1885,11 +1924,46 @@ public partial class MicroSurfaceWindow : Window
     private void SetStatus(string value)
     {
         _status = value;
-        AutomationProperties.SetHelpText(this, value);
+        AutomationProperties.SetHelpText(this, Localize(value));
         SetHelp(
             DeviceFrame,
             "Agent Controller · Micro Surface",
-            $"{value}\n\n拖动机身移动 · 拖动边缘缩放 · 右击机身打开窗口菜单");
+            $"{value}\n\n拖动机身移动 · 右击机身打开窗口菜单 · 关闭时收起到托盘");
+    }
+
+    private void Localization_LanguageChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke(
+                new Action(RefreshLocalizedChrome));
+            return;
+        }
+
+        RefreshLocalizedChrome();
+    }
+
+    private void RefreshLocalizedChrome()
+    {
+        Title = _localization.IsEnglish
+            ? "Codex Micro Keypad"
+            : "Codex Micro 小键盘";
+        TopmostMenuItem.Header = Localize("窗口置顶");
+        ReconnectMenuItem.Header = Localize("重新连接虚拟 HID");
+        HidePanelMenuItem.Header = Localize("隐藏面板");
+        AutomationProperties.SetHelpText(this, Localize(_status));
+
+        foreach (var (element, content) in _helpContent.ToArray())
+        {
+            ApplyHelp(element, content.Title, content.Detail);
+        }
+
+        if (_dialSelectionText is not null)
+        {
+            var localized = Localize(_dialSelectionText);
+            DialSelectionText.Text = localized;
+            AutomationProperties.SetItemStatus(DialButton, localized);
+        }
     }
 
     internal void ShowSurface()
@@ -1941,25 +2015,36 @@ public partial class MicroSurfaceWindow : Window
         SetHelp(led, title, tooltip);
     }
 
-    private static void SetHelp(
+    private void SetHelp(
         FrameworkElement element,
         string title,
         string detail)
     {
+        _helpContent[element] = (title, detail);
+        ApplyHelp(element, title, detail);
+    }
+
+    private void ApplyHelp(
+        FrameworkElement element,
+        string title,
+        string detail)
+    {
+        var localizedTitle = Localize(title);
+        var localizedDetail = Localize(detail);
         var content = new StackPanel
         {
             MaxWidth = 360,
         };
         content.Children.Add(new TextBlock
         {
-            Text = title,
+            Text = localizedTitle,
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(0x2F, 0x34, 0x38)),
         });
         content.Children.Add(new TextBlock
         {
-            Text = detail,
+            Text = localizedDetail,
             Margin = new Thickness(0, 4, 0, 0),
             FontSize = 11.5,
             LineHeight = 17,
@@ -1976,9 +2061,11 @@ public partial class MicroSurfaceWindow : Window
         ToolTipService.SetInitialShowDelay(element, 320);
         ToolTipService.SetBetweenShowDelay(element, 100);
         ToolTipService.SetShowDuration(element, 16000);
-        AutomationProperties.SetName(element, title);
-        AutomationProperties.SetHelpText(element, detail);
+        AutomationProperties.SetName(element, localizedTitle);
+        AutomationProperties.SetHelpText(element, localizedDetail);
     }
+
+    private string Localize(string value) => _localization.Text(value);
 
     private static string LocalizeDriverError(Exception exception) =>
         exception.Message.Contains("device interface is not present", StringComparison.OrdinalIgnoreCase)

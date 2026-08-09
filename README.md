@@ -52,11 +52,19 @@ And the six Agent keys from Codex Micro? Hold **LB**, then use the four D-pad di
 
 If the controller shorthand is unfamiliar, the dashboard now includes an interactive guide for Basics, Tap Y, Hold LB, Hold RT, Hold RB, and stick presses. Click a tab or press the matching control to switch the lesson. L3/R3 are also labeled as LS/RS and animated as vertical stick-cap presses—not downward stick movement.
 
-### Integrated Codex Micro surface
+### Standalone Codex Micro keypad
 
-![Integrated Codex Micro surface](public/images/codex-micro-simulator.png)
+![Codex Micro keypad](public/images/codex-micro-simulator.png)
 
-The [Codex Micro surface](virtual-micro/README.md) is now hosted by `AgentController.exe`. Open it from the `MICRO` title-bar button or the tray menu. It keeps its own logical Broker lease but shares the one process-wide Broker child with controller input, so closing the panel only hides it and no standalone simulator, mutex, or tray process is involved.
+The [Codex Micro keypad](virtual-micro/README.md) now runs independently of
+`AgentController.exe` while directly reusing the original WPF XAML, templates,
+and animations for pixel-accurate transparency and styling. Its
+framework-dependent single-file zip is about 6.4 MiB and requires the .NET 10
+Desktop Runtime x64. The `MICRO` title-bar and tray commands only launch the
+external `CodexMicro.exe`. Keypad and controller input keep separate logical
+Broker leases while sharing one current-user Broker. The fixed-size window uses
+app-owned movement, so it cannot trigger Windows Snap or automatic resizing;
+its notification-area icon provides Show/Hide and Exit commands.
 
 Unfortunately, it also depends on an **unsigned developer driver package**. The package saves the C/C++ compilation step, but it is not a production installer: [sign it locally and install it](virtual-micro/UNSIGNED-DRIVER.md), or build the driver from source.
 
@@ -206,7 +214,7 @@ Key paths in the repository are:
 - `app/` — the Windows WPF application and source of truth for runtime behavior;
 - `app.Tests/` — regression tests for controller input, localization, navigation, bridge safety, and Codex integration policies;
 - `scripts/` — reproducible Release packaging;
-- `virtual-micro/` — the hostable Micro surface, shared protocol, `CodexMicroVhfUm` device support, and runtime-capability tests;
+- `virtual-micro/` — the standalone original-XAML WPF Micro keypad, shared protocol, `CodexMicroVhfUm` device support, and runtime-capability tests;
 - `docs/` — interaction specifications and active design/consultation notes;
 - `public/docs/` — user-facing command references, release notes, and experimental plans;
 - `todo/` — roadmap organized by major workstream; start with [`todo/README.md`](todo/README.md).

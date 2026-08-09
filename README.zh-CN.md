@@ -56,11 +56,16 @@ Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想�
 
 如果还不熟悉手柄缩写，首页提供可切换的动态教程：基础、点按 Y、按住 LB、扣住 RT、按住 RB 和按下摇杆。点击页签或实际按下对应按键都会切换说明；L3/R3 会同时标为 LS/RS，并用动画说明它们指的是把摇杆帽垂直按下，而不是把摇杆向下拨。
 
-### 已集成的 Codex Micro 面板
+### 独立的 Codex Micro 小键盘
 
-![已集成的 Codex Micro 面板](public/images/codex-micro-simulator.png)
+![Codex Micro 小键盘](public/images/codex-micro-simulator.png)
 
-这个 [Codex Micro 面板](virtual-micro/README.zh-CN.md) 现在由 `AgentController.exe` 直接承载，可通过标题栏的 `MICRO` 按钮或托盘菜单打开。面板保留独立的 Broker 逻辑租约，但与手柄输入共享同一个进程级 Broker 子进程；关闭面板只会隐藏它，不再存在独立模拟器、互斥锁或第二个托盘进程。
+这个 [Codex Micro 小键盘](virtual-micro/README.zh-CN.md) 已从 `AgentController.exe`
+独立出来，同时直接复用原 WPF XAML、控件模板和动画，透明与样式不再近似重画。
+framework-dependent 单文件 zip 约 6.4 MiB，需要 .NET 10 Desktop Runtime x64；
+标题栏的 `MICRO` 按钮和托盘菜单只负责启动外部 `CodexMicro.exe`。小键盘与手柄输入
+保留各自的 Broker 逻辑租约，并共享当前用户唯一的 Broker。窗口固定大小并采用
+应用内移动，不会触发 Windows Snap 自动改窗口大小；通知区域图标提供显示/收起和退出。
 
 可惜的是，也需要依赖驱动，**未签名开发者驱动包**。该驱动包可以省掉 C/C++ 编译步骤，但不是正式安装包；请先[在本机二次签名并安装](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)，或从源码自行构建驱动。
 
@@ -208,7 +213,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
 - `app/` —— Windows WPF 应用，也是运行时行为的事实来源；
 - `app.Tests/` —— 手柄输入、本地化、导航、桥接安全和 Codex 集成策略的回归测试；
 - `scripts/` —— 可复现的 Release 封包脚本；
-- `virtual-micro/` —— 可承载的 Micro 面板、共享协议、`CodexMicroVhfUm` 设备支持和运行时能力测试；
+- `virtual-micro/` —— 直接复用原 XAML 的独立 WPF Micro 小键盘、共享协议、`CodexMicroVhfUm` 设备支持和运行时能力测试；
 - `docs/` —— 交互规范，以及进行中的设计和咨询记录；
 - `public/docs/` —— 面向使用者的指令清单、版本说明和实验计划；
 - `todo/` —— 按大型工作流拆分的路线图；从 [`todo/README.md`](todo/README.md) 开始阅读。

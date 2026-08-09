@@ -1,23 +1,41 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace AgentController.MicroBroker;
 
 internal static class BrokerWire
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
+    internal static Task WriteAsync(
+        Stream stream,
+        BrokerRequest message,
+        CancellationToken cancellationToken) =>
+        WriteAsync(
+            stream,
+            message,
+            BrokerJsonContext.Default.BrokerRequest,
+            cancellationToken);
 
-    internal static async Task WriteAsync<T>(
+    internal static Task WriteAsync(
+        Stream stream,
+        BrokerResponse message,
+        CancellationToken cancellationToken) =>
+        WriteAsync(
+            stream,
+            message,
+            BrokerJsonContext.Default.BrokerResponse,
+            cancellationToken);
+
+    private static async Task WriteAsync<T>(
         Stream stream,
         T message,
+        JsonTypeInfo<T> typeInfo,
         CancellationToken cancellationToken)
     {
         var payload = JsonSerializer.SerializeToUtf8Bytes(
             message,
-            JsonOptions);
+            typeInfo);
         if (payload.Length is <= 0 or > MicroBrokerProtocol.MaximumFrameLength)
         {
             throw new InvalidDataException(
@@ -34,8 +52,25 @@ internal static class BrokerWire
             .ConfigureAwait(false);
     }
 
-    internal static async Task<T> ReadAsync<T>(
+    internal static Task<BrokerRequest> ReadRequestAsync(
         Stream stream,
+        CancellationToken cancellationToken) =>
+        ReadAsync(
+            stream,
+            BrokerJsonContext.Default.BrokerRequest,
+            cancellationToken);
+
+    internal static Task<BrokerResponse> ReadResponseAsync(
+        Stream stream,
+        CancellationToken cancellationToken) =>
+        ReadAsync(
+            stream,
+            BrokerJsonContext.Default.BrokerResponse,
+            cancellationToken);
+
+    private static async Task<T> ReadAsync<T>(
+        Stream stream,
+        JsonTypeInfo<T> typeInfo,
         CancellationToken cancellationToken)
     {
         var header = new byte[sizeof(int)];
@@ -51,7 +86,7 @@ internal static class BrokerWire
         var payload = new byte[length];
         await ReadExactlyAsync(stream, payload, cancellationToken)
             .ConfigureAwait(false);
-        return JsonSerializer.Deserialize<T>(payload, JsonOptions) ??
+        return JsonSerializer.Deserialize(payload, typeInfo) ??
             throw new InvalidDataException(
                 "Micro Broker frame payload is invalid.");
     }
@@ -78,3 +113,10 @@ internal static class BrokerWire
         }
     }
 }
+
+[JsonSourceGenerationOptions(
+    PropertyNameCaseInsensitive = true,
+    GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(BrokerRequest))]
+[JsonSerializable(typeof(BrokerResponse))]
+internal sealed partial class BrokerJsonContext : JsonSerializerContext;

@@ -57,18 +57,35 @@ public static class MicroRpcCodec
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         ArgumentNullException.ThrowIfNull(parameters);
 
-        var message = JsonSerializer.Serialize(new Dictionary<string, object?>
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
         {
-            ["m"] = method,
-            ["p"] = parameters,
-        }) + "\n";
+            writer.WriteStartObject();
+            writer.WriteString("m", method);
+            writer.WritePropertyName("p");
+            WriteDictionary(writer, parameters);
+            writer.WriteEndObject();
+        }
 
-        return EncodeDeviceToHostMessage(message);
+        return EncodeDeviceToHostMessage(
+            Encoding.UTF8.GetString(buffer.WrittenSpan) + "\n");
     }
 
     public static IReadOnlyList<byte[]> EncodeResponse(
         JsonElement id,
-        object? result)
+        bool result) => EncodeResponseCore(
+            id,
+            writer => writer.WriteBooleanValue(result));
+
+    public static IReadOnlyList<byte[]> EncodeResponse(
+        JsonElement id,
+        IReadOnlyDictionary<string, object?> result) => EncodeResponseCore(
+            id,
+            writer => WriteDictionary(writer, result));
+
+    private static IReadOnlyList<byte[]> EncodeResponseCore(
+        JsonElement id,
+        Action<Utf8JsonWriter> writeResult)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -77,7 +94,7 @@ public static class MicroRpcCodec
             writer.WritePropertyName("id");
             id.WriteTo(writer);
             writer.WritePropertyName("result");
-            JsonSerializer.Serialize(writer, result);
+            writeResult(writer);
             writer.WriteEndObject();
         }
 
@@ -192,4 +209,56 @@ public static class MicroRpcCodec
 
     private static bool IsUtf8Continuation(byte value) =>
         (value & 0xC0) == 0x80;
+
+    private static void WriteDictionary(
+        Utf8JsonWriter writer,
+        IReadOnlyDictionary<string, object?> values)
+    {
+        writer.WriteStartObject();
+        foreach (var (name, value) in values)
+        {
+            writer.WritePropertyName(name);
+            WriteValue(writer, value);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteValue(Utf8JsonWriter writer, object? value)
+    {
+        switch (value)
+        {
+            case null:
+                writer.WriteNullValue();
+                break;
+            case string text:
+                writer.WriteStringValue(text);
+                break;
+            case bool boolean:
+                writer.WriteBooleanValue(boolean);
+                break;
+            case int integer:
+                writer.WriteNumberValue(integer);
+                break;
+            case long integer:
+                writer.WriteNumberValue(integer);
+                break;
+            case double number:
+                writer.WriteNumberValue(number);
+                break;
+            case float number:
+                writer.WriteNumberValue(number);
+                break;
+            case JsonElement element:
+                element.WriteTo(writer);
+                break;
+            case IReadOnlyDictionary<string, object?> dictionary:
+                WriteDictionary(writer, dictionary);
+                break;
+            default:
+                throw new ArgumentException(
+                    $"Unsupported Micro RPC JSON value: {value.GetType().Name}.",
+                    nameof(value));
+        }
+    }
 }

@@ -548,7 +548,7 @@ public sealed class MicroBrokerClient : IDisposable
             BrokerWire.WriteAsync(pipe, request, timeout.Token)
                 .GetAwaiter()
                 .GetResult();
-            var response = BrokerWire.ReadAsync<BrokerResponse>(
+            var response = BrokerWire.ReadResponseAsync(
                     pipe,
                     timeout.Token)
                 .GetAwaiter()

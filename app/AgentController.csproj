@@ -47,7 +47,14 @@
     <ProjectReference Include="..\src\AgentController.Application\AgentController.Application.csproj" />
     <ProjectReference Include="..\src\AgentController.Platform.Abstractions\AgentController.Platform.Abstractions.csproj" />
     <ProjectReference Include="..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
-    <ProjectReference Include="..\virtual-micro\src\AgentController.MicroSurface.Wpf\AgentController.MicroSurface.Wpf.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Request-card cancellation is a shared UIA compatibility shim, not
+         part of the keypad UI. Compile the source directly so Agent Controller
+         does not load or reference the retired hosted WPF surface assembly. -->
+    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexRequestCardCancellation.cs"
+             Link="Services\Micro\CodexRequestCardCancellation.cs" />
   </ItemGroup>
 
 </Project>

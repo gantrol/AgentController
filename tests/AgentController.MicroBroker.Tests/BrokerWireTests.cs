@@ -21,7 +21,7 @@ public sealed class BrokerWireTests
             request,
             CancellationToken.None);
         stream.Position = 0;
-        var decoded = await BrokerWire.ReadAsync<BrokerRequest>(
+        var decoded = await BrokerWire.ReadRequestAsync(
             stream,
             CancellationToken.None);
 
@@ -38,7 +38,7 @@ public sealed class BrokerWireTests
         stream.Position = 0;
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
-            BrokerWire.ReadAsync<BrokerRequest>(
+            BrokerWire.ReadRequestAsync(
                 stream,
                 CancellationToken.None));
     }

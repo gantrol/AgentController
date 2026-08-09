@@ -251,7 +251,7 @@ public sealed class MicroBrokerHost : IDisposable
             BrokerRequest? request = null;
             try
             {
-                request = await BrokerWire.ReadAsync<BrokerRequest>(
+                request = await BrokerWire.ReadRequestAsync(
                         pipe,
                         cancellationToken)
                     .ConfigureAwait(false);

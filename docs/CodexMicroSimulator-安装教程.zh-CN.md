@@ -20,9 +20,19 @@
    ```
 
 3. 同意脚本自动弹出的 Windows UAC。末尾出现 `Ready` 才表示新版驱动已经实际加载。如果脚本提示需要重启（退出码 `3010`），请先重启 Windows，再打开 Codex 或 Agent Controller。
-4. 以普通用户身份启动 `AgentController.exe`。点击标题栏的小键盘图标打开 Micro；Micro 默认置顶，右击机身空白处可切换置顶。
+4. 解压 `CodexMicro-Keypad-*-win-x64.zip`，以普通用户身份启动
+   `CodexMicro.exe`。也可以从 Agent Controller 标题栏的小键盘图标启动已放在同目录、
+   `CodexMicro` 子目录或 `%LOCALAPPDATA%\CodexMicro` 中的独立程序。Micro 默认置顶，
+   右击机身空白处可切换置顶。窗口固定大小，拖动机身由应用自行移动，不会进入
+   Windows 的系统移动/缩放循环或触发 Snap。关闭只收起到通知区域；托盘图标双击
+   显示/收起，右键菜单提供“显示/收起小键盘”和“退出”。
+5. 如需改语言，在托盘菜单中打开“语言”，选择自动、简体中文或 English。自动模式
+   优先跟随 Agent Controller，没有明确设置时跟随 Windows；切换立即生效。
+6. 如需登录 Windows 后自动运行，在托盘菜单勾选“开机自启动”。程序会静默进入
+   通知区域；取消勾选即可移除当前用户的启动项，不需要管理员权限。
 
-不要用管理员身份长期运行 Agent Controller，也不要关闭 Windows 驱动签名强制。
+不要用管理员身份长期运行 Agent Controller 或 CodexMicro，也不要关闭 Windows 驱动
+签名强制。
 
 ## 升级
 
@@ -48,7 +58,8 @@ Get-PnpDevice -FriendlyName 'Codex Micro Simulator UMDF2 Virtual HID' |
 - Windows 10/11 x64；
 - 已安装并可登录的 Codex 桌面版；
 - 使用实体手柄时需要 Windows 可识别的 XInput 手柄；使用语音键时需要可用麦克风；
-- Agent Controller Windows 发布包为自包含版本，不需要另装 .NET Runtime。
+- Agent Controller Windows 发布包为自包含版本；单独下载的精简 Micro 小键盘包需要
+  Microsoft .NET 10 Desktop Runtime x64。
 
 ### 本机签名并安装预编译驱动
 

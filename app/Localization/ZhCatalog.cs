@@ -247,7 +247,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.TrayOpenApplication] =
                 "打开 Agent Controller",
             [StringKeys.TrayOpenMicroSurface] =
-                "打开 Micro 面板",
+                "启动独立 Micro 小键盘",
             [StringKeys.TrayOpenAgent] = "打开 {0}",
             [StringKeys.TrayExit] = "退出",
 
