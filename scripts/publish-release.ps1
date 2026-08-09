@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.1",
+    [string]$Version = "1.2.0",
     [string]$Runtime = "win-x64",
     [string]$Repository = "",
     [string]$Tag = "",
-    [string]$NotesFile = "public\docs\release-v1.1.md",
+    [string]$NotesFile = "public\docs\release-v1.2.0.md",
+    [switch]$IncludeCompact,
     [switch]$SkipBuild,
     [switch]$Draft,
     [switch]$Prerelease
@@ -63,6 +64,15 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Release packaging failed with exit code $LASTEXITCODE."
         }
+        if ($IncludeCompact) {
+            & (Join-Path $PSScriptRoot "package-release.ps1") `
+                -Version $releaseVersion `
+                -Runtime $Runtime `
+                -Compact
+            if ($LASTEXITCODE -ne 0) {
+                throw "Compact release packaging failed with exit code $LASTEXITCODE."
+            }
+        }
     }
 
     $packageName = "AgentController-$releaseVersion-$Runtime"
@@ -71,28 +81,40 @@ try {
     $notesPath = [System.IO.Path]::GetFullPath(
         (Join-Path $repoRoot $NotesFile))
 
-    foreach ($path in @($zipPath, $checksumPath, $notesPath)) {
+    $releaseFiles = @($zipPath, $checksumPath)
+    if ($IncludeCompact) {
+        $compactPackageName = "$packageName-compact"
+        $compactZipPath = Join-Path $repoRoot "dist\$compactPackageName.zip"
+        $compactChecksumPath = "$compactZipPath.sha256"
+        $releaseFiles += @($compactZipPath, $compactChecksumPath)
+    }
+
+    foreach ($path in @($releaseFiles + $notesPath)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "Required release file is missing: $path"
         }
     }
 
-    $checksumLine = (
-        Get-Content -LiteralPath $checksumPath -Encoding ascii |
-            Select-Object -First 1)
-    if ($checksumLine -notmatch `
-        "^(?<hash>[0-9a-fA-F]{64})\s+\*?(?<file>.+)$") {
-        throw "Invalid SHA-256 file format: $checksumPath"
-    }
+    for ($index = 0; $index -lt $releaseFiles.Count; $index += 2) {
+        $currentZipPath = $releaseFiles[$index]
+        $currentChecksumPath = $releaseFiles[$index + 1]
+        $checksumLine = (
+            Get-Content -LiteralPath $currentChecksumPath -Encoding ascii |
+                Select-Object -First 1)
+        if ($checksumLine -notmatch `
+            "^(?<hash>[0-9a-fA-F]{64})\s+\*?(?<file>.+)$") {
+            throw "Invalid SHA-256 file format: $currentChecksumPath"
+        }
 
-    $actualHash = (
-        Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
-    ).Hash.ToLowerInvariant()
-    $declaredHash = $Matches.hash.ToLowerInvariant()
-    $declaredFile = $Matches.file.Trim()
-    if ($actualHash -ne $declaredHash -or
-        $declaredFile -ne [System.IO.Path]::GetFileName($zipPath)) {
-        throw "SHA-256 verification failed for $zipPath"
+        $actualHash = (
+            Get-FileHash -LiteralPath $currentZipPath -Algorithm SHA256
+        ).Hash.ToLowerInvariant()
+        $declaredHash = $Matches.hash.ToLowerInvariant()
+        $declaredFile = $Matches.file.Trim()
+        if ($actualHash -ne $declaredHash -or
+            $declaredFile -ne [System.IO.Path]::GetFileName($currentZipPath)) {
+            throw "SHA-256 verification failed for $currentZipPath"
+        }
     }
 
     $title = "Agent Controller v$releaseVersion"
@@ -119,16 +141,19 @@ try {
             $editArguments += "--prerelease"
         }
         Invoke-Checked "gh" $editArguments
-        Invoke-Checked "gh" @(
-            "release", "upload", $Tag,
-            $zipPath, $checksumPath,
-            "--repo", $Repository,
-            "--clobber")
+        $uploadArguments = @(
+            "release", "upload", $Tag) +
+            $releaseFiles +
+            @(
+                "--repo", $Repository,
+                "--clobber")
+        Invoke-Checked "gh" $uploadArguments
     }
     else {
         $createArguments = @(
-            "release", "create", $Tag,
-            $zipPath, $checksumPath,
+            "release", "create", $Tag) +
+            $releaseFiles +
+            @(
             "--repo", $Repository,
             "--title", $title,
             "--notes-file", $notesPath,

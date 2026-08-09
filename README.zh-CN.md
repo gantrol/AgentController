@@ -3,7 +3,7 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-1.1-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
+![version](https://img.shields.io/badge/version-1.2.0-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
 
 ![Codex Micro 桌面模拟器](public/images/codex-micro-simulator.png)
 
@@ -62,7 +62,8 @@ Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想�
 
 这个 [Codex Micro 小键盘](virtual-micro/README.zh-CN.md) 已从 `AgentController.exe`
 独立出来，同时直接复用原 WPF XAML、控件模板和动画，透明与样式不再近似重画。
-framework-dependent 单文件 zip 约 6.4 MiB，需要 .NET 10 Desktop Runtime x64；
+framework-dependent 单文件 zip 约 6.4 MiB，需要安装
+[微软官方 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)；
 标题栏的 `MICRO` 按钮和托盘菜单只负责启动外部 `CodexMicro.exe`。小键盘与手柄输入
 保留各自的 Broker 逻辑租约，并共享当前用户唯一的 Broker。窗口固定大小并采用
 应用内移动，不会触发 Windows Snap 自动改窗口大小；通知区域图标提供显示/收起和退出。
@@ -107,7 +108,7 @@ Codex 发送动作，也不宣称具备虚拟 Micro 完整模式。构建与验�
 5. 部分功能可能需要重启 Codex 桌面软件（ ChatGPT）后生效，尤其是 Agent Controller 首次写入或更新 Codex 快捷键之后。
 6. 如需完整的 Micro-first HID 路径，请另外安装仓库中唯一受支持的 `CodexMicroVhfUm`（UMDF2/VHF）Device Support。当前只提供未签名开发者流程，请先阅读[本地安装说明](docs/CodexMicroSimulator-安装教程.zh-CN.md)和[未签名驱动说明](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)。
 
-v1.1 Windows 包为自包含版本，不需要另行安装 .NET Runtime。没有驱动时，Agent Controller 仍可运行，但只会对明确 `NotSent` 的操作尝试有限回退，不能视为完整 Micro 兼容模式。
+v1.2.0 同时提供 Windows 自包含包和体积更小的 `-compact` 精简包。精简包需要安装[微软官方 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)，自包含包则不需要。没有驱动时，Agent Controller 仍可运行，但只会对明确 `NotSent` 的操作尝试有限回退，不能视为完整 Micro 兼容模式。
 
 ### 按键速查
 
@@ -152,7 +153,7 @@ v1.1 Windows 包为自包含版本，不需要另行安装 .NET Runtime。没有
 
 界面支持简体中文、English，或跟随 Windows 显示语言。
 
-更完整的实现状态和边界情况，请参阅 [v1 操作清单](public/docs/controller-operations.md)、[架构与输入链路](public/docs/architecture-and-input-flow.md)、[Micro 指令表](public/docs/codex-micro-command-reference.md)与 [v1.1 版本说明](public/docs/release-v1.1.md)。
+更完整的实现状态和边界情况，请参阅 [v1 操作清单](public/docs/controller-operations.md)、[架构与输入链路](public/docs/architecture-and-input-flow.md)、[Micro 指令表](public/docs/codex-micro-command-reference.md)与 [v1.2.0 版本说明](public/docs/release-v1.2.0.md)。
 
 ### 已知限制
 
@@ -178,10 +179,11 @@ v1.1 Windows 包为自包含版本，不需要另行安装 .NET Runtime。没有
 ```powershell
 dotnet build AgentController.sln -c Release
 dotnet test AgentController.sln -c Release
-./scripts/package-release.ps1 -Version 1.1
+./scripts/package-release.ps1 -Version 1.2.0
+./scripts/package-release.ps1 -Version 1.2.0 -Compact
 ```
 
-编译产物位于 `app/bin/Release/net10.0-windows10.0.19041.0/`。封包脚本会在 `dist/` 生成自包含的 Windows x64 zip 与 SHA-256 校验文件。
+编译产物位于 `app/bin/Release/net10.0-windows10.0.19041.0/`。第一条封包命令生成 Windows x64 自包含包，`-Compact` 生成 framework-dependent 精简包；两种压缩包及其 SHA-256 都写入 `dist/`。
 
 如需交叉生成 Apple Silicon 与 Intel 的未签名 macOS Foundation Preview，请运行：
 
@@ -195,10 +197,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
 如需创建或更新 GitHub Release 并上传两个产物，请先安装并登录 GitHub CLI、推送对应标签，然后运行：
 
 ```powershell
-./scripts/publish-release.ps1 -Version 1.1
+./scripts/publish-release.ps1 -Version 1.2.0 -IncludeCompact
 ```
 
-该命令会重新构建发布包、核验 SHA-256、检查远程标签，并以幂等方式创建或更新 Release。若只需上传现有产物，可加 `-SkipBuild`。
+该命令会重新构建两种发布包、核验各自的 SHA-256、检查远程标签，并以幂等方式创建或更新 Release。若只需上传现有产物，可加 `-SkipBuild`。
 
 ### 如果你想改源码
 

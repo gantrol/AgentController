@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.1",
-    [string]$Runtime = "win-x64"
+    [string]$Version = "1.2.0",
+    [string]$Runtime = "win-x64",
+    [switch]$Compact,
+    [double]$MaximumCompactPackageMiB = 30
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,11 +11,12 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot ".."))
+$packageSuffix = if ($Compact) { "-compact" } else { "" }
+$packageName = "AgentController-$Version-$Runtime$packageSuffix"
 $artifactRoot = [System.IO.Path]::GetFullPath(
-    (Join-Path $repoRoot ".artifacts\release\$Version"))
+    (Join-Path $repoRoot ".artifacts\release\$Version\$packageName"))
 $dotnetArtifactsRoot = Join-Path $artifactRoot "dotnet"
 $publishRoot = Join-Path $artifactRoot "publish"
-$packageName = "AgentController-$Version-$Runtime"
 $packageRoot = Join-Path $artifactRoot $packageName
 $distRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repoRoot "dist"))
@@ -37,6 +40,10 @@ Assert-WorkspaceChild $distRoot
 Assert-WorkspaceChild $zipPath
 Assert-WorkspaceChild $checksumPath
 
+if ($Compact -and $MaximumCompactPackageMiB -le 0) {
+    throw "MaximumCompactPackageMiB must be greater than zero."
+}
+
 if (Test-Path -LiteralPath $artifactRoot) {
     Remove-Item -LiteralPath $artifactRoot -Recurse -Force
 }
@@ -46,17 +53,23 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 
 $project = Join-Path $repoRoot "app\AgentController.csproj"
-& dotnet publish $project `
-    -c Release `
-    -r $Runtime `
-    --artifacts-path $dotnetArtifactsRoot `
-    --self-contained true `
-    --output $publishRoot `
-    -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:EnableCompressionInSingleFile=true `
-    -p:DebugType=None `
-    -p:DebugSymbols=false
+$selfContained = if ($Compact) { "false" } else { "true" }
+$publishArguments = @(
+    "publish", $project,
+    "-c", "Release",
+    "-r", $Runtime,
+    "--artifacts-path", $dotnetArtifactsRoot,
+    "--self-contained", $selfContained,
+    "--output", $publishRoot,
+    "-p:PublishSingleFile=true",
+    "-p:DebugType=None",
+    "-p:DebugSymbols=false")
+if (-not $Compact) {
+    $publishArguments += @(
+        "-p:IncludeNativeLibrariesForSelfExtract=true",
+        "-p:EnableCompressionInSingleFile=true")
+}
+& dotnet @publishArguments
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
@@ -92,7 +105,7 @@ Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\controller-operations.md") `
     -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "public\docs\release-v1.1.md") `
+    Join-Path $repoRoot "public\docs\release-v$Version.md") `
     -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\architecture-and-input-flow.md") `
@@ -132,6 +145,15 @@ Compress-Archive `
     -DestinationPath $zipPath `
     -CompressionLevel Optimal
 
+$packageBytes = (Get-Item -LiteralPath $zipPath).Length
+if ($Compact) {
+    $maximumBytes = [long]($MaximumCompactPackageMiB * 1MB)
+    if ($packageBytes -gt $maximumBytes) {
+        throw ("Compact package is {0:N2} MiB, above the {1:N2} MiB limit." -f `
+            ($packageBytes / 1MB), $MaximumCompactPackageMiB)
+    }
+}
+
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256)
 $checksumLine = "{0} *{1}" -f `
     $hash.Hash.ToLowerInvariant(), `
@@ -141,5 +163,12 @@ Set-Content `
     -Value $checksumLine `
     -Encoding ascii
 
-Write-Host "Package: $zipPath"
+if ($Compact) {
+    Write-Host ("Compact package: {0} ({1:N2} MiB / {2:N2} MiB limit)" -f `
+        $zipPath, ($packageBytes / 1MB), $MaximumCompactPackageMiB)
+}
+else {
+    Write-Host ("Self-contained package: {0} ({1:N2} MiB)" -f `
+        $zipPath, ($packageBytes / 1MB))
+}
 Write-Host "SHA256: $($hash.Hash.ToLowerInvariant())"
