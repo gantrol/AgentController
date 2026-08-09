@@ -38,6 +38,9 @@ Microsoft .NET 10 Desktop Runtime x64.
 - Start with Windows can be enabled or disabled from the tray menu. When
   enabled, sign-in starts the keypad quietly in the notification area without
   opening its panel.
+- Reverse dial direction can be toggled from the tray menu. It takes effect
+  immediately and is stored with the language preference. Off preserves the
+  physical Codex Micro mapping; on makes clockwise increase reasoning effort.
 - Pointer input does not activate the keypad, preserving focus in Codex.
 
 ## Interface language
@@ -56,7 +59,9 @@ is also automatic or unavailable.
 - Four command keys send `ACT06` through `ACT09`; the Codex key sends `ACT12`.
 - Push-to-talk sends `ACT10 down` on press and `ACT10 up` on release.
 - The white encoder supports wheel, drag, and click for `ENC_CW`, `ENC_CC`, and
-  `ENC`.
+  `ENC`. Its visual rotation always follows the pointer while the optional
+  reverse-direction setting swaps the reported clockwise/counter-clockwise
+  events.
 - The joystick sends continuous analog input and neutralizes on release.
 - The lower-left knob sends the real 650 ms `ENC` hold that asks Codex to open
   its Micro settings.
@@ -86,13 +91,13 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 1.2.0
+.\scripts\package-micro.ps1 -Version 0.2.1
 ```
 
 Outputs:
 
-- single-file executable: `.artifacts/micro-release/1.2.0/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-1.2.0-win-x64.zip`;
+- single-file executable: `.artifacts/micro-release/0.2.1/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.2.1-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
 
 The packaging script includes only `CodexMicro.exe`, the READMEs, and the

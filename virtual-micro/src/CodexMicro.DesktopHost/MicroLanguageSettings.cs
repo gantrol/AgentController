@@ -9,6 +9,9 @@ internal sealed class MicroLanguageSettings
 {
     private readonly string _settingsPath;
     private readonly string[] _agentControllerSettingsPaths;
+    private MicroLanguage _language;
+
+    internal bool InvertDialDirection { get; private set; }
 
     internal MicroLanguageSettings()
     {
@@ -23,17 +26,32 @@ internal sealed class MicroLanguageSettings
             Path.Combine(localAppData, "AgentController", "settings.json"),
             Path.Combine(localAppData, "CodexController", "settings.json"),
         ];
+        var stored = ReadStoredSettings(_settingsPath);
+        _language = MicroLocalization.Parse(stored?.Language);
+        InvertDialDirection = stored?.InvertDialDirection ?? false;
     }
 
     internal MicroLocalization CreateLocalization()
     {
         return new MicroLocalization(
-            LoadPreference(),
+            _language,
             ReadAgentControllerLanguage,
             () => CultureInfo.CurrentUICulture);
     }
 
     internal void Save(MicroLanguage language)
+    {
+        _language = language;
+        Save();
+    }
+
+    internal void SaveInvertDialDirection(bool invertDialDirection)
+    {
+        InvertDialDirection = invertDialDirection;
+        Save();
+    }
+
+    private void Save()
     {
         try
         {
@@ -42,7 +60,8 @@ internal sealed class MicroLanguageSettings
             var json = JsonSerializer.Serialize(
                 new StoredSettings
                 {
-                    Language = MicroLocalization.ToSettingValue(language),
+                    Language = MicroLocalization.ToSettingValue(_language),
+                    InvertDialDirection = InvertDialDirection,
                 },
                 new JsonSerializerOptions { WriteIndented = true });
             var temporaryPath = _settingsPath + ".tmp";
@@ -53,11 +72,6 @@ internal sealed class MicroLanguageSettings
         {
             // A read-only profile must not prevent an in-memory language switch.
         }
-    }
-
-    private MicroLanguage LoadPreference()
-    {
-        return ReadLanguage(_settingsPath) ?? MicroLanguage.Auto;
     }
 
     private MicroLanguage? ReadAgentControllerLanguage()
@@ -107,8 +121,32 @@ internal sealed class MicroLanguageSettings
         return null;
     }
 
+    private static StoredSettings? ReadStoredSettings(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            return JsonSerializer.Deserialize<StoredSettings>(
+                File.ReadAllText(path),
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private sealed class StoredSettings
     {
         public string Language { get; set; } = "auto";
+
+        public bool InvertDialDirection { get; set; }
     }
 }

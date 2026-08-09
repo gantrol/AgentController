@@ -9,14 +9,17 @@ internal sealed class MicroTrayIcon : IDisposable
 {
     private readonly MicroSurfaceController _surface;
     private readonly MicroLocalization _localization;
+    private readonly DialDirectionSettings _dialDirectionSettings;
     private readonly MicroStartupRegistration _startupRegistration;
     private readonly Action<MicroLanguage> _setLanguage;
+    private readonly Action<bool> _setInvertDialDirection;
     private readonly Action _exit;
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _toggleItem;
     private readonly ToolStripMenuItem _languageItem;
     private readonly ToolStripMenuItem _startupItem;
+    private readonly ToolStripMenuItem _invertDialDirectionItem;
     private readonly ToolStripMenuItem _autoLanguageItem;
     private readonly ToolStripMenuItem _zhCnLanguageItem;
     private readonly ToolStripMenuItem _enUsLanguageItem;
@@ -27,14 +30,18 @@ internal sealed class MicroTrayIcon : IDisposable
     internal MicroTrayIcon(
         MicroSurfaceController surface,
         MicroLocalization localization,
+        DialDirectionSettings dialDirectionSettings,
         MicroStartupRegistration startupRegistration,
         Action<MicroLanguage> setLanguage,
+        Action<bool> setInvertDialDirection,
         Action exit)
     {
         _surface = surface;
         _localization = localization;
+        _dialDirectionSettings = dialDirectionSettings;
         _startupRegistration = startupRegistration;
         _setLanguage = setLanguage;
+        _setInvertDialDirection = setInvertDialDirection;
         _exit = exit;
         _menu = new ContextMenuStrip();
         _toggleItem = new ToolStripMenuItem(
@@ -46,6 +53,10 @@ internal sealed class MicroTrayIcon : IDisposable
             string.Empty,
             image: null,
             (_, _) => ToggleStartup());
+        _invertDialDirectionItem = new ToolStripMenuItem(
+            string.Empty,
+            image: null,
+            (_, _) => ToggleDialDirection());
         _autoLanguageItem = CreateLanguageItem(MicroLanguage.Auto);
         _zhCnLanguageItem = CreateLanguageItem(MicroLanguage.ZhCn);
         _enUsLanguageItem = CreateLanguageItem(MicroLanguage.EnUs);
@@ -61,6 +72,7 @@ internal sealed class MicroTrayIcon : IDisposable
             (_, _) => _exit());
         _menu.Items.Add(_toggleItem);
         _menu.Items.Add(_startupItem);
+        _menu.Items.Add(_invertDialDirectionItem);
         _menu.Items.Add(_languageItem);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(_exitItem);
@@ -149,6 +161,12 @@ internal sealed class MicroTrayIcon : IDisposable
         RefreshText();
     }
 
+    private void ToggleDialDirection()
+    {
+        _setInvertDialDirection(!_dialDirectionSettings.InvertDirection);
+        RefreshText();
+    }
+
     private void RefreshText()
     {
         var english = _localization.IsEnglish;
@@ -160,6 +178,11 @@ internal sealed class MicroTrayIcon : IDisposable
             ? "Start with Windows"
             : "开机自启动";
         _startupItem.Checked = _startupRegistration.IsEnabled;
+        _invertDialDirectionItem.Text = english
+            ? "Reverse dial direction"
+            : "反转旋钮方向";
+        _invertDialDirectionItem.Checked =
+            _dialDirectionSettings.InvertDirection;
         _autoLanguageItem.Text = english
             ? "Auto (Agent Controller / Windows)"
             : "自动（跟随 Agent Controller / Windows）";

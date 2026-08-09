@@ -32,6 +32,7 @@ public partial class MicroSurfaceWindow : Window
 
     private readonly VirtualMicroBroker _broker = new();
     private readonly MicroLocalization _localization;
+    private readonly DialDirectionSettings _dialDirectionSettings;
     private readonly Dictionary<FrameworkElement, (string Title, string Detail)>
         _helpContent = [];
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
@@ -88,14 +89,18 @@ public partial class MicroSurfaceWindow : Window
     private string _status = "正在检查 Codex 与虚拟 HID。";
 
     public MicroSurfaceWindow()
-        : this(new MicroLocalization())
+        : this(new MicroLocalization(), new DialDirectionSettings())
     {
     }
 
-    internal MicroSurfaceWindow(MicroLocalization localization)
+    internal MicroSurfaceWindow(
+        MicroLocalization localization,
+        DialDirectionSettings? dialDirectionSettings = null)
     {
         _localization = localization ??
             throw new ArgumentNullException(nameof(localization));
+        _dialDirectionSettings = dialDirectionSettings ??
+            new DialDirectionSettings();
         InitializeComponent();
         _agentKeys =
         [
@@ -821,7 +826,9 @@ public partial class MicroSurfaceWindow : Window
             }
 
             var step = intent.Direction;
-            var clockwise = step > 0;
+            var physicalClockwise = step > 0;
+            var reportedClockwise =
+                _dialDirectionSettings.ToReportedClockwise(physicalClockwise);
             var routesDialog = _cachedDialSelection is
             {
                 Surface: CodexSelectionSurface.Dialog,
@@ -829,7 +836,7 @@ public partial class MicroSurfaceWindow : Window
             Exception? animationError = null;
             try
             {
-                AnimateDialStep(clockwise);
+                AnimateDialStep(physicalClockwise);
             }
             catch (Exception exception)
             {
@@ -839,13 +846,13 @@ public partial class MicroSurfaceWindow : Window
             Func<Task<MicroSendResult>> sendStep = routesDialog
                 ? () => _broker.TapDialogKeyAsync(
                     BrokerKeyboardKey.Tab,
-                    shift: clockwise)
-                : () => _broker.StepEncoderAsync(clockwise);
+                    shift: reportedClockwise)
+                : () => _broker.StepEncoderAsync(reportedClockwise);
             var stepLabel = routesDialog
-                ? clockwise
+                ? reportedClockwise
                     ? "确认框向上选择 · VHF Shift+Tab"
                     : "确认框向下选择 · VHF Tab"
-                : clockwise
+                : reportedClockwise
                     ? "向上选择 · ENC_CW"
                     : "向下选择 · ENC_CC";
             var result = await RunActionAsync(sendStep, stepLabel);
@@ -857,8 +864,8 @@ public partial class MicroSurfaceWindow : Window
                 AutomationProperties.SetItemStatus(
                     DialButton,
                     Localize($"{(routesDialog
-                        ? clockwise ? "VHF Shift+Tab" : "VHF Tab"
-                        : clockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}"));
+                        ? reportedClockwise ? "VHF Shift+Tab" : "VHF Tab"
+                        : reportedClockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}"));
                 QueueDialSelectionFeedback();
             }
             else

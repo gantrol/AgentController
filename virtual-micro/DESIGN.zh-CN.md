@@ -1,6 +1,6 @@
 # Codex Micro 桌面模拟器设计说明
 
-> v1.2.0 实现说明：发行窗口由独立进程直接加载原透明 WPF XAML、资源字典、控件
+> v0.2.1 实现说明：发行窗口由独立进程直接加载原透明 WPF XAML、资源字典、控件
 > 模板和动画。`590 × 610` 几何、透明合成、悬停卡片、托盘和可访问性胶囊都是
 > 当前发行物本身，不再由另一套绘图技术近似重画。
 
@@ -101,6 +101,7 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 | 动作键 | 单击 | 发送对应 `v.oai.hid` 按下/释放报告 |
 | 语音键 | 按住/松开 | 分别发送 `ACT10` 按下和释放，保持 Codex PTT 时序 |
 | 左上旋钮 | 滚轮或上下拖动 | 按离散步进顺序发送 `ENC_CW` / `ENC_CC` |
+| 左上旋钮 | 启用“反转旋钮方向”后旋转 | 保持实体旋转动画，交换上报的 `ENC_CW` / `ENC_CC`；顺时针提高推理强度 |
 | 左上旋钮 | 短按 | 发送一次 `ENC` 按下/释放，打开或确认 Codex 当前高亮项 |
 | 左上旋钮 | 权限模式选择面中旋转 | 继续通过官方 Micro bridge 发送 `ENC_CW` / `ENC_CC`，遍历 Ask for approval、Approve for me 与 Full access |
 | 左上旋钮 | Full access 确认框中旋转 | 通过受限 VHF 键盘子设备发送 Shift+Tab / Tab，移动确认按钮焦点 |
@@ -160,6 +161,8 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
   Windows UI 语言；独立选择保存在当前用户的 CodexMicro 设置目录。
 - 托盘“开机自启动”只写入当前用户 Run 项；登录后以 `--background` 启动，创建
   托盘图标但不显示面板。关闭开关会删除该启动项，不需要管理员权限。
+- 托盘“反转旋钮方向”即时交换白色旋钮上报的顺逆时针事件，并与语言一同保存到
+  `%LOCALAPPDATA%\CodexMicro\settings.json`；默认关闭以保持实体硬件兼容行为。
 
 ## 6. 状态反馈
 

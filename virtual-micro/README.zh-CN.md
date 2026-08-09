@@ -27,6 +27,8 @@ Microsoft .NET 10 Desktop Runtime x64。
 - 通知区域图标双击可显示/收起；右键菜单提供“显示/收起小键盘”和“退出”；
 - 托盘菜单的“开机自启动”可随时启用或关闭；启用后登录 Windows 时静默启动到
   通知区域，不主动弹出小键盘；
+- 托盘菜单新增“反转旋钮方向”；切换后立即生效并与语言设置一同保存。关闭时保持
+  实体 Codex Micro 的官方方向，开启后顺时针旋转会提高模型推理强度；
 - 鼠标输入不会激活小键盘，因此 Codex 的输入焦点保持不变。
 
 ## 界面语言
@@ -41,7 +43,8 @@ Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟
 - 6 个 Agent 键发送 `AG00`–`AG05`，并显示 Codex 返回的槽位灯光；
 - 4 个命令键发送 `ACT06`–`ACT09`，Codex 键发送 `ACT12`；
 - 语音键按下发送 `ACT10 down`，松开后发送 `ACT10 up`；
-- 白色旋钮支持滚轮、拖动和短按，发送 `ENC_CW`、`ENC_CC` 与 `ENC`；
+- 白色旋钮支持滚轮、拖动和短按，发送 `ENC_CW`、`ENC_CC` 与 `ENC`；视觉动画始终
+  跟随鼠标手势，可选的反转设置只交换发给 Codex 的顺/逆时针事件；
 - 摇杆支持连续拖动并在松开时回中；
 - 左下设置旋钮发送真实的 650 ms `ENC` 长按，交由 Codex 打开 Micro 设置。
 
@@ -67,13 +70,13 @@ Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 1.2.0
+.\scripts\package-micro.ps1 -Version 0.2.1
 ```
 
 产物：
 
-- 单文件可执行程序：`.artifacts/micro-release/1.2.0/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-1.2.0-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.1/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.1-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
 
 封包脚本只收录 `CodexMicro.exe`、README 和许可证，不复制 Desktop Runtime、调试符号

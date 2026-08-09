@@ -15,6 +15,7 @@ public partial class App : System.Windows.Application
     private MicroTrayIcon? _trayIcon;
     private MicroLanguageSettings? _languageSettings;
     private MicroLocalization? _localization;
+    private DialDirectionSettings? _dialDirectionSettings;
     private MicroStartupRegistration? _startupRegistration;
     private bool _exiting;
 
@@ -41,16 +42,26 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         _languageSettings = new MicroLanguageSettings();
         _localization = _languageSettings.CreateLocalization();
+        _dialDirectionSettings = new DialDirectionSettings(
+            _languageSettings.InvertDialDirection);
         _startupRegistration = new MicroStartupRegistration();
-        _surface = new MicroSurfaceController(_localization);
+        _surface = new MicroSurfaceController(
+            _localization,
+            _dialDirectionSettings);
         _trayIcon = new MicroTrayIcon(
             _surface,
             _localization,
+            _dialDirectionSettings,
             _startupRegistration,
             language =>
             {
                 _localization.SetLanguage(language);
                 _languageSettings.Save(language);
+            },
+            invertDirection =>
+            {
+                _dialDirectionSettings.InvertDirection = invertDirection;
+                _languageSettings.SaveInvertDialDirection(invertDirection);
             },
             ExitApplication);
         if (!e.Args.Contains(
@@ -68,6 +79,7 @@ public partial class App : System.Windows.Application
         _surface?.Dispose();
         _surface = null;
         _localization = null;
+        _dialDirectionSettings = null;
         _languageSettings = null;
         _startupRegistration = null;
         if (_ownsSingleInstance)

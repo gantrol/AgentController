@@ -13,13 +13,18 @@ public sealed class MicroSurfaceController : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly MicroLocalization _localization;
+    private readonly DialDirectionSettings _dialDirectionSettings;
     private MicroSurfaceWindow? _window;
     private bool _disposed;
 
-    public MicroSurfaceController(MicroLocalization? localization = null)
+    public MicroSurfaceController(
+        MicroLocalization? localization = null,
+        DialDirectionSettings? dialDirectionSettings = null)
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
         _localization = localization ?? new MicroLocalization();
+        _dialDirectionSettings = dialDirectionSettings ??
+            new DialDirectionSettings();
     }
 
     public bool IsVisible =>
@@ -64,7 +69,9 @@ public sealed class MicroSurfaceController : IDisposable
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return _window ??= new MicroSurfaceWindow(_localization);
+            return _window ??= new MicroSurfaceWindow(
+                _localization,
+                _dialDirectionSettings);
         }
     }
 
