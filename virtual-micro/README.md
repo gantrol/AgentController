@@ -91,13 +91,13 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.1
+.\scripts\package-micro.ps1 -Version 0.2.2
 ```
 
 Outputs:
 
-- single-file executable: `.artifacts/micro-release/0.2.1/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-0.2.1-win-x64.zip`;
+- single-file executable: `.artifacts/micro-release/0.2.2/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.2.2-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
 
 The packaging script includes only `CodexMicro.exe`, the READMEs, and the

@@ -70,13 +70,13 @@ Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.1
+.\scripts\package-micro.ps1 -Version 0.2.2
 ```
 
 产物：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.1/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.1-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.2/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.2-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
 
 封包脚本只收录 `CodexMicro.exe`、README 和许可证，不复制 Desktop Runtime、调试符号

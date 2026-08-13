@@ -24,6 +24,8 @@ public partial class MicroSurfaceWindow : Window
         TimeSpan.FromMilliseconds(24);
     private static readonly TimeSpan EncoderIntentMaximumAge =
         TimeSpan.FromMilliseconds(180);
+    private static readonly TimeSpan QuotaRefreshInterval =
+        TimeSpan.FromMinutes(2);
 
     private readonly record struct JoystickReport(
         double Angle,
@@ -38,6 +40,7 @@ public partial class MicroSurfaceWindow : Window
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
     private readonly CodexAgentRosterObserver _agentRosterObserver = new();
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
+    private readonly CodexQuotaService _quotaService = new();
     private readonly DialGestureTracker _dialGesture = new();
     private readonly EncoderStepAccumulator _encoderSteps = new(3);
     private readonly SemaphoreSlim _encoderInputGate = new(1, 1);
@@ -45,6 +48,11 @@ public partial class MicroSurfaceWindow : Window
         _dialSelectionHideTimer = new()
         {
             Interval = TimeSpan.FromMilliseconds(2400),
+        };
+    private readonly System.Windows.Threading.DispatcherTimer
+        _quotaRefreshTimer = new()
+        {
+            Interval = QuotaRefreshInterval,
         };
     private readonly LinkedList<JoystickReport> _joystickReportQueue = new();
     private readonly IReadOnlyDictionary<string, (Button Button, KeycapIcon Icon)>
@@ -76,6 +84,9 @@ public partial class MicroSurfaceWindow : Window
     private long _dialSurfaceNotBeforeTimestamp;
     private CodexMenuSelection? _cachedDialSelection;
     private string? _dialSelectionText;
+    private CancellationTokenSource? _quotaRefreshCancellation;
+    private CodexQuotaSnapshot? _quotaSnapshot;
+    private bool _quotaRefreshFailed;
     private bool _windowClosed;
     private bool _allowApplicationClose;
     private bool _windowMoving;
@@ -161,9 +172,11 @@ public partial class MicroSurfaceWindow : Window
         _layoutObserver.LayoutChanged += LayoutObserver_LayoutChanged;
         _agentRosterObserver.RosterChanged += AgentRosterObserver_RosterChanged;
         _dialSelectionHideTimer.Tick += DialSelectionHideTimer_Tick;
+        _quotaRefreshTimer.Tick += QuotaRefreshTimer_Tick;
         _localization.LanguageChanged += Localization_LanguageChanged;
         RefreshLocalizedChrome();
         InitializeHoverHelp();
+        UpdateQuotaPresentation();
         ApplyLayout(_layoutObserver.Current);
         SetStatus(_status);
     }
@@ -251,6 +264,8 @@ public partial class MicroSurfaceWindow : Window
         _dialSelectionFeedbackVersion++;
         _dialSelectionHideTimer.Stop();
         _dialSelectionHideTimer.Tick -= DialSelectionHideTimer_Tick;
+        PauseQuotaRefresh();
+        _quotaRefreshTimer.Tick -= QuotaRefreshTimer_Tick;
         if (_windowSource is not null)
         {
             _windowSource.RemoveHook(WindowMessageHook);
@@ -266,6 +281,84 @@ public partial class MicroSurfaceWindow : Window
         _agentRosterObserver.Dispose();
         _localization.LanguageChanged -= Localization_LanguageChanged;
         _broker.Dispose();
+    }
+
+    private void Window_IsVisibleChanged(
+        object sender,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true)
+        {
+            StartQuotaRefresh();
+        }
+        else
+        {
+            PauseQuotaRefresh();
+        }
+    }
+
+    private void StartQuotaRefresh()
+    {
+        if (_windowClosed || !IsVisible)
+        {
+            return;
+        }
+
+        _quotaRefreshTimer.Start();
+        _ = RefreshQuotaAsync();
+    }
+
+    private void PauseQuotaRefresh()
+    {
+        _quotaRefreshTimer.Stop();
+        _quotaRefreshCancellation?.Cancel();
+    }
+
+    private void QuotaRefreshTimer_Tick(object? sender, EventArgs e) =>
+        _ = RefreshQuotaAsync();
+
+    private async Task RefreshQuotaAsync()
+    {
+        if (_windowClosed ||
+            !IsVisible ||
+            _quotaRefreshCancellation is not null)
+        {
+            return;
+        }
+
+        var refresh = new CancellationTokenSource();
+        _quotaRefreshCancellation = refresh;
+        try
+        {
+            var snapshot = await _quotaService.ReadAsync(refresh.Token);
+            if (refresh.IsCancellationRequested || _windowClosed)
+            {
+                return;
+            }
+
+            _quotaRefreshFailed = snapshot is null;
+            if (snapshot is not null)
+            {
+                _quotaSnapshot = snapshot;
+            }
+
+            UpdateQuotaPresentation();
+        }
+        finally
+        {
+            if (ReferenceEquals(_quotaRefreshCancellation, refresh))
+            {
+                _quotaRefreshCancellation = null;
+            }
+
+            var retryAfterQuickReshow =
+                refresh.IsCancellationRequested && IsVisible && !_windowClosed;
+            refresh.Dispose();
+            if (retryAfterQuickReshow)
+            {
+                _ = RefreshQuotaAsync();
+            }
+        }
     }
 
     private async Task ConnectAsync()
@@ -1928,6 +2021,212 @@ public partial class MicroSurfaceWindow : Window
         }
     }
 
+    internal void ApplyQuotaSnapshot(
+        CodexQuotaSnapshot? snapshot,
+        bool refreshFailed = false)
+    {
+        _quotaSnapshot = snapshot;
+        _quotaRefreshFailed = refreshFailed;
+        UpdateQuotaPresentation();
+    }
+
+    private void UpdateQuotaPresentation()
+    {
+        var english = _localization.IsEnglish;
+        QuotaCaptionText.Text = english ? "LEFT" : "剩余";
+
+        if (_quotaSnapshot is null)
+        {
+            QuotaValueText.Text = "—";
+            QuotaValueText.FontSize = 15;
+            QuotaGauge.Opacity = 0.76;
+            QuotaProgressRing.Data = Geometry.Empty;
+            QuotaProgressRing.Stroke = new SolidColorBrush(
+                Color.FromRgb(0xA7, 0xAF, 0xB8));
+            AutomationProperties.SetItemStatus(
+                SettingsKey,
+                english ? "Quota unavailable" : "额度暂不可用");
+
+            var title = english ? "Codex quota" : "Codex 剩余额度";
+            var state = _quotaRefreshFailed
+                ? english
+                    ? "Quota is temporarily unavailable. It remains unknown rather than being shown as 0%, and will retry while the panel is visible."
+                    : "暂时无法读取额度。当前保持未知状态，不会误显示为 0%；面板显示时会自动重试。"
+                : english
+                    ? "Reading the remaining Codex quota."
+                    : "正在读取 Codex 剩余额度。";
+            var controls = english
+                ? "Left-click: open Micro settings · Right-click: reconnect the virtual HID."
+                : "左键：打开 Micro 设置 · 右键：重新连接虚拟 HID。";
+            ApplyHelp(SettingsKey, title, $"{state}\n\n{controls}");
+            return;
+        }
+
+        var displayWindow = _quotaSnapshot.DisplayWindow;
+        var remaining = displayWindow.RemainingPercent;
+        var roundedRemaining = (int)Math.Round(
+            remaining,
+            MidpointRounding.AwayFromZero);
+        var accent = GetQuotaAccent(remaining);
+
+        QuotaValueText.Text = $"{roundedRemaining}%";
+        QuotaValueText.FontSize = roundedRemaining == 100 ? 13.5 : 15;
+        QuotaGauge.Opacity = 1;
+        QuotaProgressRing.Data = CreateQuotaArcGeometry(remaining);
+        QuotaProgressRing.Stroke = new SolidColorBrush(accent);
+        AutomationProperties.SetItemStatus(
+            SettingsKey,
+            english
+                ? $"{roundedRemaining}% quota remaining"
+                : $"剩余额度 {roundedRemaining}%");
+
+        var titleText = english
+            ? $"Codex quota · {roundedRemaining}% left"
+            : $"Codex 剩余额度 · {roundedRemaining}%";
+        ApplyHelp(
+            SettingsKey,
+            titleText,
+            BuildQuotaHelpDetail(_quotaSnapshot, english));
+    }
+
+    private string BuildQuotaHelpDetail(
+        CodexQuotaSnapshot snapshot,
+        bool english)
+    {
+        var displayWindow = snapshot.DisplayWindow;
+        var culture = CultureInfo.GetCultureInfo(english ? "en-US" : "zh-CN");
+        var lines = snapshot.Windows
+            .OrderBy(window => window.WindowDurationMinutes)
+            .Select(window =>
+            {
+                var marker = ReferenceEquals(window, displayWindow) ? "●" : "○";
+                var label = FormatQuotaWindowLabel(
+                    window.WindowDurationMinutes,
+                    english);
+                var remaining = (int)Math.Round(
+                    window.RemainingPercent,
+                    MidpointRounding.AwayFromZero);
+                var reset = window.ResetsAt.ToLocalTime().ToString(
+                    english ? "MMM d, h:mm tt" : "MM/dd HH:mm",
+                    culture);
+                return english
+                    ? $"{marker} {label}: {remaining}% left · resets {reset}"
+                    : $"{marker} {label}：剩余 {remaining}% · {reset} 重置";
+            })
+            .ToList();
+
+        var updated = snapshot.ReadAt.ToLocalTime().ToString(
+            english ? "h:mm tt" : "HH:mm",
+            culture);
+        lines.Add(english ? $"Updated {updated}" : $"更新于 {updated}");
+        if (_quotaRefreshFailed)
+        {
+            lines.Add(english
+                ? "The latest refresh failed; showing the last successful reading."
+                : "最近一次刷新失败，当前显示上次成功读取的结果。");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(english
+            ? "The ring shows the tighter window. Left-click opens Micro settings; right-click reconnects the virtual HID."
+            : "圆环显示当前更紧张的额度窗口。左键打开 Micro 设置；右键重新连接虚拟 HID。");
+        return string.Join('\n', lines);
+    }
+
+    private static string FormatQuotaWindowLabel(
+        int durationMinutes,
+        bool english)
+    {
+        const int minutesPerWeek = 7 * 24 * 60;
+        const int minutesPerDay = 24 * 60;
+
+        if (durationMinutes % minutesPerWeek == 0)
+        {
+            var weeks = durationMinutes / minutesPerWeek;
+            if (english)
+            {
+                return weeks == 1 ? "Weekly limit" : $"{weeks}-week limit";
+            }
+
+            return weeks == 1 ? "周额度" : $"{weeks} 周额度";
+        }
+
+        if (durationMinutes % minutesPerDay == 0)
+        {
+            var days = durationMinutes / minutesPerDay;
+            return english ? $"{days}-day limit" : $"{days} 天额度";
+        }
+
+        if (durationMinutes % 60 == 0)
+        {
+            var hours = durationMinutes / 60;
+            return english ? $"{hours}-hour limit" : $"{hours} 小时额度";
+        }
+
+        return english
+            ? $"{durationMinutes}-minute limit"
+            : $"{durationMinutes} 分钟额度";
+    }
+
+    private static Color GetQuotaAccent(double remainingPercent) =>
+        remainingPercent <= 10
+            ? Color.FromRgb(0xFF, 0x9E, 0x8B)
+            : remainingPercent <= 30
+                ? Color.FromRgb(0xFF, 0xD2, 0x7A)
+                : Color.FromRgb(0xA8, 0xC7, 0xFF);
+
+    internal static Geometry CreateQuotaArcGeometry(double remainingPercent)
+    {
+        var clamped = Math.Clamp(remainingPercent, 0, 100);
+        if (clamped <= 0)
+        {
+            return Geometry.Empty;
+        }
+
+        const double center = 26;
+        const double radius = 23.5;
+        if (clamped >= 100)
+        {
+            var circle = new EllipseGeometry(
+                new Point(center, center),
+                radius,
+                radius);
+            circle.Freeze();
+            return circle;
+        }
+
+        var sweepAngle = 360 * clamped / 100;
+        var start = PointOnQuotaCircle(-90, center, radius);
+        var end = PointOnQuotaCircle(-90 + sweepAngle, center, radius);
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(start, isFilled: false, isClosed: false);
+            context.ArcTo(
+                end,
+                new Size(radius, radius),
+                rotationAngle: 0,
+                isLargeArc: sweepAngle > 180,
+                SweepDirection.Clockwise,
+                isStroked: true,
+                isSmoothJoin: false);
+        }
+
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Point PointOnQuotaCircle(
+        double angleDegrees,
+        double center,
+        double radius)
+    {
+        var angleRadians = angleDegrees * Math.PI / 180;
+        return new Point(
+            center + (radius * Math.Cos(angleRadians)),
+            center + (radius * Math.Sin(angleRadians)));
+    }
+
     private void SetStatus(string value)
     {
         _status = value;
@@ -1971,6 +2270,8 @@ public partial class MicroSurfaceWindow : Window
             DialSelectionText.Text = localized;
             AutomationProperties.SetItemStatus(DialButton, localized);
         }
+
+        UpdateQuotaPresentation();
     }
 
     internal void ShowSurface()

@@ -121,6 +121,21 @@ internal static class MicroEnglishTranslations
 {
     private static readonly (string Chinese, string English)[] Replacements =
     [
+        ("暂时无法读取额度。当前保持未知状态，不会误显示为 0%；面板显示时会自动重试。", "Quota is temporarily unavailable. It remains unknown rather than being shown as 0%, and will retry while the panel is visible."),
+        ("最近一次刷新失败，当前显示上次成功读取的结果。", "The latest refresh failed; showing the last successful reading."),
+        ("圆环显示当前更紧张的额度窗口。左键打开 Micro 设置；右键重新连接虚拟 HID。", "The ring shows the tighter window. Left-click opens Micro settings; right-click reconnects the virtual HID."),
+        ("左键：打开 Micro 设置 · 右键：重新连接虚拟 HID。", "Left-click: open Micro settings · Right-click: reconnect the virtual HID."),
+        ("正在读取 Codex 剩余额度。", "Reading the remaining Codex quota."),
+        ("Codex 剩余额度", "Codex quota"),
+        ("额度暂不可用", "Quota unavailable"),
+        ("剩余额度", "quota remaining"),
+        ("周额度", "weekly limit"),
+        ("天额度", "day limit"),
+        ("小时额度", "hour limit"),
+        ("分钟额度", "minute limit"),
+        ("更新于", "Updated"),
+        ("重置", "resets"),
+        ("剩余", "left"),
         ("已向当前 Plan 提问卡片发送一次 Escape；未追加 AG00。", "Sent Escape once to the current Plan question card; AG00 was not appended."),
         ("检测到疑似或不唯一的 Plan 提问卡片；本次操作已消费，未发送 AG00。", "A possible or ambiguous Plan question card was detected; the action was consumed without sending AG00."),
         ("Plan 提问卡片取消失败；本次操作已消费，未发送 AG00。", "Could not cancel the Plan question card; the action was consumed without sending AG00."),

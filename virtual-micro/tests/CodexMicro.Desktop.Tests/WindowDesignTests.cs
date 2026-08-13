@@ -89,7 +89,7 @@ public sealed class WindowDesignTests
                 AssertSquare(window.ActionKey06);
                 AssertSquare(window.SettingsKey);
                 AssertSquare(window.ActionKey12);
-                Assert.Null(window.SettingsKey.Content);
+                Assert.Same(window.QuotaGauge, window.SettingsKey.Content);
                 Assert.NotSame(window.ActionKey12.Template, window.SettingsKey.Template);
                 Assert.Equal(96, window.ActionKey06.ActualWidth, 3);
                 Assert.Equal(96, window.ActionKey06.ActualHeight, 3);
@@ -374,11 +374,73 @@ public sealed class WindowDesignTests
                     window.SettingsKey.Template.FindName(
                         "KnobFace",
                         window.SettingsKey));
+                var knobContent = Assert.IsType<Grid>(
+                    window.SettingsKey.Template.FindName(
+                        "KnobContent",
+                        window.SettingsKey));
                 Assert.InRange(settingsKnob.ActualWidth, 57.5, 58.5);
                 Assert.Equal(
                     Color.FromRgb(0x2D, 0x29, 0x25),
                     Assert.IsType<SolidColorBrush>(settingsKnob.Fill).Color);
                 Assert.Null(settingsKnob.Stroke);
+                Assert.Equal(HorizontalAlignment.Right, knobContent.HorizontalAlignment);
+                Assert.Equal(58, knobContent.Width, 3);
+                Assert.Equal(5, knobContent.Margin.Right, 3);
+                Assert.Same(window.QuotaGauge, window.SettingsKey.Content);
+                Assert.Equal("—", window.QuotaValueText.Text);
+                Assert.Equal("剩余", window.QuotaCaptionText.Text);
+
+                window.ApplyQuotaSnapshot(new CodexQuotaSnapshot(
+                    new CodexQuotaWindow(
+                        UsedPercent: 63,
+                        WindowDurationMinutes: 300,
+                        ResetsAt: DateTimeOffset.Now.AddHours(2)),
+                    Secondary: null,
+                    PlanType: "pro",
+                    ReadAt: DateTimeOffset.Now));
+                window.DesignSurface.UpdateLayout();
+
+                Assert.Equal("37%", window.QuotaValueText.Text);
+                Assert.IsType<StreamGeometry>(window.QuotaProgressRing.Data);
+                Assert.Equal(
+                    Color.FromRgb(0xA8, 0xC7, 0xFF),
+                    Assert.IsType<SolidColorBrush>(
+                        window.QuotaProgressRing.Stroke).Color);
+                Assert.Contains(
+                    "37%",
+                    AutomationProperties.GetItemStatus(window.SettingsKey));
+
+                var knobCenter = settingsKnob.TranslatePoint(
+                    new Point(
+                        settingsKnob.ActualWidth / 2,
+                        settingsKnob.ActualHeight / 2),
+                    window.DesignSurface);
+                var quotaCenter = window.QuotaGauge.TranslatePoint(
+                    new Point(
+                        window.QuotaGauge.ActualWidth / 2,
+                        window.QuotaGauge.ActualHeight / 2),
+                    window.DesignSurface);
+                Assert.InRange(
+                    Math.Abs(knobCenter.X - quotaCenter.X),
+                    0,
+                    0.5);
+                Assert.InRange(
+                    Math.Abs(knobCenter.Y - quotaCenter.Y),
+                    0,
+                    0.5);
+
+                window.ApplyQuotaSnapshot(new CodexQuotaSnapshot(
+                    new CodexQuotaWindow(
+                        UsedPercent: 92,
+                        WindowDurationMinutes: 10080,
+                        ResetsAt: DateTimeOffset.Now.AddDays(2)),
+                    Secondary: null,
+                    PlanType: "pro",
+                    ReadAt: DateTimeOffset.Now));
+                Assert.Equal(
+                    Color.FromRgb(0xFF, 0x9E, 0x8B),
+                    Assert.IsType<SolidColorBrush>(
+                        window.QuotaProgressRing.Stroke).Color);
 
                 var runtimeLedTop = window.RuntimeLed
                     .TranslatePoint(new Point(), window.DesignSurface)
