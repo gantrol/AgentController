@@ -181,9 +181,12 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 显示当前 Codex 映射、鼠标操作和实时状态；动作键、旋钮模式、摇杆方向以及
 Agent 槽位状态变化时同步更新。相同内容写入自动化名称和帮助文本。
 Agent 键第一行优先显示“所属项目 › 会话标题”：项目与标题由独立的只读观察器
-从 `~/.codex/session_index.jsonl` 和 `.codex-global-state.json` 匹配最近六个本地
-任务；只有官方默认 `recent` 来源可本地证明时才合并。`pinned`、`priority` 或
-`custom` 来源没有对应证明时保留通用槽位标题。VHF `v.oai.thstatus` 仍只负责槽位颜色和效果。
+通过本地 Codex App Server 的 `thread/list`，按与 Codex 相同的 `recency_at` 顺序
+读取最近六个任务，并用 `.codex-global-state.json` 补充项目名；
+`session_index.jsonl` 只在 App Server 暂不可用时作为降级来源，不能覆盖已经确认的
+recency roster。只有官方默认 `recent` 来源可本地证明时才合并。`pinned`、`priority` 或
+`custom` 来源没有对应证明时保留通用槽位标题。观察器同时监听来源设置；若查询期间
+来源发生变化，会按最新设置丢弃旧的 `recent` 映射。VHF `v.oai.thstatus` 仍只负责槽位颜色和效果。
 匹配不到时同样保留通用槽位标题，
 不会把推测写回 Codex，也不改变 `SlotOnly` 协议。
 每次白色旋钮移动后，顶部胶囊同步显示当前项序号、总数和名称，避免模型或权限

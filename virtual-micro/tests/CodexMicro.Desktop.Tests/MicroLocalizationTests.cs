@@ -44,6 +44,7 @@ public sealed class MicroLocalizationTests
                     MicroLanguage.ZhCn,
                     systemCulture: () => CultureInfo.GetCultureInfo("zh-CN"));
                 var window = new MicroSurfaceWindow(localization);
+                window.ApplyQuickModel(CodexQuickModel.Sol);
                 window.ApplyQuotaSnapshot(new CodexQuotaSnapshot(
                     new CodexQuotaWindow(
                         UsedPercent: 24,
@@ -67,7 +68,7 @@ public sealed class MicroLocalizationTests
                 Assert.Equal(
                     "No event has been sent.",
                     Assert.IsType<TextBlock>(panel.Children[1]).Text);
-                Assert.Equal("LEFT", window.QuotaCaptionText.Text);
+                Assert.Equal("SOL", window.QuotaCaptionText.Text);
                 Assert.Equal("76%", window.QuotaValueText.Text);
                 var quotaTooltip = Assert.IsType<ToolTip>(
                     window.SettingsKey.ToolTip);
@@ -77,6 +78,9 @@ public sealed class MicroLocalizationTests
                     Assert.IsType<TextBlock>(quotaPanel.Children[0]).Text);
                 Assert.Contains(
                     "5-hour limit",
+                    Assert.IsType<TextBlock>(quotaPanel.Children[1]).Text);
+                Assert.Contains(
+                    "Click toggles Sol/Luna",
                     Assert.IsType<TextBlock>(quotaPanel.Children[1]).Text);
                 window.CloseForApplicationExit();
             }

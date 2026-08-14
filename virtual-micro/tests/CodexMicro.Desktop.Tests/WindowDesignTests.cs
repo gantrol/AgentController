@@ -388,7 +388,13 @@ public sealed class WindowDesignTests
                 Assert.Equal(5, knobContent.Margin.Right, 3);
                 Assert.Same(window.QuotaGauge, window.SettingsKey.Content);
                 Assert.Equal("—", window.QuotaValueText.Text);
-                Assert.Equal("剩余", window.QuotaCaptionText.Text);
+                Assert.Equal("S↔L", window.QuotaCaptionText.Text);
+                Assert.Contains(
+                    "短按",
+                    AutomationProperties.GetHelpText(window.SettingsKey));
+                Assert.Contains(
+                    "长按",
+                    AutomationProperties.GetHelpText(window.SettingsKey));
 
                 window.ApplyQuotaSnapshot(new CodexQuotaSnapshot(
                     new CodexQuotaWindow(
@@ -408,6 +414,12 @@ public sealed class WindowDesignTests
                         window.QuotaProgressRing.Stroke).Color);
                 Assert.Contains(
                     "37%",
+                    AutomationProperties.GetItemStatus(window.SettingsKey));
+
+                window.ApplyQuickModel(CodexQuickModel.Luna);
+                Assert.Equal("LUNA", window.QuotaCaptionText.Text);
+                Assert.Contains(
+                    "Luna",
                     AutomationProperties.GetItemStatus(window.SettingsKey));
 
                 var knobCenter = settingsKnob.TranslatePoint(

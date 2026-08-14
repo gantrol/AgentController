@@ -26,6 +26,8 @@ public partial class MicroSurfaceWindow : Window
         TimeSpan.FromMilliseconds(180);
     private static readonly TimeSpan QuotaRefreshInterval =
         TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan SettingsLongPressThreshold =
+        TimeSpan.FromMilliseconds(650);
 
     private readonly record struct JoystickReport(
         double Angle,
@@ -41,6 +43,7 @@ public partial class MicroSurfaceWindow : Window
     private readonly CodexAgentRosterObserver _agentRosterObserver = new();
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
     private readonly CodexQuotaService _quotaService = new();
+    private readonly CodexModelToggleService _modelToggleService = new();
     private readonly DialGestureTracker _dialGesture = new();
     private readonly EncoderStepAccumulator _encoderSteps = new(3);
     private readonly SemaphoreSlim _encoderInputGate = new(1, 1);
@@ -85,8 +88,13 @@ public partial class MicroSurfaceWindow : Window
     private CodexMenuSelection? _cachedDialSelection;
     private string? _dialSelectionText;
     private CancellationTokenSource? _quotaRefreshCancellation;
+    private CancellationTokenSource? _modelRefreshCancellation;
+    private CancellationTokenSource? _modelActionCancellation;
     private CodexQuotaSnapshot? _quotaSnapshot;
     private bool _quotaRefreshFailed;
+    private CodexQuickModel _quickModel;
+    private bool _quickModelSwitching;
+    private long _settingsPointerDownTimestamp;
     private bool _windowClosed;
     private bool _allowApplicationClose;
     private bool _windowMoving;
@@ -201,8 +209,8 @@ public partial class MicroSurfaceWindow : Window
             "按住并向任意方向拖动，松开后自动回中。");
         SetHelp(
             SettingsKey,
-            "Codex Micro 设置",
-            "左键：长按 ENC 并打开 Micro 设置。\n右键：重新连接虚拟 HID。");
+            "Sol / Luna 快速切换",
+            "短按：在 Sol 与 Luna 间切换当前任务的下一轮。\n长按：打开 Micro 设置。\n右键：重新连接虚拟 HID。");
         SetHelp(RuntimeLed, "Codex 运行时握手", "正在等待 Codex 运行时能力信号。");
         SetHelp(DriverLed, "虚拟 HID", "正在等待驱动连接。");
         SetHelp(ActivityLed, "最近事件", "尚未发送事件。");
@@ -265,6 +273,7 @@ public partial class MicroSurfaceWindow : Window
         _dialSelectionHideTimer.Stop();
         _dialSelectionHideTimer.Tick -= DialSelectionHideTimer_Tick;
         PauseQuotaRefresh();
+        _modelActionCancellation?.Cancel();
         _quotaRefreshTimer.Tick -= QuotaRefreshTimer_Tick;
         if (_windowSource is not null)
         {
@@ -306,16 +315,21 @@ public partial class MicroSurfaceWindow : Window
 
         _quotaRefreshTimer.Start();
         _ = RefreshQuotaAsync();
+        _ = RefreshQuickModelAsync();
     }
 
     private void PauseQuotaRefresh()
     {
         _quotaRefreshTimer.Stop();
         _quotaRefreshCancellation?.Cancel();
+        _modelRefreshCancellation?.Cancel();
     }
 
-    private void QuotaRefreshTimer_Tick(object? sender, EventArgs e) =>
+    private void QuotaRefreshTimer_Tick(object? sender, EventArgs e)
+    {
         _ = RefreshQuotaAsync();
+        _ = RefreshQuickModelAsync();
+    }
 
     private async Task RefreshQuotaAsync()
     {
@@ -358,6 +372,48 @@ public partial class MicroSurfaceWindow : Window
             {
                 _ = RefreshQuotaAsync();
             }
+        }
+    }
+
+    private async Task RefreshQuickModelAsync()
+    {
+        if (
+            _windowClosed ||
+            !IsVisible ||
+            _quickModelSwitching ||
+            _modelRefreshCancellation is not null)
+        {
+            return;
+        }
+
+        var refresh = new CancellationTokenSource();
+        _modelRefreshCancellation = refresh;
+        try
+        {
+            var model = await _modelToggleService.ReadCurrentAsync(
+                refresh.Token);
+            if (
+                !refresh.IsCancellationRequested &&
+                !_windowClosed &&
+                !_quickModelSwitching &&
+                model != CodexQuickModel.Unknown)
+            {
+                _quickModel = model;
+                UpdateQuotaPresentation();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Hiding or closing the panel cancels the read-only probe.
+        }
+        finally
+        {
+            if (ReferenceEquals(_modelRefreshCancellation, refresh))
+            {
+                _modelRefreshCancellation = null;
+            }
+
+            refresh.Dispose();
         }
     }
 
@@ -1169,10 +1225,124 @@ public partial class MicroSurfaceWindow : Window
             HandoffBehavior.SnapshotAndReplace);
     }
 
+    private void Settings_PreviewMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        _settingsPointerDownTimestamp = Stopwatch.GetTimestamp();
+    }
+
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
-        await OpenCodexMicroSettingsAsync("打开 Codex Micro 设置");
+        var pressedAt = _settingsPointerDownTimestamp;
+        _settingsPointerDownTimestamp = 0;
+        if (
+            pressedAt != 0 &&
+            Stopwatch.GetElapsedTime(pressedAt) >=
+                SettingsLongPressThreshold)
+        {
+            await OpenCodexMicroSettingsAsync("打开 Codex Micro 设置");
+            return;
+        }
+
+        await ToggleQuickModelAsync();
     }
+
+    private async Task ToggleQuickModelAsync()
+    {
+        if (_quickModelSwitching || _windowClosed)
+        {
+            return;
+        }
+
+        _quickModelSwitching = true;
+        _modelRefreshCancellation?.Cancel();
+        UpdateQuotaPresentation();
+        try
+        {
+            if (!await ActivateCodexAsync(initialDelayMilliseconds: 0))
+            {
+                return;
+            }
+
+            var action = new CancellationTokenSource(
+                TimeSpan.FromSeconds(8));
+            _modelActionCancellation = action;
+            var result = await _modelToggleService.ToggleAsync(
+                CodexQuickModel.Sol,
+                CodexQuickModel.Luna,
+                action.Token);
+            if (_windowClosed)
+            {
+                return;
+            }
+
+            if (result.Previous != CodexQuickModel.Unknown)
+            {
+                _quickModel = result.Previous;
+            }
+
+            if (result.Succeeded)
+            {
+                _quickModel = result.Current;
+                var name = FormatQuickModelName(result.Current);
+                SetLed(ActivityLed, "#9EBDFF", $"已切换到 {name}");
+                SetStatus($"当前任务的下一轮已切换到 {name}；全局默认模型未更改。");
+            }
+            else
+            {
+                SetLed(ActivityLed, "#FF7994", "Sol / Luna 切换失败");
+                SetStatus(DescribeQuickModelError(result.Error));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_windowClosed)
+            {
+                SetLed(ActivityLed, "#FFD66E", "Sol / Luna 切换超时");
+                SetStatus("Sol / Luna 切换超时；模型保持不变，请再试一次。");
+            }
+        }
+        finally
+        {
+            _modelActionCancellation?.Dispose();
+            _modelActionCancellation = null;
+            _quickModelSwitching = false;
+            if (!_windowClosed)
+            {
+                UpdateQuotaPresentation();
+            }
+        }
+    }
+
+    private static string DescribeQuickModelError(string? error) =>
+        error switch
+        {
+            "composer-model-button" or
+            "composer-model-button-expand" =>
+                "没有找到当前任务的模型按钮；请先打开一个可输入的 Codex 任务。",
+            "advanced-view" or
+            "model-category" or
+            "model-category-expand" =>
+                "无法打开 Codex 的 Advanced 模型菜单；模型保持不变。",
+            "model-option-sol" =>
+                "当前账户的模型菜单中没有找到 Sol；模型保持不变。",
+            "model-option-luna" =>
+                "当前账户的模型菜单中没有找到 Luna；模型保持不变。",
+            "model-readback" =>
+                "模型选择已发送，但无法确认结果；请查看 Codex 输入框下方的模型按钮。",
+            "codex-window" =>
+                "没有找到 Codex 主窗口；模型保持不变。",
+            _ => "Sol / Luna 切换失败；模型保持不变，请再试一次。",
+        };
+
+    private static string FormatQuickModelName(CodexQuickModel model) =>
+        model switch
+        {
+            CodexQuickModel.Sol => "Sol",
+            CodexQuickModel.Luna => "Luna",
+            _ => "Sol / Luna",
+        };
 
     private async Task OpenCodexMicroSettingsAsync(string label)
     {
@@ -2030,10 +2200,37 @@ public partial class MicroSurfaceWindow : Window
         UpdateQuotaPresentation();
     }
 
+    internal void ApplyQuickModel(CodexQuickModel model)
+    {
+        _quickModel = model;
+        UpdateQuotaPresentation();
+    }
+
     private void UpdateQuotaPresentation()
     {
         var english = _localization.IsEnglish;
-        QuotaCaptionText.Text = english ? "LEFT" : "剩余";
+        QuotaCaptionText.Text = _quickModelSwitching
+            ? "···"
+            : _quickModel switch
+            {
+                CodexQuickModel.Sol => "SOL",
+                CodexQuickModel.Luna => "LUNA",
+                _ => "S↔L",
+            };
+        var modelName = FormatQuickModelName(_quickModel);
+        var modelStatus = _quickModel == CodexQuickModel.Unknown
+            ? english
+                ? "Sol/Luna quick switch ready"
+                : "Sol/Luna 快速切换已就绪"
+            : english
+                ? $"current model {modelName}"
+                : $"当前模型 {modelName}";
+        if (_quickModelSwitching)
+        {
+            modelStatus = english
+                ? "switching between Sol and Luna"
+                : "正在切换 Sol / Luna";
+        }
 
         if (_quotaSnapshot is null)
         {
@@ -2045,7 +2242,9 @@ public partial class MicroSurfaceWindow : Window
                 Color.FromRgb(0xA7, 0xAF, 0xB8));
             AutomationProperties.SetItemStatus(
                 SettingsKey,
-                english ? "Quota unavailable" : "额度暂不可用");
+                english
+                    ? $"Quota unavailable · {modelStatus}"
+                    : $"额度暂不可用 · {modelStatus}");
 
             var title = english ? "Codex quota" : "Codex 剩余额度";
             var state = _quotaRefreshFailed
@@ -2056,8 +2255,8 @@ public partial class MicroSurfaceWindow : Window
                     ? "Reading the remaining Codex quota."
                     : "正在读取 Codex 剩余额度。";
             var controls = english
-                ? "Left-click: open Micro settings · Right-click: reconnect the virtual HID."
-                : "左键：打开 Micro 设置 · 右键：重新连接虚拟 HID。";
+                ? "Click: toggle Sol/Luna for this task's next turn · Hold: open Micro settings · Right-click: reconnect the virtual HID."
+                : "短按：为当前任务的下一轮切换 Sol / Luna · 长按：打开 Micro 设置 · 右键：重新连接虚拟 HID。";
             ApplyHelp(SettingsKey, title, $"{state}\n\n{controls}");
             return;
         }
@@ -2077,12 +2276,12 @@ public partial class MicroSurfaceWindow : Window
         AutomationProperties.SetItemStatus(
             SettingsKey,
             english
-                ? $"{roundedRemaining}% quota remaining"
-                : $"剩余额度 {roundedRemaining}%");
+                ? $"{roundedRemaining}% quota remaining · {modelStatus}"
+                : $"剩余额度 {roundedRemaining}% · {modelStatus}");
 
         var titleText = english
-            ? $"Codex quota · {roundedRemaining}% left"
-            : $"Codex 剩余额度 · {roundedRemaining}%";
+            ? $"Codex quota · {roundedRemaining}% left · {modelName}"
+            : $"Codex 剩余额度 · {roundedRemaining}% · {modelName}";
         ApplyHelp(
             SettingsKey,
             titleText,
@@ -2128,8 +2327,8 @@ public partial class MicroSurfaceWindow : Window
 
         lines.Add(string.Empty);
         lines.Add(english
-            ? "The ring shows the tighter window. Left-click opens Micro settings; right-click reconnects the virtual HID."
-            : "圆环显示当前更紧张的额度窗口。左键打开 Micro 设置；右键重新连接虚拟 HID。");
+            ? "The ring shows the tighter window. Click toggles Sol/Luna for this task's next turn; hold opens Micro settings; right-click reconnects the virtual HID."
+            : "圆环显示当前更紧张的额度窗口。短按为当前任务的下一轮切换 Sol / Luna；长按打开 Micro 设置；右键重新连接虚拟 HID。");
         return string.Join('\n', lines);
     }
 

@@ -11,6 +11,21 @@ internal static class CodexWindowActivator
     private const long WsExToolWindow = 0x00000080L;
     private const uint GwOwner = 4;
 
+    internal static bool TryFindMainWindow(
+        out IntPtr handle,
+        out int processId,
+        string? packageRoot = null)
+    {
+        var candidate = FindCandidates(packageRoot)
+            .OrderByDescending(ScoreCandidate)
+            .FirstOrDefault();
+        handle = candidate.Handle;
+        processId = candidate.ProcessId == 0
+            ? 0
+            : checked((int)candidate.ProcessId);
+        return handle != IntPtr.Zero;
+    }
+
     public static bool TryActivate(string? packageRoot)
     {
         var candidates = FindCandidates(packageRoot);

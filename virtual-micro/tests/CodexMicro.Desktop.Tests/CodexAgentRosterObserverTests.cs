@@ -6,6 +6,118 @@ namespace CodexMicro.Desktop.Tests;
 public sealed class CodexAgentRosterObserverTests
 {
     [Fact]
+    public void AppServerParserPreservesRecencyOrderInsteadOfUpdatedOrder()
+    {
+        const string response = """
+            {
+              "id": 2,
+              "result": {
+                "data": [
+                  {
+                    "id": "recent",
+                    "name": "Opened most recently",
+                    "preview": "ignored",
+                    "cwd": "\\\\?\\D:\\work\\recent",
+                    "recencyAt": 200,
+                    "updatedAt": 100
+                  },
+                  {
+                    "id": "updated",
+                    "name": null,
+                    "preview": "Updated more recently\nsecond line",
+                    "cwd": "D:\\work\\updated",
+                    "recencyAt": 100,
+                    "updatedAt": 300
+                  }
+                ]
+              }
+            }
+            """;
+
+        var result = CodexRecentThreadsService.Parse(response);
+
+        Assert.NotNull(result);
+        Assert.Equal("recent", result[0].ThreadId);
+        Assert.Equal("Opened most recently", result[0].Title);
+        Assert.Equal("updated", result[1].ThreadId);
+        Assert.Equal("Updated more recently", result[1].Title);
+    }
+
+    [Fact]
+    public void AppServerRosterUsesServerOrderAndConfiguredProjectName()
+    {
+        CodexRecentThread[] threads =
+        [
+            new(
+                "thread-b",
+                "Actually slot one",
+                @"\\?\D:\work\fallback",
+                DateTimeOffset.FromUnixTimeSeconds(200)),
+            new(
+                "thread-a",
+                "Actually slot two",
+                @"D:\work\other",
+                DateTimeOffset.FromUnixTimeSeconds(100)),
+        ];
+        const string globalState = """
+            {
+              "local-projects": {
+                "project-b": {
+                  "id": "project-b",
+                  "name": "Configured project",
+                  "rootPaths": ["D:\\work\\fallback"]
+                }
+              },
+              "thread-project-assignments": {
+                "thread-b": {
+                  "projectId": "project-b",
+                  "cwd": "D:\\work\\fallback"
+                }
+              }
+            }
+            """;
+
+        var result = CodexAgentRosterObserver.FromRecentThreads(
+            threads,
+            globalState);
+
+        Assert.Equal("thread-b", result.Entries[0].ThreadId);
+        Assert.Equal(
+            "Configured project › Actually slot one",
+            result.Entries[0].DisplayTitle);
+        Assert.Equal("thread-a", result.Entries[1].ThreadId);
+        Assert.Equal("other › Actually slot two", result.Entries[1].DisplayTitle);
+    }
+
+    [Theory]
+    [InlineData("pinned")]
+    [InlineData("priority")]
+    [InlineData("custom")]
+    public void AppServerRosterDoesNotLeakRecentTitlesWhenAgentSourceChanges(string source)
+    {
+        CodexRecentThread[] threads =
+        [
+            new(
+                "recent-thread",
+                "Must not be assigned to another source",
+                @"D:\work\recent",
+                DateTimeOffset.FromUnixTimeSeconds(200)),
+        ];
+        var config = $$"""
+            [desktop]
+            codex-micro-agent-source = "{{source}}"
+            """;
+
+        var result = CodexAgentRosterObserver.FromRecentThreads(
+            threads,
+            globalStateJson: null,
+            configToml: config);
+
+        Assert.Empty(result.Entries);
+        Assert.Contains(source, result.Source);
+    }
+
+    [Fact]
     public void ParseOrdersRecentThreadsAndAddsProjectName()
     {
         const string sessions = """

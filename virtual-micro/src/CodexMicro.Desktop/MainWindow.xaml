@@ -451,8 +451,9 @@
                                         Height="96"
                                         Style="{StaticResource DarkKnobButton}"
                                         Click="Settings_Click"
+                                        PreviewMouseLeftButtonDown="Settings_PreviewMouseLeftButtonDown"
                                         PreviewMouseRightButtonUp="Settings_PreviewMouseRightButtonUp"
-                                        ToolTip="打开 Codex Micro 设置 · 右键重新连接虚拟 HID&#x0a;三灯：Codex 运行时握手 / HID 连接 / 最近事件">
+                                        ToolTip="短按切换 Sol / Luna · 长按打开 Codex Micro 设置 · 右键重新连接虚拟 HID&#x0a;三灯：Codex 运行时握手 / HID 连接 / 最近事件">
                                     <Grid x:Name="QuotaGauge"
                                           Width="52"
                                           Height="52"
@@ -478,7 +479,7 @@
                                                        TextAlignment="Center"
                                                        TextOptions.TextFormattingMode="Display" />
                                             <TextBlock x:Name="QuotaCaptionText"
-                                                       Text="剩余"
+                                                       Text="S↔L"
                                                        Margin="0,-2,0,0"
                                                        FontFamily="Segoe UI Variable Text, Segoe UI"
                                                        FontSize="6.8"

@@ -33,6 +33,8 @@ internal sealed record CodexAgentRosterSnapshot(
 /// </summary>
 internal sealed class CodexAgentRosterObserver : IDisposable
 {
+    private const int ReloadDebounceMilliseconds = 400;
+
     private sealed record SessionEntry(
         string ThreadId,
         string Title,
@@ -45,10 +47,12 @@ internal sealed class CodexAgentRosterObserver : IDisposable
     private readonly string _sessionIndexPath;
     private readonly string _globalStatePath;
     private readonly string _configPath;
+    private readonly CodexRecentThreadsService _recentThreadsService = new();
     private readonly object _gate = new();
     private readonly object _reloadGate = new();
     private FileSystemWatcher? _watcher;
     private Timer? _reloadTimer;
+    private CancellationTokenSource? _reloadCancellation;
     private bool _started;
     private bool _disposed;
 
@@ -106,11 +110,12 @@ internal sealed class CodexAgentRosterObserver : IDisposable
             }
         }
 
-        Reload();
+        ScheduleReload(dueTimeMilliseconds: 0);
     }
 
     public void Dispose()
     {
+        CancellationTokenSource? reloadCancellation;
         lock (_gate)
         {
             if (_disposed)
@@ -123,7 +128,10 @@ internal sealed class CodexAgentRosterObserver : IDisposable
             _watcher = null;
             _reloadTimer?.Dispose();
             _reloadTimer = null;
+            reloadCancellation = _reloadCancellation;
         }
+
+        reloadCancellation?.Cancel();
     }
 
     internal static CodexAgentRosterSnapshot Parse(
@@ -177,18 +185,13 @@ internal sealed class CodexAgentRosterObserver : IDisposable
         var assignments = new Dictionary<string, ProjectAssignment>(
             StringComparer.Ordinal);
         var workspaceHints = new Dictionary<string, string>(StringComparer.Ordinal);
-        var agentSource = "recent";
+        var agentSource = ResolveAgentSource(globalStateJson, configToml);
         if (!string.IsNullOrWhiteSpace(globalStateJson))
         {
             try
             {
                 using var document = JsonDocument.Parse(globalStateJson);
                 var root = document.RootElement;
-                if (TryReadAgentSource(root, out var configuredAgentSource))
-                {
-                    agentSource = configuredAgentSource;
-                }
-
                 ReadProjectNames(root, projectNames);
                 ReadAssignments(root, assignments);
                 ReadWorkspaceHints(root, workspaceHints);
@@ -198,11 +201,6 @@ internal sealed class CodexAgentRosterObserver : IDisposable
                 // Titles still remain useful when the global-state file is in
                 // the middle of an atomic replacement.
             }
-        }
-
-        if (TryReadAgentSourceFromConfig(configToml, out var configAgentSource))
-        {
-            agentSource = configAgentSource;
         }
 
         if (!string.Equals(agentSource, "recent", StringComparison.Ordinal))
@@ -244,6 +242,72 @@ internal sealed class CodexAgentRosterObserver : IDisposable
         return new CodexAgentRosterSnapshot(entries, source);
     }
 
+    internal static CodexAgentRosterSnapshot FromRecentThreads(
+        IReadOnlyList<CodexRecentThread> recentThreads,
+        string? globalStateJson,
+        string? configToml = null,
+        string source = CodexRecentThreadsService.SourceName)
+    {
+        ArgumentNullException.ThrowIfNull(recentThreads);
+
+        var agentSource = ResolveAgentSource(globalStateJson, configToml);
+        if (!string.Equals(agentSource, "recent", StringComparison.Ordinal))
+        {
+            return new CodexAgentRosterSnapshot(
+                [],
+                $"Codex {agentSource} roster is not locally provable");
+        }
+
+        var projectNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        var assignments = new Dictionary<string, ProjectAssignment>(
+            StringComparer.Ordinal);
+        var workspaceHints = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(globalStateJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(globalStateJson);
+                var root = document.RootElement;
+                ReadProjectNames(root, projectNames);
+                ReadAssignments(root, assignments);
+                ReadWorkspaceHints(root, workspaceHints);
+            }
+            catch (JsonException)
+            {
+                // App Server order and titles are still authoritative even if
+                // the project-name cache is being atomically replaced.
+            }
+        }
+
+        var entries = recentThreads
+            .Take(6)
+            .Select((thread, slotId) =>
+            {
+                var assignment = FindThreadValue(assignments, thread.ThreadId);
+                var hint = FindThreadValue(workspaceHints, thread.ThreadId);
+                string? projectName = null;
+                if (assignment?.ProjectId is { Length: > 0 } projectId &&
+                    projectNames.TryGetValue(projectId, out var configuredName))
+                {
+                    projectName = configuredName;
+                }
+
+                projectName ??= GetWorkspaceName(
+                    assignment?.WorkspacePath ??
+                    hint ??
+                    thread.WorkspacePath);
+                return new CodexAgentRosterEntry(
+                    slotId,
+                    thread.ThreadId,
+                    projectName,
+                    thread.Title,
+                    thread.RecencyAt);
+            })
+            .ToArray();
+
+        return new CodexAgentRosterSnapshot(entries, source);
+    }
+
     private void IndexChanged(object sender, FileSystemEventArgs e)
     {
         if (IsObservedPath(e.FullPath))
@@ -272,9 +336,30 @@ internal sealed class CodexAgentRosterObserver : IDisposable
         string.Equals(
             Path.GetFullPath(path),
             Path.GetFullPath(_configPath),
-            StringComparison.OrdinalIgnoreCase);
+            StringComparison.OrdinalIgnoreCase) ||
+        IsCodexStateDatabasePath(path);
 
-    private void ScheduleReload()
+    private bool IsCodexStateDatabasePath(string path)
+    {
+        var observedDirectory = Path.GetDirectoryName(
+            Path.GetFullPath(_sessionIndexPath));
+        var candidateDirectory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.Equals(
+                observedDirectory,
+                candidateDirectory,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return Regex.IsMatch(
+            Path.GetFileName(path),
+            "^state_[0-9]+\\.sqlite(?:-(?:wal|shm))?$",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    }
+
+    private void ScheduleReload(
+        int dueTimeMilliseconds = ReloadDebounceMilliseconds)
     {
         lock (_gate)
         {
@@ -288,7 +373,7 @@ internal sealed class CodexAgentRosterObserver : IDisposable
                 null,
                 Timeout.Infinite,
                 Timeout.Infinite);
-            _reloadTimer.Change(160, Timeout.Infinite);
+            _reloadTimer.Change(dueTimeMilliseconds, Timeout.Infinite);
         }
     }
 
@@ -297,12 +382,16 @@ internal sealed class CodexAgentRosterObserver : IDisposable
         CodexAgentRosterSnapshot? changed = null;
         lock (_reloadGate)
         {
+            CancellationTokenSource reloadCancellation;
             lock (_gate)
             {
                 if (_disposed)
                 {
                     return;
                 }
+
+                reloadCancellation = new CancellationTokenSource();
+                _reloadCancellation = reloadCancellation;
             }
 
             try
@@ -311,11 +400,69 @@ internal sealed class CodexAgentRosterObserver : IDisposable
                     ReadSharedText(_sessionIndexPath) ?? string.Empty;
                 var globalState = ReadSharedText(_globalStatePath);
                 var config = ReadSharedText(_configPath);
-                var next = Parse(
+                var fallback = Parse(
                     sessionIndex,
                     globalState,
                     config,
                     _sessionIndexPath);
+                var agentSource = ResolveAgentSource(globalState, config);
+                CodexAgentRosterSnapshot next;
+                if (string.Equals(agentSource, "recent", StringComparison.Ordinal))
+                {
+                    var recentThreads = _recentThreadsService
+                        .ReadAsync(reloadCancellation.Token)
+                        .GetAwaiter()
+                        .GetResult();
+                    if (reloadCancellation.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    // The Agent source is user-configurable. Re-read it after
+                    // the App Server round trip so a setting changed during
+                    // the query cannot publish a stale recent roster.
+                    globalState = ReadSharedText(_globalStatePath);
+                    config = ReadSharedText(_configPath);
+                    agentSource = ResolveAgentSource(globalState, config);
+                    fallback = Parse(
+                        sessionIndex,
+                        globalState,
+                        config,
+                        _sessionIndexPath);
+
+                    if (!string.Equals(
+                            agentSource,
+                            "recent",
+                            StringComparison.Ordinal))
+                    {
+                        next = fallback;
+                    }
+                    else if (recentThreads is not null)
+                    {
+                        next = FromRecentThreads(
+                            recentThreads,
+                            globalState,
+                            config);
+                    }
+                    else if (string.Equals(
+                                 Current.Source,
+                                 CodexRecentThreadsService.SourceName,
+                                 StringComparison.Ordinal))
+                    {
+                        // A transient App Server failure must not replace a
+                        // proven roster with the stale session-index order.
+                        return;
+                    }
+                    else
+                    {
+                        next = fallback;
+                    }
+                }
+                else
+                {
+                    next = fallback;
+                }
+
                 lock (_gate)
                 {
                     if (_disposed || Equivalent(Current, next))
@@ -331,6 +478,20 @@ internal sealed class CodexAgentRosterObserver : IDisposable
                 exception is IOException or UnauthorizedAccessException)
             {
                 ScheduleReload();
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    if (ReferenceEquals(
+                            _reloadCancellation,
+                            reloadCancellation))
+                    {
+                        _reloadCancellation = null;
+                    }
+                }
+
+                reloadCancellation.Dispose();
             }
         }
 
@@ -471,6 +632,37 @@ internal sealed class CodexAgentRosterObserver : IDisposable
     private static bool IsAgentSource(string value) =>
         value is "recent" or "pinned" or "priority" or "custom";
 
+    private static string ResolveAgentSource(
+        string? globalStateJson,
+        string? configToml)
+    {
+        var source = "recent";
+        if (!string.IsNullOrWhiteSpace(globalStateJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(globalStateJson);
+                if (TryReadAgentSource(
+                        document.RootElement,
+                        out var configuredSource))
+                {
+                    source = configuredSource;
+                }
+            }
+            catch (JsonException)
+            {
+                // The config file remains an independent source of truth.
+            }
+        }
+
+        if (TryReadAgentSourceFromConfig(configToml, out var configSource))
+        {
+            source = configSource;
+        }
+
+        return source;
+    }
+
     private static TValue? FindThreadValue<TValue>(
         IReadOnlyDictionary<string, TValue> values,
         string threadId)
@@ -561,7 +753,13 @@ internal sealed class CodexAgentRosterObserver : IDisposable
             return null;
         }
 
-        var trimmed = workspacePath.Trim().TrimEnd(
+        var trimmed = workspacePath.Trim();
+        if (trimmed.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            trimmed = trimmed[4..];
+        }
+
+        trimmed = trimmed.TrimEnd(
             Path.DirectorySeparatorChar,
             Path.AltDirectorySeparatorChar);
         if (trimmed.Length == 0)
