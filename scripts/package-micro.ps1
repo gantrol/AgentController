@@ -1,8 +1,10 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.3",
+    [string]$Version = "0.2.4",
     [string]$Runtime = "win-x64",
-    [double]$MaximumPackageMiB = 15
+    [double]$MaximumPackageMiB = 15,
+    [ValidateSet("standard", "deepseek")]
+    [string]$Preset = "standard"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +15,12 @@ $repoRoot = [System.IO.Path]::GetFullPath(
 $artifactRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repoRoot ".artifacts\micro-release\$Version"))
 $publishRoot = Join-Path $artifactRoot "publish"
-$packageName = "CodexMicro-Keypad-$Version-$Runtime"
+$presetId = $Preset.ToLowerInvariant()
+$packageName = if ($presetId -eq "deepseek") {
+    "CodexMicro-DeepSeek-$Version-$Runtime"
+} else {
+    "CodexMicro-Keypad-$Version-$Runtime"
+}
 $packageRoot = Join-Path $artifactRoot $packageName
 $distRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repoRoot "dist"))
@@ -78,6 +85,37 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\README.md") `
     -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\README.zh-CN.md") `
     -Destination $packageRoot
+
+if ($presetId -eq "deepseek") {
+    $presetPath = Join-Path $repoRoot `
+        "virtual-micro\distribution-presets\deepseek.json"
+    if (-not (Test-Path -LiteralPath $presetPath -PathType Leaf)) {
+        throw "DeepSeek distribution preset is missing: $presetPath"
+    }
+
+    Copy-Item -LiteralPath $presetPath `
+        -Destination (Join-Path $packageRoot "distribution-preset.json")
+
+    $pluginSource = Join-Path $repoRoot "micro-bridge\DeepSeekHarness"
+    $pluginTarget = Join-Path $packageRoot "plugins\DeepSeekHarness"
+    New-Item -ItemType Directory -Path $pluginTarget -Force | Out-Null
+    foreach ($file in @(
+            "package.json",
+            "pnpm-lock.yaml",
+            "tsconfig.json",
+            "tsdown.config.ts",
+            "cordis.patch.yml",
+            "README.md",
+            "README.zh.md")) {
+        Copy-Item -LiteralPath (Join-Path $pluginSource $file) `
+            -Destination $pluginTarget
+    }
+    foreach ($directory in @("lib", "scripts", "src", "tests")) {
+        Copy-Item -LiteralPath (Join-Path $pluginSource $directory) `
+            -Destination $pluginTarget `
+            -Recurse
+    }
+}
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
