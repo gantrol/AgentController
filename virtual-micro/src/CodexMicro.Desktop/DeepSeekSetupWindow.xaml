@@ -1,0 +1,137 @@
+<Window x:Class="CodexMicro.Desktop.DeepSeekSetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DeepSeek Harness 首次配置"
+        Width="540"
+        MinHeight="470"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="#F5F8FE"
+        Foreground="#17243D"
+        Closing="Window_Closing">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="Padding" Value="18,8" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </Window.Resources>
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock x:Name="HeadingText"
+                       Text="让 DeepSeek 可以使用"
+                       FontSize="25"
+                       FontWeight="SemiBold" />
+            <TextBlock x:Name="IntroText"
+                       Margin="0,8,0,0"
+                       Text="首次点击会先查找可用的 DSH；你可以在专用 WSL 中安装，或使用本机 / WSL 中已有的 Harness。"
+                       Foreground="#53647F"
+                       FontSize="14"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Margin="0,20,0,0"
+                Padding="14"
+                Background="#E8F0FF"
+                BorderBrush="#C4D5F6"
+                BorderThickness="1"
+                CornerRadius="10">
+            <StackPanel>
+                <TextBlock x:Name="DetectionTitleText"
+                           Text="检测结果"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="DetectionDetailText"
+                           Margin="0,5,0,0"
+                           Foreground="#435674"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Margin="0,18,0,0">
+            <Button x:Name="ManagedSetupButton"
+                    Click="ManagedSetupButton_Click"
+                    Background="#2F6FED"
+                    Foreground="White"
+                    BorderBrush="#2F6FED"
+                    Content="在专用 WSL 中安装 DSH（推荐）" />
+            <TextBlock x:Name="ManagedSetupDetailText"
+                       Margin="3,6,3,0"
+                       Text="安装兼容的 DSH 运行环境与独立 Bridge；不会修改你已有的 DSH。"
+                       Foreground="#61718A"
+                       TextWrapping="Wrap" />
+
+            <Button x:Name="ExistingSetupButton"
+                    Margin="0,15,0,0"
+                    Click="ExistingSetupButton_Click"
+                    Background="White"
+                    BorderBrush="#AAB8D0"
+                    Content="使用我已有的 DSH" />
+            <TextBlock x:Name="ExistingSetupDetailText"
+                       Margin="3,6,3,0"
+                       Text="自行定位本机或 WSL 中的 Harness，保留原版本和启动方式，再配置控制地址与独立插件。"
+                       Foreground="#61718A"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border x:Name="ProgressPanel"
+                Grid.Row="3"
+                Margin="0,18,0,0"
+                Padding="14"
+                Background="#FFFFFF"
+                BorderBrush="#D5DEED"
+                BorderThickness="1"
+                CornerRadius="10"
+                Visibility="Collapsed">
+            <StackPanel>
+                <DockPanel>
+                    <TextBlock x:Name="ProgressTitleText"
+                               DockPanel.Dock="Left"
+                               FontWeight="SemiBold" />
+                    <TextBlock x:Name="ProgressFractionText"
+                               DockPanel.Dock="Right"
+                               HorizontalAlignment="Right"
+                               Foreground="#2F6FED" />
+                </DockPanel>
+                <ProgressBar x:Name="SetupProgressBar"
+                             Margin="0,10,0,0"
+                             Height="7"
+                             Minimum="0"
+                             Maximum="8" />
+                <TextBlock x:Name="ProgressDetailText"
+                           Margin="0,9,0,0"
+                           Foreground="#53647F"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <DockPanel Grid.Row="4" Margin="0,20,0,0" LastChildFill="False">
+            <TextBlock x:Name="PrivacyText"
+                       DockPanel.Dock="Left"
+                       Width="390"
+                       VerticalAlignment="Center"
+                       Foreground="#718099"
+                       FontSize="12"
+                       Text="API 密钥仍在 DeepSeek 官方界面中配置，本程序不读取密钥。"
+                       TextWrapping="Wrap" />
+            <Button x:Name="CancelButton"
+                    DockPanel.Dock="Right"
+                    Margin="12,0,0,0"
+                    MinWidth="82"
+                    MinHeight="34"
+                    Click="CancelButton_Click"
+                    Content="取消" />
+        </DockPanel>
+    </Grid>
+</Window>

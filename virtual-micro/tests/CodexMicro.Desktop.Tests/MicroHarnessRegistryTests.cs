@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace CodexMicro.Desktop.Tests;
@@ -195,6 +196,100 @@ public sealed class MicroHarnessRegistryTests
     }
 
     [Fact]
+    public void MigratesOnlyTheFormerFixedDeepSeekLaunchDefault()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-deepseek-path-migration-tests",
+            Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(directory, "harness-settings.json");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "Harnesses": {
+                    "deepseek-harness": {
+                      "PipeName": "deepseek-harness-micro-v1",
+                      "Executable": "C:\\Windows\\System32\\wsl.exe",
+                      "Arguments": "--distribution Ubuntu --exec bash \"/mnt/d/AgentController/micro-bridge/DeepSeekHarness/scripts/start-dsh-wsl.sh\"",
+                      "WorkingDirectory": "C:\\Windows\\System32",
+                      "AutoStart": true,
+                      "ReadyTimeoutMilliseconds": 120000,
+                      "ControlUri": "http://127.0.0.1:3080/__agentcontroller/micro/request"
+                    }
+                  },
+                  "SetupCompletedHarnesses": ["deepseek-harness"]
+                }
+                """);
+
+            var registry = new MicroHarnessRegistry(settingsPath: settingsPath);
+            var deepSeek = registry.Resolve("deepseek-harness");
+
+            Assert.Null(deepSeek.Connection.Executable);
+            Assert.Null(deepSeek.Connection.Arguments);
+            Assert.Null(deepSeek.Connection.WorkingDirectory);
+            Assert.False(deepSeek.Connection.AutoStart);
+            Assert.False(registry.IsSetupCompleted("deepseek-harness"));
+            var migrated = File.ReadAllText(settingsPath);
+            Assert.DoesNotContain("AgentController", migrated);
+            Assert.DoesNotContain("--distribution Ubuntu", migrated);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void KeepsAUserProvidedDeepSeekLaunchCommand()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-deepseek-custom-launch-tests",
+            Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(directory, "harness-settings.json");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "Harnesses": {
+                    "deepseek-harness": {
+                      "PipeName": "deepseek-harness-micro-v1",
+                      "Executable": "C:\\Tools\\launch-my-harness.exe",
+                      "Arguments": "--port 3090",
+                      "WorkingDirectory": "C:\\Harness",
+                      "AutoStart": true,
+                      "ReadyTimeoutMilliseconds": 90000,
+                      "ControlUri": "http://127.0.0.1:3090/__agentcontroller/micro/request"
+                    }
+                  },
+                  "SetupCompletedHarnesses": ["deepseek-harness"]
+                }
+                """);
+
+            var registry = new MicroHarnessRegistry(settingsPath: settingsPath);
+            var deepSeek = registry.Resolve("deepseek-harness");
+
+            Assert.Equal(
+                @"C:\Tools\launch-my-harness.exe",
+                deepSeek.Connection.Executable);
+            Assert.Equal("--port 3090", deepSeek.Connection.Arguments);
+            Assert.True(deepSeek.Connection.AutoStart);
+            Assert.True(registry.IsSetupCompleted("deepseek-harness"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void DiscoversFutureHarnessManifestBesideBuiltInTargets()
     {
         var directory = Path.Combine(
@@ -216,17 +311,23 @@ public sealed class MicroHarnessRegistryTests
                 """);
 
             var registry = new MicroHarnessRegistry(
-                manifestDirectory: directory);
+                manifestDirectory: directory,
+                settingsPath: Path.Combine(directory, "settings.json"));
 
             Assert.Equal("Codex", registry.Definitions[0].DisplayName);
             Assert.Contains(registry.Definitions, item =>
                 item.Id == "deepseek-harness");
             var deepSeek = registry.Resolve("deepseek-harness");
-            Assert.Equal("wsl.exe", Path.GetFileName(deepSeek.Connection.Executable));
-            Assert.Contains("start-dsh-wsl.sh", deepSeek.Connection.Arguments);
+            Assert.Null(deepSeek.ProjectPath);
+            Assert.True(deepSeek.IsAvailable);
+            Assert.Null(deepSeek.Connection.Executable);
+            Assert.Null(deepSeek.Connection.Arguments);
+            Assert.False(deepSeek.Connection.AutoStart);
             Assert.Equal(
                 "http://127.0.0.1:3080/__agentcontroller/micro/request",
                 deepSeek.ControlUri);
+            Assert.Equal(120_000,
+                deepSeek.Connection.ReadyTimeoutMilliseconds);
             var future = Assert.Single(registry.Definitions, item =>
                 item.Id == "future-harness");
             Assert.Equal("future-harness-micro-v1", future.PipeName);
@@ -273,6 +374,43 @@ public sealed class MicroHarnessRegistryTests
             Assert.Equal(
                 "http://127.0.0.1:3080/__agentcontroller/micro/request",
                 restored.ControlUri);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MigratesTheFormerDeepSeekColdStartTimeout()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-harness-timeout-migration-tests",
+            Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(directory, "harness-settings.json");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var registry = new MicroHarnessRegistry(settingsPath: settingsPath);
+            var deepSeek = registry.Resolve("deepseek-harness");
+            Assert.True(registry.UpdateConnectionSettings(
+                deepSeek.Id,
+                deepSeek.Connection with
+                {
+                    ReadyTimeoutMilliseconds = 60_000,
+                }));
+
+            var restored = new MicroHarnessRegistry(settingsPath: settingsPath);
+
+            Assert.Equal(
+                120_000,
+                restored.Resolve("deepseek-harness")
+                    .Connection.ReadyTimeoutMilliseconds);
+            Assert.Contains(
+                "120000",
+                File.ReadAllText(settingsPath),
+                StringComparison.Ordinal);
         }
         finally
         {
@@ -444,7 +582,7 @@ public sealed class MicroHarnessRegistryTests
             Assert.Contains("\"action\":\"state/read\"", request);
             await writer.WriteLineAsync(
                 """
-                {"success":true,"message":"ready","state":{"capabilities":{"sessionList":true,"sessionActivation":true,"knobSettings":false,"voiceInput":true,"actions":["session/new","session/fork","turn/cancel","composer/back"]},"components":{"adapter":"ready","browser":"connected","voiceSetup":"required","voiceRuntime":"starting","voiceMessage":"Loading model"},"navigationDepth":2,"currentSessionId":"newer","sessions":[{"id":"older","displayTitle":"Older","running":false,"updatedAt":10},{"id":"newer","displayTitle":"Newer","running":true,"updatedAt":20}]}}
+                {"success":true,"message":"ready","state":{"capabilities":{"sessionList":true,"sessionActivation":true,"knobSettings":false,"voiceInput":true,"actions":["session/new","session/fork","turn/cancel","composer/back","composer/submit"]},"components":{"adapter":"ready","browser":"connected","currentModel":"DeepSeek-V4-Pro"},"navigationDepth":2,"currentSessionId":"newer","sessions":[{"id":"older","displayTitle":"Older","running":false,"updatedAt":10},{"id":"newer","displayTitle":"Newer","running":true,"updatedAt":20}]}}
                 """);
         });
 
@@ -465,12 +603,12 @@ public sealed class MicroHarnessRegistryTests
             MicroHarnessActionIds.CancelTurn));
         Assert.True(snapshot.Capabilities.Supports(
             MicroHarnessActionIds.ComposerBack));
+        Assert.True(snapshot.Capabilities.Supports(
+            MicroHarnessActionIds.ComposerSubmit));
         Assert.Equal(2, snapshot.NavigationDepth);
         Assert.NotNull(snapshot.Components);
         Assert.Equal("connected", snapshot.Components.Browser);
-        Assert.Equal("required", snapshot.Components.VoiceSetup);
-        Assert.Equal("starting", snapshot.Components.VoiceRuntime);
-        Assert.Equal("Loading model", snapshot.Components.VoiceMessage);
+        Assert.Equal("DeepSeek-V4-Pro", snapshot.Components.CurrentModel);
     }
 
     [Fact]
@@ -577,7 +715,7 @@ public sealed class MicroHarnessRegistryTests
     }
 
     [Fact]
-    public async Task SendsOrderedVoicePressAndReleaseEdgesThroughTheAdapter()
+    public async Task RelaysVoiceButtonStatusAndKeypadDictationThroughTheAdapter()
     {
         var pipeName = $"codex-micro-harness-voice-{Guid.NewGuid():N}";
         var definition = new MicroHarnessDefinition(
@@ -596,7 +734,7 @@ public sealed class MicroHarnessRegistryTests
         var requests = new List<string>();
         var serverTask = Task.Run(async () =>
         {
-            for (var index = 0; index < 2; index++)
+            for (var index = 0; index < 4; index++)
             {
                 await using var server = new NamedPipeServerStream(
                     pipeName,
@@ -616,70 +754,60 @@ public sealed class MicroHarnessRegistryTests
                 {
                     AutoFlush = true,
                 };
-                requests.Add((await reader.ReadLineAsync())!);
-                await writer.WriteLineAsync(
-                    "{\"success\":true,\"message\":\"voice edge accepted\"}");
+                var request = (await reader.ReadLineAsync())!;
+                requests.Add(request);
+                await writer.WriteLineAsync(index == 0
+                    ? "{\"success\":true,\"message\":\"button ready\",\"voiceRequest\":{\"requestId\":\"voice-1\",\"command\":\"toggle\",\"sessionId\":\"session-1\"}}"
+                    : "{\"success\":true,\"message\":\"relay accepted\"}");
             }
         });
 
-        var pressed = await registry.SetVoiceAsync(definition.Id, pressed: true);
-        var released = await registry.SetVoiceAsync(definition.Id, pressed: false);
+        var voiceRequest = await registry.WaitForVoiceRequestAsync(
+            definition.Id);
+        var completed = await registry.CompleteVoiceRequestAsync(
+            definition.Id,
+            "voice-1",
+            success: true,
+            active: true,
+            message: "The keypad microphone is listening.");
+        var status = await registry.PublishVoiceStatusAsync(
+            definition.Id,
+            active: true,
+            phase: "listening",
+            message: "The keypad microphone is listening.",
+            sessionId: "session-1");
+        var dictation = await registry.SendDictationAsync(
+            definition.Id,
+            "你好",
+            "zh-CN",
+            autoSubmit: true,
+            sessionId: "session-1",
+            dictationId: "dictation-stream-1",
+            dictationPhase: "final");
         await serverTask;
 
-        Assert.True(pressed.Success);
-        Assert.True(released.Success);
-        Assert.Contains("\"action\":\"voice/start\"", requests[0]);
-        Assert.Contains("\"action\":\"voice/stop\"", requests[1]);
-    }
-
-    [Fact]
-    public async Task OpensPluginOwnedVoiceConfigurationThroughTheAdapter()
-    {
-        var pipeName = $"codex-micro-harness-voice-config-{Guid.NewGuid():N}";
-        var definition = new MicroHarnessDefinition(
-            "test-harness",
-            "Test Harness",
-            "Test direct adapter",
-            null,
-            true,
-            new(pipeName, null, null, null, false));
-        var registry = new MicroHarnessRegistry(
-            [definition],
-            settingsPath: Path.Combine(
-                Path.GetTempPath(),
-                $"missing-{Guid.NewGuid():N}",
-                "settings.json"));
-        var serverTask = Task.Run(async () =>
-        {
-            await using var server = new NamedPipeServerStream(
-                pipeName,
-                PipeDirection.InOut,
-                1,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous);
-            await server.WaitForConnectionAsync();
-            using var reader = new StreamReader(
-                server,
-                Encoding.UTF8,
-                leaveOpen: true);
-            await using var writer = new StreamWriter(
-                server,
-                new UTF8Encoding(false),
-                leaveOpen: true)
-            {
-                AutoFlush = true,
-            };
-            var request = await reader.ReadLineAsync();
-            Assert.Contains("\"action\":\"voice/configure\"", request);
-            await writer.WriteLineAsync(
-                "{\"success\":true,\"message\":\"plugin settings opened\"}");
-        });
-
-        var result = await registry.ConfigureVoiceAsync(definition.Id);
-        await serverTask;
-
-        Assert.True(result.Success);
-        Assert.Equal("plugin settings opened", result.Message);
+        Assert.NotNull(voiceRequest);
+        Assert.Equal("voice-1", voiceRequest.RequestId);
+        Assert.Equal("session-1", voiceRequest.SessionId);
+        Assert.True(completed.Success);
+        Assert.True(status.Success);
+        Assert.True(dictation.Success);
+        Assert.Contains("\"action\":\"voice/request\"", requests[0]);
+        Assert.Contains("\"action\":\"voice/result\"", requests[1]);
+        Assert.Contains("\"requestId\":\"voice-1\"", requests[1]);
+        Assert.Contains("\"action\":\"voice/status\"", requests[2]);
+        Assert.Contains("\"action\":\"composer/dictate\"", requests[3]);
+        Assert.Contains("\"autoSubmit\":true", requests[3]);
+        using var dictationRequest = JsonDocument.Parse(requests[3]);
+        Assert.Equal(
+            "你好",
+            dictationRequest.RootElement.GetProperty("text").GetString());
+        Assert.Equal(
+            "dictation-stream-1",
+            dictationRequest.RootElement.GetProperty("dictationId").GetString());
+        Assert.Equal(
+            "final",
+            dictationRequest.RootElement.GetProperty("dictationPhase").GetString());
     }
 
     [Fact]
@@ -759,5 +887,70 @@ public sealed class MicroHarnessRegistryTests
         Assert.Equal(4321, result.WindowProcessId);
         Assert.Contains(progress, item =>
             item.Stage == MicroHarnessDispatchStage.Connecting);
+    }
+
+    [Fact]
+    public async Task OneActivationWaitsForTheBrowserSurfaceWithoutASecondClick()
+    {
+        var pipeName = $"codex-micro-harness-ready-{Guid.NewGuid():N}";
+        var definition = new MicroHarnessDefinition(
+            "test-harness",
+            "Test Harness",
+            "Test direct adapter",
+            null,
+            true,
+            new(pipeName, null, null, null, false));
+        var registry = new MicroHarnessRegistry(
+            [definition],
+            settingsPath: Path.Combine(
+                Path.GetTempPath(),
+                $"missing-{Guid.NewGuid():N}",
+                "settings.json"));
+        var progress = new List<MicroHarnessDispatchProgress>();
+        var serverTask = Task.Run(async () =>
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                await using var server = new NamedPipeServerStream(
+                    pipeName,
+                    PipeDirection.InOut,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous);
+                await server.WaitForConnectionAsync();
+                using var reader = new StreamReader(
+                    server,
+                    Encoding.UTF8,
+                    leaveOpen: true);
+                await using var writer = new StreamWriter(
+                    server,
+                    new UTF8Encoding(false),
+                    leaveOpen: true)
+                {
+                    AutoFlush = true,
+                };
+                _ = await reader.ReadLineAsync();
+                await writer.WriteLineAsync(attempt == 0
+                    ? "{\"success\":true,\"message\":\"opening dedicated window\",\"status\":\"opening\"}"
+                    : "{\"success\":true,\"message\":\"browser connected\",\"status\":\"background\"}");
+            }
+        });
+
+        var result = await registry.ActivateUntilSurfaceReadyAsync(
+            definition.Id,
+            new InlineProgress<MicroHarnessDispatchProgress>(progress.Add));
+        await serverTask;
+
+        Assert.True(result.Success);
+        Assert.Equal(MicroHarnessDispatchStage.Background, result.Stage);
+        Assert.Equal("browser connected", result.Message);
+        Assert.Equal(5, result.Step);
+        Assert.Equal(7, result.TotalSteps);
+        Assert.Contains(progress, item =>
+            item is { Step: 1, TotalSteps: 7 });
+        Assert.Contains(progress, item =>
+            item is { Step: 4, TotalSteps: 7 });
+        Assert.Contains(progress, item =>
+            item is { Step: 5, TotalSteps: 7 });
     }
 }

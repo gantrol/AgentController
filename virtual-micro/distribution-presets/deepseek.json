@@ -7,10 +7,22 @@
     "deepseek-harness"
   ],
   "firstRun": {
-    "installBundledHarness": true,
-    "detectHarnessCheckout": true,
+    "mode": "explicit-choice",
+    "probeSavedEndpoint": true,
+    "officialDefaultWebUrl": "http://127.0.0.1:3080/",
+    "offerExistingHarness": true,
+    "offerManagedSetup": true,
+    "installBundledHarness": false,
+    "detectHarnessCheckout": false,
     "startHarnessAfterInstall": true,
     "openHarnessAfterInstall": true
+  },
+  "managedSetup": {
+    "distributionName": "CodexMicro-DeepSeek",
+    "onlineDistribution": "Ubuntu-24.04",
+    "linuxUser": "codexmicro",
+    "defaultPort": 3080,
+    "bundledPayload": "payload/deepseek-runtime.wsl"
   },
   "voice": {
     "defaultProvider": "system",
@@ -20,7 +32,7 @@
       "local-qwen",
       "remote-websocket"
     ],
-    "localQwenStartMode": "on-demand"
+    "localQwenStartMode": "keypad-start"
   },
   "surface": {
     "theme": "deepseek-soft-blue",

@@ -10,6 +10,85 @@ namespace CodexMicro.Desktop.Tests;
 public sealed class SettingsWindowDesignTests
 {
     [Fact]
+    public void VoiceSettingsExposeKeypadOwnedPortableQwenStartup()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            MicroVoiceInputService? voice = null;
+            try
+            {
+                _ = Application.Current ?? new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+                var profile = MicroProfileSettings.CreateTransient();
+                profile.SetVoiceSettings(MicroVoiceProfile.Default with
+                {
+                    Provider = MicroVoiceProviders.LocalQwen,
+                });
+                var localization = new MicroLocalization(MicroLanguage.ZhCn);
+                voice = new MicroVoiceInputService(profile);
+                var window = new MicroVoiceSettingsWindow(
+                    localization,
+                    profile,
+                    voice);
+
+                window.Measure(new Size(760, 840));
+                window.Arrange(new Rect(0, 0, 760, 840));
+                var root = Assert.IsAssignableFrom<FrameworkElement>(
+                    window.Content);
+                root.Measure(new Size(760, 840));
+                root.Arrange(new Rect(0, 0, 760, 840));
+                window.UpdateLayout();
+
+                Assert.Equal(3, window.ProviderCombo.Items.Count);
+                Assert.Equal(3, window.LocalStartModeCombo.Items.Count);
+                Assert.Equal(
+                    "首次使用时启动",
+                    window.LocalStartModeCombo.SelectedItem?.ToString());
+                Assert.Equal(
+                    "{AppDir}\\voice\\start-qwen3-asr-stream.ps1",
+                    window.LocalLauncherTextBox.Text);
+                Assert.Equal(
+                    "{AppDir}\\voice",
+                    window.LocalWorkingDirectoryTextBox.Text);
+                Assert.Equal("Ubuntu", window.LocalDistributionTextBox.Text);
+                Assert.Equal("600", window.LocalReadyTimeoutTextBox.Text);
+                Assert.True(window.LocalStopWithKeypadToggle.IsChecked);
+                Assert.Equal(Visibility.Visible, window.LocalPanel.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.CredentialPanel.Visibility);
+                Assert.Contains("小键盘", window.IntroText.Text);
+                Assert.Contains("{AppDir}", window.LocalPathHintText.Text);
+
+                localization.SetLanguage(MicroLanguage.EnUs);
+                Assert.Equal("Voice input", window.HeadingText.Text);
+                Assert.Equal(
+                    "Start on first use",
+                    window.LocalStartModeCombo.SelectedItem?.ToString());
+                Assert.Contains("keypad", window.LocalDetailText.Text);
+
+                window.Close();
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                voice?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(error);
+    }
+
+    [Fact]
     public void SettingsPageUsesLayoutAndOptionsStructure()
     {
         Exception? error = null;
@@ -64,7 +143,11 @@ public sealed class SettingsWindowDesignTests
                 Assert.Equal("Options", window.OptionsHeadingText.Text);
                 Assert.Equal(4, window.AgentSourceCombo.Items.Count);
                 Assert.Equal(4, window.KnobModeCombo.Items.Count);
-                Assert.Equal(2, window.MicrophoneModeCombo.Items.Count);
+                Assert.Equal(3, window.MicrophoneModeCombo.Items.Count);
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.InvertDialDirectionOptionRow.Visibility);
+                Assert.False(window.InvertDialDirectionToggle.IsChecked);
                 Assert.Equal(3, window.QuickModelACombo.Items.Count);
                 Assert.Equal("Sol", window.QuickModelACombo.SelectedItem?.ToString());
                 Assert.Equal("Luna", window.QuickModelBCombo.SelectedItem?.ToString());
@@ -93,6 +176,10 @@ public sealed class SettingsWindowDesignTests
                 Assert.Contains("encoderMode = \"reasoning\"", File.ReadAllText(configPath));
 
                 profile.SetActiveHarness("deepseek-harness");
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.InvertDialDirectionOptionRow.Visibility);
+                Assert.False(window.InvertDialDirectionToggle.IsEnabled);
                 Assert.Equal(Visibility.Visible, window.HarnessManagementCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.HarnessAdapterCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.HarnessKeyMapCard.Visibility);
@@ -103,7 +190,7 @@ public sealed class SettingsWindowDesignTests
                 Assert.Single(window.AgentSourceCombo.Items);
                 Assert.Equal(3, window.KnobModeCombo.Items.Count);
                 Assert.True(window.KnobModeCombo.IsEnabled);
-                Assert.Single(window.MicrophoneModeCombo.Items);
+                Assert.Equal(2, window.MicrophoneModeCombo.Items.Count);
                 Assert.True(window.SingleTapToggle.IsEnabled);
                 Assert.Equal(16, window.HarnessAction06Combo.Items.Count);
                 Assert.Equal("新建会话", window.HarnessAction06Combo.SelectedItem?.ToString());
@@ -168,9 +255,9 @@ public sealed class SettingsWindowDesignTests
                 Assert.False(profile.Current.SingleTapAgentKeys);
                 window.SingleTapToggle.IsChecked = true;
                 Assert.True(profile.Current.SingleTapAgentKeys);
-                Assert.Equal(
-                    "wsl.exe",
-                    Path.GetFileName(window.HarnessExecutableTextBox.Text));
+                window.MicrophoneModeCombo.SelectedIndex = 1;
+                Assert.True(profile.Current.TapToToggleVoice);
+                Assert.Equal(string.Empty, window.HarnessExecutableTextBox.Text);
                 Assert.Equal(
                     "http://127.0.0.1:3080/__agentcontroller/micro/request",
                     window.HarnessControlUriTextBox.Text);
@@ -198,6 +285,9 @@ public sealed class SettingsWindowDesignTests
                 }
 
                 profile.SetActiveHarness("codex");
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.InvertDialDirectionOptionRow.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.HarnessAdapterCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.HarnessManagementCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.HarnessKeyMapCard.Visibility);
@@ -208,6 +298,9 @@ public sealed class SettingsWindowDesignTests
                 Assert.Equal(4, window.AgentSourceCombo.Items.Count);
                 Assert.Equal(4, window.KnobModeCombo.Items.Count);
                 Assert.Equal("reasoning", observer.Current.EncoderMode);
+
+                window.InvertDialDirectionToggle.IsChecked = true;
+                Assert.True(profile.Current.InvertDialDirection);
 
                 window.QuickModelBCombo.SelectedIndex = 2;
                 Assert.Equal(

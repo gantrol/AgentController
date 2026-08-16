@@ -26,4 +26,12 @@
     <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\voice\start-qwen3-asr-stream.ps1;..\..\voice\qwen3-asr-stream-server.py"
+             Link="voice\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

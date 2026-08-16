@@ -5,9 +5,8 @@ import { apply } from '../src/client/index.tsx'
 import {
   MICRO_EVENTS_ENDPOINT,
   MICRO_REPORT_ENDPOINT,
-  MICRO_SETTINGS_ENDPOINT,
+  MICRO_VOICE_BUTTON_ENDPOINT,
 } from '../src/protocol.ts'
-import { DEFAULT_VOICE_SETTINGS } from '../src/voice-contract.ts'
 
 class FakeEventSource {
   static instances: FakeEventSource[] = []
@@ -118,6 +117,7 @@ let openSession: ReturnType<typeof vi.fn>
 let forkSession: ReturnType<typeof vi.fn>
 let cancelTurn: ReturnType<typeof vi.fn>
 let startSession: ReturnType<typeof vi.fn>
+let submitComposer: ReturnType<typeof vi.fn>
 let selectModel: ReturnType<typeof vi.fn>
 let currentModel: {
   provider: string
@@ -125,7 +125,9 @@ let currentModel: {
   reasoningEffort?: string
 }
 let reports: Array<Record<string, unknown>>
-let voiceSettings: typeof DEFAULT_VOICE_SETTINGS
+let voiceButtonRequests: Array<Record<string, unknown>>
+let voiceButtonResult: { success: boolean; active: boolean; message: string }
+let composerDraft: { value: string }
 
 beforeEach(() => {
   FakeEventSource.instances = []
@@ -134,20 +136,28 @@ beforeEach(() => {
   forkSession = vi.fn(async () => 'fork-child')
   cancelTurn = vi.fn(async () => ({ ok: true }))
   startSession = vi.fn()
+  submitComposer = vi.fn()
   currentModel = { provider: 'deepseek', model: 'model-a', reasoningEffort: 'medium' }
   selectModel = vi.fn(async (selection: typeof currentModel) => {
     currentModel = { ...selection }
   })
   reports = []
-  voiceSettings = structuredClone(DEFAULT_VOICE_SETTINGS)
+  voiceButtonRequests = []
+  voiceButtonResult = {
+    success: true,
+    active: true,
+    message: 'The keypad microphone is listening.',
+  }
   vi.stubGlobal('EventSource', FakeEventSource)
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
-    if (url === MICRO_SETTINGS_ENDPOINT) {
-      return new Response(JSON.stringify({
-        document: { revision: 0, settings: voiceSettings },
-        credentials: {},
-      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    if (url === MICRO_VOICE_BUTTON_ENDPOINT) {
+      if (typeof init?.body !== 'string') throw new TypeError('expected voice-button JSON body')
+      voiceButtonRequests.push(JSON.parse(init.body) as Record<string, unknown>)
+      return new Response(JSON.stringify(voiceButtonResult), {
+        status: voiceButtonResult.success ? 200 : 409,
+        headers: { 'content-type': 'application/json' },
+      })
     }
     expect(url).toBe(MICRO_REPORT_ENDPOINT)
     if (typeof init?.body !== 'string') throw new TypeError('expected JSON report body')
@@ -169,17 +179,16 @@ afterEach(() => {
   document.body.replaceChildren()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  delete (window as Window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
 })
 
-function mount(): FakeEventSource {
-  const draft = { value: '' }
+function mount(initialDraft = ''): FakeEventSource {
+  composerDraft = { value: initialDraft }
   const input = {
-    setDraft: vi.fn((value: string) => { draft.value = value }),
-    submit: vi.fn(),
+    setDraft: vi.fn((value: string) => { composerDraft.value = value }),
+    submit: submitComposer,
     notify: vi.fn(),
     state: {
-      getSnapshot: () => ({ draft: draft.value }),
+      getSnapshot: () => ({ draft: composerDraft.value }),
       subscribe: () => () => {},
     },
   }
@@ -239,11 +248,10 @@ function mount(): FakeEventSource {
 }
 
 describe('external DeepSeek Harness browser bundle', () => {
-  it('registers a native settings page and composer voice control', () => {
+  it('registers exactly one composer voice control and no plugin settings page', () => {
     mount()
     expect(context?.entries.map(entry => `${entry.name}:${entry.id}`)).toEqual([
       'conversation.input.right:agentcontroller-micro-voice',
-      'settings.section:agentcontroller-micro-voice',
       'conversation.session.header.actions:agentcontroller-micro-view-bridge',
     ])
     expect(document.querySelector('style[data-plugin="agentcontroller-dsh-micro-voice"]')).not.toBeNull()
@@ -253,6 +261,11 @@ describe('external DeepSeek Harness browser bundle', () => {
   it('adjusts reasoning independently and toggles between two available models', async () => {
     vi.spyOn(window, 'focus').mockImplementation(() => {})
     const source = mount()
+    await vi.waitFor(() => {
+      expect(reports).toContainEqual(expect.objectContaining({
+        currentModel: 'Model A',
+      }))
+    })
     source.emit({
       version: 1,
       type: 'action/execute',
@@ -283,6 +296,7 @@ describe('external DeepSeek Harness browser bundle', () => {
       expect(reports).toContainEqual(expect.objectContaining({
         requestId: 'model-toggle',
         success: true,
+        currentModel: 'Model B',
       }))
     })
   })
@@ -328,7 +342,49 @@ describe('external DeepSeek Harness browser bundle', () => {
     })
   })
 
-  it('uses domain actions and acknowledges voice edges without DOM simulation', async () => {
+  it('submits a non-empty current composer through the native input service', async () => {
+    const source = mount('Explain this change')
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'composer-submit',
+      actionId: 'composer/submit',
+      sessionId: 'session-1',
+    })
+
+    await vi.waitFor(() => {
+      expect(submitComposer).toHaveBeenCalledOnce()
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'composer-submit',
+        success: true,
+        message: 'DeepSeek Harness composer submitted.',
+      }))
+    })
+  })
+
+  it('does not submit an empty composer', async () => {
+    const source = mount('   ')
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'composer-submit-empty',
+      actionId: 'composer/submit',
+      sessionId: 'session-1',
+    })
+
+    await vi.waitFor(() => {
+      expect(submitComposer).not.toHaveBeenCalled()
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'composer-submit-empty',
+        success: false,
+        message: expect.stringContaining('empty'),
+      }))
+    })
+  })
+
+  it('uses domain actions without DOM simulation', async () => {
     vi.spyOn(window, 'focus').mockImplementation(() => {})
     const source = mount()
     const bridge = context?.entries.find(entry =>
@@ -356,7 +412,6 @@ describe('external DeepSeek Harness browser bundle', () => {
       actionId: 'turn/cancel',
       sessionId: 'session-1',
     })
-    source.emit({ version: 1, type: 'voice/stop', requestId: 'voice-stop' })
     source.emit({
       version: 1,
       type: 'action/execute',
@@ -371,62 +426,156 @@ describe('external DeepSeek Harness browser bundle', () => {
       expect(openSession).toHaveBeenCalledWith('fork-child')
       expect(cancelTurn).toHaveBeenCalledOnce()
       expect(context?.viewStore.setView).toHaveBeenCalledWith('trajectory')
-      expect(reports).toContainEqual(expect.objectContaining({ requestId: 'voice-stop', success: true }))
       expect(reports).toContainEqual(expect.objectContaining({ requestId: 'view-trajectory', success: true }))
     })
   })
 
-  it('opens plugin-owned voice configuration when hardware requests setup', async () => {
-    vi.spyOn(window, 'focus').mockImplementation(() => {})
+  it('projects keypad voice status onto the single DeepSeek button', async () => {
     const source = mount()
     const voice = context?.entries.find(entry =>
       entry.id === 'agentcontroller-micro-voice')?.inject?.().voice as {
-        getSnapshot(): { phase: string }
+        getSnapshot(): { active: boolean; phase: string; sessionId?: string; message: string }
       }
 
-    source.emit({ version: 1, type: 'voice/configure', requestId: 'voice-configure' })
+    source.emit({
+      version: 1,
+      type: 'voice/status',
+      active: true,
+      phase: 'listening',
+      sessionId: 'session-1',
+      message: 'The keypad microphone is listening.',
+    })
 
     await vi.waitFor(() => {
-      expect(voice.getSnapshot().phase).toBe('setup-required')
+      expect(voice.getSnapshot()).toMatchObject({
+        active: true,
+        phase: 'listening',
+        sessionId: 'session-1',
+        message: 'The keypad microphone is listening.',
+      })
+    })
+  })
+
+  it('sends the DeepSeek voice button only to the keypad bridge endpoint', async () => {
+    const source = mount()
+    expect(source).toBeDefined()
+    const voice = context?.entries.find(entry =>
+      entry.id === 'agentcontroller-micro-voice')?.inject?.().voice as {
+        toggle(sessionId: string): Promise<void>
+        getSnapshot(): { active: boolean; phase: string }
+      }
+
+    await voice.toggle('session-1')
+
+    expect(voiceButtonRequests).toEqual([{ sessionId: 'session-1' }])
+    expect(voice.getSnapshot()).toMatchObject({ active: true, phase: 'listening' })
+  })
+
+  it('writes keypad-recognized text into the exact composer and can submit it', async () => {
+    const source = mount('你好')
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'dictation-1',
+      sessionId: 'session-1',
+      text: '世界',
+      language: 'zh-CN',
+      autoSubmit: true,
+    })
+
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('你好世界')
+      expect(submitComposer).toHaveBeenCalledOnce()
       expect(reports).toContainEqual(expect.objectContaining({
-        requestId: 'voice-configure',
+        requestId: 'dictation-1',
         success: true,
-        message: 'Micro Bridge voice settings opened.',
+        message: 'Keypad dictation was written and submitted.',
       }))
     })
   })
 
-  it('reports voice success only after system recognition starts listening', async () => {
-    class FakeSpeechRecognition {
-      continuous = false
-      interimResults = false
-      lang = ''
-      onresult = null
-      onerror = null
-      onend = null
-      readonly start = vi.fn()
-      readonly stop = vi.fn()
-      readonly abort = vi.fn()
-    }
-    voiceSettings = {
-      ...structuredClone(DEFAULT_VOICE_SETTINGS),
-      provider: 'system',
-      setupCompleted: true,
-    }
-    Object.defineProperty(window, 'webkitSpeechRecognition', {
-      configurable: true,
-      value: FakeSpeechRecognition,
+  it('replaces live keypad partials and commits only the final transcript', async () => {
+    const source = mount('已有内容：')
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'dictation-partial-1',
+      sessionId: 'session-1',
+      text: '你好',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'stream-1',
+      dictationPhase: 'partial',
     })
-    const source = mount()
-
-    source.emit({ version: 1, type: 'voice/start', requestId: 'voice-start' })
-
     await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('已有内容：你好')
+    })
+
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'dictation-partial-2',
+      sessionId: 'session-1',
+      text: '你好世界',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'stream-1',
+      dictationPhase: 'partial',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('已有内容：你好世界')
+    })
+
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'dictation-final',
+      sessionId: 'session-1',
+      text: '你好，世界！',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'stream-1',
+      dictationPhase: 'final',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('已有内容：你好，世界！')
       expect(reports).toContainEqual(expect.objectContaining({
-        requestId: 'voice-start',
+        requestId: 'dictation-final',
         success: true,
-        message: 'Micro Bridge streaming voice input is listening.',
       }))
+    })
+  })
+
+  it('restores the original draft when a live keypad preview is cancelled', async () => {
+    const source = mount('原稿')
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'dictation-partial',
+      sessionId: 'session-1',
+      text: '临时识别',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'stream-cancel',
+      dictationPhase: 'partial',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('原稿临时识别')
+    })
+
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'dictation-cancel',
+      sessionId: 'session-1',
+      text: '',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'stream-cancel',
+      dictationPhase: 'cancel',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('原稿')
     })
   })
 

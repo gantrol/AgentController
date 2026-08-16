@@ -28,6 +28,7 @@ public sealed class AgentLightingVisualTests
     private sealed record HarnessLedCase(
         string Name,
         bool Running,
+        bool VoiceReady,
         string Browser,
         Color Runtime,
         Color Driver,
@@ -84,7 +85,7 @@ public sealed class AgentLightingVisualTests
     }
 
     [Fact]
-    public void HarnessStatusLedsMatchTheScriptedComponentAndTaskStates()
+    public void HarnessStatusLedsKeepVoiceReadinessIndependentFromTaskState()
     {
         RunOnStaThread(() =>
         {
@@ -97,8 +98,8 @@ public sealed class AgentLightingVisualTests
             window.DesignSurface.Arrange(new Rect(0, 0, 590, 610));
             window.DesignSurface.UpdateLayout();
 
-            // With no adapter snapshot, all three component/task signals are
-            // neutral. Selection alone must not create an activity light.
+            // With no adapter snapshot or configured voice service, all three
+            // component signals are neutral.
             AssertLedColors(
                 window,
                 ColorFromRgb(0xB8B98B),
@@ -110,27 +111,31 @@ public sealed class AgentLightingVisualTests
                 new(
                     "connected / idle",
                     Running: false,
+                    VoiceReady: false,
                     Browser: "connected",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0x78A6FF),
                     Activity: ColorFromRgb(0xB8B98B)),
                 new(
-                    "browser waiting / idle",
+                    "browser waiting / voice ready",
                     Running: false,
+                    VoiceReady: true,
                     Browser: "starting",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0xFFC85A),
-                    Activity: ColorFromRgb(0xB8B98B)),
+                    Activity: ColorFromRgb(0x304FFE)),
                 new(
-                    "connected / running",
+                    "connected / running / voice unavailable",
                     Running: true,
+                    VoiceReady: false,
                     Browser: "connected",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0x78A6FF),
-                    Activity: ColorFromRgb(0x304FFE)),
+                    Activity: ColorFromRgb(0xB8B98B)),
                 new(
-                    "browser waiting / running",
+                    "browser waiting / running / voice ready",
                     Running: true,
+                    VoiceReady: true,
                     Browser: "starting",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0xFFC85A),
@@ -139,6 +144,8 @@ public sealed class AgentLightingVisualTests
 
             foreach (var ledCase in cases)
             {
+                window.ApplyVoiceServiceStateForVisualTest(
+                    ledCase.VoiceReady);
                 window.ApplyHarnessStateForVisualTest(CreateHarnessSnapshot(
                     ledCase.Running,
                     ledCase.Browser));
@@ -149,7 +156,7 @@ public sealed class AgentLightingVisualTests
                     ledCase.Driver,
                     ledCase.Activity);
 
-                if (ledCase.Name == "browser waiting / idle")
+                if (ledCase.Name == "browser waiting / voice ready")
                 {
                     SavePreviewFromEnvironment(
                         RenderSurface(window),
@@ -286,10 +293,7 @@ public sealed class AgentLightingVisualTests
             NavigationDepth: 0,
             new(
                 Adapter: "ready",
-                Browser: browser,
-                VoiceSetup: "ready",
-                VoiceRuntime: "ready",
-                VoiceMessage: "ready"),
+                Browser: browser),
             DateTimeOffset.Now);
 
     private static RenderedKey RenderAgentKey(

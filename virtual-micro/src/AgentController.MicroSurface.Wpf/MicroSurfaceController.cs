@@ -20,20 +20,16 @@ public sealed class MicroSurfaceController : IDisposable
 
     private readonly Dispatcher _dispatcher;
     private readonly MicroLocalization _localization;
-    private readonly DialDirectionSettings _dialDirectionSettings;
     private readonly Dictionary<string, SurfaceEntry> _surfaces =
         new(StringComparer.OrdinalIgnoreCase);
     private int _nextOrdinal = 1;
     private bool _disposed;
 
     public MicroSurfaceController(
-        MicroLocalization? localization = null,
-        DialDirectionSettings? dialDirectionSettings = null)
+        MicroLocalization? localization = null)
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
         _localization = localization ?? new MicroLocalization();
-        _dialDirectionSettings = dialDirectionSettings ??
-            new DialDirectionSettings();
         CreateSurface(
             "primary",
             new MicroProfileSettings(),
@@ -131,7 +127,6 @@ public sealed class MicroSurfaceController : IDisposable
 
         var window = new MicroSurfaceWindow(
             _localization,
-            _dialDirectionSettings,
             settings,
             harnessId => OpenHarnessInNewSurface(id, harnessId),
             () => CloseSurface(id),

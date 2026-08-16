@@ -28,12 +28,15 @@ public partial class MicroSettingsWindow : Window
     private readonly CodexMicroLayoutObserver _layoutObserver;
     private readonly CodexMicroConfigWriter _configWriter;
     private readonly MicroHarnessRegistry _harnessRegistry;
+    private readonly MicroVoiceInputService _voiceInput;
+    private readonly bool _ownsVoiceInput;
     private readonly Func<Task>? _openOfficialSettings;
     private readonly Func<Task>? _reconnect;
     private readonly Func<bool> _isConnected;
     private bool _lastConfigSaveSucceeded = true;
     private bool _syncing;
     private bool _showHarnessAdapterDetail;
+    private MicroVoiceSettingsWindow? _voiceSettingsWindow;
 
     internal MicroSettingsWindow(
         MicroLocalization localization,
@@ -42,6 +45,7 @@ public partial class MicroSettingsWindow : Window
         CodexMicroLayoutObserver? layoutObserver = null,
         CodexMicroConfigWriter? configWriter = null,
         MicroHarnessRegistry? harnessRegistry = null,
+        MicroVoiceInputService? voiceInput = null,
         Func<Task>? openOfficialSettings = null,
         Func<Task>? reconnect = null,
         Func<bool>? isConnected = null)
@@ -55,6 +59,8 @@ public partial class MicroSettingsWindow : Window
         _configWriter = configWriter ??
             new CodexMicroConfigWriter(_layoutObserver.ConfigPath);
         _harnessRegistry = harnessRegistry ?? new MicroHarnessRegistry();
+        _ownsVoiceInput = voiceInput is null;
+        _voiceInput = voiceInput ?? new MicroVoiceInputService(profileSettings);
         _openOfficialSettings = openOfficialSettings;
         _reconnect = reconnect;
         _isConnected = isConnected ?? (() => false);
@@ -134,18 +140,28 @@ public partial class MicroSettingsWindow : Window
                 isCodex
                     ? [
                         new("push-to-talk", english ? "Push to talk" : "按住说话"),
-                        new("realtime", english ? "Realtime voice" : "实时语音"),
+                        new(
+                            "tap-to-toggle",
+                            english ? "Tap to start / stop" : "点按开始 / 再点停止"),
+                        new(
+                            "realtime",
+                            english ? "Codex realtime voice" : "Codex 实时语音"),
                     ]
-                    : [new(
-                        "push-to-talk",
-                        english ? "Push to talk · plugin" : "按住说话 · 插件")],
-                isCodex ? layout.VoiceButtonMode : "push-to-talk");
+                    : [
+                        new("push-to-talk", english ? "Push to talk" : "按住说话"),
+                        new(
+                            "tap-to-toggle",
+                            english ? "Tap to start / stop" : "点按开始 / 再点停止"),
+                    ],
+                profile.TapToToggleVoice
+                    ? "tap-to-toggle"
+                    : isCodex ? layout.VoiceButtonMode : "push-to-talk");
 
             HarnessCombo.ItemsSource = _harnessRegistry.Definitions;
             HarnessCombo.SelectedItem = _harnessRegistry.Resolve(
                 profile.ActiveHarnessId);
-            SeparateMicrophonesToggle.IsChecked =
-                layout.SeparateMicrophoneKeys;
+            InvertDialDirectionToggle.IsChecked =
+                isCodex && profile.InvertDialDirection;
             SingleTapToggle.IsChecked = profile.SingleTapAgentKeys;
             if (!isCodex)
             {
@@ -180,8 +196,8 @@ public partial class MicroSettingsWindow : Window
                 ? "The running keypad is the editor. Changes are saved to the real Micro configuration."
                 : "直接编辑正在运行的小键盘；改动会保存到真实的 Micro 配置。"
             : english
-                ? "Edit this Harness's live Micro layout here; service and voice details open as secondary settings."
-                : "在此直接编辑当前 Harness 的实时 Micro 布局；服务和语音进入独立子设置。";
+                ? "Edit this Harness's live Micro layout here. Voice capture and recognition are configured on this keypad."
+                : "在此直接编辑当前 Harness 的实时 Micro 布局；语音采集与识别均在此小键盘配置。";
         LayoutHeadingText.Text = "Layout";
         ResetButton.Content = english ? "Reset layout" : "重置布局";
         PreviewHintText.Text = english
@@ -204,6 +220,12 @@ public partial class MicroSettingsWindow : Window
             : isCodex
                 ? "选择转动旋钮时控制的内容"
                 : "选择输入区控件、仅推理强度或最近 Harness 会话";
+        InvertDialDirectionTitleText.Text = english
+            ? "Reverse dial direction"
+            : "反转旋钮方向";
+        InvertDialDirectionDetailText.Text = english
+            ? "Swap clockwise and counterclockwise input for this Codex keypad"
+            : "仅对当前 Codex 小键盘交换顺时针与逆时针输入";
         JoystickTitleText.Text = english ? "Joystick" : "摇杆";
         JoystickDetailText.Text = english
             ? "Configure four native Harness directions"
@@ -211,14 +233,8 @@ public partial class MicroSettingsWindow : Window
         JoystickMappingButton.Content = english ? "Directions ›" : "方向 ›";
         MicrophoneTitleText.Text = english ? "Microphone key" : "麦克风键";
         MicrophoneDetailText.Text = english
-            ? "Choose how the microphone key works"
-            : "选择麦克风键的工作方式";
-        SeparateMicrophonesTitleText.Text = english
-            ? "Use separate microphone keys"
-            : "使用独立麦克风键";
-        SeparateMicrophonesDetailText.Text = english
-            ? "Map the two switches beneath the wide key separately"
-            : "分别映射宽键下方的两个物理开关";
+            ? "Choose hold, tap-to-toggle, or Codex realtime behavior"
+            : "选择按住说话、点按开始 / 停止，或 Codex 实时语音";
         SingleTapTitleText.Text = english
             ? isCodex
                 ? "Focus Codex with a single tap"
@@ -263,11 +279,11 @@ public partial class MicroSettingsWindow : Window
             : english ? "Configure" : "配置";
         HarnessVoiceTitleText.Text = english ? "Voice input" : "语音输入";
         HarnessVoiceDetailText.Text = english
-            ? "Local streaming Qwen ASR, system speech, or a remote streaming API"
-            : "本地流式 Qwen ASR、系统识别或远程流式 API";
+            ? "Keypad-owned microphone, system speech, local Qwen, or remote streaming API"
+            : "由小键盘持有麦克风、系统识别、本地 Qwen 或远程流式 API";
         ConfigureHarnessVoiceButton.Content = english
-            ? "Plugin settings"
-            : "插件设置";
+            ? "Keypad settings"
+            : "小键盘设置";
         HarnessPipeTitleText.Text = english ? "Adapter pipe" : "适配器管道";
         HarnessPipeDetailText.Text = english
             ? "Versioned local direct-plugin endpoint"
@@ -366,7 +382,12 @@ public partial class MicroSettingsWindow : Window
         KnobModeCombo.IsEnabled = true;
         AgentSourceCombo.IsEnabled = isCodex;
         MicrophoneModeCombo.IsEnabled = true;
-        SeparateMicrophonesToggle.IsEnabled = true;
+        InvertDialDirectionOptionRow.Visibility = isCodex
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        InvertDialDirectionSeparator.Visibility =
+            InvertDialDirectionOptionRow.Visibility;
+        InvertDialDirectionToggle.IsEnabled = isCodex;
         JoystickOptionRow.Visibility = isCodex
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -549,34 +570,54 @@ public partial class MicroSettingsWindow : Window
         target.BringIntoView();
     }
 
-    private async void ConfigureHarnessVoiceButton_Click(
+    internal void FocusHarnessVoiceSettings()
+    {
+        Show();
+        Activate();
+        HarnessManagementCard.BringIntoView();
+        OpenVoiceSettingsWindow();
+    }
+
+    private void ConfigureHarnessVoiceButton_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (!SaveHarnessSettings())
+        OpenVoiceSettingsWindow();
+    }
+
+    private void OpenVoiceSettingsWindow()
+    {
+        if (_voiceSettingsWindow is not null)
         {
+            if (_voiceSettingsWindow.WindowState == WindowState.Minimized)
+            {
+                _voiceSettingsWindow.WindowState = WindowState.Normal;
+            }
+
+            _voiceSettingsWindow.Topmost = Topmost;
+            _voiceSettingsWindow.Show();
+            _voiceSettingsWindow.Activate();
             return;
         }
 
-        var harness = _harnessRegistry.Resolve(
-            _profileSettings.Current.ActiveHarnessId);
-        ConfigureHarnessVoiceButton.IsEnabled = false;
-        try
+        var window = new MicroVoiceSettingsWindow(
+            _localization,
+            _profileSettings,
+            _voiceInput)
         {
-            HarnessVoiceDetailText.Text = _localization.IsEnglish
-                ? "Opening the Micro Bridge plugin's voice settings…"
-                : "正在打开 Micro Bridge 插件自己的语音设置…";
-            var result = await _harnessRegistry.ConfigureVoiceAsync(harness.Id);
-            HarnessVoiceDetailText.Text = result.Success
-                ? _localization.IsEnglish
-                    ? "Micro Bridge voice settings opened in the Harness window"
-                    : "已在 Harness 窗口打开 Micro Bridge 插件语音设置"
-                : result.Message;
-        }
-        finally
+            Owner = this,
+            Topmost = Topmost,
+        };
+        _voiceSettingsWindow = window;
+        window.Closed += (_, _) =>
         {
-            ConfigureHarnessVoiceButton.IsEnabled = true;
-        }
+            if (ReferenceEquals(_voiceSettingsWindow, window))
+            {
+                _voiceSettingsWindow = null;
+            }
+        };
+        window.Show();
+        window.Activate();
     }
 
     internal void RefreshConnectionState()
@@ -694,23 +735,19 @@ public partial class MicroSettingsWindow : Window
         SelectionChangedEventArgs e)
     {
         if (_syncing ||
-            _harnessRegistry.Resolve(_profileSettings.Current.ActiveHarnessId).Id != "codex" ||
             MicrophoneModeCombo.SelectedItem is not SettingChoice choice)
         {
             return;
         }
 
-        SaveLayoutChange(() => _configWriter.SetVoiceButtonMode(choice.Id));
-    }
-
-    private void SeparateMicrophonesToggle_Changed(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (!_syncing)
+        var isCodex = _harnessRegistry.Resolve(
+            _profileSettings.Current.ActiveHarnessId).Id == "codex";
+        var tapToToggle = choice.Id == "tap-to-toggle";
+        _profileSettings.SetTapToToggleVoice(tapToToggle);
+        if (isCodex)
         {
-            SaveLayoutChange(() => _configWriter.SetSeparateMicrophoneKeys(
-                SeparateMicrophonesToggle.IsChecked == true));
+            SaveLayoutChange(() => _configWriter.SetVoiceButtonMode(
+                tapToToggle ? "push-to-talk" : choice.Id));
         }
     }
 
@@ -720,6 +757,19 @@ public partial class MicroSettingsWindow : Window
         {
             _profileSettings.SetSingleTapAgentKeys(
                 SingleTapToggle.IsChecked == true);
+        }
+    }
+
+    private void InvertDialDirectionToggle_Changed(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!_syncing &&
+            _harnessRegistry.Resolve(_profileSettings.Current.ActiveHarnessId).Id ==
+                "codex")
+        {
+            _profileSettings.SetInvertDialDirection(
+                InvertDialDirectionToggle.IsChecked == true);
         }
     }
 
@@ -949,7 +999,8 @@ public partial class MicroSettingsWindow : Window
             HarnessLaunchStatusText.Text = _localization.IsEnglish
                 ? $"Opening {harness.DisplayName}…"
                 : $"正在打开 {harness.DisplayName}…";
-            var result = await _harnessRegistry.ActivateAsync(harness.Id);
+            var result = await _harnessRegistry
+                .ActivateUntilSurfaceReadyAsync(harness.Id);
             HarnessLaunchStatusText.Text = result.Message;
             ConnectionStatusDot.Fill = new SolidColorBrush(result.Success
                 ? Color.FromRgb(0x79, 0xA5, 0xFF)
@@ -1054,13 +1105,19 @@ public partial class MicroSettingsWindow : Window
         }
     }
 
-    private void Window_Closed(object? sender, EventArgs e)
+    private async void Window_Closed(object? sender, EventArgs e)
     {
+        _voiceSettingsWindow?.Close();
+        _voiceSettingsWindow = null;
         LiveMicroPreviewBrush.Visual = null;
         _localization.LanguageChanged -= Localization_LanguageChanged;
         _profileSettings.Changed -= ProfileSettings_Changed;
         _layoutObserver.LayoutChanged -= LayoutObserver_LayoutChanged;
         _harnessRegistry.Changed -= HarnessRegistry_Changed;
         Closed -= Window_Closed;
+        if (_ownsVoiceInput)
+        {
+            await _voiceInput.DisposeAsync();
+        }
     }
 }

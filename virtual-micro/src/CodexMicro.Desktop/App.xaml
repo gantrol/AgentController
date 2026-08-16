@@ -455,7 +455,7 @@
         </Style>
 
         <Style x:Key="DarkKnobButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Background" Value="#FF2D2925" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -477,7 +477,7 @@
                                      Margin="0,0,5,0"
                                      HorizontalAlignment="Right"
                                      VerticalAlignment="Center"
-                                     Fill="#FF2D2925">
+                                     Fill="{TemplateBinding Background}">
                                 <Ellipse.Effect>
                                     <DropShadowEffect BlurRadius="4"
                                                       Direction="270"
@@ -498,7 +498,7 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="KnobFace" Property="Fill" Value="#FF38322E" />
+                                <Setter TargetName="KnobFace" Property="Opacity" Value="0.9" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="KnobFace" Property="Margin" Value="0,2,5,-2" />

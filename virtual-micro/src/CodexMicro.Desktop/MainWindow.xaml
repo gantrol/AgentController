@@ -208,7 +208,8 @@
                             </TextBlock.LayoutTransform>
                         </TextBlock>
 
-                        <StackPanel Orientation="Horizontal"
+                        <StackPanel x:Name="BrandWordmarkPanel"
+                                    Orientation="Horizontal"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Bottom"
                                     Margin="0,0,0,25"
@@ -227,6 +228,22 @@
                                        Foreground="#80606A70"
                                        VerticalAlignment="Center" />
                         </StackPanel>
+
+                        <TextBlock x:Name="HarnessProgressStatusText"
+                                   Width="400"
+                                   Margin="0,0,0,22"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Bottom"
+                                   FontFamily="Segoe UI Variable Display, Segoe UI"
+                                   FontSize="16.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#FF34415B"
+                                   IsHitTestVisible="False"
+                                   Panel.ZIndex="32"
+                                   TextAlignment="Center"
+                                   TextOptions.TextFormattingMode="Display"
+                                   TextTrimming="CharacterEllipsis"
+                                   Visibility="Collapsed" />
 
                         <Grid x:Name="ControlGrid"
                               Width="424"
@@ -523,7 +540,7 @@
                                             Panel.ZIndex="2">
                                     <Ellipse x:Name="RuntimeLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#9EBDFF" ToolTip="Codex 运行时握手" />
                                     <Ellipse x:Name="DriverLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#B8B98B" ToolTip="虚拟 HID 驱动" />
-                                    <Ellipse x:Name="ActivityLed" Width="7" Height="7" Fill="#B8B98B" ToolTip="事件状态" />
+                                    <Ellipse x:Name="ActivityLed" Width="7" Height="7" Fill="#B8B98B" ToolTip="事件 / 语音服务状态" />
                                 </StackPanel>
                                 <Button x:Name="SettingsKey"
                                         Width="96"
@@ -533,7 +550,7 @@
                                         PreviewMouseLeftButtonDown="Settings_PreviewMouseLeftButtonDown"
                                         PreviewMouseRightButtonDown="Settings_PreviewMouseRightButtonDown"
                                         ContextMenuOpening="Settings_ContextMenuOpening"
-                                        ToolTip="左键切换当前 Agent 的快捷模型 · Codex 长按打开官方 Micro 设置 · 右键打开右下角当前 Agent 设置&#x0a;三灯：运行时握手 / HID 连接 / 最近事件">
+                                        ToolTip="DeepSeek 模式左键切换快捷模型（未连接时先打开） · Codex 模式左键切换快捷模型、长按打开官方 Micro 设置 · 右键打开当前 Agent 设置&#x0a;三灯：Codex 为运行时 / HID / 事件；DeepSeek 为适配器 / 网页桥接 / 语音服务">
                                     <Button.ContextMenu>
                                         <ContextMenu x:Name="KnobContextMenu">
                                             <MenuItem x:Name="KnobSettingsMenuItem"
@@ -555,7 +572,8 @@
                                           Width="52"
                                           Height="52"
                                           IsHitTestVisible="False">
-                                        <Ellipse Width="47"
+                                        <Ellipse x:Name="QuotaTrackRing"
+                                                 Width="47"
                                                  Height="47"
                                                  Stroke="#2EFFFFFF"
                                                  StrokeThickness="2" />
@@ -756,7 +774,7 @@
                                                          VerticalAlignment="Center"
                                                          KeycapId="CODEX"
                                                          IconBrush="#171717" />
-                                    <Border x:Name="CodexSendBadge"
+                                    <Border x:Name="ActionSendBadge"
                                             Width="20"
                                             Height="20"
                                             Margin="0,0,4,4"
@@ -768,7 +786,7 @@
                                             CornerRadius="10"
                                             SnapsToDevicePixels="True"
                                             Visibility="Collapsed">
-                                        <Path x:Name="CodexSendPlane"
+                                        <Path x:Name="ActionSendPlane"
                                               Width="13"
                                               Height="13"
                                               Data="M 2,8 L 15,2 L 10.5,15 L 7.7,9.7 Z M 7.7,9.7 L 15,2"
@@ -801,20 +819,6 @@
                                     <RotateTransform x:Name="HarnessActionProgressRotate" />
                                 </Ellipse.RenderTransform>
                             </Ellipse>
-                            <Ellipse x:Name="HarnessConnectionStatusDot"
-                                     Grid.Row="3"
-                                     Grid.Column="3"
-                                     Width="9"
-                                     Height="9"
-                                     Margin="0,0,16,16"
-                                     HorizontalAlignment="Right"
-                                     VerticalAlignment="Bottom"
-                                     Fill="#FFB7BABD"
-                                     Stroke="#FFFFFFFF"
-                                     StrokeThickness="1.4"
-                                     Panel.ZIndex="8"
-                                     Visibility="Collapsed"
-                                     ToolTip="Harness status" />
                             <Border x:Name="HarnessActionStatusBadge"
                                     Grid.Row="3"
                                     Grid.Column="3"

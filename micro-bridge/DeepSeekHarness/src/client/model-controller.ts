@@ -1,7 +1,9 @@
 /** Direct model/reasoning control over DeepSeek Harness's shared model directory. */
 
-import type { QuickModelRef } from '../voice-contract.ts'
-import { VoiceSettingsClient } from './settings-client.ts'
+interface QuickModelRef {
+  provider: string
+  model: string
+}
 
 interface SnapshotFace<T> {
   getSnapshot(): T
@@ -58,6 +60,7 @@ export interface ModelControlSnapshot {
   status: 'idle' | 'loading' | 'ready' | 'error'
   choices: readonly QuickModelChoice[]
   current?: ModelSelection
+  currentLabel?: string
   error?: string
 }
 
@@ -92,11 +95,12 @@ function selection(choice: ResolvedChoice): ModelSelection {
 export class ModelController {
   private snapshot: ModelControlSnapshot = { status: 'idle', choices: [] }
   private readonly listeners = new Set<Listener>()
+  private activeDirectory: ModelDirectory | undefined
+  private unsubscribeDirectory: (() => void) | undefined
 
   constructor(
     private readonly directories: ModelDirectoriesFace,
     private readonly currentSessionId: () => string | undefined,
-    private readonly settings: VoiceSettingsClient,
   ) {}
 
   getSnapshot = (): ModelControlSnapshot => this.snapshot
@@ -104,6 +108,12 @@ export class ModelController {
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
+  }
+
+  dispose(): void {
+    this.unsubscribeDirectory?.()
+    this.unsubscribeDirectory = undefined
+    this.activeDirectory = undefined
   }
 
   async refresh(): Promise<void> {
@@ -157,14 +167,11 @@ export class ModelController {
     const { directory, state } = await this.load(explicitSessionId)
     const choices = flatten(state)
     if (choices.length < 2) throw new Error('At least two models are required for quick switching.')
-    const configured = await this.settings.settings()
     const currentChoice = choices.find(item => same(item.ref, state.current ?? undefined))
-    const first = choices.find(item => same(item.ref, configured.quickModelA))
-      ?? currentChoice
-      ?? choices[0]
+    const first = currentChoice ?? choices[0]
     if (first === undefined) throw new Error('No first quick model is available.')
-    const second = choices.find(item => same(item.ref, configured.quickModelB) && !same(item.ref, first.ref))
-      ?? choices.find(item => !same(item.ref, first.ref))
+    const firstIndex = choices.findIndex(item => same(item.ref, first.ref))
+    const second = choices[(firstIndex + 1) % choices.length]
     if (second === undefined) throw new Error('No second quick model is available.')
     const target = same(state.current ?? undefined, first.ref) ? second : first
     await directory.select(selection(target))
@@ -181,16 +188,33 @@ export class ModelController {
       throw new Error('No current session is available for model control.')
     }
     const directory = this.directories.directoryFor(sessionId)
+    this.bind(directory)
     await directory.load()
     return { directory, state: directory.store.getSnapshot() }
   }
 
+  private bind(directory: ModelDirectory): void {
+    if (this.activeDirectory === directory) return
+    this.unsubscribeDirectory?.()
+    this.activeDirectory = directory
+    this.unsubscribeDirectory = directory.store.subscribe(() => {
+      if (this.activeDirectory === directory) {
+        this.publishState(directory.store.getSnapshot())
+      }
+    })
+  }
+
   private publishState(state: ModelDirectoryState): void {
-    const choices = flatten(state).map(({ ref, label }) => ({ ref, label }))
+    const resolved = flatten(state)
+    const choices = resolved.map(({ ref, label }) => ({ ref, label }))
+    const currentChoice = state.current === null
+      ? undefined
+      : resolved.find(item => same(item.ref, state.current ?? undefined))
     this.publish({
       status: 'ready',
       choices,
       ...(state.current === null ? {} : { current: state.current }),
+      ...(currentChoice === undefined ? {} : { currentLabel: currentChoice.model.name }),
       ...(state.error === null ? {} : { error: state.error }),
     })
   }

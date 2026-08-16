@@ -11,8 +11,6 @@ internal sealed class MicroLanguageSettings
     private readonly string[] _agentControllerSettingsPaths;
     private MicroLanguage _language;
 
-    internal bool InvertDialDirection { get; private set; }
-
     internal MicroLanguageSettings()
     {
         var localAppData = Environment.GetFolderPath(
@@ -28,7 +26,6 @@ internal sealed class MicroLanguageSettings
         ];
         var stored = ReadStoredSettings(_settingsPath);
         _language = MicroLocalization.Parse(stored?.Language);
-        InvertDialDirection = stored?.InvertDialDirection ?? false;
     }
 
     internal MicroLocalization CreateLocalization()
@@ -45,12 +42,6 @@ internal sealed class MicroLanguageSettings
         Save();
     }
 
-    internal void SaveInvertDialDirection(bool invertDialDirection)
-    {
-        InvertDialDirection = invertDialDirection;
-        Save();
-    }
-
     private void Save()
     {
         try
@@ -61,7 +52,6 @@ internal sealed class MicroLanguageSettings
                 new StoredSettings
                 {
                     Language = MicroLocalization.ToSettingValue(_language),
-                    InvertDialDirection = InvertDialDirection,
                 },
                 new JsonSerializerOptions { WriteIndented = true });
             var temporaryPath = _settingsPath + ".tmp";
@@ -146,7 +136,5 @@ internal sealed class MicroLanguageSettings
     private sealed class StoredSettings
     {
         public string Language { get; set; } = "auto";
-
-        public bool InvertDialDirection { get; set; }
     }
 }

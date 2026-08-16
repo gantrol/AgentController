@@ -57,6 +57,7 @@ async function mount(rows: Array<Record<string, unknown>> = []): Promise<{
   endpoint: string
   openWebUi: ReturnType<typeof vi.fn>
   controlHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
+  voiceButtonHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
 }> {
   root = await mkdtemp(join(tmpdir(), 'agentcontroller-dsh-plugin-'))
   const endpoint = testEndpoint(root)
@@ -82,17 +83,6 @@ async function mount(rows: Array<Record<string, unknown>> = []): Promise<{
         routeDisposers.push(release)
         return release
       },
-      registerUpgrade: () => {
-        const release = vi.fn()
-        routeDisposers.push(release)
-        return release
-      },
-    },
-    credentials: {
-      resolve: vi.fn(async () => undefined),
-      describe: vi.fn(async () => ({ configured: false, writable: true })),
-      set: vi.fn(async () => {}),
-      unset: vi.fn(async () => {}),
     },
     get: (name: string) => name === 'apiProxy' ? {
       sessions: {
@@ -108,8 +98,10 @@ async function mount(rows: Array<Record<string, unknown>> = []): Promise<{
   }
   await Bridge.apply(context as unknown as Parameters<typeof Bridge.apply>[0])
   const controlHandler = routeHandlers.get(Bridge.MICRO_CONTROL_ENDPOINT)
+  const voiceButtonHandler = routeHandlers.get(Bridge.MICRO_VOICE_BUTTON_ENDPOINT)
   if (controlHandler === undefined) throw new Error('control route was not registered')
-  return { endpoint, openWebUi, controlHandler }
+  if (voiceButtonHandler === undefined) throw new Error('voice-button route was not registered')
+  return { endpoint, openWebUi, controlHandler, voiceButtonHandler }
 }
 
 const baseRequest = { version: Bridge.MICRO_PROTOCOL_VERSION, source: 'codex-micro' } as const
@@ -201,6 +193,23 @@ describe('external DeepSeek Harness host bundle', () => {
     expect(openWebUi.mock.calls[0]?.[0]).toContain('codexMicroSurface=1')
   })
 
+  it('retries a native open that never produces a connected surface', async () => {
+    let now = 10_000
+    Bridge.internals.now = () => now
+    const { endpoint, openWebUi } = await mount()
+
+    await request(endpoint, { ...baseRequest, action: 'activate' })
+    now += 11_999
+    await request(endpoint, { ...baseRequest, action: 'activate' })
+    expect(openWebUi).toHaveBeenCalledOnce()
+
+    now += 1
+    const retry = await request(endpoint, { ...baseRequest, action: 'activate' })
+
+    expect(retry).toMatchObject({ success: true, status: 'opening' })
+    expect(openWebUi).toHaveBeenCalledTimes(2)
+  })
+
   it('projects recent top-level sessions and advertises native capabilities', async () => {
     const { endpoint } = await mount([
       { sessionId: 'old', updatedAt: 1, running: false, blank: false, cwd: 'D:\\work\\old' },
@@ -218,41 +227,64 @@ describe('external DeepSeek Harness host bundle', () => {
     expect(result.state?.capabilities.knobSettings).toBe(true)
     expect(result.state?.capabilities.actions).toContain('interaction/approve')
     expect(result.state?.capabilities.actions).toContain('view/toggle-chat-trajectory')
+    expect(result.state?.capabilities.actions).toContain('composer/submit')
     expect(result.state?.components).toMatchObject({
       adapter: 'ready',
       browser: 'disconnected',
     })
   })
 
-  it('accepts push-to-talk edges and rejects unsupported requests', async () => {
+  it('rejects unsupported bridge commands', async () => {
     const { endpoint, openWebUi } = await mount()
-    const start = await request(endpoint, { ...baseRequest, action: 'voice/start' })
-    const stop = await request(endpoint, { ...baseRequest, action: 'voice/stop' })
     const invalid = await request(endpoint, { ...baseRequest, action: 'mouse/click' })
 
-    expect(start).toMatchObject({
-      success: false,
-      status: 'opening',
-      message: expect.stringMatching(/press the microphone again/iu),
-    })
-    expect(stop).toMatchObject({ success: true, status: 'completed' })
-    expect(openWebUi).toHaveBeenCalledOnce()
     expect(invalid.success).toBe(false)
+    expect(openWebUi).not.toHaveBeenCalled()
   })
 
-  it('queues plugin-owned voice settings while the Harness surface opens', async () => {
-    const { endpoint, openWebUi } = await mount()
+  it('relays the one DeepSeek voice button to the keypad and returns its result', async () => {
+    const { endpoint, voiceButtonHandler } = await mount()
+    httpServer = createHttpServer((req, res) => { void voiceButtonHandler(req, res) })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
 
-    const configure = await request(endpoint, {
+    const button = fetch(
+      `http://127.0.0.1:${String(address.port)}${Bridge.MICRO_VOICE_BUTTON_ENDPOINT}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId: 'session-voice' }),
+      },
+    )
+    const polled = await request(endpoint, { ...baseRequest, action: 'voice/request' })
+    const requestId = polled.voiceRequest?.requestId
+
+    expect(polled.voiceRequest).toMatchObject({
+      command: 'toggle',
+      sessionId: 'session-voice',
+    })
+    expect(requestId).toEqual(expect.any(String))
+
+    const completed = await request(endpoint, {
       ...baseRequest,
-      action: 'voice/configure',
-    })
-
-    expect(configure).toMatchObject({
+      action: 'voice/result',
+      requestId,
       success: true,
-      status: 'opening',
-      message: expect.stringMatching(/Micro Bridge voice settings/iu),
+      active: true,
+      message: 'The keypad microphone is listening.',
     })
-    expect(openWebUi).toHaveBeenCalledOnce()
+    const buttonResponse = await button
+
+    expect(completed).toMatchObject({ success: true, status: 'completed' })
+    expect(buttonResponse.status).toBe(200)
+    await expect(buttonResponse.json()).resolves.toMatchObject({
+      success: true,
+      active: true,
+      message: 'The keypad microphone is listening.',
+    })
   })
 })

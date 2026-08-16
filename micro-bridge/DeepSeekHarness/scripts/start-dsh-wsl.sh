@@ -1,24 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Stable WSL entry point used by the Windows Codex Micro launcher.  The
-# installer owns the runtime below ~/.local/share; keeping this script in the
-# AgentController checkout lets development builds update the launch contract
-# without editing DeepSeek Harness itself.
-runtime_root="${AGENTCONTROLLER_DSH_RUNTIME_ROOT:-$HOME/.local/share/agentcontroller-dsh}"
-node_root="${AGENTCONTROLLER_DSH_NODE_ROOT:-$runtime_root/node}"
-source_root="${AGENTCONTROLLER_DSH_SOURCE_ROOT:-$runtime_root/deepseek-harness}"
+runtime_root="${CODEX_MICRO_DSH_RUNTIME_ROOT:-$HOME/.local/share/codex-micro/deepseek}"
+node_root="$runtime_root/node"
+tools_root="$runtime_root/tools"
+dsh_home="$runtime_root/dsh-home"
+port="3080"
 
-node="$node_root/bin/node"
-if [[ ! -x "$node" ]]; then
-  printf 'DeepSeek Harness WSL runtime is incomplete: Linux Node is missing at %s\n' "$node" >&2
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --port)
+      if [[ "$#" -lt 2 ]]; then
+        printf '%s\n' '--port requires a value.' >&2
+        exit 64
+      fi
+      port="$2"
+      shift 2
+      ;;
+    *)
+      printf 'Unknown managed DeepSeek launch argument: %s\n' "$1" >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+  printf 'Invalid DeepSeek Harness port: %s\n' "$port" >&2
+  exit 64
+fi
+if [[ ! -x "$node_root/bin/node" || ! -x "$tools_root/bin/dsh" ]]; then
+  printf 'The program-managed DeepSeek runtime is incomplete below %s.\n' "$runtime_root" >&2
   exit 72
 fi
-if [[ ! -f "$source_root/apps/cli/src/bin.ts" ]]; then
-  printf 'DeepSeek Harness WSL runtime is incomplete: source is missing at %s\n' "$source_root" >&2
-  exit 72
-fi
 
-export PATH="$node_root/bin:$runtime_root/tools/bin:$PATH"
-cd "$source_root"
-exec "$node" --import tsx/esm apps/cli/src/bin.ts web "$@"
+export PATH="$node_root/bin:$tools_root/bin:$PATH"
+export DSH_HOME="$dsh_home"
+workspace="${CODEX_MICRO_DSH_WORKSPACE:-$HOME}"
+cd "$workspace"
+exec "$tools_root/bin/dsh" web --port "$port"

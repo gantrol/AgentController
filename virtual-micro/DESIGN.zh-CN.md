@@ -198,8 +198,9 @@ Codex 键右键菜单中。
   Windows UI 语言；独立选择保存在当前用户的 CodexMicro 设置目录。
 - 托盘“开机自启动”只写入当前用户 Run 项；登录后直接显示面板并创建托盘图标。
   关闭开关会删除该启动项，不需要管理员权限。
-- 托盘“反转旋钮方向”即时交换白色旋钮上报的顺逆时针事件，并与语言一同保存到
-  `%LOCALAPPDATA%\CodexMicro\settings.json`；默认关闭以保持实体硬件兼容行为。
+- Codex 软件设置页的“反转旋钮方向”即时交换白色旋钮上报的顺逆时针事件，
+  并按当前小键盘保存；外部 Harness 不读取该 Codex 专属设置，默认关闭以保持
+  实体硬件兼容行为。
 
 ## 6. 状态反馈
 
@@ -316,45 +317,55 @@ HID 输入被多个进程重复消费。
 
 ## 9. DeepSeek Harness 从零配置 UML
 
-首次进入 DeepSeek Harness 时先完成 Harness 启动闭环，再在首次使用麦克风时进入
-语音配置；两个向导分别保存、可独立重试，不能让 ASR 配置失败阻塞普通 Harness
-操作。任何一步失败都停在可修复的原步骤，显示稳定错误码、检测结果和重试入口。
+首次进入 DeepSeek Harness 时先完成 Harness 启动闭环。语音配置属于当前 Micro
+小键盘，与 Harness 插件设置完全分离；ASR 配置失败不能阻塞普通 Harness 操作。
+任何一步失败都停在可修复的原步骤，显示检测结果和重试入口。
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DiscoverPlugin: 选择 DeepSeek Harness
-    DiscoverPlugin --> HarnessSetup: 首次使用或启动配置缺失
-    DiscoverPlugin --> ProbeHarness: 已有启动配置
-    HarnessSetup --> ValidateLaunch: 配置 Node、入口、工作目录、端口
-    ValidateLaunch --> HarnessSetup: 路径或命令校验失败
-    ValidateLaunch --> ProbeHarness: 本地静态校验通过
-    ProbeHarness --> ActivateWeb: 管道与健康检查已就绪
+    [*] --> ProbeSaved: 单击 DeepSeek Logo
+    ProbeSaved --> ProbeDefault: 已保存端点不可用
+    ProbeDefault: 探测官方默认 127.0.0.1:3080
+    ProbeSaved --> ActivateWeb: Web 与桥接已就绪
+    ProbeDefault --> ActivateWeb: Web 与桥接已就绪
+    ProbeDefault --> SetupChoice: 未发现兼容桥接
+    SetupChoice --> ExistingSetup: 连接已有 Harness
+    SetupChoice --> ManagedSetup: 帮我自动配置
+    ExistingSetup --> ExistingBridge: 保存实际地址与启动方式
+    ExistingBridge --> ProbeHarness: 安装或验证桥接
+    ManagedSetup --> WslCheck: 检查专用 WSL 发行版
+    WslCheck --> ManagedRuntime: 准备固定兼容运行时
+    ManagedRuntime --> ManagedBridge: 安装桥接并选择回环端口
+    ManagedBridge --> ProbeHarness: 保存托管启动配置
+    ProbeHarness --> ActivateWeb: Web 与桥接健康检查已就绪
     ProbeHarness --> StartHarness: 离线且允许自动启动
     StartHarness --> WaitHarness: 显示“启动服务”与已用时间
     WaitHarness --> ActivateWeb: 管道、HTTP 健康检查均就绪
     WaitHarness --> HarnessRepair: 超时或进程提前退出
-    HarnessRepair --> HarnessSetup: 展示失败步骤、日志与修复建议
+    HarnessRepair --> SetupChoice: 展示失败步骤、日志与修复建议
     ActivateWeb --> ForegroundWeb: 复用现有页面并置前
     ForegroundWeb --> Ready: 普通按键可用
 
-    Ready --> ProbeVoice: 首次按下麦克风
-    ProbeVoice --> StreamAudio: 已配置且运行时健康
-    ProbeVoice --> VoiceSetup: 未配置或健康检查失败
+    Ready --> ProbeVoice: 小键盘麦克风键或 DeepSeek 语音按钮
+    ProbeVoice --> StreamAudio: 此小键盘已验证语音提供商
+    ProbeVoice --> VoiceSetup: 此小键盘尚未验证
+    VoiceSetup: 打开小键盘本地语音设置
     VoiceSetup --> ProviderChoice
     state ProviderChoice <<choice>>
     ProviderChoice --> LocalSetup: 本地 Qwen ASR
-    ProviderChoice --> SystemSetup: 系统或浏览器识别
+    ProviderChoice --> SystemSetup: Windows 系统识别
     ProviderChoice --> RemoteSetup: 远程流式 API
-    LocalSetup --> LocalCheck: 校验 WSL/GPU/Python/环境/模型/脚本
-    LocalCheck --> LocalRepair: 缺少依赖
-    LocalRepair --> LocalCheck: 安装或选择已有环境后重测
-    LocalCheck --> VoiceHandshake: 本地运行时健康
-    SystemSetup --> VoiceHandshake: 麦克风权限与试录成功
-    RemoteSetup --> VoiceHandshake: WSS、密钥引用与协议校验通过
+    LocalSetup --> LocalHealth: 保存启动模式与可移植路径
+    LocalHealth --> VoiceHandshake: health 已返回 ready
+    LocalHealth --> LocalLaunch: 未就绪且允许小键盘启动
+    LocalLaunch --> LocalHealth: 启动脚本后有界等待
+    LocalHealth --> VoiceSetup: 仅检测模式且服务未运行
+    SystemSetup --> VoiceHandshake: Windows Speech 初始化成功
+    RemoteSetup --> VoiceHandshake: WSS、Windows 凭据与协议校验通过
     VoiceHandshake --> VoiceSetup: 测试失败，保留诊断与当前输入
-    VoiceHandshake --> StreamAudio: 测试成功后保存配置
-    StreamAudio --> FinalText: PCM16 16kHz 单声道与局部文本流
-    FinalText --> Ready: 松开麦克风，提交最终文本
+    VoiceHandshake --> StreamAudio: 测试成功后保存在小键盘 profile
+    StreamAudio --> FinalText: 小键盘直接采集并识别
+    FinalText --> Ready: 最终文本经 Bridge 写入 DeepSeek
 ```
 
 运行时的跨组件顺序如下；界面状态必须对应真实阶段，不能只显示一个笼统的
@@ -365,41 +376,59 @@ sequenceDiagram
     actor U as 用户
     participant M as 当前 Micro 窗口
     participant SM as Surface Manager
-    participant A as DeepSeek Adapter
+    participant B as Micro Bridge
     participant H as Harness 服务
-    participant W as Harness 网页
+    participant D as DeepSeek 网页
     participant V as 流式 ASR
 
     U->>M: 单击 DeepSeek Logo
-    M->>SM: 激活本窗口绑定的 Harness
-    SM->>A: probe
-    alt 服务未启动
-        A->>H: 执行已验证的启动配置
-        A-->>M: 启动服务（阶段、耗时、日志入口）
-        loop 有界等待
-            A->>H: 管道 + HTTP 健康检查
-            A-->>M: 等待插件 / 打开网页
+    M->>B: 探测已保存地址，再探测官方 3080
+    alt 首次使用且桥接未就绪
+        M-->>U: 选择“连接已有”或“自动配置”
+        opt 自动配置
+            M->>H: 准备专用 WSL、官方 Harness 与桥接
+            M-->>U: 同步显示首次配置 1/8 至 8/8
         end
     end
-    A->>W: 复用或打开唯一页面
-    A->>W: 请求窗口置前
-    A-->>M: 已连接 / 已置前
+    M->>SM: 激活本窗口绑定的 Harness
+    SM->>B: probe
+    alt 服务未启动
+        B->>H: 执行已验证的启动配置
+        B-->>M: 启动服务（阶段、耗时、日志入口）
+        loop 有界等待
+            B->>H: 管道 + HTTP 健康检查
+            B-->>M: 等待插件 / 打开网页
+        end
+    end
+    B->>D: 复用或打开唯一页面
+    B->>D: 请求窗口置前
+    B-->>M: 已连接 / 已置前
 
-    U->>M: 按住麦克风
-    M->>A: voice/start
-    alt 首次使用或配置无效
-        A-->>M: 打开当前 Harness 的语音设置子页
-        U->>M: 选择本地、系统或远程并执行测试
+    alt 用户点击 DeepSeek 中唯一的语音按钮
+        U->>D: 点击语音按钮
+        D->>B: 提交 toggle 请求
+        M->>B: voice/request 长轮询
+        B-->>M: 返回 toggle 与目标会话
+    else 用户操作小键盘麦克风键
+        U->>M: 按住或点按麦克风
+    end
+    alt 此小键盘尚未完成语音设置
+        M-->>U: 打开小键盘本地语音设置
+        U->>M: 选择系统、本地或远程并验证
+        opt 选择本地 Qwen 且服务尚未运行
+            M->>V: 解析 {AppDir} 路径并启动小键盘端脚本
+            M->>V: 有界轮询 /health；只记录自己启动的进程
+        end
         M->>V: health + streaming handshake
         V-->>M: 测试通过
     end
     M->>V: 连续发送 PCM16 音频帧
-    V-->>M: partial 文本
-    M->>W: 更新输入框但不提交
-    U->>M: 松开麦克风
+    V-->>M: partial 只保留在小键盘
+    U->>M: 松开麦克风或再次点击按钮
     M->>V: end
     V-->>M: final 文本
-    M->>W: 写入最终文本（按配置决定是否发送）
+    M->>B: composer/dictate（只含最终文本）
+    B->>D: 写入指定输入框（按小键盘配置决定是否发送）
 ```
 
 ## 10. DeepSeek 一键安装包预设
@@ -409,12 +438,15 @@ sequenceDiagram
 不能覆盖已有选择。
 
 - 默认 Agent：`deepseek-harness`；首次打开即显示 DeepSeek Logo 与淡蓝玻璃主题。
-- 内置外部 `DeepSeekHarness` 插件构建产物、WSL 安装/启动脚本，不修改 Harness
-  源码。安装向导负责发现 checkout、在 WSL ext4 中准备 Linux Node/pnpm 与 Harness、
-  安装插件，并验证回环 HTTP 控制端点与网页桥接；Windows checkout/profile 原件保留。
+- 内置外部 `DeepSeekHarness` 插件构建产物与自定位 WSL 安装/启动脚本，不修改
+  Harness 源码。第一次点击先探测用户地址和官方默认 3080，再明确选择连接已有环境
+  或程序托管环境；不猜测 checkout，不依赖盘符，也不运行 `git clone`。
+- 默认小包的托管模式创建 `CodexMicro-DeepSeek` 专用发行版，在线安装固定兼容版本；
+  可选 Full 包向同一状态机提供 `payload/deepseek-runtime.wsl`，避免重复实现安装流程。
 - 默认语音：`system`，首次使用仍要求麦克风授权与试录。这样零配置优先；本地
-  Qwen 流式 ASR 与远程 WebSocket 保留在“高级识别方式”，不会自动下载模型或上传
-  音频。
+  Qwen 流式 ASR 与远程 WebSocket 保留在“高级识别方式”。小键盘不会静默安装
+  Python 或依赖；用户明确保存本地 Qwen 配置后，启动模式可按需预热服务，模型 ID
+  首次加载可能由上游缓存下载。只有用户明确选择远程提供商时音频才离开本机。
 - 默认只突出内置 DeepSeek；Codex 和其他 Harness 保留在添加/管理入口，主流程
   不展示不必要选项。
 - 构建入口为 `package-micro.ps1 -Preset deepseek`。该参数只准备发布内容，不允许

@@ -15,6 +15,14 @@ Releases page when it is absent. The two products share only the current-user
 Micro Broker protocol and HID driver, so either can run alone and they can
 coexist.
 
+On its first DeepSeek click, the tailored package reuses an existing Harness
+when possible. Otherwise it offers Use my existing DSH or Install DSH in
+dedicated WSL (recommended). The flow assumes no
+drive letter, source checkout, or pre-existing distribution name and never
+runs `git clone`. The bundled
+[Windows setup guide](./DEEPSEEK-WINDOWS-SETUP.zh-CN.md) is currently in Chinese
+and links to upstream official instructions.
+
 The release is a framework-dependent single-file app. The measured
 `CodexMicro.exe` is about `24.9 MiB` and the zip is about `6.4 MiB`; packaging
 enforces a `15 MiB` zip ceiling. This retains the exact WPF visuals without the
@@ -37,9 +45,8 @@ Microsoft .NET 10 Desktop Runtime x64.
   Show/Hide and Exit commands.
 - Start with Windows can be enabled or disabled from the tray menu. When
   enabled, sign-in starts the keypad and displays its panel immediately.
-- Reverse dial direction can be toggled from the tray menu. It takes effect
-  immediately and is stored with the language preference. Off preserves the
-  physical Codex Micro mapping; on makes clockwise increase reasoning effort.
+- In Codex mode, Reverse dial direction is available in Micro software settings.
+  It is saved per keypad and does not affect external Harnesses.
 - Pointer input does not activate the keypad, preserving focus in Codex.
 
 ## Interface language
@@ -51,15 +58,77 @@ errors update immediately. The choice is stored in
 interface language, then falls back to the Windows UI language when that setting
 is also automatic or unavailable.
 
+## Voice ownership and local Qwen auto-start
+
+Voice belongs entirely to the keypad. The keypad owns microphone capture,
+recognition settings, the service process, and remote API keys. The Bridge only
+relays a voice-toggle request plus incremental/final text between DeepSeek and the keypad.
+The DeepSeek plugin adds exactly one voice button; it does not capture audio,
+connect to Qwen, or expose voice settings.
+
+Open Keypad software settings → Voice input, select Local streaming Qwen, and
+choose Use local example. It selects Start with keypad by default; you can
+change that to on-demand or detect-only. The portable defaults contain no drive
+letter or user directory:
+
+- stream: `ws://127.0.0.1:8765/v1/stream`;
+- health: `http://127.0.0.1:8765/health`;
+- launcher: `{AppDir}\voice\start-qwen3-asr-stream.ps1`;
+- working directory: `{AppDir}\voice`;
+- model: `Qwen/Qwen3-ASR-0.6B`;
+- one-second recognition chunks by default for lower first-partial latency;
+  standalone launcher runs can override this with `-ChunkSeconds`;
+- WSL distribution: `Ubuntu` by default, editable to a name from `wsl -l -q`;
+- WSL Python: empty by default so the launcher can find the keypad venv, an
+  existing local Qwen venv, or finally `python3` dynamically.
+
+Paths accept `{AppDir}`, `{LocalAppData}`, environment variables, and relative
+values. They are resolved at runtime, so the profile does not store a
+machine-specific absolute install path.
+
+The start modes are Start on first use, Start with keypad, and Detect only.
+To auto-start Qwen after Windows sign-in, enable the tray's Start with Windows
+option and select Start with keypad here; Windows starts the keypad, and the
+keypad then warms the voice service.
+Before launching anything, the keypad requires `/health` to report `ready: true`
+with `dsh-stream-v1`. It waits for model loading before opening the WebSocket.
+On exit it can stop only a process that this keypad started; it never adopts or
+terminates a service that was already running.
+
+Qwen3-ASR streaming uses its vLLM backend. One example of preparing the current
+WSL user is:
+
+```powershell
+wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qwen-asr/venv" && source "$HOME/.local/share/codex-micro/qwen-asr/venv/bin/activate" && python -m pip install -U "qwen-asr[vllm]" aiohttp numpy'
+```
+
+Change the distribution or Python field in keypad settings when the local
+machine differs; no script edit is needed. A first model-ID launch may download
+the model and take longer, so the ready timeout defaults to 600 seconds. See
+the [official Qwen3-ASR quickstart](https://github.com/QwenLM/Qwen3-ASR#quickstart)
+for backend, model, and package requirements. The adapter follows Qwen's
+[official streaming example](https://github.com/QwenLM/Qwen3-ASR/blob/main/examples/example_qwen3_asr_vllm_streaming.py).
+
+To validate the local environment without loading the model or starting the
+service, run this from the extracted package directory:
+
+```powershell
+& ".\voice\start-qwen3-asr-stream.ps1" -Distribution Ubuntu -CheckOnly
+```
+
 ## Controls
 
 - Six Agent keys send `AG00` through `AG05` and render slot lighting returned
   by Codex.
 - Four command keys send `ACT06` through `ACT09`; the Codex key sends `ACT12`.
-- Push-to-talk sends `ACT10 down` on press and `ACT10 up` on release.
+- In Codex mode, push-to-talk sends `ACT10 down` on press and `ACT10 up` on
+  release. In an external Harness, the key directly controls keypad-owned audio
+  capture and recognition.
 - In Codex mode, the white encoder supports normal composer navigation or a
   reasoning-only mode. Reasoning-only rotation changes effort only, while a
   click toggles the configured quick models A/B.
+- Codex software settings can reverse the dial direction for the current
+  keypad; the setting is ignored by external Harnesses.
 - In an external Harness, the white encoder is configured independently. Its
   default mode discovers only visible, enabled controls inside the live
   composer (including controls added later by plugins), highlights one in
@@ -98,7 +167,7 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
 .\scripts\package-micro.ps1 -Version 0.2.4
-# Prepares the future DeepSeek-tailored bundle; normal dev builds never run it.
+# Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
 .\scripts\package-micro.ps1 -Version 0.2.4 -Preset deepseek
 ```
 
@@ -107,14 +176,20 @@ Outputs:
 - single-file executable: `.artifacts/micro-release/0.2.4/publish/CodexMicro.exe`;
 - standalone archive: `dist/CodexMicro-Keypad-0.2.4-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
+- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.4-win-x64.zip`;
+- standalone existing-DSH plugin:
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.4.zip`, with its own checksum.
 
-The packaging script includes only `CodexMicro.exe`, the READMEs, and the
-license for the standard preset. The `deepseek` preset additionally includes
-its explicit first-run defaults plus the external DeepSeek Harness plugin
-source/build output. It defaults to DeepSeek and system speech recognition;
-local Qwen and remote streaming remain advanced choices. Neither preset copies
-the Desktop Runtime, debug symbols, or driver. The driver remains a separately
-installed security boundary.
+The packaging script includes `CodexMicro.exe`, the READMEs, the first-run
+setup guide, the license, and the keypad-side `voice` launcher/adapter. It does
+not include a model or Python environment. The `deepseek` preset builds a
+runtime-only Bridge archive separately and embeds the same payload for managed
+WSL setup; neither copy contains source, tests, or development dependencies.
+It also includes the path-independent installer and explicit first-run choices. It
+defaults to DeepSeek and system speech recognition; local Qwen, remote
+streaming, and a future offline WSL payload remain optional. Neither preset
+copies the Desktop Runtime, debug symbols, or driver. The driver remains a
+separately installed security boundary.
 
 ## Install the virtual HID
 

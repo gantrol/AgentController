@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loopback dsh-stream-v1 adapter for Qwen3-ASR's native vLLM streaming API."""
+"""Loopback dsh-stream-v1 adapter owned by the Codex Micro keypad."""
 
 from __future__ import annotations
 
@@ -119,7 +119,11 @@ class StreamingServer:
         )
         await ws.prepare(request)
         if self.decode_lock.locked():
-            await send(ws, "error", message="Local Qwen ASR is already serving another stream.")
+            await send(
+                ws,
+                "error",
+                message="Local Qwen ASR is already serving another stream.",
+            )
             await ws.close(code=1013, message=b"busy")
             return ws
 
@@ -133,7 +137,14 @@ class StreamingServer:
                 raise
             except Exception:
                 logging.exception("Streaming recognition failed")
-                await send(ws, "error", message="Local Qwen ASR recognition failed; inspect the service log.")
+                await send(
+                    ws,
+                    "error",
+                    message=(
+                        "Local Qwen ASR recognition failed; inspect the keypad "
+                        "service log."
+                    ),
+                )
                 await ws.close(code=1011, message=b"recognition failed")
         return ws
 
@@ -178,7 +189,11 @@ class StreamingServer:
                     if pre_roll:
                         samples = np.concatenate([*pre_roll, samples])
                         pre_roll.clear()
-                await asyncio.to_thread(self.model.streaming_transcribe, samples, state)
+                await asyncio.to_thread(
+                    self.model.streaming_transcribe,
+                    samples,
+                    state,
+                )
                 current = str(state.text or "")
                 if current != previous:
                     previous = current
@@ -201,12 +216,18 @@ class StreamingServer:
                 await send(ws, "done")
                 await ws.close(code=1000, message=b"complete")
                 return
-            if message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR}:
+            if message.type in {
+                WSMsgType.CLOSE,
+                WSMsgType.CLOSED,
+                WSMsgType.ERROR,
+            }:
                 return
 
 
 def arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Qwen3-ASR dsh-stream-v1 adapter")
+    parser = argparse.ArgumentParser(
+        description="Codex Micro Qwen3-ASR dsh-stream-v1 adapter"
+    )
     parser.add_argument("--model", default="Qwen/Qwen3-ASR-0.6B")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
@@ -214,7 +235,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--max-num-seqs", type=int, default=1)
-    parser.add_argument("--chunk-seconds", type=float, default=2.0)
+    parser.add_argument("--chunk-seconds", type=float, default=1.0)
     parser.add_argument("--unfixed-chunks", type=int, default=2)
     parser.add_argument("--unfixed-tokens", type=int, default=5)
     parser.add_argument("--voice-threshold", type=float, default=0.008)
@@ -235,7 +256,10 @@ def arguments() -> argparse.Namespace:
 
 def main() -> None:
     args = arguments()
-    logging.basicConfig(level=logging.INFO, format="[dsh-qwen-asr] %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[codex-micro-qwen-asr] %(levelname)s %(message)s",
+    )
     logging.info("Loading %s with the vLLM streaming backend…", args.model)
     try:
         from qwen_asr import Qwen3ASRModel
@@ -250,15 +274,22 @@ def main() -> None:
         max_model_len=args.max_model_len,
         max_num_seqs=args.max_num_seqs,
     )
-    logging.info("Model loaded; serving %s://%s:%d/v1/stream", "ws", args.host, args.port)
-    server = StreamingServer(model, ServerConfig(
-        model=args.model,
-        chunk_seconds=args.chunk_seconds,
-        unfixed_chunks=args.unfixed_chunks,
-        unfixed_tokens=args.unfixed_tokens,
-        voice_threshold=args.voice_threshold,
-        pre_roll_seconds=args.pre_roll_seconds,
-    ))
+    logging.info(
+        "Model loaded; serving ws://%s:%d/v1/stream",
+        args.host,
+        args.port,
+    )
+    server = StreamingServer(
+        model,
+        ServerConfig(
+            model=args.model,
+            chunk_seconds=args.chunk_seconds,
+            unfixed_chunks=args.unfixed_chunks,
+            unfixed_tokens=args.unfixed_tokens,
+            voice_threshold=args.voice_threshold,
+            pre_roll_seconds=args.pre_roll_seconds,
+        ),
+    )
     app = web.Application(client_max_size=MAX_AUDIO_BYTES)
     app.router.add_get("/health", server.health)
     app.router.add_get("/v1/stream", server.stream)

@@ -19,9 +19,17 @@
              Link="MicroSettingsWindow.xaml.cs">
       <DependentUpon>MicroSettingsWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="..\CodexMicro.Desktop\MicroVoiceSettingsWindow.xaml.cs"
+             Link="MicroVoiceSettingsWindow.xaml.cs">
+      <DependentUpon>MicroVoiceSettingsWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="..\CodexMicro.Desktop\KeycapEditorWindow.xaml.cs"
              Link="KeycapEditorWindow.xaml.cs">
       <DependentUpon>KeycapEditorWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\CodexMicro.Desktop\DeepSeekSetupWindow.xaml.cs"
+             Link="DeepSeekSetupWindow.xaml.cs">
+      <DependentUpon>DeepSeekSetupWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="..\CodexMicro.Desktop\Controls\*.cs"
              Link="Controls\%(Filename)%(Extension)" />
@@ -37,8 +45,18 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="..\CodexMicro.Desktop\MicroVoiceSettingsWindow.xaml"
+          Link="MicroVoiceSettingsWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="..\CodexMicro.Desktop\KeycapEditorWindow.xaml"
           Link="KeycapEditorWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="..\CodexMicro.Desktop\DeepSeekSetupWindow.xaml"
+          Link="DeepSeekSetupWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
@@ -51,11 +69,19 @@
          needs them listed explicitly for reliable Dev-mode restarts. -->
     <Watch Include="..\CodexMicro.Desktop\MainWindow.xaml" />
     <Watch Include="..\CodexMicro.Desktop\MicroSettingsWindow.xaml" />
+    <Watch Include="..\CodexMicro.Desktop\MicroVoiceSettingsWindow.xaml" />
     <Watch Include="..\CodexMicro.Desktop\KeycapEditorWindow.xaml" />
+    <Watch Include="..\CodexMicro.Desktop\DeepSeekSetupWindow.xaml" />
     <Watch Include="..\CodexMicro.Desktop\App.xaml" />
+    <Content Include="..\..\voice\start-qwen3-asr-stream.ps1;..\..\voice\qwen3-asr-stream-server.py"
+             Link="voice\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="NAudio" />
     <ProjectReference Include="..\CodexMicro.Protocol\CodexMicro.Protocol.csproj" />
     <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>

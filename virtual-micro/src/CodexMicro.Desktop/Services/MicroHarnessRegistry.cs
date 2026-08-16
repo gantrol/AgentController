@@ -45,13 +45,22 @@ internal enum MicroHarnessDispatchStage
 
 internal sealed record MicroHarnessDispatchProgress(
     MicroHarnessDispatchStage Stage,
-    string Message);
+    string Message,
+    int? Step = null,
+    int? TotalSteps = null);
 
 internal sealed record MicroHarnessDispatchResult(
     bool Success,
     string Message,
     MicroHarnessDispatchStage Stage,
-    int? WindowProcessId = null);
+    int? WindowProcessId = null,
+    int? Step = null,
+    int? TotalSteps = null);
+
+internal sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
+{
+    public void Report(T value) => callback(value);
+}
 
 internal static class MicroHarnessActionIds
 {
@@ -78,6 +87,7 @@ internal static class MicroHarnessActionIds
     internal const string ComposerActivateSelection =
         "composer/activate-selection";
     internal const string ComposerBack = "composer/back";
+    internal const string ComposerSubmit = "composer/submit";
     internal const string ReasoningDecrease = "reasoning/decrease";
     internal const string ReasoningIncrease = "reasoning/increase";
     internal const string ToggleQuickModel = "model/toggle-quick";
@@ -121,6 +131,7 @@ internal static class MicroHarnessActionIds
             ComposerSelectNext or
             ComposerActivateSelection or
             ComposerBack or
+            ComposerSubmit or
             ReasoningDecrease or
             ReasoningIncrease or
             ToggleQuickModel or
@@ -207,9 +218,11 @@ internal sealed record MicroHarnessSession(
 internal sealed record MicroHarnessComponentSnapshot(
     string Adapter,
     string Browser,
-    string VoiceSetup,
-    string VoiceRuntime,
-    string VoiceMessage);
+    string? CurrentModel = null);
+
+internal sealed record MicroHarnessVoiceRequest(
+    string RequestId,
+    string? SessionId);
 
 internal sealed record MicroHarnessStateSnapshot(
     string HarnessId,
@@ -231,8 +244,13 @@ internal sealed class MicroHarnessRegistry
     private const int ConnectTimeoutMilliseconds = 650;
     private const int RetryConnectTimeoutMilliseconds = 350;
     private const int ResponseTimeoutMilliseconds = 4_000;
-    private const int VoiceResponseTimeoutMilliseconds = 15_000;
-    private const string DeepSeekControlUri =
+    private const int SurfaceReadyTimeoutMilliseconds = 20_000;
+    private const int SurfaceRetryIntervalMilliseconds = 750;
+    private const int DeepSeekReadyTimeoutMilliseconds = 120_000;
+    private const int LegacyDeepSeekReadyTimeoutMilliseconds = 60_000;
+    internal const string DeepSeekOfficialWebUri =
+        "http://127.0.0.1:3080/";
+    internal const string DeepSeekControlUri =
         "http://127.0.0.1:3080/__agentcontroller/micro/request";
     private static readonly TimeSpan ReadyPollInterval =
         TimeSpan.FromMilliseconds(250);
@@ -264,10 +282,58 @@ internal sealed class MicroHarnessRegistry
             ? Discover(manifestDirectory)
             : Normalize(definitions);
         var stored = ReadOverrides(_settingsPath);
+        var deepSeekDefault = _definitions.FirstOrDefault(item =>
+            string.Equals(
+                item.Id,
+                "deepseek-harness",
+                StringComparison.OrdinalIgnoreCase));
+        var migrateLegacyFixedDeepSeekLaunch =
+            deepSeekDefault is not null &&
+            stored.Harnesses?.TryGetValue(
+                "deepseek-harness",
+                out var legacyDeepSeek) == true &&
+            IsLegacyFixedDeepSeekLaunch(legacyDeepSeek);
+        if (migrateLegacyFixedDeepSeekLaunch)
+        {
+            stored.Harnesses!["deepseek-harness"] =
+                deepSeekDefault!.Connection;
+            stored.SetupCompletedHarnesses =
+                (stored.SetupCompletedHarnesses ?? [])
+                    .Where(id => !string.Equals(
+                        id,
+                        "deepseek-harness",
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+        }
+        var migrateDeepSeekReadyTimeout =
+            deepSeekDefault?.Connection.ReadyTimeoutMilliseconds ==
+                DeepSeekReadyTimeoutMilliseconds &&
+            stored.Harnesses?.TryGetValue(
+                "deepseek-harness",
+                out var storedDeepSeek) == true &&
+            storedDeepSeek.ReadyTimeoutMilliseconds ==
+                LegacyDeepSeekReadyTimeoutMilliseconds;
         _definitions = ApplyOverrides(
             _definitions,
             stored.Harnesses ??
                 new Dictionary<string, MicroHarnessConnectionSettings>());
+        if (migrateDeepSeekReadyTimeout)
+        {
+            _definitions = _definitions.Select(item =>
+                string.Equals(
+                    item.Id,
+                    "deepseek-harness",
+                    StringComparison.OrdinalIgnoreCase)
+                        ? item with
+                        {
+                            Connection = item.Connection with
+                            {
+                                ReadyTimeoutMilliseconds =
+                                    DeepSeekReadyTimeoutMilliseconds,
+                            },
+                        }
+                        : item).ToArray();
+        }
         _setupCompleted = new HashSet<string>(
             stored.SetupCompletedHarnesses ?? [],
             StringComparer.OrdinalIgnoreCase);
@@ -281,7 +347,9 @@ internal sealed class MicroHarnessRegistry
                 StringComparison.Ordinal)) == true;
         _keyMaps = InitializeKeyMaps(_definitions, stored.KeyMaps);
         _knobModes = InitializeKnobModes(_definitions, stored.KnobModes);
-        if (migrateLegacyDefaults || migrateLegacyKnobModes)
+        if (migrateLegacyDefaults || migrateLegacyKnobModes ||
+            migrateLegacyFixedDeepSeekLaunch ||
+            migrateDeepSeekReadyTimeout)
         {
             LastSaveSucceeded = PersistOverrides();
         }
@@ -463,6 +531,111 @@ internal sealed class MicroHarnessRegistry
             progress,
             cancellationToken);
 
+    /// <summary>
+    /// Keeps one user activation alive until the browser surface has joined
+    /// the adapter. The activate request is intentionally idempotent, so a
+    /// cold or lost Chromium launch can be retried without duplicating a
+    /// session or any other user action.
+    /// </summary>
+    internal async Task<MicroHarnessDispatchResult>
+        ActivateUntilSurfaceReadyAsync(
+            string harnessId,
+            IProgress<MicroHarnessDispatchProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+    {
+        var harness = Resolve(harnessId);
+        var latestStep = 1;
+        void Report(
+            MicroHarnessDispatchProgress value,
+            int step)
+        {
+            latestStep = Math.Max(latestStep, step);
+            progress?.Report(value with
+            {
+                Step = step,
+                TotalSteps = 7,
+            });
+        }
+
+        var activationProgress = new CallbackProgress<
+            MicroHarnessDispatchProgress>(value =>
+        {
+            var step = value.Stage switch
+            {
+                MicroHarnessDispatchStage.Starting => 2,
+                MicroHarnessDispatchStage.WaitingForAdapter => 3,
+                _ => 1,
+            };
+            Report(value, step);
+        });
+        var request = new
+        {
+            version = 1,
+            source = "codex-micro",
+            action = "activate",
+        };
+        var result = await DispatchWithOptionalLaunchAsync(
+            harness,
+            request,
+            activationProgress,
+            cancellationToken);
+        if (!result.Success)
+        {
+            return result with
+            {
+                Step = latestStep,
+                TotalSteps = 7,
+            };
+        }
+
+        Report(new(
+            MicroHarnessDispatchStage.Opening,
+            $"Requested {harness.DisplayName} browser surface."), 4);
+        if (result.Stage != MicroHarnessDispatchStage.Opening)
+        {
+            Report(new(
+                MicroHarnessDispatchStage.Background,
+                $"{harness.DisplayName} browser bridge is connected."), 5);
+            return result with { Step = 5, TotalSteps = 7 };
+        }
+
+        Report(new(
+            MicroHarnessDispatchStage.Opening,
+            $"Waiting for {harness.DisplayName} browser surface."), 5);
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(
+            SurfaceReadyTimeoutMilliseconds);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(
+                SurfaceRetryIntervalMilliseconds,
+                cancellationToken);
+            var exchange = await ExchangeAsync(
+                harness,
+                request,
+                RetryConnectTimeoutMilliseconds,
+                cancellationToken);
+            if (!exchange.Connected)
+            {
+                continue;
+            }
+
+            result = ToDispatchResult(exchange);
+            if (!result.Success ||
+                result.Stage != MicroHarnessDispatchStage.Opening)
+            {
+                if (result.Success)
+                {
+                    Report(new(
+                        MicroHarnessDispatchStage.Background,
+                        $"{harness.DisplayName} browser bridge is connected."), 5);
+                }
+                return result with { Step = 5, TotalSteps = 7 };
+            }
+        }
+
+        return result with { Step = 5, TotalSteps = 7 };
+    }
+
     internal Task<MicroHarnessDispatchResult> ActivateSessionAsync(
         string harnessId,
         string sessionId,
@@ -512,31 +685,164 @@ internal sealed class MicroHarnessRegistry
             cancellationToken);
     }
 
-    internal async Task<MicroHarnessDispatchResult> SetVoiceAsync(
+    internal async Task<MicroHarnessVoiceRequest?> WaitForVoiceRequestAsync(
         string harnessId,
-        bool pressed,
-        IProgress<MicroHarnessDispatchProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var harness = Resolve(harnessId);
-        var request = new
+        if (harness.Id == "codex" ||
+            !harness.IsAvailable ||
+            !HasControlEndpoint(harness.Connection))
         {
-            version = 1,
-            source = "codex-micro",
-            action = pressed ? "voice/start" : "voice/stop",
-        };
-        if (pressed)
-        {
-            return await DispatchWithOptionalLaunchAsync(
-                harness,
-                request,
-                progress,
-                cancellationToken,
-                VoiceResponseTimeoutMilliseconds);
+            return null;
         }
 
-        // A release edge must never launch an offline Harness. Starting it
-        // here can arrive after a failed press and leave dictation running.
+        var exchange = await ExchangeAsync(
+            harness,
+            new
+            {
+                version = 1,
+                source = "codex-micro",
+                action = "voice/request",
+            },
+            ConnectTimeoutMilliseconds,
+            cancellationToken,
+            responseTimeoutMilliseconds: 25_000);
+        if (!exchange.Connected || !exchange.Success ||
+            exchange.Root.ValueKind != JsonValueKind.Object ||
+            !exchange.Root.TryGetProperty("voiceRequest", out var request) ||
+            request.ValueKind != JsonValueKind.Object ||
+            !TryReadString(request, "requestId", out var requestId))
+        {
+            return null;
+        }
+
+        return new(
+            requestId,
+            TryReadString(request, "sessionId", out var sessionId)
+                ? sessionId
+                : null);
+    }
+
+    internal Task<MicroHarnessDispatchResult> CompleteVoiceRequestAsync(
+        string harnessId,
+        string requestId,
+        bool success,
+        bool active,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
+        return DispatchWithoutLaunchAsync(
+            Resolve(harnessId),
+            new
+            {
+                version = 1,
+                source = "codex-micro",
+                action = "voice/result",
+                requestId,
+                success,
+                active,
+                message,
+            },
+            cancellationToken);
+    }
+
+    internal Task<MicroHarnessDispatchResult> PublishVoiceStatusAsync(
+        string harnessId,
+        bool active,
+        string phase,
+        string message,
+        string? sessionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        object request = string.IsNullOrWhiteSpace(sessionId)
+            ? new
+            {
+                version = 1,
+                source = "codex-micro",
+                action = "voice/status",
+                active,
+                phase,
+                message,
+            }
+            : new
+            {
+                version = 1,
+                source = "codex-micro",
+                action = "voice/status",
+                active,
+                phase,
+                message,
+                sessionId,
+            };
+        return DispatchWithoutLaunchAsync(
+            Resolve(harnessId),
+            request,
+            cancellationToken);
+    }
+
+    internal Task<MicroHarnessDispatchResult> SendDictationAsync(
+        string harnessId,
+        string text,
+        string language,
+        bool autoSubmit,
+        string? sessionId = null,
+        CancellationToken cancellationToken = default,
+        string? dictationId = null,
+        string? dictationPhase = null)
+    {
+        if (dictationPhase is not (null or "partial" or "final" or "cancel"))
+        {
+            throw new ArgumentOutOfRangeException(nameof(dictationPhase));
+        }
+        if (string.IsNullOrWhiteSpace(text) && dictationPhase != "cancel")
+        {
+            throw new ArgumentException(
+                "Dictation text is required unless a live preview is being cancelled.",
+                nameof(text));
+        }
+        if (dictationPhase is not null && string.IsNullOrWhiteSpace(dictationId))
+        {
+            throw new ArgumentException(
+                "Live dictation requires a stable id.",
+                nameof(dictationId));
+        }
+
+        var request = new Dictionary<string, object?>
+        {
+            ["version"] = 1,
+            ["source"] = "codex-micro",
+            ["action"] = "composer/dictate",
+            ["text"] = text,
+            ["language"] = language,
+            ["autoSubmit"] = autoSubmit,
+        };
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            request["sessionId"] = sessionId;
+        }
+        if (!string.IsNullOrWhiteSpace(dictationId))
+        {
+            request["dictationId"] = dictationId;
+        }
+        if (dictationPhase is not null)
+        {
+            request["dictationPhase"] = dictationPhase;
+        }
+        return DispatchWithOptionalLaunchAsync(
+            Resolve(harnessId),
+            request,
+            progress: null,
+            cancellationToken,
+            responseTimeoutMilliseconds: 8_000);
+    }
+
+    private async Task<MicroHarnessDispatchResult> DispatchWithoutLaunchAsync(
+        MicroHarnessDefinition harness,
+        object request,
+        CancellationToken cancellationToken)
+    {
         if (harness.Id == "codex" ||
             !harness.IsAvailable ||
             !HasControlEndpoint(harness.Connection))
@@ -551,32 +857,14 @@ internal sealed class MicroHarnessRegistry
             harness,
             request,
             ConnectTimeoutMilliseconds,
-            cancellationToken);
+            cancellationToken,
+            ResponseTimeoutMilliseconds);
         return exchange.Connected
             ? ToDispatchResult(exchange)
-             : new(
-                 false,
-                 $"{harness.DisplayName} adapter is not connected.",
-                 MicroHarnessDispatchStage.Failed);
-    }
-
-    internal Task<MicroHarnessDispatchResult> ConfigureVoiceAsync(
-        string harnessId,
-        IProgress<MicroHarnessDispatchProgress>? progress = null,
-        CancellationToken cancellationToken = default)
-    {
-        var request = new
-        {
-            version = 1,
-            source = "codex-micro",
-            action = "voice/configure",
-        };
-        return DispatchWithOptionalLaunchAsync(
-            Resolve(harnessId),
-            request,
-            progress,
-            cancellationToken,
-            VoiceResponseTimeoutMilliseconds);
+            : new(
+                false,
+                exchange.Message,
+                MicroHarnessDispatchStage.Failed);
     }
 
     internal async Task<MicroHarnessStateSnapshot?> ReadStateAsync(
@@ -677,18 +965,14 @@ internal sealed class MicroHarnessRegistry
         if (state.TryGetProperty("components", out var componentValues) &&
             componentValues.ValueKind == JsonValueKind.Object &&
             TryReadString(componentValues, "adapter", out var adapter) &&
-            TryReadString(componentValues, "browser", out var browser) &&
-            TryReadString(componentValues, "voiceSetup", out var voiceSetup) &&
-            TryReadString(componentValues, "voiceRuntime", out var voiceRuntime))
+            TryReadString(componentValues, "browser", out var browser))
         {
             components = new(
                 adapter,
                 browser,
-                voiceSetup,
-                voiceRuntime,
-                TryReadString(componentValues, "voiceMessage", out var voiceMessage)
-                    ? voiceMessage
-                    : string.Empty);
+                TryReadString(componentValues, "currentModel", out var currentModel)
+                    ? currentModel
+                    : null);
         }
 
         return new(
@@ -1039,25 +1323,20 @@ internal sealed class MicroHarnessRegistry
             CodexDefinition(),
         };
 
-        var deepSeekPath = @"D:\project\ai\deepseek\deepseek-harness";
-        var windowsDirectory = Environment.GetFolderPath(
-            Environment.SpecialFolder.Windows);
-        var wslExecutable = Path.Combine(windowsDirectory, "System32", "wsl.exe");
-        var deepSeekStartScript = ResolveDeepSeekWslStartScript();
         var deepSeekConnection = new MicroHarnessConnectionSettings(
             "deepseek-harness-micro-v1",
-            wslExecutable,
-            $"--distribution Ubuntu --exec bash \"{ToWslPath(deepSeekStartScript)}\"",
-            Path.Combine(windowsDirectory, "System32"),
-            AutoStart: true,
-            ReadyTimeoutMilliseconds: 60_000,
+            Executable: null,
+            Arguments: null,
+            WorkingDirectory: null,
+            AutoStart: false,
+            ReadyTimeoutMilliseconds: DeepSeekReadyTimeoutMilliseconds,
             ControlUri: DeepSeekControlUri);
         definitions.Add(new(
             "deepseek-harness",
             "DeepSeek Harness",
             "Direct plugin adapter · no simulated input",
-            deepSeekPath,
-            File.Exists(wslExecutable) && File.Exists(deepSeekStartScript),
+            ProjectPath: null,
+            IsAvailable: true,
             deepSeekConnection));
 
         manifestDirectory ??= Path.Combine(
@@ -1113,51 +1392,6 @@ internal sealed class MicroHarnessRegistry
         }
 
         return Normalize(definitions);
-    }
-
-    private static string ResolveDeepSeekWslStartScript()
-    {
-        const string repositoryRelative =
-            @"micro-bridge\DeepSeekHarness\scripts\start-dsh-wsl.sh";
-        const string packageRelative =
-            @"plugins\DeepSeekHarness\scripts\start-dsh-wsl.sh";
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
-             directory is not null;
-             directory = directory.Parent)
-        {
-            foreach (var relative in new[] { packageRelative, repositoryRelative })
-            {
-                var candidate = Path.Combine(directory.FullName, relative);
-                if (File.Exists(candidate))
-                {
-                    return Path.GetFullPath(candidate);
-                }
-            }
-        }
-
-        // Keep the editable development checkout as a deterministic fallback.
-        // Startup will surface the script's own actionable "runtime incomplete"
-        // error instead of silently falling back to a Windows Node process.
-        return @"D:\AgentController\micro-bridge\DeepSeekHarness\scripts\start-dsh-wsl.sh";
-    }
-
-    private static string ToWslPath(string windowsPath)
-    {
-        var fullPath = Path.GetFullPath(windowsPath);
-        var root = Path.GetPathRoot(fullPath);
-        if (string.IsNullOrEmpty(root) ||
-            root.Length < 2 ||
-            root[1] != ':')
-        {
-            throw new InvalidOperationException(
-                $"DeepSeek Harness WSL startup requires a drive-qualified path: {fullPath}");
-        }
-
-        var drive = char.ToLowerInvariant(root[0]);
-        var tail = fullPath[root.Length..]
-            .Replace(Path.DirectorySeparatorChar, '/')
-            .Replace(Path.AltDirectorySeparatorChar, '/');
-        return $"/mnt/{drive}/{tail}";
     }
 
     private static IReadOnlyList<MicroHarnessDefinition> Normalize(
@@ -1242,6 +1476,28 @@ internal sealed class MicroHarnessRegistry
 
     private static string? NormalizeText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool IsLegacyFixedDeepSeekLaunch(
+        MicroHarnessConnectionSettings value)
+    {
+        var arguments = value.Arguments ?? string.Empty;
+        return value.AutoStart &&
+            arguments.Contains(
+                "--distribution Ubuntu",
+                StringComparison.OrdinalIgnoreCase) &&
+            arguments.Contains(
+                "start-dsh-wsl.sh",
+                StringComparison.OrdinalIgnoreCase) &&
+            ((arguments.Contains(
+                    "/mnt/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                arguments.Contains(
+                    "/AgentController/",
+                    StringComparison.OrdinalIgnoreCase)) ||
+                arguments.Contains(
+                    @":\AgentController\",
+                    StringComparison.OrdinalIgnoreCase));
+    }
 
     private static IReadOnlyList<MicroHarnessDefinition> ApplyOverrides(
         IReadOnlyList<MicroHarnessDefinition> definitions,

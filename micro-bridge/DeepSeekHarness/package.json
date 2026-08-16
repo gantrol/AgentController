@@ -1,7 +1,7 @@
 {
   "name": "@agentcontroller/dsh-micro-bridge-deepseek-harness",
-  "version": "0.2.3",
-  "description": "External DeepSeek Harness adapter for AgentController Micro, with native actions and streaming voice input",
+  "version": "0.2.4",
+  "description": "External DeepSeek Harness adapter for AgentController Micro native actions and keypad dictation",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
@@ -27,8 +27,7 @@
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-model-selection",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-model-selection"
       ],
       "platform": "web",
       "immediately": true
@@ -38,7 +37,6 @@
     "build": "node scripts/clean.mjs && tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "probe:stream": "node scripts/probe-stream.mjs",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build",
     "prepare": "pnpm run build"
   },
@@ -46,16 +44,12 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "packageManager": "pnpm@11.7.0",
-  "dependencies": {
-    "ws": "^8.18.3"
-  },
   "peerDependencies": {
     "react": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
-    "@types/ws": "^8.18.1",
     "jsdom": "^26.1.0",
     "react": "18.3.1",
     "tsdown": "^0.22.2",

@@ -593,6 +593,29 @@
                                               Style="{StaticResource PillComboBox}"
                                               SelectionChanged="KnobModeCombo_SelectionChanged" />
                                 </Grid>
+                                <Border x:Name="InvertDialDirectionSeparator"
+                                        Height="1"
+                                        Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="InvertDialDirectionOptionRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="InvertDialDirectionTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Reverse dial direction" />
+                                        <TextBlock x:Name="InvertDialDirectionDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Swap clockwise and counterclockwise input for this Codex keypad" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="InvertDialDirectionToggle"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource SwitchToggle}"
+                                              Checked="InvertDialDirectionToggle_Changed"
+                                              Unchecked="InvertDialDirectionToggle_Changed" />
+                                </Grid>
                                 <Border Height="1" Background="{StaticResource SettingsLine}" />
                                 <Grid x:Name="JoystickOptionRow"
                                       MinHeight="78"
@@ -638,27 +661,6 @@
                                               VerticalAlignment="Center"
                                               Style="{StaticResource PillComboBox}"
                                               SelectionChanged="MicrophoneModeCombo_SelectionChanged" />
-                                </Grid>
-                                <Border Height="1" Background="{StaticResource SettingsLine}" />
-                                <Grid x:Name="SeparateMicrophonesOptionRow" MinHeight="78">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
-                                        <TextBlock x:Name="SeparateMicrophonesTitleText"
-                                                   Style="{StaticResource OptionTitle}"
-                                                   Text="Use separate microphone keys" />
-                                        <TextBlock x:Name="SeparateMicrophonesDetailText"
-                                                   Style="{StaticResource OptionDetail}"
-                                                   Text="Map the two switches beneath the wide key separately" />
-                                    </StackPanel>
-                                    <CheckBox x:Name="SeparateMicrophonesToggle"
-                                              Grid.Column="1"
-                                              VerticalAlignment="Center"
-                                              Style="{StaticResource SwitchToggle}"
-                                              Checked="SeparateMicrophonesToggle_Changed"
-                                              Unchecked="SeparateMicrophonesToggle_Changed" />
                                 </Grid>
                                 <Border Height="1" Background="{StaticResource SettingsLine}" />
                                 <Grid x:Name="SingleTapOptionRow" MinHeight="78">

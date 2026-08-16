@@ -29,10 +29,12 @@ Example:
 or `controlUri`. An unauthenticated `controlUri` must be loopback `http://`;
 it is preferred when both transports are present. `projectPath` is optional; if
 present, the target is enabled only while that directory exists. IDs are
-case-insensitively unique. Codex is always the first built-in target. The local
-DeepSeek Harness at `D:\project\ai\deepseek\deepseek-harness` is also registered
-built-in with pipe fallback `deepseek-harness-micro-v1` and WSL control URL
-`http://127.0.0.1:3080/__agentcontroller/micro/request`.
+case-insensitively unique. Codex is always the first built-in target. DeepSeek
+Harness is also registered built-in with pipe fallback
+`deepseek-harness-micro-v1` and the official default Web port in its control
+URL: `http://127.0.0.1:3080/__agentcontroller/micro/request`. The built-in
+definition has no project path, executable, distribution name, or automatic
+startup until first-run setup succeeds or the user saves those values.
 
 Each external Harness has an in-app adapter card for the pipe/control URL, executable,
 arguments, working directory, automatic startup, and readiness timeout. Edits
@@ -42,19 +44,24 @@ override manifest defaults. An executable is started directly with
 
 ## Built-in DeepSeek Harness adapter
 
-The matching external Cordis plugin is implemented in:
+The matching external Cordis plugin is distributed beside a tailored release
+at:
 
 ```text
-D:\AgentController\micro-bridge\DeepSeekHarness
+plugins\DeepSeekHarness
 ```
 
-Its Web composition mounts the bridge without modifying the Harness source.
-Pressing the DeepSeek button first tries loopback HTTP. When it is offline and
-automatic startup is enabled, Micro starts `wsl.exe --distribution Ubuntu
---exec bash .../start-dsh-wsl.sh`, waits for the WSL endpoint, and then sends
-the original activation. This keeps Bash, PTY, subprocess inspection, and
-Harness Node dependencies on Linux while the keypad/browser stay on Windows.
-No extra AgentController manifest is required for this built-in target.
+The source-tree location is `micro-bridge\DeepSeekHarness`, relative to the
+repository root; neither form implies a drive letter. Its Web composition
+mounts the bridge without modifying Harness source.
+
+Pressing the DeepSeek button first tries the saved endpoint and then the
+official 3080 default. An unconfigured target opens the explicit first-run
+choice. Existing-Harness mode leaves version, location, and startup under user
+control. Managed mode creates the dedicated `CodexMicro-DeepSeek` WSL
+distribution, installs the official npm release plus this bridge, selects a
+loopback port, and only then persists automatic startup. No extra
+AgentController manifest or source checkout is required.
 
 Native Harness Web instances on non-default ports use a port-suffixed pipe name. For
 example, port 3098 exposes `deepseek-harness-micro-v1-3098`; register that
@@ -71,12 +78,12 @@ guard prevents repeated button presses from multiplying tabs while it starts.
 The WPF host then uses Win32 foreground activation on that dedicated browser
 window without synthesizing keyboard or pointer input.
 
-The ACT12 key displays the activation phase directly on the key: connecting,
-starting, waiting for the adapter, opening the web surface, foreground, or a
-taskbar fallback. On first selection of an external Harness, Micro opens that
-Harness's adapter/key-map settings; saving marks onboarding complete for that
-Harness only. Right-clicking the lower-left quota knob always opens the
-software-settings section for whichever Agent/Harness ACT12 currently targets.
+The ACT12 key displays the seven activation phases directly on the key. During
+program-managed first use, the same key and setup window display the eight
+setup phases. Selecting an external Harness no longer forces settings open;
+the first ACT12 click either reuses a healthy bridge or offers managed setup
+and existing-Harness configuration. Right-clicking the lower-left quota knob
+still opens the software-settings section for the current target.
 
 ## Local control protocol version 1
 
@@ -166,5 +173,5 @@ input.
 
 Every registered target appears in both the Codex key's right-click menu and
 the shared Micro software-settings page. The actual running Micro remains the
-live layout editor for external targets; adapter and voice details open as
-secondary options instead of a flat mapping list.
+live layout editor for external targets. Adapter details and keypad-owned voice
+settings open as separate options instead of a flat mapping list.

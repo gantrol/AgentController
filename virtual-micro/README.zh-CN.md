@@ -10,6 +10,11 @@ Agent Controller 不引用或承载小键盘 UI。标题栏和托盘入口只启
 `CodexMicro.exe`；找不到时打开 Releases 下载页。两个程序只共享当前用户的 Micro
 Broker 协议和 HID 驱动，可以单独启动，也可以同时运行。
 
+DeepSeek 特调包首次点击会先复用已有 Harness；未发现可用桥接时，可选择“使用我
+已有的 DSH”，或“在专用 WSL 中安装 DSH（推荐）”。流程不假定盘符、源码目录或
+用户已有发行版名称，也不执行 `git clone`。完整的官方来源、端口说明和逐步排错见
+[Windows 首次使用 DeepSeek：默认配置准备](./DEEPSEEK-WINDOWS-SETUP.zh-CN.md)。
+
 发行包采用 framework-dependent 单文件发布。实测 `CodexMicro.exe` 约 `24.9 MiB`，
 zip 约 `6.4 MiB`，封包脚本把 zip 上限固定为 `15 MiB`；超过即构建失败。这样保留
 原 WPF 像素效果，同时避免约 `75 MiB` 的自包含 WPF 便携包。独立运行前需安装
@@ -27,8 +32,8 @@ Microsoft .NET 10 Desktop Runtime x64。
 - 通知区域图标双击可显示/收起；右键菜单提供“显示/收起小键盘”和“退出”；
 - 托盘菜单的“开机自启动”可随时启用或关闭；启用后登录 Windows 时会启动并立即
   显示小键盘；
-- 托盘菜单新增“反转旋钮方向”；切换后立即生效并与语言设置一同保存。关闭时保持
-  实体 Codex Micro 的官方方向，开启后顺时针旋转会提高模型推理强度；
+- Codex 模式下，软件设置页提供“反转旋钮方向”；设置按当前小键盘保存，
+  不会影响外部 Harness；
 - 鼠标输入不会激活小键盘，因此 Codex 的输入焦点保持不变。
 
 ## 界面语言
@@ -38,13 +43,71 @@ Microsoft .NET 10 Desktop Runtime x64。
 刷新；选择保存在 `%LOCALAPPDATA%\CodexMicro\settings.json`。自动模式优先读取
 Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟随 Windows UI 语言。
 
+## 语音归属与本地 Qwen 自启动
+
+语音能力完全属于小键盘：小键盘持有麦克风、识别配置、服务进程和远程 API Key。
+Bridge 只在 DeepSeek 与小键盘之间转发“切换语音”请求以及增量 / 最终文字；DeepSeek 插件只
+增加一个语音按钮，不采集音频、不连接 Qwen，也没有语音设置页。
+
+在“小键盘软件设置 → 语音输入”中选择“本地流式 Qwen”，再点“使用本机示例”。
+该按钮默认选择“随小键盘启动”，可按需改回首次使用时启动或仅检测。示例配置不含
+盘符或用户目录：
+
+- 流式地址：`ws://127.0.0.1:8765/v1/stream`；
+- 健康检查：`http://127.0.0.1:8765/health`；
+- 启动脚本：`{AppDir}\voice\start-qwen3-asr-stream.ps1`；
+- 工作目录：`{AppDir}\voice`；
+- 模型：`Qwen/Qwen3-ASR-0.6B`；
+- 默认使用 1 秒识别分块以降低首个增量结果的等待时间；可在单独运行启动脚本时通过
+  `-ChunkSeconds` 调整；
+- WSL 发行版：默认 `Ubuntu`，可改成 `wsl -l -q` 显示的名称；
+- WSL Python：默认留空，由脚本依次查找小键盘专用或已有本地 Qwen 虚拟环境，最后
+  才使用 WSL 的 `python3`。
+
+路径支持 `{AppDir}`、`{LocalAppData}`、环境变量和相对路径。解析发生在运行时，配置
+文件不会保存本机安装目录的绝对路径。
+
+启动方式有三种：
+
+- “首次使用时启动”：按麦克风键、点 DeepSeek 的语音按钮或执行“保存并验证”时启动；
+- “随小键盘启动”：小键盘打开后后台预热；
+- “仅检测”：服务由用户自己启动，小键盘只检查健康状态。
+
+若要登录 Windows 后自动启动 Qwen，同时启用托盘菜单的“小键盘开机自启动”，并把
+这里设为“随小键盘启动”；登录后会先启动小键盘，再由小键盘预热语音服务。
+
+小键盘先检查 `/health` 返回 `ready: true` 和 `dsh-stream-v1`，未就绪时才启动脚本；
+模型加载完成后再连接 WebSocket。退出时只停止由当前小键盘启动的进程，绝不会接管
+或终止原本就在运行的服务。“退出小键盘时停止”也可关闭。
+
+Qwen3-ASR 的流式接口使用 vLLM 后端。以 WSL 中的当前用户为例，一次性准备环境：
+
+```powershell
+wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qwen-asr/venv" && source "$HOME/.local/share/codex-micro/qwen-asr/venv/bin/activate" && python -m pip install -U "qwen-asr[vllm]" aiohttp numpy'
+```
+
+如果发行版名或 Python 位置不同，在小键盘设置中修改即可，不需要改脚本。首次使用
+模型 ID 时会由 Qwen/Hugging Face 缓存下载模型，因而就绪时间可能较长；默认等待
+600 秒，可在设置中调整。依赖、模型与硬件要求见
+[Qwen3-ASR 官方安装指南](https://github.com/QwenLM/Qwen3-ASR#quickstart)，流式
+协议实现参考
+[Qwen 官方流式推理示例](https://github.com/QwenLM/Qwen3-ASR/blob/main/examples/example_qwen3_asr_vllm_streaming.py)。
+
+只检查本机环境而不加载模型或启动服务，可在解压目录运行：
+
+```powershell
+& ".\voice\start-qwen3-asr-stream.ps1" -Distribution Ubuntu -CheckOnly
+```
+
 ## 控件
 
 - 6 个 Agent 键发送 `AG00`–`AG05`，并显示 Codex 返回的槽位灯光；
 - 4 个命令键发送 `ACT06`–`ACT09`，Codex 键发送 `ACT12`；
-- 语音键按下发送 `ACT10 down`，松开后发送 `ACT10 up`；
+- Codex 模式下，语音键按下发送 `ACT10 down`，松开后发送 `ACT10 up`；外部 Harness
+  模式下，该键直接控制小键盘自己的语音采集与识别；
 - Codex 模式下，白色旋钮可设为常规输入区导航或“仅推理强度”；后者旋转时只改变
   思考强度，短按在快捷模型 A / B 间切换；
+- Codex 软件设置中的“反转旋钮方向”只作用于当前 Codex 小键盘；外部 Harness 忽略该设置；
 - 外部 Harness 独立保存白色旋钮模式。默认只动态发现当前输入框内可见、可用的
   控件（包括其他插件后来加入的按钮），用蓝色轮廓高亮，短按执行；也可改为
   “仅推理强度”或“最近会话”；
@@ -76,7 +139,7 @@ Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
 .\scripts\package-micro.ps1 -Version 0.2.4
-# 仅准备未来的 DeepSeek 特调包；不会由普通 dev 构建自动执行
+# 准备带桥接插件和在线自动配置入口的 DeepSeek 特调包
 .\scripts\package-micro.ps1 -Version 0.2.4 -Preset deepseek
 ```
 
@@ -85,11 +148,17 @@ dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.c
 - 单文件可执行程序：`.artifacts/micro-release/0.2.4/publish/CodexMicro.exe`；
 - 独立压缩包：`dist/CodexMicro-Keypad-0.2.4-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
+- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.4-win-x64.zip`；
+- 可单独安装到已有 DSH 的 Bridge：
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.4.zip`（也带独立 SHA-256）。
 
-封包脚本只收录 `CodexMicro.exe`、README 和许可证，不复制 Desktop Runtime、调试符号
-或驱动。`deepseek` 预设额外收录显式的首次运行参数和 DeepSeek Harness 外部插件
-源码/构建产物；默认目标为 DeepSeek，默认语音为系统识别，本地 Qwen 和远程流式
-识别保留为高级选项。驱动仍作为单独的安全边界安装。
+封包脚本收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
+启动适配器，不复制模型、Python 环境、Desktop Runtime、调试符号或驱动。
+`deepseek` 预设会先构建精简的 DeepSeek Harness Bridge 运行包，并同时产出独立插件
+zip；主包内保留同一载荷供专用 WSL 安装。两份都不包含源码、测试或开发依赖。
+预设还包含无固定路径的托管安装脚本和显式首次选择；默认目标为 DeepSeek，
+默认语音为系统识别。本地 Qwen、远程流式识别和未来的离线 WSL payload 保留为
+可选能力。驱动仍作为单独的安全边界安装。
 
 ## 安装驱动
 

@@ -15,6 +15,7 @@
 
 ## 历史、证据与验收
 
+- [Deepseek Harness Keypad v0.2.4 正式版说明](release-deepseek-harness-keypad-v0.2.4.md)
 - [v0.7 手柄指令清单](controller-command-reference-v0.7.md)：仅用于追踪旧实现与规范差异，不作为最新合同。
 - [Codex Micro VHF/状态/输入协议证据](../../docs/codex-26.707.12708-vhf-status-input.zh-CN.md)
 - [ADR-0002：原生 Micro 兼容决策](../../docs/adr/0002-codex-micro-native-compatibility.zh-CN.md)

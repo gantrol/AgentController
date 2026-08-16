@@ -1,10 +1,13 @@
 @echo off
 setlocal EnableExtensions
 
-if "%~1"=="" (
-  set "HARNESS_DIR=D:\project\ai\deepseek\deepseek-harness"
-) else (
+if not "%~1"=="" (
   for %%I in ("%~1") do set "HARNESS_DIR=%%~fI"
+) else if defined DEEPSEEK_HARNESS_DIR (
+  for %%I in ("%DEEPSEEK_HARNESS_DIR%") do set "HARNESS_DIR=%%~fI"
+) else (
+  echo [dsh-micro-bridge] Pass the Harness directory or set DEEPSEEK_HARNESS_DIR.
+  exit /b 2
 )
 
 if not exist "%HARNESS_DIR%\package.json" (
@@ -17,5 +20,5 @@ call pnpm dsh plugin --profile web remove @agentcontroller/dsh-micro-bridge-deep
 set "DSH_BRIDGE_EXIT=%ERRORLEVEL%"
 popd
 
-if "%DSH_BRIDGE_EXIT%"=="0" echo [dsh-micro-bridge] Removed from the web profile; settings and credentials were retained.
+if "%DSH_BRIDGE_EXIT%"=="0" echo [dsh-micro-bridge] Removed from the web profile.
 exit /b %DSH_BRIDGE_EXIT%

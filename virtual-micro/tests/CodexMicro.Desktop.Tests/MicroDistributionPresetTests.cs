@@ -23,7 +23,10 @@ public sealed class MicroDistributionPresetTests
                   "schemaVersion": 1,
                   "id": "deepseek-one-click",
                   "defaultHarnessId": "deepseek-harness",
-                  "voice": { "defaultProvider": "system" },
+                  "voice": {
+                    "defaultProvider": "system",
+                    "localQwenStartMode": "keypad-start"
+                  },
                   "surface": { "theme": "deepseek-soft-blue" }
                 }
                 """);
@@ -38,11 +41,17 @@ public sealed class MicroDistributionPresetTests
             Assert.Equal("deepseek-one-click", preset.Id);
             Assert.Equal("system", preset.VoiceDefaultProvider);
             Assert.Equal(
+                MicroLocalVoiceStartModes.KeypadStart,
+                preset.LocalQwenStartMode);
+            Assert.Equal(
                 "deepseek-soft-blue",
                 preset.SurfaceTheme);
             Assert.Equal("deepseek-harness", applied.ActiveHarnessId);
             Assert.Equal(fallback.QuickModelA, applied.QuickModelA);
             Assert.Equal(fallback.QuickModelB, applied.QuickModelB);
+            Assert.Equal(
+                MicroLocalVoiceStartModes.KeypadStart,
+                applied.VoiceSettings.LocalStartMode);
         }
         finally
         {

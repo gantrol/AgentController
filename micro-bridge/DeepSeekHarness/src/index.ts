@@ -11,24 +11,20 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Duplex } from 'node:stream'
 import { runNativeCommand, type NativeCommandRunner } from './native-command.ts'
-import { LocalAsrRuntime } from './local-asr-runtime.ts'
-import { SettingsApi } from './settings-api.ts'
-import { VoiceSettingsStore } from './settings.ts'
-import { VoiceGateway } from './voice-server.ts'
 import type {
   MicroActionExecutionFrame,
   MicroActionId,
   MicroBrowserReport,
   MicroBrowserFrame,
-  MicroComponentSnapshot,
+  MicroDictationFrame,
+  MicroKeypadVoiceRequest,
   MicroRequest,
   MicroResponse,
   MicroSessionActivationFrame,
   MicroSessionSummary,
   MicroStateSnapshot,
-  MicroVoiceFrame,
+  MicroVoiceStatusFrame,
 } from './protocol.ts'
 import {
   MICRO_EVENTS_ENDPOINT,
@@ -36,8 +32,7 @@ import {
   MICRO_PIPE_NAME,
   MICRO_PROTOCOL_VERSION,
   MICRO_REPORT_ENDPOINT,
-  MICRO_SETTINGS_ENDPOINT,
-  MICRO_VOICE_ENDPOINT,
+  MICRO_VOICE_BUTTON_ENDPOINT,
 } from './protocol.ts'
 
 export type {
@@ -49,7 +44,9 @@ export type {
   MicroBrowserReport,
   MicroBrowserFrame,
   MicroCapabilities,
-  MicroComponentSnapshot,
+  MicroDictationFrame,
+  MicroDictationRequest,
+  MicroKeypadVoiceRequest,
   MicroRequest,
   MicroResponse,
   MicroSessionActivationFrame,
@@ -57,8 +54,10 @@ export type {
   MicroSessionSummary,
   MicroStateRequest,
   MicroStateSnapshot,
-  MicroVoiceFrame,
-  MicroVoiceRequest,
+  MicroVoiceRequestPoll,
+  MicroVoiceRequestResult,
+  MicroVoiceStatusFrame,
+  MicroVoiceStatusRequest,
 } from './protocol.ts'
 export {
   MICRO_EVENTS_ENDPOINT,
@@ -66,22 +65,25 @@ export {
   MICRO_PIPE_NAME,
   MICRO_PROTOCOL_VERSION,
   MICRO_REPORT_ENDPOINT,
-  MICRO_SETTINGS_ENDPOINT,
-  MICRO_VOICE_ENDPOINT,
+  MICRO_VOICE_BUTTON_ENDPOINT,
 } from './protocol.ts'
 
 /** Cordis plugin name. */
 export const name = 'agentcontroller-deepseek-harness-micro-bridge'
 
 /** Required host services: API projection, route registry, and effective web port. */
-export const inject = ['apiProxy', 'webServer', 'credentials']
+export const inject = ['apiProxy', 'webServer']
 
-const MAX_REQUEST_BYTES = 4_096
-const REQUEST_TIMEOUT_MS = 3_000
+const MAX_REQUEST_BYTES = 64 * 1_024
+const REQUEST_TIMEOUT_MS = 35_000
 const FOCUS_ACK_TIMEOUT_MS = 650
 const ACTION_ACK_TIMEOUT_MS = 2_500
-const VOICE_ACK_TIMEOUT_MS = 12_000
+const VOICE_REQUEST_POLL_MS = 20_000
+const VOICE_BUTTON_RESULT_MS = 35_000
+const VOICE_CONNECTED_BUTTON_RESULT_MS = 240_000
+const MAX_PENDING_VOICE_REQUESTS = 4
 const NATIVE_OPEN_COOLDOWN_MS = 5_000
+const NATIVE_OPEN_PENDING_TIMEOUT_MS = 12_000
 const MAX_VISIBLE_SESSIONS = 6
 const ACTION_IDS = new Set<MicroActionId>([
   'session/new',
@@ -99,6 +101,7 @@ const ACTION_IDS = new Set<MicroActionId>([
   'composer/select-next',
   'composer/activate-selection',
   'composer/back',
+  'composer/submit',
   'reasoning/decrease',
   'reasoning/increase',
   'model/toggle-quick',
@@ -125,13 +128,6 @@ interface ApiProxyFace {
   }
 }
 
-interface CredentialsFace {
-  resolve(ref: string): Promise<{ value: string; source?: string } | undefined>
-  describe(ref: string): Promise<{ configured: boolean; source?: string; writable: boolean }>
-  set(ref: string, value: string): Promise<void>
-  unset(ref: string): Promise<void>
-}
-
 interface HostContext {
   logger: {
     warn(value: unknown): void
@@ -144,12 +140,7 @@ interface HostContext {
       path: string
       handler: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>
     }): () => void
-    registerUpgrade(route: {
-      path: string
-      handler: (request: IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>
-    }): () => void
   }
-  credentials: CredentialsFace
   get(name: string): unknown
   effect(
     factory: () => Promise<() => void | Promise<void>>,
@@ -168,6 +159,7 @@ export const internals: {
   pipeEndpoint: (webPort: number) => string
   platform: NodeJS.Platform
   runNativeCommand: NativeCommandRunner
+  now: () => number
   windowsAppBrowser: () => string | undefined
   wslWindowsAppBrowser: () => string | undefined
   wslWindowsUrlHandler: () => string | undefined
@@ -177,6 +169,7 @@ export const internals: {
   pipeEndpoint: webPort => defaultPipeEndpoint(process.platform, webPort),
   platform: process.platform,
   runNativeCommand,
+  now: Date.now,
   windowsAppBrowser() {
     const roots = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles]
       .filter((value): value is string => value !== undefined && value.trim() !== '')
@@ -281,6 +274,7 @@ function response(
   status?: MicroResponse['status'],
   state?: MicroStateSnapshot,
   windowProcessId?: number,
+  voiceRequest?: MicroKeypadVoiceRequest,
 ): MicroResponse {
   return {
     success,
@@ -288,6 +282,7 @@ function response(
     ...(status === undefined ? {} : { status }),
     ...(windowProcessId === undefined ? {} : { windowProcessId }),
     ...(state === undefined ? {} : { state }),
+    ...(voiceRequest === undefined ? {} : { voiceRequest }),
   }
 }
 
@@ -304,10 +299,50 @@ function parseRequest(line: Buffer): MicroRequest | undefined {
   switch (request.action) {
     case 'activate':
     case 'state/read':
-    case 'voice/configure':
-    case 'voice/start':
-    case 'voice/stop':
+    case 'voice/request':
       return request as unknown as MicroRequest
+    case 'voice/result':
+      return typeof request.requestId === 'string'
+        && request.requestId.trim() !== ''
+        && typeof request.success === 'boolean'
+        && typeof request.active === 'boolean'
+        && typeof request.message === 'string'
+        && request.message.length <= 2_048
+        ? request as unknown as MicroRequest
+        : undefined
+    case 'voice/status':
+      return typeof request.active === 'boolean'
+        && (request.phase === 'idle'
+          || request.phase === 'starting'
+          || request.phase === 'listening'
+          || request.phase === 'stopping'
+          || request.phase === 'error')
+        && typeof request.message === 'string'
+        && request.message.length <= 2_048
+        && (request.sessionId === undefined
+          || (typeof request.sessionId === 'string' && request.sessionId.trim() !== ''))
+        ? request as unknown as MicroRequest
+        : undefined
+    case 'composer/dictate':
+      return typeof request.text === 'string'
+        && (request.text.trim() !== '' || request.dictationPhase === 'cancel')
+        && request.text.length <= 48 * 1_024
+        && (request.language === undefined || typeof request.language === 'string')
+        && (request.autoSubmit === undefined || typeof request.autoSubmit === 'boolean')
+        && (request.dictationPhase === undefined
+          || request.dictationPhase === 'partial'
+          || request.dictationPhase === 'final'
+          || request.dictationPhase === 'cancel')
+        && (request.dictationId === undefined
+          ? request.dictationPhase === undefined
+          : typeof request.dictationId === 'string' && request.dictationId.trim() !== '')
+        && (request.dictationPhase === undefined || request.dictationId !== undefined)
+        && (request.dictationPhase !== 'partial' || request.autoSubmit !== true)
+        && (request.dictationPhase !== 'cancel' || request.autoSubmit !== true)
+        && (request.sessionId === undefined
+          || (typeof request.sessionId === 'string' && request.sessionId.trim() !== ''))
+        ? request as unknown as MicroRequest
+        : undefined
     case 'session/activate':
       return typeof request.sessionId === 'string' && request.sessionId.trim() !== ''
         ? request as unknown as MicroRequest
@@ -337,6 +372,12 @@ function displayTitle(row: SessionListRow): string {
   return base === undefined || base === '' ? row.sessionId : base
 }
 
+interface KeypadVoiceResult {
+  success: boolean
+  active: boolean
+  message: string
+}
+
 class MicroBridge {
   private readonly server: Server
   private readonly pipeSockets = new Set<Socket>()
@@ -347,7 +388,16 @@ class MicroBridge {
   private readonly nativeTasks = new Set<Promise<unknown>>()
   private readonly abort = new AbortController()
   private readonly pendingFrames: MicroBrowserFrame[] = []
+  private readonly pendingVoiceRequests: MicroKeypadVoiceRequest[] = []
+  private readonly voiceRequestWaiters = new Set<
+    (request?: MicroKeypadVoiceRequest) => void
+  >()
+  private readonly voiceResultWaiters = new Map<
+    string,
+    (result: KeypadVoiceResult) => void
+  >()
   private currentSessionId: string | undefined
+  private voiceActive = false
   private lastNativeOpenAt = Number.NEGATIVE_INFINITY
   private dedicatedOpenPending = false
   private dedicatedProcessId: number | undefined
@@ -358,7 +408,6 @@ class MicroBridge {
     private readonly apiProxy: ApiProxyFace,
     private readonly webUrl: string,
     private readonly pipeEndpoint: string,
-    private readonly componentSnapshot: (browserConnected: boolean) => Promise<MicroComponentSnapshot>,
   ) {
     this.server = createServer({ allowHalfOpen: true }, (socket) => { this.acceptPipe(socket) })
   }
@@ -449,6 +498,87 @@ class MicroBridge {
     }
   }
 
+  /** Queue DeepSeek's only voice UI action for the keypad-owned voice engine. */
+  async handleVoiceButton(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.isLoopbackRequest(req)) {
+      this.writeJson(res, 403, { success: false, active: this.voiceActive, message: 'Forbidden.' })
+      return
+    }
+    if (req.method !== 'POST') {
+      res.setHeader('allow', 'POST')
+      this.writeJson(res, 405, {
+        success: false,
+        active: this.voiceActive,
+        message: 'Method not allowed.',
+      })
+      return
+    }
+
+    try {
+      const raw = await this.readBody(req)
+      if (Buffer.byteLength(raw, 'utf8') > 4_096) {
+        this.writeJson(res, 413, {
+          success: false,
+          active: this.voiceActive,
+          message: 'Voice-button request is too large.',
+        })
+        return
+      }
+      const value = raw.trim() === '' ? {} : JSON.parse(raw) as unknown
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        this.writeJson(res, 400, {
+          success: false,
+          active: this.voiceActive,
+          message: 'Voice-button request must be an object.',
+        })
+        return
+      }
+      const sessionId = (value as Record<string, unknown>).sessionId
+      if (sessionId !== undefined &&
+          (typeof sessionId !== 'string' || sessionId.trim() === '')) {
+        this.writeJson(res, 400, {
+          success: false,
+          active: this.voiceActive,
+          message: 'Voice-button session is invalid.',
+        })
+        return
+      }
+      if (this.pendingVoiceRequests.length >= MAX_PENDING_VOICE_REQUESTS) {
+        this.writeJson(res, 429, {
+          success: false,
+          active: this.voiceActive,
+          message: 'The Codex Micro keypad has not consumed the previous voice request.',
+        })
+        return
+      }
+
+      const request: MicroKeypadVoiceRequest = {
+        requestId: randomUUID(),
+        command: 'toggle',
+        ...(typeof sessionId === 'string' ? { sessionId: sessionId.trim() } : {}),
+      }
+      const result = this.waitForVoiceResult(
+        request.requestId,
+        this.voiceRequestWaiters.size === 0
+          ? VOICE_BUTTON_RESULT_MS
+          : VOICE_CONNECTED_BUTTON_RESULT_MS,
+      )
+      this.enqueueVoiceRequest(request)
+      const completed = await result
+      this.writeJson(res, completed.success ? 200 : 409, completed)
+    } catch (error) {
+      if (!this.abort.signal.aborted) {
+        this.ctx.logger.warn('client-micro-bridge: voice-button request failed')
+        this.ctx.logger.warn(error)
+      }
+      this.writeJson(res, 500, {
+        success: false,
+        active: this.voiceActive,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   /**
    * Accept the same versioned request contract over loopback HTTP.  This is
    * the cross-OS transport used when the Harness runs in WSL while Codex
@@ -513,6 +643,17 @@ class MicroBridge {
     this.dedicatedBrowsers.clear()
     for (const finish of this.reportWaiters.values()) finish()
     this.reportWaiters.clear()
+    for (const finish of this.voiceRequestWaiters) finish()
+    this.voiceRequestWaiters.clear()
+    for (const finish of this.voiceResultWaiters.values()) {
+      finish({
+        success: false,
+        active: false,
+        message: 'The DeepSeek Micro bridge stopped before the keypad completed voice input.',
+      })
+    }
+    this.voiceResultWaiters.clear()
+    this.pendingVoiceRequests.length = 0
 
     const closed = this.listening
       ? new Promise<void>((resolve) => {
@@ -593,6 +734,83 @@ class MicroBridge {
     return address === '127.0.0.1'
       || address === '::1'
       || address === '::ffff:127.0.0.1'
+  }
+
+  private enqueueVoiceRequest(request: MicroKeypadVoiceRequest): void {
+    const waiter = this.voiceRequestWaiters.values().next().value as
+      | ((request?: MicroKeypadVoiceRequest) => void)
+      | undefined
+    if (waiter !== undefined) {
+      this.voiceRequestWaiters.delete(waiter)
+      waiter(request)
+      return
+    }
+    this.pendingVoiceRequests.push(request)
+  }
+
+  private async nextVoiceRequest(): Promise<MicroKeypadVoiceRequest | undefined> {
+    const queued = this.pendingVoiceRequests.shift()
+    if (queued !== undefined) return queued
+    return await new Promise<MicroKeypadVoiceRequest | undefined>((resolve) => {
+      let settled = false
+      const finish = (request?: MicroKeypadVoiceRequest): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        this.voiceRequestWaiters.delete(finish)
+        resolve(request)
+      }
+      const timer = setTimeout(() => { finish() }, VOICE_REQUEST_POLL_MS)
+      timer.unref()
+      this.voiceRequestWaiters.add(finish)
+    })
+  }
+
+  private waitForVoiceResult(
+    requestId: string,
+    timeoutMilliseconds: number,
+  ): Promise<KeypadVoiceResult> {
+    return new Promise<KeypadVoiceResult>((resolve) => {
+      let settled = false
+      const finish = (result: KeypadVoiceResult): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        this.voiceResultWaiters.delete(requestId)
+        const queuedAt = this.pendingVoiceRequests.findIndex(
+          request => request.requestId === requestId,
+        )
+        if (queuedAt !== -1) this.pendingVoiceRequests.splice(queuedAt, 1)
+        resolve(result)
+      }
+      const timer = setTimeout(() => {
+        finish({
+          success: false,
+          active: this.voiceActive,
+          message: 'Open the Codex Micro keypad to use DeepSeek voice input.',
+        })
+      }, timeoutMilliseconds)
+      timer.unref()
+      this.voiceResultWaiters.set(requestId, finish)
+    })
+  }
+
+  private broadcast(frame: MicroBrowserFrame): void {
+    const payload = sseFrame(frame)
+    for (const response of this.browserConnections.values()) {
+      response.write(payload)
+    }
+  }
+
+  private writeJson(res: ServerResponse, statusCode: number, value: unknown): void {
+    if (res.headersSent) return
+    const body = JSON.stringify(value)
+    res.writeHead(statusCode, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-length': String(Buffer.byteLength(body)),
+      'cache-control': 'no-store',
+    })
+    res.end(body)
   }
 
   private writeControlResponse(
@@ -746,71 +964,85 @@ class MicroBridge {
           'completed',
         )
       }
-      case 'voice/start':
-      case 'voice/stop': {
-        const frame: MicroVoiceFrame = {
-          version: MICRO_PROTOCOL_VERSION,
-          type: request.action,
-          requestId: randomUUID(),
-        }
-        const delivery = await this.deliver(
-          frame,
-          request.action === 'voice/start' ? VOICE_ACK_TIMEOUT_MS : ACTION_ACK_TIMEOUT_MS,
-        )
-        if (!delivery.delivered) {
-          if (request.action === 'voice/start') {
-            const processId = await this.scheduleOpenOnce()
-            return response(
-              false,
-              'DeepSeek Harness is opening. Press the microphone again after its page is ready.',
-              'opening',
-              undefined,
-              processId,
-            )
-          }
-          return response(true, 'DeepSeek Harness voice input is already inactive.', 'completed')
-        }
-        if (delivery.report?.success === false) {
-          return response(false, delivery.report.message ?? 'DeepSeek Harness rejected voice input.')
-        }
-        if (delivery.report === undefined) {
-          return response(false, 'Micro Bridge did not confirm that voice input reached the listening state.')
-        }
+      case 'voice/request': {
+        const next = await this.nextVoiceRequest()
         return response(
           true,
-          delivery.report?.message ?? (request.action === 'voice/start'
-            ? 'DeepSeek Harness accepted voice input.'
-            : 'DeepSeek Harness stopped voice input.'),
+          next === undefined
+            ? 'No DeepSeek voice-button request is pending.'
+            : 'DeepSeek voice-button request delivered to the keypad.',
           'completed',
+          undefined,
+          undefined,
+          next,
         )
       }
-      case 'voice/configure': {
-        const frame: MicroVoiceFrame = {
+      case 'voice/result': {
+        this.voiceActive = request.active
+        const result = {
+          success: request.success,
+          active: request.active,
+          message: request.message,
+        }
+        this.voiceResultWaiters.get(request.requestId)?.(result)
+        const frame: MicroVoiceStatusFrame = {
           version: MICRO_PROTOCOL_VERSION,
-          type: request.action,
+          type: 'voice/status',
+          active: request.active,
+          phase: request.active ? 'listening' : request.success ? 'idle' : 'error',
+          message: request.message,
+        }
+        this.broadcast(frame)
+        return response(true, 'Keypad voice-button result accepted.', 'completed')
+      }
+      case 'voice/status': {
+        this.voiceActive = request.active
+        this.broadcast({
+          version: MICRO_PROTOCOL_VERSION,
+          type: 'voice/status',
+          active: request.active,
+          phase: request.phase,
+          message: request.message,
+          ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+        })
+        return response(true, 'Keypad voice status accepted.', 'completed')
+      }
+      case 'composer/dictate': {
+        const frame: MicroDictationFrame = {
+          version: MICRO_PROTOCOL_VERSION,
+          type: 'composer/dictate',
           requestId: randomUUID(),
+          text: request.text,
+          autoSubmit: request.autoSubmit === true,
+          ...(request.language === undefined ? {} : { language: request.language }),
+          ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+          ...(request.dictationId === undefined ? {} : { dictationId: request.dictationId }),
+          ...(request.dictationPhase === undefined
+            ? {}
+            : { dictationPhase: request.dictationPhase }),
         }
         const delivery = await this.deliver(frame, ACTION_ACK_TIMEOUT_MS)
         if (!delivery.delivered) {
           this.pendingFrames.push(frame)
           const processId = await this.scheduleOpenOnce()
           return response(
-            true,
-            'DeepSeek Harness is opening the Micro Bridge voice settings.',
+            false,
+            'DeepSeek Harness is opening; keypad dictation was queued but not yet confirmed.',
             'opening',
             undefined,
             processId,
           )
         }
         if (delivery.report?.success !== true) {
-          return response(false, delivery.report?.message ?? 'Micro Bridge voice settings could not be opened.')
+          return response(
+            false,
+            delivery.report?.message ?? 'DeepSeek Harness rejected keypad dictation.',
+          )
         }
         return response(
           true,
-          delivery.report.message ?? 'Micro Bridge voice settings opened.',
-          'background',
-          undefined,
-          this.dedicatedProcessId,
+          delivery.report.message ?? 'Keypad dictation was written to DeepSeek.',
+          'completed',
         )
       }
     }
@@ -846,7 +1078,13 @@ class MicroBridge {
       sessions,
       ...(currentSessionId === undefined ? {} : { currentSessionId }),
       navigationDepth: browserState?.navigationDepth ?? 0,
-      components: await this.componentSnapshot(browserState !== undefined),
+      components: {
+        adapter: 'ready',
+        browser: browserState === undefined ? 'disconnected' : 'connected',
+        ...(browserState?.currentModel === undefined
+          ? {}
+          : { currentModel: browserState.currentModel }),
+      },
     }
     return response(true, 'DeepSeek Harness state read.', 'completed', state)
   }
@@ -857,24 +1095,31 @@ class MicroBridge {
   ): Promise<{ delivered: boolean; report?: MicroBrowserReport }> {
     const target = this.preferredBrowser()
     if (target === undefined) return { delivered: false }
-    const report = new Promise<MicroBrowserReport | undefined>((resolve) => {
-      let settled = false
-      const finish = (value?: MicroBrowserReport): void => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        this.reportWaiters.delete(frame.requestId)
-        resolve(value)
-      }
-      const timer = setTimeout(() => { finish() }, timeoutMs)
-      timer.unref()
-      this.reportWaiters.set(frame.requestId, finish)
-    })
+    const report = this.waitForReport(frame.requestId, timeoutMs)
     target.response.write(sseFrame(frame))
     const acknowledged = await report
     return acknowledged === undefined
       ? { delivered: true }
       : { delivered: true, report: acknowledged }
+  }
+
+  private waitForReport(
+    requestId: string,
+    timeoutMs: number,
+  ): Promise<MicroBrowserReport | undefined> {
+    return new Promise<MicroBrowserReport | undefined>((resolve) => {
+      let settled = false
+      const finish = (value?: MicroBrowserReport): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        this.reportWaiters.delete(requestId)
+        resolve(value)
+      }
+      const timer = setTimeout(() => { finish() }, timeoutMs)
+      timer.unref()
+      this.reportWaiters.set(requestId, finish)
+    })
   }
 
   private preferredBrowser(): {
@@ -956,6 +1201,7 @@ class MicroBridge {
       && (report.surface === undefined || report.surface === 'tab' || report.surface === 'dedicated')
       && (report.navigationDepth === undefined
         || (Number.isInteger(report.navigationDepth) && (report.navigationDepth as number) >= 0))
+      && (report.currentModel === undefined || typeof report.currentModel === 'string')
       && (report.requestId === undefined || typeof report.requestId === 'string')
       && (report.success === undefined || typeof report.success === 'boolean')
       && (report.message === undefined || typeof report.message === 'string')
@@ -969,10 +1215,22 @@ class MicroBridge {
   private scheduleOpenOnce(): Promise<number | undefined> {
     const hasDedicatedBrowser = [...this.dedicatedBrowsers]
       .some(browserId => this.browserConnections.has(browserId))
+    const now = internals.now()
+    const pendingTimedOut = this.dedicatedOpenPending
+      && now - this.lastNativeOpenAt >= NATIVE_OPEN_PENDING_TIMEOUT_MS
+    if (pendingTimedOut) {
+      // A successful process spawn is not proof that Chromium created and
+      // connected the requested app surface.  Do not leave the bridge in an
+      // unrecoverable "opening" state when that connection never arrives;
+      // the next activation request must be allowed to retry the native open.
+      this.dedicatedOpenPending = false
+      this.ctx.logger.warn(
+        'client-micro-bridge: dedicated Harness surface did not connect; retrying native open',
+      )
+    }
     if (this.dedicatedOpenPending || hasDedicatedBrowser) {
       return Promise.resolve(this.dedicatedProcessId)
     }
-    const now = Date.now()
     if (now - this.lastNativeOpenAt < NATIVE_OPEN_COOLDOWN_MS) {
       return Promise.resolve(this.dedicatedProcessId)
     }
@@ -998,34 +1256,16 @@ class MicroBridge {
   }
 }
 
-/** Mount one atomic external bundle: pipe, browser bridge, settings API, and voice gateway. */
+/** Mount one bridge between DeepSeek's native services and the Micro keypad. */
 export async function apply(ctx: HostContext): Promise<void> {
   const apiProxy = ctx.get('apiProxy') as ApiProxyFace | undefined
   if (apiProxy === undefined) throw new Error('DeepSeek Harness Micro bridge requires apiProxy')
   const webPort = ctx.webServer.port
-  const settings = new VoiceSettingsStore()
-  const runtime = new LocalAsrRuntime()
-  const voice = new VoiceGateway(settings, ctx.credentials, runtime, ctx.logger)
-  const settingsApi = new SettingsApi(settings, ctx.credentials, voice)
   const bridge = new MicroBridge(
     ctx,
     apiProxy,
     `http://127.0.0.1:${String(webPort)}`,
     internals.pipeEndpoint(webPort),
-    async browserConnected => {
-      const document = await settings.get()
-      // The Micro status LED is polled independently of the settings page.
-      // Inspect here so an externally started service, or a service that died,
-      // is reflected instead of leaving the last cached runtime phase forever.
-      const runtimeStatus = await voice.runtimeStatus()
-      return {
-        adapter: 'ready',
-        browser: browserConnected ? 'connected' : 'disconnected',
-        voiceSetup: document.settings.setupCompleted ? 'ready' : 'required',
-        voiceRuntime: runtimeStatus.phase,
-        voiceMessage: runtimeStatus.message,
-      }
-    },
   )
   await ctx.effect(async () => {
     const disposeRoute = ctx.webServer.register({
@@ -1043,38 +1283,27 @@ export async function apply(ctx: HostContext): Promise<void> {
       path: MICRO_CONTROL_ENDPOINT,
       handler: (req, res) => { void bridge.handleControl(req, res) },
     })
-    const disposeSettingsRoute = ctx.webServer.register({
-      kind: 'prefix',
-      path: MICRO_SETTINGS_ENDPOINT,
-      handler: (req, res) => settingsApi.handle(req, res, MICRO_SETTINGS_ENDPOINT),
-    })
-    const disposeVoiceRoute = ctx.webServer.registerUpgrade({
-      path: MICRO_VOICE_ENDPOINT,
-      handler: (req, socket, head) => { voice.handleUpgrade(req, socket, head) },
+    const disposeVoiceButtonRoute = ctx.webServer.register({
+      kind: 'exact',
+      path: MICRO_VOICE_BUTTON_ENDPOINT,
+      handler: (req, res) => { void bridge.handleVoiceButton(req, res) },
     })
     try {
       await bridge.listen()
-      void voice.warmup().catch(error => {
-        ctx.logger.warn('client-micro-bridge: local streaming ASR warmup failed')
-        ctx.logger.warn(error)
-      })
     } catch (error) {
       disposeRoute()
       disposeReportRoute()
       disposeControlRoute()
-      disposeSettingsRoute()
-      disposeVoiceRoute()
+      disposeVoiceButtonRoute()
       await bridge.dispose()
-      await Promise.allSettled([voice.close(), runtime.dispose(), settings.dispose()])
       throw error
     }
     return async () => {
       disposeRoute()
       disposeReportRoute()
       disposeControlRoute()
-      disposeSettingsRoute()
-      disposeVoiceRoute()
-      await Promise.allSettled([bridge.dispose(), voice.close(), runtime.dispose(), settings.dispose()])
+      disposeVoiceButtonRoute()
+      await bridge.dispose()
     }
   }, 'agentcontroller-deepseek-harness: external Micro bridge')
 }

@@ -19,16 +19,30 @@ internal static class HarnessWindowActivator
 
     internal static IntPtr ActivationFallbackInsertAfter => HwndTop;
 
+    internal static bool IsForeground(
+        MicroHarnessDefinition harness,
+        int? preferredProcessId = null)
+    {
+        ArgumentNullException.ThrowIfNull(harness);
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero ||
+            !IsWindowVisible(foreground) ||
+            IsIconic(foreground))
+        {
+            return false;
+        }
+
+        return FindCandidates(TitleFragments(harness), preferredProcessId)
+            .Any(candidate => candidate.Handle == foreground);
+    }
+
     internal static bool TryActivate(
         MicroHarnessDefinition harness,
         int? preferredProcessId = null)
     {
-        var titleFragments = harness.Id.Contains(
-                "deepseek",
-                StringComparison.OrdinalIgnoreCase)
-            ? new[] { "DeepSeek Harness", "DeepSeek" }
-            : new[] { harness.DisplayName };
-        var candidate = FindCandidates(titleFragments, preferredProcessId)
+        var candidate = FindCandidates(
+                TitleFragments(harness),
+                preferredProcessId)
             .OrderByDescending(item => item.Score)
             .FirstOrDefault();
         if (candidate.Handle == IntPtr.Zero)
@@ -101,6 +115,12 @@ internal static class HarnessWindowActivator
             IsWindowVisible(candidate.Handle) &&
             !IsIconic(candidate.Handle);
     }
+
+    private static IReadOnlyList<string> TitleFragments(
+        MicroHarnessDefinition harness) =>
+        harness.Id.Contains("deepseek", StringComparison.OrdinalIgnoreCase)
+            ? ["DeepSeek Harness", "DeepSeek"]
+            : [harness.DisplayName];
 
     private static IEnumerable<WindowCandidate> FindCandidates(
         IReadOnlyList<string> titleFragments,

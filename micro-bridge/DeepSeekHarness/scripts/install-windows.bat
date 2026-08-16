@@ -11,7 +11,7 @@ if "%~1"=="" (
 if not exist "%HARNESS_DIR%\package.json" (
   echo [dsh-micro-bridge] Harness source directory not found:
   echo   %HARNESS_DIR%
-  echo Usage: install-windows.bat [D:\path\to\deepseek-harness]
+  echo Usage: install-windows.bat ^<harness-directory^>
   exit /b 2
 )
 

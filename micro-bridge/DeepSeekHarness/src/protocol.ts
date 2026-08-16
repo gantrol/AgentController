@@ -6,11 +6,8 @@ export const MICRO_EVENTS_ENDPOINT = '/integrations/codex-micro/events'
 /** Same-origin browser-to-host state and acknowledgement endpoint. */
 export const MICRO_REPORT_ENDPOINT = '/integrations/codex-micro/report'
 
-/** Browser/Host audio stream. Audio bytes never cross the named-pipe process. */
-export const MICRO_VOICE_ENDPOINT = '/integrations/codex-micro/voice'
-
-/** External plugin-owned settings and write-only credential API prefix. */
-export const MICRO_SETTINGS_ENDPOINT = '/integrations/codex-micro/settings'
+/** DeepSeek's single voice button; capture and ASR remain keypad-owned. */
+export const MICRO_VOICE_BUTTON_ENDPOINT = '/integrations/codex-micro/voice-button'
 
 /** Windows named-pipe name consumed by AgentController's Codex Micro surface. */
 export const MICRO_PIPE_NAME = 'deepseek-harness-micro-v1'
@@ -57,6 +54,7 @@ export type MicroActionId =
   | 'composer/select-next'
   | 'composer/activate-selection'
   | 'composer/back'
+  | 'composer/submit'
   | 'reasoning/decrease'
   | 'reasoning/increase'
   | 'model/toggle-quick'
@@ -69,9 +67,41 @@ export interface MicroActionExecutionRequest extends MicroRequestBase {
   sessionId?: string
 }
 
-/** Open plugin-owned voice settings, or begin/finish push-to-talk. */
-export interface MicroVoiceRequest extends MicroRequestBase {
-  action: 'voice/configure' | 'voice/start' | 'voice/stop'
+/** Long-poll the next DeepSeek voice-button request from the keypad. */
+export interface MicroVoiceRequestPoll extends MicroRequestBase {
+  action: 'voice/request'
+}
+
+/** Complete one DeepSeek voice-button request after keypad-side work. */
+export interface MicroVoiceRequestResult extends MicroRequestBase {
+  action: 'voice/result'
+  requestId: string
+  success: boolean
+  active: boolean
+  message: string
+}
+
+/** Publish keypad-owned voice state to DeepSeek's one button. */
+export interface MicroVoiceStatusRequest extends MicroRequestBase {
+  action: 'voice/status'
+  active: boolean
+  phase: 'idle' | 'starting' | 'listening' | 'stopping' | 'error'
+  message: string
+  sessionId?: string
+}
+
+/** Write keypad-recognized text into one DeepSeek composer. */
+export type MicroDictationPhase = 'partial' | 'final' | 'cancel'
+
+export interface MicroDictationRequest extends MicroRequestBase {
+  action: 'composer/dictate'
+  text: string
+  language?: string
+  sessionId?: string
+  autoSubmit?: boolean
+  /** Stable id used to replace one live partial instead of appending copies. */
+  dictationId?: string
+  dictationPhase?: MicroDictationPhase
 }
 
 /** Request accepted by the local named-pipe adapter. */
@@ -80,7 +110,10 @@ export type MicroRequest =
   | MicroStateRequest
   | MicroSessionActivationRequest
   | MicroActionExecutionRequest
-  | MicroVoiceRequest
+  | MicroVoiceRequestPoll
+  | MicroVoiceRequestResult
+  | MicroVoiceStatusRequest
+  | MicroDictationRequest
 
 /** Capabilities exposed to the physical Micro surface. */
 export interface MicroCapabilities {
@@ -102,9 +135,15 @@ export interface MicroSessionSummary {
 export interface MicroComponentSnapshot {
   adapter: 'ready'
   browser: 'connected' | 'disconnected'
-  voiceSetup: 'required' | 'ready'
-  voiceRuntime: 'not-configured' | 'stopped' | 'starting' | 'ready' | 'error'
-  voiceMessage: string
+  /** Display name of the currently selected DeepSeek model, when known. */
+  currentModel?: string
+}
+
+/** One browser-originated request consumed exactly once by a keypad. */
+export interface MicroKeypadVoiceRequest {
+  requestId: string
+  command: 'toggle'
+  sessionId?: string
 }
 
 /** State returned by `state/read`; selection is last known to this adapter. */
@@ -124,6 +163,7 @@ export interface MicroResponse {
   status?: 'completed' | 'opening' | 'foreground' | 'background'
   windowProcessId?: number
   state?: MicroStateSnapshot
+  voiceRequest?: MicroKeypadVoiceRequest
 }
 
 /** Browser event emitted when an already-connected Harness surface should focus. */
@@ -150,11 +190,27 @@ export interface MicroActionExecutionFrame {
   sessionId?: string
 }
 
-/** Plugin voice command delivered to the browser that owns the mic UI. */
-export interface MicroVoiceFrame {
+/** Keypad-recognized text delivered to DeepSeek's native composer service. */
+export interface MicroDictationFrame {
   version: typeof MICRO_PROTOCOL_VERSION
-  type: 'voice/configure' | 'voice/start' | 'voice/stop'
+  type: 'composer/dictate'
   requestId: string
+  text: string
+  language?: string
+  sessionId?: string
+  autoSubmit: boolean
+  dictationId?: string
+  dictationPhase?: MicroDictationPhase
+}
+
+/** Keypad-owned voice state projected onto DeepSeek's one voice button. */
+export interface MicroVoiceStatusFrame {
+  version: typeof MICRO_PROTOCOL_VERSION
+  type: 'voice/status'
+  active: boolean
+  phase: 'idle' | 'starting' | 'listening' | 'stopping' | 'error'
+  message: string
+  sessionId?: string
 }
 
 /** Browser presence plus an optional acknowledgement for one delivered frame. */
@@ -167,6 +223,8 @@ export interface MicroBrowserReport {
   surface: 'tab' | 'dedicated'
   /** Current composer interaction depth owned by the browser plugin. */
   navigationDepth: number
+  /** Display name of the currently selected DeepSeek model, when known. */
+  currentModel?: string
   requestId?: string
   success?: boolean
   message?: string
@@ -177,4 +235,5 @@ export type MicroBrowserFrame =
   | MicroActivationFrame
   | MicroSessionActivationFrame
   | MicroActionExecutionFrame
-  | MicroVoiceFrame
+  | MicroDictationFrame
+  | MicroVoiceStatusFrame

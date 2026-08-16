@@ -1,4 +1,4 @@
-/** Browser half of the AgentController Micro bridge and voice plugin. */
+/** Browser half of the AgentController Micro bridge. */
 
 import { useEffect, type ComponentType } from 'react'
 import type {
@@ -18,12 +18,10 @@ import {
   ModelController,
   type ModelDirectoriesFace,
 } from './model-controller.ts'
-import { VoiceSettingsClient } from './settings-client.ts'
-import { VoiceController } from './voice-controller.ts'
 import {
+  KeypadVoiceController,
   VOICE_LOCALE_NAMESPACE,
   VoiceButton,
-  VoiceSettingsSection,
   en,
   ensureVoiceStyles,
   zh,
@@ -191,6 +189,7 @@ const ACTION_IDS = new Set<MicroActionId>([
   'composer/select-next',
   'composer/activate-selection',
   'composer/back',
+  'composer/submit',
   'reasoning/decrease',
   'reasoning/increase',
   'model/toggle-quick',
@@ -246,6 +245,20 @@ function toggleConversationView(
   return next
 }
 
+function punctuationStart(value: string): boolean {
+  return /^[,.;:!?，。；：！？、\])}）】》]/u.test(value)
+}
+
+/** Append keypad dictation without inserting Western spaces into CJK text. */
+export function appendDictation(draft: string, text: string, language = ''): string {
+  const next = text.trim()
+  if (next === '') return draft
+  if (draft === '' || /\s$/u.test(draft) || punctuationStart(next)) return `${draft}${next}`
+  const cjk = /^(?:zh|ja|ko)(?:-|$)/iu.test(language)
+    || (language === '' && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(next))
+  return `${draft}${cjk ? '' : ' '}${next}`
+}
+
 /** Subscribe to host frames and report authoritative browser state. */
 export function apply(ctx: ClientContext): void {
   const sessions = ctx.get('sessions') as SessionsFace | undefined
@@ -266,33 +279,24 @@ export function apply(ctx: ClientContext): void {
     'client-micro-bridge: voice dictionaries',
   )
   const t = ctx.locale.bind(VOICE_LOCALE_NAMESPACE) as VoiceTranslate
-  const settingsClient = new VoiceSettingsClient()
-  const voice = new VoiceController(sessions, conversation, settingsClient)
+  const voice = new KeypadVoiceController()
   const composerNavigator = new ComposerNavigator()
   const modelController = new ModelController(
     modelDirectories,
     () => sessions.list.getSnapshot().current,
-    settingsClient,
   )
   const viewBindings = new Map<string, ConversationViewBinding>()
-  ctx.effect(() => () => { void voice.dispose() }, 'client-micro-bridge: voice controller')
+  ctx.effect(() => () => { voice.dispose() }, 'client-micro-bridge: keypad voice button')
   ctx.effect(() => () => { composerNavigator.dispose() }, 'client-micro-bridge: composer navigator')
+  ctx.effect(() => () => { modelController.dispose() }, 'client-micro-bridge: model controller')
 
   ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
     name: 'conversation.input.right',
     id: 'agentcontroller-micro-voice',
     order: 90,
     locale: VOICE_LOCALE_NAMESPACE,
-    inject: () => ({ voice, settingsClient, modelController, t }),
+    inject: () => ({ voice, t }),
   }, VoiceButton))
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section',
-    id: 'agentcontroller-micro-voice',
-    order: 45,
-    label: () => t('nav'),
-    locale: VOICE_LOCALE_NAMESPACE,
-    inject: () => ({ settingsClient, modelController, t }),
-  }, VoiceSettingsSection))
   ctx.slots.inject('conversation.session.header.actions', () => {
     const sharedStore = (ctx.slots.entries?.(
       'conversation.session.header') ?? [])
@@ -311,6 +315,11 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => {
     const browserId = mintBrowserId()
+    const streamingDrafts = new Map<string, {
+      sessionId: string
+      base: string
+      rendered: string
+    }>()
     const source = new EventSource(
       `${MICRO_EVENTS_ENDPOINT}?browserId=${encodeURIComponent(browserId)}`,
     )
@@ -321,6 +330,7 @@ export function apply(ctx: ClientContext): void {
       message?: string,
     ): Promise<void> => {
       const state = sessions.list.getSnapshot()
+      const modelState = modelController.getSnapshot()
       const body: MicroBrowserReport = {
         version: MICRO_PROTOCOL_VERSION,
         browserId,
@@ -331,6 +341,11 @@ export function apply(ctx: ClientContext): void {
           ? 'dedicated'
           : 'tab',
         navigationDepth: composerNavigator.navigationDepth,
+        ...(modelState.currentLabel === undefined
+          ? modelState.current?.model === undefined
+            ? {}
+            : { currentModel: modelState.current.model }
+          : { currentModel: modelState.currentLabel }),
         ...(requestId === undefined ? {} : { requestId }),
         ...(success === undefined ? {} : { success }),
         ...(message === undefined ? {} : { message }),
@@ -482,6 +497,22 @@ export function apply(ctx: ClientContext): void {
         }
         case 'composer/back':
           return await composerNavigator.back()
+        case 'composer/submit': {
+          const targetId = currentSession(sessionId)
+          if (targetId === undefined) {
+            throw new Error('No current session is available to submit.')
+          }
+          const scope = sessions.scope(targetId)
+          if (scope === undefined) {
+            throw new Error('The current session has no composer scope.')
+          }
+          const input = conversation.input.for(scope)
+          if (input.state.getSnapshot().draft.trim() === '') {
+            throw new Error('The DeepSeek Harness composer is empty; nothing was sent.')
+          }
+          input.submit()
+          return 'DeepSeek Harness composer submitted.'
+        }
         case 'reasoning/decrease':
           return await modelController.stepReasoning(-1, currentSession(sessionId))
         case 'reasoning/increase':
@@ -510,6 +541,23 @@ export function apply(ctx: ClientContext): void {
     }
 
     const handleFrame = async (fields: Record<string, unknown>): Promise<void> => {
+      if (fields.type === 'voice/status') {
+        const phase = fields.phase
+        if (typeof fields.active !== 'boolean'
+            || typeof fields.message !== 'string'
+            || (phase !== 'idle' && phase !== 'starting' && phase !== 'listening'
+              && phase !== 'stopping' && phase !== 'error')
+            || (fields.sessionId !== undefined && typeof fields.sessionId !== 'string')) return
+        voice.applyStatus({
+          version: MICRO_PROTOCOL_VERSION,
+          type: 'voice/status',
+          active: fields.active,
+          phase,
+          message: fields.message,
+          ...(typeof fields.sessionId === 'string' ? { sessionId: fields.sessionId } : {}),
+        })
+        return
+      }
       const requestId = typeof fields.requestId === 'string' ? fields.requestId : undefined
       if (requestId === undefined || requestId.trim() === '') return
       try {
@@ -539,18 +587,84 @@ export function apply(ctx: ClientContext): void {
             await focusAndReport(requestId, true, message)
             return
           }
-          case 'voice/start':
-            await voice.start(currentSession(fields.sessionId))
-            await focusAndReport(requestId, true, 'Micro Bridge streaming voice input is listening.')
+          case 'composer/dictate': {
+            const targetId = currentSession(fields.sessionId)
+            if (targetId === undefined) {
+              throw new Error('No current session is available for keypad dictation.')
+            }
+            const scope = sessions.scope(targetId)
+            if (scope === undefined) {
+              throw new Error('The dictation target has no composer scope.')
+            }
+            const input = conversation.input.for(scope)
+            const language = typeof fields.language === 'string' ? fields.language : ''
+            const dictationId = typeof fields.dictationId === 'string'
+              && fields.dictationId.trim() !== ''
+              ? fields.dictationId
+              : undefined
+            const dictationPhase = fields.dictationPhase === 'partial'
+              || fields.dictationPhase === 'final'
+              || fields.dictationPhase === 'cancel'
+              ? fields.dictationPhase
+              : undefined
+
+            if (dictationPhase === 'cancel') {
+              if (dictationId === undefined) {
+                throw new Error('Streaming keypad dictation has no id.')
+              }
+              const tracked = streamingDrafts.get(dictationId)
+              if (tracked !== undefined && tracked.sessionId === targetId) {
+                // Do not overwrite a draft the user edited while speaking.
+                if (input.state.getSnapshot().draft === tracked.rendered) {
+                  input.setDraft(tracked.base)
+                }
+                streamingDrafts.delete(dictationId)
+              }
+              await report(requestId, true, 'Streaming keypad dictation was cancelled.')
+              return
+            }
+
+            if (typeof fields.text !== 'string' || fields.text.trim() === '') {
+              throw new Error('Keypad dictation was empty.')
+            }
+            if (dictationPhase !== undefined) {
+              if (dictationId === undefined) {
+                throw new Error('Streaming keypad dictation has no id.')
+              }
+              const existing = streamingDrafts.get(dictationId)
+              if (existing !== undefined && existing.sessionId !== targetId) {
+                throw new Error('Streaming keypad dictation changed its target session.')
+              }
+              const tracked = existing ?? {
+                sessionId: targetId,
+                base: input.state.getSnapshot().draft,
+                rendered: input.state.getSnapshot().draft,
+              }
+              tracked.rendered = appendDictation(tracked.base, fields.text, language)
+              input.setDraft(tracked.rendered)
+              if (dictationPhase === 'partial') {
+                streamingDrafts.set(dictationId, tracked)
+                await report(requestId, true, 'Streaming keypad dictation was updated.')
+                return
+              }
+              streamingDrafts.delete(dictationId)
+            } else {
+              input.setDraft(appendDictation(
+                input.state.getSnapshot().draft,
+                fields.text,
+                language,
+              ))
+            }
+            if (fields.autoSubmit === true) input.submit()
+            await focusAndReport(
+              requestId,
+              true,
+              fields.autoSubmit === true
+                ? 'Keypad dictation was written and submitted.'
+                : 'Keypad dictation was written to the composer.',
+            )
             return
-          case 'voice/stop':
-            await report(requestId, true, 'DeepSeek Harness voice input is finishing.')
-            void voice.stop()
-            return
-          case 'voice/configure':
-            await voice.showConfiguration(currentSession(fields.sessionId))
-            await focusAndReport(requestId, true, 'Micro Bridge voice settings opened.')
-            return
+          }
           default:
             return
         }
@@ -576,17 +690,33 @@ export function apply(ctx: ClientContext): void {
       if (fields.version !== MICRO_PROTOCOL_VERSION) return
       void handleFrame(fields)
     })
-    const reportState = (): void => { void report() }
+    let modelSessionId: string | undefined
+    const refreshModel = (): void => {
+      const sessionId = sessions.list.getSnapshot().current
+      if (sessionId === undefined || sessionId === modelSessionId) return
+      modelSessionId = sessionId
+      void modelController.refresh().catch(() => {
+        if (modelSessionId === sessionId) modelSessionId = undefined
+      })
+    }
+    const reportState = (): void => {
+      refreshModel()
+      void report()
+    }
     const unsubscribe = sessions.list.subscribe(reportState)
     const unsubscribeNavigation = composerNavigator.subscribe(reportState)
+    const unsubscribeModel = modelController.subscribe(reportState)
     document.addEventListener('visibilitychange', reportState)
     window.addEventListener('focus', reportState)
     window.addEventListener('blur', reportState)
+    refreshModel()
     void report()
     return () => {
       source.close()
+      streamingDrafts.clear()
       unsubscribe()
       unsubscribeNavigation()
+      unsubscribeModel()
       document.removeEventListener('visibilitychange', reportState)
       window.removeEventListener('focus', reportState)
       window.removeEventListener('blur', reportState)

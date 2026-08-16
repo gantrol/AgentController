@@ -1,0 +1,431 @@
+<Window x:Class="CodexMicro.Desktop.MicroVoiceSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Codex Micro · 语音输入"
+        Width="760"
+        Height="840"
+        MinWidth="700"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#FFF9F8F5"
+        Foreground="#FF202224"
+        Loaded="Window_Loaded"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="MicroSurfaceResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <SolidColorBrush x:Key="Line" Color="#FFE3E2DE" />
+            <SolidColorBrush x:Key="Muted" Color="#FF72777C" />
+            <Style TargetType="TextBox">
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Padding" Value="11,8" />
+                <Setter Property="Background" Value="#FFFFFFFF" />
+                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+            <Style TargetType="PasswordBox">
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Padding" Value="11,8" />
+                <Setter Property="Background" Value="#FFFFFFFF" />
+                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+            <Style TargetType="ComboBox">
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="260" />
+                <Setter Property="Padding" Value="10,6" />
+                <Setter Property="Background" Value="#FFFFFFFF" />
+                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+            <Style x:Key="FieldLabel" TargetType="TextBlock">
+                <Setter Property="Margin" Value="0,0,0,6" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+            <Style x:Key="PrimaryButton" TargetType="Button">
+                <Setter Property="MinWidth" Value="142" />
+                <Setter Property="Height" Value="42" />
+                <Setter Property="Padding" Value="18,8" />
+                <Setter Property="Background" Value="#FF647BE5" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="BorderBrush" Value="#FF647BE5" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+            </Style>
+            <Style x:Key="SecondaryButton" TargetType="Button">
+                <Setter Property="MinWidth" Value="90" />
+                <Setter Property="Height" Value="38" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="Background" Value="#FFFFFFFF" />
+                <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+                <Setter Property="Cursor" Value="Hand" />
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="28,24,28,20"
+                Background="#FFFFFFFF"
+                BorderBrush="{StaticResource Line}"
+                BorderThickness="0,0,0,1">
+            <StackPanel>
+                <DockPanel LastChildFill="True">
+                    <Border DockPanel.Dock="Right"
+                            Padding="10,5"
+                            Background="#FFEFF2FF"
+                            CornerRadius="9">
+                        <TextBlock x:Name="OwnerBadgeText"
+                                   Text="小键盘本地"
+                                   Foreground="#FF5269CC"
+                                   FontSize="11"
+                                   FontWeight="SemiBold" />
+                    </Border>
+                    <TextBlock x:Name="HeadingText"
+                               Text="语音输入"
+                               FontSize="25"
+                               FontWeight="SemiBold" />
+                </DockPanel>
+                <TextBlock x:Name="IntroText"
+                           Margin="0,8,0,0"
+                           Text="麦克风、识别服务和密钥都由此小键盘持有；DeepSeek 只接收最终文字。"
+                           Foreground="{StaticResource Muted}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="28,22,28,28">
+                <Border x:Name="SetupStatusBorder"
+                        Padding="14"
+                        Background="#FFF0F3FF"
+                        BorderBrush="#FFD7DFFF"
+                        BorderThickness="1"
+                        CornerRadius="12">
+                    <TextBlock x:Name="SetupStatusText"
+                               Text="正在读取此小键盘的语音配置…"
+                               Foreground="#FF5062B5"
+                               TextWrapping="Wrap" />
+                </Border>
+
+                <TextBlock x:Name="GeneralHeadingText"
+                           Margin="0,24,0,12"
+                           Text="识别方式"
+                           FontSize="18"
+                           FontWeight="SemiBold" />
+                <Border Padding="18"
+                        Background="#FFFFFFFF"
+                        BorderBrush="{StaticResource Line}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <StackPanel>
+                        <TextBlock x:Name="ProviderLabelText"
+                                   Style="{StaticResource FieldLabel}"
+                                   Text="提供商" />
+                        <ComboBox x:Name="ProviderCombo"
+                                  HorizontalAlignment="Stretch"
+                                  SelectionChanged="ProviderCombo_SelectionChanged" />
+                        <TextBlock x:Name="ProviderDetailText"
+                                   Margin="0,7,0,0"
+                                   Foreground="{StaticResource Muted}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap" />
+
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="LanguageLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="语言（可选）" />
+                                <TextBox x:Name="LanguageTextBox"
+                                         MinWidth="280"
+                                         ToolTip="BCP-47 · zh-CN / en-US；留空自动选择" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+                                <CheckBox x:Name="AutoSubmitToggle"
+                                          VerticalAlignment="Center"
+                                          Content="识别完成后自动发送" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="SystemPanel"
+                        Margin="0,18,0,0"
+                        Padding="18"
+                        Background="#FFFFFFFF"
+                        BorderBrush="{StaticResource Line}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <StackPanel>
+                        <TextBlock x:Name="SystemTitleText"
+                                   Text="Windows 系统识别"
+                                   FontSize="16"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="SystemDetailText"
+                                   Margin="0,7,0,0"
+                                   Text="小键盘进程直接调用 Windows Speech；DeepSeek 页面不会请求麦克风权限。"
+                                   Foreground="{StaticResource Muted}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="LocalPanel"
+                        Margin="0,18,0,0"
+                        Padding="18"
+                        Background="#FFFFFFFF"
+                        BorderBrush="{StaticResource Line}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <StackPanel>
+                        <DockPanel LastChildFill="True">
+                            <Button x:Name="UseLocalExampleButton"
+                                    DockPanel.Dock="Right"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Click="UseLocalExampleButton_Click"
+                                    Content="使用本机示例" />
+                            <TextBlock x:Name="LocalTitleText"
+                                       VerticalAlignment="Center"
+                                       Text="本地流式 Qwen ASR"
+                                       FontSize="16"
+                                       FontWeight="SemiBold" />
+                        </DockPanel>
+                        <TextBlock x:Name="LocalDetailText"
+                                   Margin="0,6,0,14"
+                                   Text="服务由小键盘检测和启动；小键盘直接发送 16 kHz 单声道 PCM。"
+                                   Foreground="{StaticResource Muted}"
+                                   TextWrapping="Wrap" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="LocalUrlLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="流式地址" />
+                                <TextBox x:Name="LocalUrlTextBox" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock x:Name="LocalModelLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="模型" />
+                                <TextBox x:Name="LocalModelTextBox" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="LocalStartModeLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="启动方式" />
+                                <ComboBox x:Name="LocalStartModeCombo"
+                                          HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock x:Name="LocalHealthUrlLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="健康检查地址" />
+                                <TextBox x:Name="LocalHealthUrlTextBox" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock x:Name="LocalLauncherLabelText"
+                                   Margin="0,14,0,6"
+                                   Style="{StaticResource FieldLabel}"
+                                   Text="启动脚本" />
+                        <TextBox x:Name="LocalLauncherTextBox"
+                                 ToolTip="支持 {AppDir}、{LocalAppData} 和相对路径" />
+
+                        <TextBlock x:Name="LocalWorkingDirectoryLabelText"
+                                   Margin="0,14,0,6"
+                                   Style="{StaticResource FieldLabel}"
+                                   Text="工作目录" />
+                        <TextBox x:Name="LocalWorkingDirectoryTextBox"
+                                 ToolTip="支持 {AppDir}、{LocalAppData} 和相对路径" />
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="LocalDistributionLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="WSL 发行版" />
+                                <TextBox x:Name="LocalDistributionTextBox" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock x:Name="LocalPythonPathLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="WSL Python（可选）" />
+                                <TextBox x:Name="LocalPythonPathTextBox"
+                                         ToolTip="留空时由启动脚本在 WSL 中自动查找" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="LocalReadyTimeoutLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="就绪超时（秒）" />
+                                <TextBox x:Name="LocalReadyTimeoutTextBox" />
+                            </StackPanel>
+                            <CheckBox x:Name="LocalStopWithKeypadToggle"
+                                      Grid.Column="2"
+                                      VerticalAlignment="Bottom"
+                                      Margin="0,0,0,11"
+                                      Content="退出小键盘时停止由它启动的服务" />
+                        </Grid>
+
+                        <TextBlock x:Name="LocalPathHintText"
+                                   Margin="0,11,0,0"
+                                   Foreground="{StaticResource Muted}"
+                                   FontSize="12"
+                                   Text="路径支持 {AppDir}、{LocalAppData} 和相对路径；不会保存写死的本机安装目录。"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="RemotePanel"
+                        Margin="0,18,0,0"
+                        Padding="18"
+                        Background="#FFFFFFFF"
+                        BorderBrush="{StaticResource Line}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <StackPanel>
+                        <TextBlock x:Name="RemoteTitleText"
+                                   Text="远程流式 API"
+                                   FontSize="16"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="RemoteDetailText"
+                                   Margin="0,6,0,14"
+                                   Text="公网服务必须使用 wss://；音频由小键盘直接发送。"
+                                   Foreground="{StaticResource Muted}"
+                                   TextWrapping="Wrap" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="RemoteUrlLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="WebSocket 地址" />
+                                <TextBox x:Name="RemoteUrlTextBox" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock x:Name="RemoteModelLabelText"
+                                           Style="{StaticResource FieldLabel}"
+                                           Text="模型（可选）" />
+                                <TextBox x:Name="RemoteModelTextBox" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="CredentialPanel"
+                        Margin="0,18,0,0"
+                        Padding="18"
+                        Background="#FFFFFFFF"
+                        BorderBrush="{StaticResource Line}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button x:Name="ClearCredentialButton"
+                                    DockPanel.Dock="Right"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Click="ClearCredentialButton_Click"
+                                    Content="清除" />
+                            <StackPanel>
+                                <TextBlock x:Name="CredentialTitleText"
+                                           Text="API Key"
+                                           FontSize="16"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="CredentialStatusText"
+                                           Margin="0,4,0,0"
+                                           Foreground="{StaticResource Muted}"
+                                           FontSize="12" />
+                            </StackPanel>
+                        </DockPanel>
+                        <PasswordBox x:Name="CredentialPasswordBox"
+                                     Margin="0,13,0,0"
+                                     ToolTip="留空则保留 Windows Credential Manager 中的现有密钥" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="ProtocolNoteText"
+                           Margin="4,16,4,0"
+                           Text="流式协议：start JSON → PCM16 → stop；服务返回 ready / partial / final / done / error。"
+                           Foreground="{StaticResource Muted}"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Padding="24,16"
+                Background="#FFFFFFFF"
+                BorderBrush="{StaticResource Line}"
+                BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="FeedbackText"
+                           Margin="0,0,18,0"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Muted}"
+                           TextWrapping="Wrap" />
+                <Button x:Name="CloseButton"
+                        Grid.Column="1"
+                        Margin="0,0,10,0"
+                        Style="{StaticResource SecondaryButton}"
+                        Click="CloseButton_Click"
+                        Content="关闭" />
+                <Button x:Name="SaveAndTestButton"
+                        Grid.Column="2"
+                        Style="{StaticResource PrimaryButton}"
+                        Click="SaveAndTestButton_Click"
+                        Content="保存并验证" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

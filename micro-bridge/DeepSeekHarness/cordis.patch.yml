@@ -3,4 +3,4 @@
 - insert:
     - id: agentcontroller-deepseek-harness
       name: '@agentcontroller/dsh-micro-bridge-deepseek-harness'
-      inject: [apiProxy, webServer, credentials]
+      inject: [apiProxy, webServer]

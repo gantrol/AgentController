@@ -131,6 +131,131 @@ public sealed class WindowDesignTests
     }
 
     [Fact]
+    public void StructuredProgressTargetsTheDeepSeekAndVoiceKeys()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                _ = Application.Current ?? new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+
+                var profile = MicroProfileSettings.CreateTransient();
+                profile.SetActiveHarness("deepseek-harness");
+                var window = new MicroSurfaceWindow(
+                    new MicroLocalization(MicroLanguage.ZhCn),
+                    profileSettings: profile);
+                window.ApplyHarnessProgressForVisualTest(
+                    step: 1,
+                    totalSteps: 7);
+
+                Assert.Equal(3, Grid.GetColumn(window.HarnessActionProgressRing));
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.HarnessActionProgressRing.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.HarnessActionStatusBadge.Visibility);
+                Assert.Equal("1/7", window.QuotaValueText.Text);
+                Assert.Equal(16, window.QuotaValueText.FontSize);
+                Assert.Equal(Visibility.Collapsed, window.QuotaCaptionText.Visibility);
+                Assert.NotEqual(Geometry.Empty, window.QuotaProgressRing.Data);
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.HarnessProgressStatusText.Visibility);
+                Assert.StartsWith(
+                    "检查适配器",
+                    window.HarnessProgressStatusText.Text);
+                Assert.Equal(16.5, window.HarnessProgressStatusText.FontSize);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.BrandWordmarkPanel.Visibility);
+                Assert.Equal(
+                    Color.FromRgb(0xFA, 0xFA, 0xF8),
+                    Assert.IsType<SolidColorBrush>(window.SettingsKey.Background).Color);
+                Assert.Equal(
+                    Color.FromRgb(0x1D, 0x1D, 0x1B),
+                    Assert.IsType<SolidColorBrush>(window.QuotaValueText.Foreground).Color);
+                Assert.Contains(
+                    "1/7 检查适配器",
+                    AutomationProperties.GetItemStatus(window.SettingsKey));
+                Assert.Contains(
+                    "1/7 检查适配器",
+                    AutomationProperties.GetItemStatus(window.ActionKey12));
+                var progressToolTip = Assert.IsType<ToolTip>(
+                    window.SettingsKey.ToolTip);
+                var progressToolTipContent = Assert.IsType<StackPanel>(
+                    progressToolTip.Content);
+                var progressHelp = string.Join(
+                    '\n',
+                    progressToolTipContent.Children
+                        .OfType<TextBlock>()
+                        .Select(item => item.Text));
+                Assert.Contains("1/7 检查适配器", progressHelp);
+                Assert.Contains("Visual progress test.", progressHelp);
+                var progressPreviewPath = Environment.GetEnvironmentVariable(
+                    "CODEX_MICRO_DEEPSEEK_PROGRESS_PREVIEW_PATH");
+                if (!string.IsNullOrWhiteSpace(progressPreviewPath))
+                {
+                    window.DesignSurface.Measure(new Size(590, 610));
+                    window.DesignSurface.Arrange(new Rect(0, 0, 590, 610));
+                    window.DesignSurface.UpdateLayout();
+                    var progressBitmap = new RenderTargetBitmap(
+                        590,
+                        610,
+                        96,
+                        96,
+                        PixelFormats.Pbgra32);
+                    progressBitmap.Render(window.DesignSurface);
+                    var progressEncoder = new PngBitmapEncoder();
+                    progressEncoder.Frames.Add(BitmapFrame.Create(progressBitmap));
+                    using var progressStream = new FileStream(
+                        progressPreviewPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read);
+                    progressEncoder.Save(progressStream);
+                }
+
+                window.ApplyHarnessProgressForVisualTest(
+                    step: 6,
+                    totalSteps: 8,
+                    onVoiceKey: true);
+
+                Assert.Equal(1, Grid.GetColumn(window.HarnessActionProgressRing));
+                Assert.Equal(2, Grid.GetColumnSpan(window.HarnessActionProgressRing));
+                Assert.Equal(1, Grid.GetColumn(window.HarnessActionStatusBadge));
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.HarnessActionStatusBadge.Visibility);
+                Assert.StartsWith("6/8 连接语音通道", window.HarnessActionStatusText.Text);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.HarnessProgressStatusText.Visibility);
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.BrandWordmarkPanel.Visibility);
+                Assert.Contains(
+                    "6/8 连接语音通道",
+                    AutomationProperties.GetItemStatus(window.ActionKey10));
+                window.CloseForApplicationExit();
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(error);
+    }
+
+    [Fact]
     public void KeyboardLayoutRendersOffscreenWithSquareKeycaps()
     {
         Exception? error = null;
@@ -189,13 +314,14 @@ public sealed class WindowDesignTests
                 Assert.False(window.HarnessActionProgressRing.IsHitTestVisible);
                 Assert.Equal(76, window.HarnessActionProgressRing.Width, 3);
                 Assert.Equal(76, window.HarnessActionProgressRing.Height, 3);
-                Assert.Equal(Visibility.Collapsed, window.CodexSendBadge.Visibility);
-                Assert.False(window.CodexSendBadge.IsHitTestVisible);
-                Assert.Equal(20, window.CodexSendBadge.Width, 3);
-                Assert.Equal(20, window.CodexSendBadge.Height, 3);
-                Assert.Equal(HorizontalAlignment.Right, window.CodexSendBadge.HorizontalAlignment);
-                Assert.Equal(VerticalAlignment.Bottom, window.CodexSendBadge.VerticalAlignment);
-                Assert.NotEqual(Geometry.Empty, window.CodexSendPlane.Data);
+                Assert.Equal(Visibility.Collapsed, window.ActionSendBadge.Visibility);
+                Assert.False(window.ActionSendBadge.IsHitTestVisible);
+                Assert.Equal(20, window.ActionSendBadge.Width, 3);
+                Assert.Equal(20, window.ActionSendBadge.Height, 3);
+                Assert.Equal(HorizontalAlignment.Right, window.ActionSendBadge.HorizontalAlignment);
+                Assert.Equal(VerticalAlignment.Bottom, window.ActionSendBadge.VerticalAlignment);
+                Assert.NotEqual(Geometry.Empty, window.ActionSendPlane.Data);
+                Assert.Null(window.FindName("HarnessConnectionStatusDot"));
                 Assert.Equal(3, Grid.GetRow(window.HarnessActionProgressRing));
                 Assert.Equal(3, Grid.GetColumn(window.HarnessActionProgressRing));
                 Assert.Equal(Visibility.Collapsed, window.HarnessActionStatusBadge.Visibility);
@@ -264,14 +390,15 @@ public sealed class WindowDesignTests
                 Assert.Equal(Visibility.Collapsed, window.DialSelectionHud.Visibility);
                 Assert.Equal(250, window.DialSelectionHud.Width, 3);
 
-                window.ApplyCodexForegroundForVisualTest(isForeground: true);
-                Assert.Equal(Visibility.Visible, window.CodexSendBadge.Visibility);
+                window.ApplyActionTargetForegroundForVisualTest(isForeground: true);
+                Assert.Equal(Visibility.Visible, window.ActionSendBadge.Visibility);
                 profile.SetActiveHarness("deepseek-harness");
-                Assert.Equal(Visibility.Collapsed, window.CodexSendBadge.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.ActionSendBadge.Visibility);
                 profile.SetActiveHarness("codex");
-                Assert.Equal(Visibility.Visible, window.CodexSendBadge.Visibility);
-                window.ApplyCodexForegroundForVisualTest(isForeground: false);
-                Assert.Equal(Visibility.Collapsed, window.CodexSendBadge.Visibility);
+                window.ApplyActionTargetForegroundForVisualTest(isForeground: true);
+                Assert.Equal(Visibility.Visible, window.ActionSendBadge.Visibility);
+                window.ApplyActionTargetForegroundForVisualTest(isForeground: false);
+                Assert.Equal(Visibility.Collapsed, window.ActionSendBadge.Visibility);
 
                 Assert.IsType<LinearGradientBrush>(
                     window.DeviceFrame.Background);
@@ -648,6 +775,7 @@ public sealed class WindowDesignTests
                 var deepSeekPreviewPath = Environment.GetEnvironmentVariable(
                     "CODEX_MICRO_DEEPSEEK_PREVIEW_PATH");
                 profile.SetActiveHarness("deepseek-harness");
+                window.ApplyVoiceServiceStateForVisualTest(ready: true);
                 window.ApplyHarnessStateForVisualTest(new(
                     "deepseek-harness",
                     [
@@ -669,16 +797,29 @@ public sealed class WindowDesignTests
                         SessionActivation: true,
                         KnobSettings: true,
                         VoiceInput: true,
-                        Actions: new HashSet<string>()),
+                        Actions: new HashSet<string>
+                        {
+                            MicroHarnessActionIds.ComposerSubmit,
+                        }),
                     NavigationDepth: 0,
-                    new(
-                        Adapter: "ready",
-                        Browser: "connected",
-                        VoiceSetup: "ready",
-                        VoiceRuntime: "ready",
-                        VoiceMessage: "Local streaming ASR is ready."),
-                    DateTimeOffset.Now));
+                     new(
+                         Adapter: "ready",
+                         Browser: "connected",
+                         CurrentModel: "DeepSeek-V4-Pro"),
+                     DateTimeOffset.Now));
+                window.ApplyActionTargetForegroundForVisualTest(
+                    isForeground: true);
                 window.DesignSurface.UpdateLayout();
+                Assert.Equal(Visibility.Visible, window.ActionSendBadge.Visibility);
+                Assert.Equal("PRO", window.QuotaValueText.Text);
+                Assert.Equal(Visibility.Collapsed, window.QuotaCaptionText.Visibility);
+                Assert.Equal(Geometry.Empty, window.QuotaProgressRing.Data);
+                Assert.Equal(
+                    Color.FromRgb(0xFA, 0xFA, 0xF8),
+                    Assert.IsType<SolidColorBrush>(window.SettingsKey.Background).Color);
+                Assert.Equal(
+                    Color.FromRgb(0x1D, 0x1D, 0x1B),
+                    Assert.IsType<SolidColorBrush>(window.QuotaValueText.Foreground).Color);
                 Assert.Equal(
                     Color.FromRgb(0x30, 0x4F, 0xFE),
                     Assert.IsType<SolidColorBrush>(
@@ -706,7 +847,7 @@ public sealed class WindowDesignTests
                     deepSeekEncoder.Save(deepSeekStream);
                 }
                 profile.SetActiveHarness("codex");
-                window.ApplyCodexForegroundForVisualTest(isForeground: true);
+                window.ApplyActionTargetForegroundForVisualTest(isForeground: true);
 
                 var bitmap = new RenderTargetBitmap(
                     590,

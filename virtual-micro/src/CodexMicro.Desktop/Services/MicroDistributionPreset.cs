@@ -12,6 +12,7 @@ internal sealed record MicroDistributionPreset(
     string Id,
     string DefaultHarnessId,
     string VoiceDefaultProvider,
+    string LocalQwenStartMode,
     string SurfaceTheme)
 {
     internal static MicroDistributionPreset? TryLoad(
@@ -56,6 +57,8 @@ internal sealed record MicroDistributionPreset(
                 stored.Id.Trim(),
                 stored.DefaultHarnessId.Trim(),
                 stored.Voice?.DefaultProvider?.Trim() ?? "system",
+                stored.Voice?.LocalQwenStartMode?.Trim() ??
+                    MicroLocalVoiceStartModes.OnDemand,
                 stored.Surface?.Theme?.Trim() ?? string.Empty);
         }
         catch
@@ -65,7 +68,20 @@ internal sealed record MicroDistributionPreset(
     }
 
     internal MicroProfileSnapshot Apply(MicroProfileSnapshot fallback) =>
-        fallback with { ActiveHarnessId = DefaultHarnessId };
+        fallback with
+        {
+            ActiveHarnessId = DefaultHarnessId,
+            Voice = fallback.VoiceSettings with
+            {
+                Provider = MicroVoiceProviders.IsKnown(VoiceDefaultProvider)
+                    ? VoiceDefaultProvider
+                    : MicroVoiceProviders.System,
+                LocalStartMode = MicroLocalVoiceStartModes.IsKnown(
+                    LocalQwenStartMode)
+                        ? LocalQwenStartMode
+                        : MicroLocalVoiceStartModes.OnDemand,
+            },
+        };
 
     private sealed class StoredPreset
     {
@@ -83,6 +99,8 @@ internal sealed record MicroDistributionPreset(
     private sealed class StoredVoice
     {
         public string? DefaultProvider { get; set; }
+
+        public string? LocalQwenStartMode { get; set; }
     }
 
     private sealed class StoredSurface
