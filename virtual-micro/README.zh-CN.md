@@ -18,7 +18,7 @@ DeepSeek 特调包首次点击会先复用已有 Harness；未发现可用桥接
 发行包采用 framework-dependent 单文件发布。实测 `CodexMicro.exe` 约 `24.9 MiB`，
 zip 约 `6.4 MiB`，封包脚本把 zip 上限固定为 `15 MiB`；超过即构建失败。这样保留
 原 WPF 像素效果，同时避免约 `75 MiB` 的自包含 WPF 便携包。独立运行前需安装
-Microsoft .NET 10 Desktop Runtime x64。
+[Microsoft .NET 10 Desktop Runtime x64 官方安装程序](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-10.0.10-windows-x64-installer)。
 
 ## 窗口与托盘
 

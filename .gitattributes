@@ -1,0 +1,2 @@
+*.sh text eol=lf
+micro-bridge/DeepSeekHarness/scripts/runtime-versions.env text eol=lf

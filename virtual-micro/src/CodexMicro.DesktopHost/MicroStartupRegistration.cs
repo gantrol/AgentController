@@ -47,7 +47,7 @@ internal sealed class MicroStartupRegistration
 
         key.SetValue(
             ValueName,
-            $"\"{executable}\"",
+            $"\"{executable}\" --background",
             RegistryValueKind.String);
     }
 }

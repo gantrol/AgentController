@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AssemblyName>Deepseek-Harness-Keypad-OneClick</AssemblyName>
+    <RootNamespace>DeepSeekKeypad.OneClick</RootNamespace>
+    <AssemblyTitle>Deepseek Harness Keypad OneClick</AssemblyTitle>
+    <Product>Deepseek Harness Keypad</Product>
+    <Description>Per-user one-click installer for Deepseek Harness Keypad.</Description>
+    <Version>0.2.4</Version>
+    <AssemblyVersion>0.2.4.0</AssemblyVersion>
+    <FileVersion>0.2.4.0</FileVersion>
+    <ApplicationIcon>..\..\Assets\CodexMicro.ico</ApplicationIcon>
+  </PropertyGroup>
+
+</Project>

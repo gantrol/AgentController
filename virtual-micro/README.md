@@ -27,7 +27,7 @@ The release is a framework-dependent single-file app. The measured
 `CodexMicro.exe` is about `24.9 MiB` and the zip is about `6.4 MiB`; packaging
 enforces a `15 MiB` zip ceiling. This retains the exact WPF visuals without the
 roughly `75 MiB` self-contained WPF bundle. Standalone use requires the
-Microsoft .NET 10 Desktop Runtime x64.
+[official Microsoft .NET 10 Desktop Runtime x64 installer](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-10.0.10-windows-x64-installer).
 
 ## Window and notification area
 

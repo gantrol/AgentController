@@ -3,8 +3,10 @@ param(
     [string]$Version = "0.2.4",
     [string]$Runtime = "win-x64",
     [double]$MaximumPackageMiB = 15,
-    [ValidateSet("standard", "deepseek")]
-    [string]$Preset = "standard"
+    [ValidateSet("standard", "deepseek", "deepseek-full")]
+    [string]$Preset = "standard",
+    [string]$BundledWslPayload,
+    [switch]$FrameworkDependent
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,16 +14,30 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot ".."))
-$artifactRoot = [System.IO.Path]::GetFullPath(
-    (Join-Path $repoRoot ".artifacts\micro-release\$Version"))
-$publishRoot = Join-Path $artifactRoot "publish"
 $presetId = $Preset.ToLowerInvariant()
-$packageName = if ($presetId -eq "deepseek") {
+$isDeepSeek = $presetId -in @("deepseek", "deepseek-full")
+$isFull = $presetId -eq "deepseek-full"
+$isSelfContained = $isFull -and -not $FrameworkDependent
+$artifactVersion = if ($isFull -and $FrameworkDependent) {
+    "$Version-full-no-dotnet"
+} elseif ($isFull) {
+    "$Version-full"
+} else {
+    $Version
+}
+$artifactRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path $repoRoot ".artifacts\micro-release\$artifactVersion"))
+$publishRoot = Join-Path $artifactRoot "publish"
+$packageName = if ($isFull -and $FrameworkDependent) {
+    "Deepseek-Harness-Keypad-Full-NoDotNet-v$Version-$Runtime"
+} elseif ($isFull) {
+    "Deepseek-Harness-Keypad-Full-v$Version-$Runtime"
+} elseif ($isDeepSeek) {
     "Deepseek-Harness-Keypad-v$Version-$Runtime"
 } else {
     "CodexMicro-Keypad-$Version-$Runtime"
 }
-$productName = if ($presetId -eq "deepseek") {
+$productName = if ($isDeepSeek) {
     "Deepseek Harness Keypad"
 } else {
     "Codex Micro Keypad"
@@ -62,6 +78,15 @@ foreach ($path in @(
 if ($MaximumPackageMiB -le 0) {
     throw "MaximumPackageMiB must be greater than zero."
 }
+if ($isFull) {
+    if ([string]::IsNullOrWhiteSpace($BundledWslPayload)) {
+        throw "BundledWslPayload is required for the deepseek-full preset."
+    }
+    $BundledWslPayload = [System.IO.Path]::GetFullPath($BundledWslPayload)
+    if (-not (Test-Path -LiteralPath $BundledWslPayload -PathType Leaf)) {
+        throw "Bundled WSL payload is missing: $BundledWslPayload"
+    }
+}
 
 if (Test-Path -LiteralPath $artifactRoot) {
     Remove-Item -LiteralPath $artifactRoot -Recurse -Force
@@ -73,10 +98,11 @@ New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 
 $project = Join-Path $repoRoot `
     "virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj"
+$selfContained = if ($isSelfContained) { "true" } else { "false" }
 & dotnet publish $project `
     -c Release `
     -r $Runtime `
-    --self-contained false `
+    --self-contained $selfContained `
     --output $publishRoot `
     -p:Version=$Version `
     -p:InformationalVersion=$Version `
@@ -84,6 +110,7 @@ $project = Join-Path $repoRoot `
     "-p:Product=$productName" `
     "-p:AssemblyTitle=$productName" `
     -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=$selfContained `
     -p:DebugType=None `
     -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) {
@@ -121,15 +148,24 @@ foreach ($voiceFile in @(
     Copy-Item -LiteralPath $voicePath -Destination $voiceTarget
 }
 
-if ($presetId -eq "deepseek") {
+if ($isDeepSeek) {
     $presetPath = Join-Path $repoRoot `
         "virtual-micro\distribution-presets\deepseek.json"
     if (-not (Test-Path -LiteralPath $presetPath -PathType Leaf)) {
         throw "DeepSeek distribution preset is missing: $presetPath"
     }
 
-    Copy-Item -LiteralPath $presetPath `
-        -Destination (Join-Path $packageRoot "distribution-preset.json")
+    $presetTarget = Join-Path $packageRoot "distribution-preset.json"
+    if ($isFull) {
+        $presetDocument = Get-Content -LiteralPath $presetPath -Raw |
+            ConvertFrom-Json
+        $presetDocument.firstRun.installBundledHarness = $true
+        $presetDocument | ConvertTo-Json -Depth 10 |
+            Set-Content -LiteralPath $presetTarget -Encoding utf8
+    }
+    else {
+        Copy-Item -LiteralPath $presetPath -Destination $presetTarget
+    }
 
     $pluginSource = Join-Path $repoRoot "micro-bridge\DeepSeekHarness"
     $pluginTarget = Join-Path $packageRoot "plugins\DeepSeekHarness"
@@ -167,6 +203,7 @@ if ($presetId -eq "deepseek") {
             "install-windows.bat",
             "migrate-dsh-home-wsl.mjs",
             "prepare-managed-bridge.mjs",
+            "runtime-versions.env",
             "start-dsh-wsl.sh",
             "uninstall-windows.bat")) {
         Copy-Item -LiteralPath (Join-Path $pluginSource "scripts\$file") `
@@ -187,6 +224,52 @@ if ($presetId -eq "deepseek") {
         -Recurse
 }
 
+if ($isFull) {
+    $payloadTarget = Join-Path $packageRoot "payload"
+    New-Item -ItemType Directory -Path $payloadTarget -Force | Out-Null
+    Copy-Item -LiteralPath $BundledWslPayload `
+        -Destination (Join-Path $payloadTarget "deepseek-runtime.wsl")
+    Copy-Item -LiteralPath (Join-Path $repoRoot `
+        "scripts\Uninstall-DeepseekHarnessKeypad.ps1") `
+        -Destination $packageRoot
+
+    $marker = [ordered]@{
+        ProductId = "deepseek-harness-keypad"
+        Version = $Version
+    }
+    $marker | ConvertTo-Json |
+        Set-Content `
+            -LiteralPath (Join-Path $packageRoot `
+                ".deepseek-harness-keypad.install.json") `
+            -Encoding utf8
+
+    $manifestFiles = @(
+        Get-ChildItem -LiteralPath $packageRoot -File -Recurse -Force |
+            Where-Object { $_.Name -ne "oneclick-manifest.json" } |
+            Sort-Object FullName |
+            ForEach-Object {
+                [ordered]@{
+                    Path = [System.IO.Path]::GetRelativePath(
+                        $packageRoot,
+                        $_.FullName).Replace('\', '/')
+                    Size = $_.Length
+                    Sha256 = (Get-FileHash `
+                        -LiteralPath $_.FullName `
+                        -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+            })
+    $manifest = [ordered]@{
+        SchemaVersion = 1
+        ProductId = "deepseek-harness-keypad"
+        Version = $Version
+        Files = $manifestFiles
+    }
+    $manifest | ConvertTo-Json -Depth 6 |
+        Set-Content `
+            -LiteralPath (Join-Path $packageRoot "oneclick-manifest.json") `
+            -Encoding utf8
+}
+
 $releasePaths = @($zipPath, $checksumPath)
 if ($presetId -eq "deepseek") {
     $releasePaths += @($pluginZipPath, $pluginChecksumPath)
@@ -197,10 +280,20 @@ foreach ($releasePath in $releasePaths) {
     }
 }
 
-Compress-Archive `
-    -LiteralPath $packageRoot `
-    -DestinationPath $zipPath `
-    -CompressionLevel Optimal
+if ($isFull) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $packageRoot,
+        $zipPath,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false)
+}
+else {
+    Compress-Archive `
+        -LiteralPath $packageRoot `
+        -DestinationPath $zipPath `
+        -CompressionLevel Optimal
+}
 
 $maximumBytes = [long]($MaximumPackageMiB * 1MB)
 $packageBytes = (Get-Item -LiteralPath $zipPath).Length

@@ -1,6 +1,6 @@
 # Windows 首次使用 DeepSeek Harness
 
-本文适用于 `CodexMicro-DeepSeek` Windows 包。程序不假定自身位于某个盘符，也不
+本文适用于 Deepseek Harness Keypad 的便携包与 Full oneclick 包。程序不假定自身位于某个盘符，也不
 要求 DeepSeek Harness 源码位于固定目录。第一次点击 DeepSeek 键时，程序先探测
 已有服务，再让用户明确选择：
 
@@ -115,7 +115,7 @@ npx @deepseek-ai/dsh web --port 3090
 这些命令来自 DeepSeek 官方 README 和 CLI 参考。Node 的安装方式以
 [Node.js 官方下载页](https://nodejs.org/en/download)为准。
 
-桥接插件必须安装到实际使用的 `web` profile。预发布资产中它独立分装为
+桥接插件必须安装到实际使用的 `web` profile。正式发布资产中它独立分装为
 `Deepseek-Harness-Keypad-Bridge-v<版本>.zip`；DeepSeek 主包也保留同一份精简运行
 载荷，供专用 WSL 安装流程使用。请在 **Harness 所在的同一个运行环境**中解压独立
 插件包，再按 DeepSeek 官方插件命令安装：
@@ -154,11 +154,24 @@ Codex Micro 的协议适配参考上游
 示例路径只用于说明，程序配置仍使用 `{AppDir}`、`{LocalAppData}`、环境变量或相对
 路径，不写死本机盘符和用户目录。
 
-## 可选自包含包
+## Full oneclick 包
 
-未来的 `CodexMicro-DeepSeek-Full` 使用与在线配置相同的 8 步状态机，但从包内读取
-`payload/deepseek-runtime.wsl`，不再下载 Linux 用户态、Node 或 Harness。自包含包
-仍需要 Windows 的 WSL 系统功能；WSL 内核和虚拟化功能不能安全地藏进普通 zip。
+`Deepseek-Harness-Keypad-Full-v0.2.4-oneclick.exe` 使用与在线配置相同的 8 步状态机，
+但从安装目录的 `payload/deepseek-runtime.wsl` 导入干净载荷，不再下载 Linux 用户态、
+Node、pnpm 或 Harness。载荷预装的是 DeepSeek 官方 npm 包 `@deepseek-ai/dsh`，版本
+和 Node / pnpm 一起记录在 Bridge 的 `scripts/runtime-versions.env`；Bridge 没有修改
+DSH 源码，后续替换官方版本只需更新该清单并重建。
+
+另有 `Deepseek-Harness-Keypad-Full-v0.2.4-oneclick-no-dotnet.exe`，DSH 载荷完全相同，
+但不包含 Windows .NET 运行时。它和便携 ZIP 需要安装
+[Microsoft .NET 10 Desktop Runtime x64 官方安装程序](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-10.0.10-windows-x64-installer)；
+推荐 oneclick 已自带 .NET。两种 oneclick 都按当前用户安装到 Windows API 返回的
+LocalAppData 目录，注册后台自启动、开始菜单和卸载入口，不写死盘符。
+
+Full 包仍需要 Windows 的 WSL 系统功能；WSL 内核和虚拟化功能不能安全地藏进普通
+EXE。`.wsl` 导入格式需要 WSL 2.4.4 或更新版本，说明与更新方式以
+[Microsoft 自定义 WSL 发行版指南](https://learn.microsoft.com/en-us/windows/wsl/build-custom-distro)
+和 [WSL 官方安装指南](https://learn.microsoft.com/en-us/windows/wsl/install)为准。
 
 ## 状态与恢复
 
