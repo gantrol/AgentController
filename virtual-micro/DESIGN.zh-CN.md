@@ -48,9 +48,11 @@ Controller 不共享进程生命周期，只连接当前用户唯一的 Micro Br
   圆形或方形键底。刻槽以暗色上缘和半透明白色下缘形成凹陷感；透明命中区使用
   自定义模板，悬停或按下时不会出现 Windows 默认蓝色方形底色。
 - 左下设置区采用 Codex 内置预览的结构：三颗竖排状态灯加 `#2D2925` 简洁
-  圆钮，无齿轮、刻度、圆点、同心描边或 Logo。
+  圆钮，无齿轮、刻度、圆点、同心描边或 Logo。圆钮内部用细圆环显示当前更紧张
+  的 Codex 剩余额度，并在百分比下方显示当前快捷模型。
 - 底部品牌标识使用当前 Codex 应用中的 Codex 图形；动作键图标随
-  `desktop.codex-micro-layout` 只读同步，用户在 Codex 设置中改键后同步更新。
+  `desktop.codex-micro-layout` 双向同步。软件设置页写入与官方相同的 TOML
+  schema，并以原子替换保留所有非 Micro 配置。
 
 ## 3. 驱动与协议路径
 
@@ -103,15 +105,21 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 | 左上旋钮 | 滚轮或上下拖动 | 按离散步进顺序发送 `ENC_CW` / `ENC_CC` |
 | 左上旋钮 | 启用“反转旋钮方向”后旋转 | 保持实体旋转动画，交换上报的 `ENC_CW` / `ENC_CC`；顺时针提高推理强度 |
 | 左上旋钮 | 短按 | 发送一次 `ENC` 按下/释放，打开或确认 Codex 当前高亮项 |
+| 左上旋钮 | 外部 Harness 的“输入区控件”模式旋转 / 短按 | 动态遍历当前输入框内可见、可用控件并在网页蓝色高亮 / 执行高亮控件；不发送 Codex HID |
+| 左上旋钮 | “仅推理强度”模式旋转 / 短按 | 只调整当前模型推理强度 / 在快捷模型 A、B 间切换 |
 | 左上旋钮 | 权限模式选择面中旋转 | 继续通过官方 Micro bridge 发送 `ENC_CW` / `ENC_CC`，遍历 Ask for approval、Approve for me 与 Full access |
 | 左上旋钮 | Full access 确认框中旋转 | 通过受限 VHF 键盘子设备发送 Shift+Tab / Tab，移动确认按钮焦点 |
 | 左上旋钮 | Full access 确认框中短按 | 通过受限 VHF 键盘子设备发送 Enter，确认当前按钮 |
 | 左上旋钮 | 右键 | 不执行操作；设置入口不与选择旋钮复用 |
-| 左下黑色旋钮 | 单击 | 发送 650 ms `ENC` 长按，由 Codex 内部路由进入 Micro 设置 |
-| 左下黑色旋钮 | 右键 | 重新检查 Codex 指纹并连接虚拟 HID |
+| 左下黑色旋钮 | 短按 | 在软件设置中的快捷模型 A / B 之间切换当前任务下一轮；默认 Sol / Luna |
+| 左下黑色旋钮 | 当前目标为外部 Harness 时左键 / 右键 | 通过直连插件切换该 Harness 配置的快捷模型 / 直达该 Agent 的适配器与独立按键设置 |
+| 左下黑色旋钮 | 长按 | 发送 650 ms `ENC` 长按，由 Codex 内部路由进入官方 Micro 设置 |
+| 左下黑色旋钮 | 右键 | 直接打开右下角当前 Agent 的设置区：Codex 进入快捷模型配置；外部 Harness 进入该 Harness 独立的适配器与按键配置 |
 | 右上圆帽摇杆 | 按住拖动 | 连续发送角度和距离；50% 行程开始触发方向，松手发送中立值 |
 | 底盘四向阴刻 | 单击 | 发送对应方向的完整 `v.oai.rad` 动作并自动回中 |
-| Codex 键 | 单击 | 发送动作后，将真实 Codex 主窗口切到普通前台层 |
+| Codex 键 | 单击 | 激活当前选择的 Codex 或直连 Harness；Codex 继续使用原生 HID，外部 Harness 使用具名管道插件协议 |
+| Codex 键 | 右键 | 直接列出 Codex、DeepSeek Harness 和后续注册的 Harness，并提供管理入口 |
+| 六个 Agent 键 | 当前目标为外部 Harness 时单击 | 打开该槽位的 Harness 会话；不显示或触发 Codex 最近任务 |
 | 机身空白处 | 拖动 | 移动窗口 |
 | 机身空白处 | 右键 | 切换置顶状态 |
 | 机身菜单 | 单击“隐藏面板” | 收起到 Windows 通知区域 |
@@ -140,6 +148,33 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 面积最大的 `Chrome_WidgetWin_1` 主窗口。只有窗口最小化时才调用恢复；已可见
 窗口不执行 `SW_SHOW` 或模拟 Alt+Tab，从而保留 Electron 的最大化/全屏状态。
 
+软件设置是独立的应用内 WPF 页面。左下额度旋钮右键会按右下角当前 Agent 动态
+定位：Codex 直达快捷模型配置，DeepSeek 或后续 Harness 直达各自隔离的适配器与
+按键配置；不向 Codex 官方 `/settings/codex-micro` 注入第三方字段。页面采用完整的
+`Layout + Options` 信息结构：上方直接镜像当前 Micro 本体（与灯光、额度和按键
+状态实时同步）；悬停并点击真实键位进入“编辑键帽”子页，可搜索全部官方键帽并
+分配官方命令或已安装 Skill。Options 支持 Agent 键来源、旋钮模式、麦克风模式、
+双麦克风键和单击聚焦；Extensions 支持快捷模型 A / B 与 Codex 键的 Harness 目标。
+模型槽位只能保存两个不同的已知模型；选择另一槽位当前值时自动交换，避免重复。
+扩展默认值为 Sol / Luna，写入 `%LOCALAPPDATA%\CodexMicro\micro-profile.json`，
+不会更改 Codex 全局默认模型。
+
+目标切到外部 Harness 后，Codex 专属布局、麦克风和快捷模型字段会停用；同一页面
+显示通用 Harness 适配器卡，可配置管道或 WSL 回环控制地址、启动程序、参数、工作目录、离线自动启动
+和就绪超时。配置按 Harness 写入
+`%LOCALAPPDATA%\CodexMicro\harness-settings.json`，因此后续 Harness 不需要复制一套
+设置窗口。
+
+Harness 通过 `%LOCALAPPDATA%\CodexMicro\harnesses\*.json` 注册 `id`、显示名和
+具名管道或仅限回环的 HTTP 控制地址；协议提供 `activate`、`state/read` 和
+`session/activate`，不模拟键鼠。DeepSeek Harness 默认在 WSL2 中运行，Micro 使用
+`http://127.0.0.1:3080/__agentcontroller/micro/request` 跨 Windows/WSL 直连，并保留
+`deepseek-harness-micro-v1` 作为原生 Windows 回退；按钮发现端点离线时可以按设置
+启动 `wsl.exe` 并等待就绪。`state/read` 只返回 Harness 自己的最多六个
+最近会话，切换目标时先清空旧槽位，再用对应适配器结果填充，杜绝把 Codex 会话
+显示成 DeepSeek 会话。后续 Harness 无需修改设置页即可出现在同一个目标选择器和
+Codex 键右键菜单中。
+
 ## 5. 桌面窗口行为
 
 - 窗口固定以 `442.5 × 457.5` 打开，即 `590 × 610` 基准设计尺寸的 75%；键盘
@@ -152,6 +187,8 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 - 把窗口拖到屏幕边缘不会出现 Snap 布局，也不会让 Windows 自动改写窗口尺寸；
   窗口不提供任何用户缩放入口。
 - 机身空白区域可以拖动，右击空白切换置顶、重连或隐藏。
+- 软件设置页固定为 `920 × 760`，作为主面板的 owned window 居中打开；支持 Esc
+  关闭、即时中英切换和自动保存，主进程退出时同步关闭。
 - Codex 键和设置旋钮只把 Codex 放到普通非置顶窗口的最前方，不会覆盖用户的
   置顶窗口；若模拟器本身启用了置顶，它也会继续保持在置顶层。
 - 关闭窗口只隐藏；通知区域图标双击显示/隐藏，菜单提供收起和退出。只有执行
@@ -159,8 +196,8 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 - 托盘语言菜单提供自动、简体中文和 English；切换会即时重绘托盘、机身菜单、
   悬停说明、状态与错误文本。自动模式优先读取 Agent Controller 设置，再回退到
   Windows UI 语言；独立选择保存在当前用户的 CodexMicro 设置目录。
-- 托盘“开机自启动”只写入当前用户 Run 项；登录后以 `--background` 启动，创建
-  托盘图标但不显示面板。关闭开关会删除该启动项，不需要管理员权限。
+- 托盘“开机自启动”只写入当前用户 Run 项；登录后直接显示面板并创建托盘图标。
+  关闭开关会删除该启动项，不需要管理员权限。
 - 托盘“反转旋钮方向”即时交换白色旋钮上报的顺逆时针事件，并与语言一同保存到
   `%LOCALAPPDATA%\CodexMicro\settings.json`；默认关闭以保持实体硬件兼容行为。
 
@@ -172,6 +209,11 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 键的玻璃叠层颜色直接反映 Codex 返回的 slot 灯光状态。每次
 `v.oai.thstatus` 先清空六个槽位，再按同一快照全部应用，避免上一帧残留或只
 更新一个任务；灯光提示同时给出当前活动槽位数。
+
+外部 Harness 的 Agent 键遵守同一条语义边界：历史会话、当前选择和正在执行是
+三个独立状态。`state/read` 中只有 `running=true` 的会话显示蓝色思考灯；空闲的
+历史会话即使是当前选择也保持灭灯。选择仅决定后续旋钮、动作和会话打开目标，
+不能伪装成后台正在工作。
 
 第一颗灯为黄色、第二颗灯为蓝色时表示 VHF 已就绪但 Codex 握手尚未恢复；第三颗
 灯变蓝只表示最近输入已被驱动接受，并不等于 Codex 已处理。此状态会触发上述有界
@@ -215,3 +257,165 @@ recency roster。只有官方默认 `recent` 来源可本地证明时才合并�
   始终由同一读取器完整接收。
 - 每个按钮、旋钮、方向键和状态灯悬停时均显示标题与当前功能。
 - Codex 设置中的动作映射变化能自动更新对应键帽图标和提示。
+- 切到 DeepSeek Harness 后六个 Agent 键不再显示 Codex 会话；旋钮与 Agent 键只调用
+  DeepSeek 适配器，切回 Codex 后重新使用官方 layout、灯光和最近任务快照。
+
+## 8. 多 Agent 小键盘目标交互
+
+> 本节是下一阶段交互设计，不代表当前单窗口宿主已经完成多窗口改造。
+
+应用继续保持**单进程、单托盘、单 Broker 租约**，但由一个 Surface Manager 管理
+多个彼此独立的 Micro 窗口。这样多个 Agent 可以同时常驻，又不会让同一次旋钮或
+HID 输入被多个进程重复消费。
+
+### 8.1 创建与切换
+
+- 右下 Agent Logo 右键菜单的每一行保留 Logo；悬停才显示 Agent 名、连接和任务
+  状态。单击行主体只把**当前小键盘**切换到该 Agent。
+- 每个 Agent Logo 的**右下角叠加小型 `＋` 徽标**，不在菜单行尾另放按钮。单击
+  Logo 主体切换当前小键盘；只有精确点击 `＋` 才在新小键盘打开该 Agent，避免
+  “切换目标”和“新建窗口”产生歧义。
+- 菜单底部提供“复制当前小键盘”，用于同一 Harness 的两个不同固定会话或工作区；
+  复制时生成新的窗口 ID，不共享当前会话和菜单导航栈。
+- 新窗口相对来源窗口错开 24 px，并分别记忆显示器、位置和置顶状态。
+
+### 8.2 窗口身份与作用域
+
+- 每个窗口绑定 `windowId + harnessId + optional pinnedSessionId`。右下 Logo 是常驻
+  身份；悬停显示“DeepSeek Harness · 小键盘 2 · 已连接”等完整说明。
+- Agent 键、左上旋钮、右上摇杆、语音会话、菜单深度和瞬时状态均为窗口私有；
+  一个窗口进入二级菜单时不会锁住另一个窗口。
+- 语言、驱动、Broker、插件注册表和开机启动是全局设置；Agent 目标、窗口位置、
+  置顶、按键映射、旋钮模式和固定会话是当前小键盘设置。
+- 设置页新增“小键盘”子菜单：列出已打开窗口，支持置前、重命名、切换 Agent、
+  复制和关闭；顶部明确标出“当前小键盘”，避免修改错对象。
+
+### 8.3 显示、关闭与托盘
+
+- 托盘主动作改为“显示/收起全部小键盘”；`小键盘 >` 子菜单可单独显示、收起或
+  关闭某一个窗口，并提供“新建小键盘”。
+- 窗口关闭或 Alt+F4 只收起该窗口；菜单中的“关闭此小键盘”才删除对应窗口配置。
+  关闭最后一个窗口后托盘仍保留，只有“退出”才释放 Broker 和整个进程。
+- Agent Logo 的单击激活只影响所属窗口；其他小键盘的 Agent、会话和前台目标均
+  不变化。
+
+### 8.4 灯光约定
+
+- 灭灯：空槽位或已存在但空闲的会话。
+- 蓝色：外部 Harness 明确报告正在运行；当前窗口选中时只增强同色亮度。
+- 绿色：已完成的短暂过渡；只有协议明确提供完成态时才显示，不得把整个运行过程
+  保持为绿色。黄色：等待用户输入；红色：错误。插件未提供这些状态时不得推测。
+- “当前选择”不使用持续蓝灯；点击后的短暂按压反馈和悬停说明已经足够表达选择，
+  从而保证一眼看到的常亮灯数量等于真正活动的任务数量。
+- Agent 身份由窗口环境光区分：Codex 保持现有很淡的偏绿玻璃底色；DeepSeek
+  Harness 使用同等明度、低饱和且不混青绿的普通淡蓝玻璃。环境光只表示窗口绑定
+  目标，不表示任务运行。
+- `scripts/test-micro-lighting.ps1` 使用真实 WPF/XAML 模板生成灯态矩阵。测试表逐项
+  断言状态对应的画刷颜色、透明度、模板内五层发光载体和最终像素色相；同时覆盖
+  Harness 的适配器、浏览器桥接和任务活动三颗小灯，不能只凭截图目测通过。
+
+## 9. DeepSeek Harness 从零配置 UML
+
+首次进入 DeepSeek Harness 时先完成 Harness 启动闭环，再在首次使用麦克风时进入
+语音配置；两个向导分别保存、可独立重试，不能让 ASR 配置失败阻塞普通 Harness
+操作。任何一步失败都停在可修复的原步骤，显示稳定错误码、检测结果和重试入口。
+
+```mermaid
+stateDiagram-v2
+    [*] --> DiscoverPlugin: 选择 DeepSeek Harness
+    DiscoverPlugin --> HarnessSetup: 首次使用或启动配置缺失
+    DiscoverPlugin --> ProbeHarness: 已有启动配置
+    HarnessSetup --> ValidateLaunch: 配置 Node、入口、工作目录、端口
+    ValidateLaunch --> HarnessSetup: 路径或命令校验失败
+    ValidateLaunch --> ProbeHarness: 本地静态校验通过
+    ProbeHarness --> ActivateWeb: 管道与健康检查已就绪
+    ProbeHarness --> StartHarness: 离线且允许自动启动
+    StartHarness --> WaitHarness: 显示“启动服务”与已用时间
+    WaitHarness --> ActivateWeb: 管道、HTTP 健康检查均就绪
+    WaitHarness --> HarnessRepair: 超时或进程提前退出
+    HarnessRepair --> HarnessSetup: 展示失败步骤、日志与修复建议
+    ActivateWeb --> ForegroundWeb: 复用现有页面并置前
+    ForegroundWeb --> Ready: 普通按键可用
+
+    Ready --> ProbeVoice: 首次按下麦克风
+    ProbeVoice --> StreamAudio: 已配置且运行时健康
+    ProbeVoice --> VoiceSetup: 未配置或健康检查失败
+    VoiceSetup --> ProviderChoice
+    state ProviderChoice <<choice>>
+    ProviderChoice --> LocalSetup: 本地 Qwen ASR
+    ProviderChoice --> SystemSetup: 系统或浏览器识别
+    ProviderChoice --> RemoteSetup: 远程流式 API
+    LocalSetup --> LocalCheck: 校验 WSL/GPU/Python/环境/模型/脚本
+    LocalCheck --> LocalRepair: 缺少依赖
+    LocalRepair --> LocalCheck: 安装或选择已有环境后重测
+    LocalCheck --> VoiceHandshake: 本地运行时健康
+    SystemSetup --> VoiceHandshake: 麦克风权限与试录成功
+    RemoteSetup --> VoiceHandshake: WSS、密钥引用与协议校验通过
+    VoiceHandshake --> VoiceSetup: 测试失败，保留诊断与当前输入
+    VoiceHandshake --> StreamAudio: 测试成功后保存配置
+    StreamAudio --> FinalText: PCM16 16kHz 单声道与局部文本流
+    FinalText --> Ready: 松开麦克风，提交最终文本
+```
+
+运行时的跨组件顺序如下；界面状态必须对应真实阶段，不能只显示一个笼统的
+“加载中”。
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant M as 当前 Micro 窗口
+    participant SM as Surface Manager
+    participant A as DeepSeek Adapter
+    participant H as Harness 服务
+    participant W as Harness 网页
+    participant V as 流式 ASR
+
+    U->>M: 单击 DeepSeek Logo
+    M->>SM: 激活本窗口绑定的 Harness
+    SM->>A: probe
+    alt 服务未启动
+        A->>H: 执行已验证的启动配置
+        A-->>M: 启动服务（阶段、耗时、日志入口）
+        loop 有界等待
+            A->>H: 管道 + HTTP 健康检查
+            A-->>M: 等待插件 / 打开网页
+        end
+    end
+    A->>W: 复用或打开唯一页面
+    A->>W: 请求窗口置前
+    A-->>M: 已连接 / 已置前
+
+    U->>M: 按住麦克风
+    M->>A: voice/start
+    alt 首次使用或配置无效
+        A-->>M: 打开当前 Harness 的语音设置子页
+        U->>M: 选择本地、系统或远程并执行测试
+        M->>V: health + streaming handshake
+        V-->>M: 测试通过
+    end
+    M->>V: 连续发送 PCM16 音频帧
+    V-->>M: partial 文本
+    M->>W: 更新输入框但不提交
+    U->>M: 松开麦克风
+    M->>V: end
+    V-->>M: final 文本
+    M->>W: 写入最终文本（按配置决定是否发送）
+```
+
+## 10. DeepSeek 一键安装包预设
+
+后续发布独立的 `CodexMicro-DeepSeek` 一键安装包，与通用安装包共用代码但使用
+显式的 `distribution-preset.json`。预设只在用户配置不存在的首次启动生效，升级
+不能覆盖已有选择。
+
+- 默认 Agent：`deepseek-harness`；首次打开即显示 DeepSeek Logo 与淡蓝玻璃主题。
+- 内置外部 `DeepSeekHarness` 插件构建产物、WSL 安装/启动脚本，不修改 Harness
+  源码。安装向导负责发现 checkout、在 WSL ext4 中准备 Linux Node/pnpm 与 Harness、
+  安装插件，并验证回环 HTTP 控制端点与网页桥接；Windows checkout/profile 原件保留。
+- 默认语音：`system`，首次使用仍要求麦克风授权与试录。这样零配置优先；本地
+  Qwen 流式 ASR 与远程 WebSocket 保留在“高级识别方式”，不会自动下载模型或上传
+  音频。
+- 默认只突出内置 DeepSeek；Codex 和其他 Harness 保留在添加/管理入口，主流程
+  不展示不必要选项。
+- 构建入口为 `package-micro.ps1 -Preset deepseek`。该参数只准备发布内容，不允许
+  在普通 dev 编译过程中自动增加版本或生成发布包。

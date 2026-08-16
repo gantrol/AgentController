@@ -25,8 +25,8 @@ Microsoft .NET 10 Desktop Runtime x64。
 - 右击机身空白处可切换置顶或收起面板；
 - 关闭窗口或按 Alt+F4 只收起到 Windows 通知区域，不退出后台进程；
 - 通知区域图标双击可显示/收起；右键菜单提供“显示/收起小键盘”和“退出”；
-- 托盘菜单的“开机自启动”可随时启用或关闭；启用后登录 Windows 时静默启动到
-  通知区域，不主动弹出小键盘；
+- 托盘菜单的“开机自启动”可随时启用或关闭；启用后登录 Windows 时会启动并立即
+  显示小键盘；
 - 托盘菜单新增“反转旋钮方向”；切换后立即生效并与语言设置一同保存。关闭时保持
   实体 Codex Micro 的官方方向，开启后顺时针旋转会提高模型推理强度；
 - 鼠标输入不会激活小键盘，因此 Codex 的输入焦点保持不变。
@@ -43,10 +43,15 @@ Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟
 - 6 个 Agent 键发送 `AG00`–`AG05`，并显示 Codex 返回的槽位灯光；
 - 4 个命令键发送 `ACT06`–`ACT09`，Codex 键发送 `ACT12`；
 - 语音键按下发送 `ACT10 down`，松开后发送 `ACT10 up`；
-- 白色旋钮支持滚轮、拖动和短按，发送 `ENC_CW`、`ENC_CC` 与 `ENC`；视觉动画始终
-  跟随鼠标手势，可选的反转设置只交换发给 Codex 的顺/逆时针事件；
-- 摇杆支持连续拖动并在松开时回中；
-- 左下设置旋钮发送真实的 650 ms `ENC` 长按，交由 Codex 打开 Micro 设置。
+- Codex 模式下，白色旋钮可设为常规输入区导航或“仅推理强度”；后者旋转时只改变
+  思考强度，短按在快捷模型 A / B 间切换；
+- 外部 Harness 独立保存白色旋钮模式。默认只动态发现当前输入框内可见、可用的
+  控件（包括其他插件后来加入的按钮），用蓝色轮廓高亮，短按执行；也可改为
+  “仅推理强度”或“最近会话”；
+- 摇杆支持连续拖动并在松开时回中；外部 Harness 默认上/下切换侧边栏会话，
+  左侧折叠/展开左栏，右侧打开详情抽屉；
+- 左下旋钮左键切换当前 Agent 配置的快捷模型，右键直达该 Agent 的独立设置；
+  Codex 模式长按仍打开官方 Micro 设置。
 
 ## 虚拟 HID
 
@@ -70,17 +75,21 @@ Agent Controller 的界面语言；其设置仍为自动或文件不存在时跟
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.3
+.\scripts\package-micro.ps1 -Version 0.2.4
+# 仅准备未来的 DeepSeek 特调包；不会由普通 dev 构建自动执行
+.\scripts\package-micro.ps1 -Version 0.2.4 -Preset deepseek
 ```
 
 产物：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.3/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.3-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.4/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.4-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
 
 封包脚本只收录 `CodexMicro.exe`、README 和许可证，不复制 Desktop Runtime、调试符号
-或驱动。驱动仍作为单独的安全边界安装。
+或驱动。`deepseek` 预设额外收录显式的首次运行参数和 DeepSeek Harness 外部插件
+源码/构建产物；默认目标为 DeepSeek，默认语音为系统识别，本地 Qwen 和远程流式
+识别保留为高级选项。驱动仍作为单独的安全边界安装。
 
 ## 安装驱动
 
