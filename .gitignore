@@ -29,11 +29,15 @@
 !/scripts/**
 !/virtual-micro/
 !/virtual-micro/**
+!/micro-bridge/
+!/micro-bridge/**
 
 # Build and IDE output
 **/bin/
 **/obj/
 **/.artifacts/
+**/node_modules/
+/micro-bridge/**/lib/
 .vs/
 *.user
 *.suo

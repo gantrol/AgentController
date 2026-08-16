@@ -1,0 +1,6 @@
+# External AgentController adapter. One row contributes both the Host bridge
+# and its browser UI bundle through package.json's dsh.client declaration.
+- insert:
+    - id: agentcontroller-deepseek-harness
+      name: '@agentcontroller/dsh-micro-bridge-deepseek-harness'
+      inject: [apiProxy, webServer, credentials]

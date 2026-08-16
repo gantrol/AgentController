@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "deepseek-one-click",
+  "displayName": "Codex Micro for DeepSeek Harness",
+  "defaultHarnessId": "deepseek-harness",
+  "bundledHarnesses": [
+    "deepseek-harness"
+  ],
+  "firstRun": {
+    "installBundledHarness": true,
+    "detectHarnessCheckout": true,
+    "startHarnessAfterInstall": true,
+    "openHarnessAfterInstall": true
+  },
+  "voice": {
+    "defaultProvider": "system",
+    "requireFirstUseTest": true,
+    "autoSubmit": false,
+    "advancedProviders": [
+      "local-qwen",
+      "remote-websocket"
+    ],
+    "localQwenStartMode": "on-demand"
+  },
+  "surface": {
+    "theme": "deepseek-soft-blue",
+    "showOnlyBundledHarnessesInitially": true
+  }
+}
