@@ -58,6 +58,10 @@ public sealed class MicroLocalizationTests
                 localization.SetLanguage(MicroLanguage.EnUs);
 
                 Assert.Equal("Always on top", window.TopmostMenuItem.Header);
+                Assert.Equal("Settings", window.SettingsMenuItem.Header);
+                Assert.Equal(
+                    "Software settings",
+                    window.OpenSoftwareSettingsMenuItem.Header);
                 Assert.Equal("Reconnect virtual HID", window.ReconnectMenuItem.Header);
                 Assert.Equal("Hide panel", window.HidePanelMenuItem.Header);
                 var tooltip = Assert.IsType<ToolTip>(window.ActivityLed.ToolTip);
@@ -80,7 +84,7 @@ public sealed class MicroLocalizationTests
                     "5-hour limit",
                     Assert.IsType<TextBlock>(quotaPanel.Children[1]).Text);
                 Assert.Contains(
-                    "Click toggles Sol/Luna",
+                    "Click switches Sol / Luna",
                     Assert.IsType<TextBlock>(quotaPanel.Children[1]).Text);
                 window.CloseForApplicationExit();
             }

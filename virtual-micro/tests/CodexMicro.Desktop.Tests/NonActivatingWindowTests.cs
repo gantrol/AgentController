@@ -41,4 +41,53 @@ public sealed class NonActivatingWindowTests
             existingStyle | NonActivatingWindow.WsExNoActivate,
             updated);
     }
+
+    [Fact]
+    public void TopmostContinuityOnlyRepairsAgainstAnotherNormalApplication()
+    {
+        Assert.True(NonActivatingWindow.ShouldReassertTopmost(
+            requestedTopmost: true,
+            targetVisible: true,
+            sameWindow: false,
+            sameProcess: false,
+            foregroundTopmost: false));
+        Assert.False(NonActivatingWindow.ShouldReassertTopmost(
+            requestedTopmost: false,
+            targetVisible: true,
+            sameWindow: false,
+            sameProcess: false,
+            foregroundTopmost: false));
+        Assert.False(NonActivatingWindow.ShouldReassertTopmost(
+            requestedTopmost: true,
+            targetVisible: false,
+            sameWindow: false,
+            sameProcess: false,
+            foregroundTopmost: false));
+        Assert.False(NonActivatingWindow.ShouldReassertTopmost(
+            requestedTopmost: true,
+            targetVisible: true,
+            sameWindow: true,
+            sameProcess: false,
+            foregroundTopmost: false));
+        Assert.False(NonActivatingWindow.ShouldReassertTopmost(
+            requestedTopmost: true,
+            targetVisible: true,
+            sameWindow: false,
+            sameProcess: true,
+            foregroundTopmost: false));
+        Assert.False(NonActivatingWindow.ShouldReassertTopmost(
+            requestedTopmost: true,
+            targetVisible: true,
+            sameWindow: false,
+            sameProcess: false,
+            foregroundTopmost: true));
+    }
+
+    [Fact]
+    public void TopmostExtendedStyleIsRecognized()
+    {
+        Assert.True(NonActivatingWindow.HasTopmostStyle(
+            NonActivatingWindow.WsExTopmost | 0x00040000L));
+        Assert.False(NonActivatingWindow.HasTopmostStyle(0x00040000L));
+    }
 }

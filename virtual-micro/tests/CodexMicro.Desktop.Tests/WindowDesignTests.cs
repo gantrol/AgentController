@@ -18,6 +18,71 @@ public sealed class WindowDesignTests
     private const int IsolatedAgentRenderSize = 166;
 
     [Fact]
+    public void PlusActionAddsAKeypadWithoutChangingTheCurrentKeypad()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                _ = Application.Current ?? new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+
+                var profile = MicroProfileSettings.CreateTransient();
+                profile.SetActiveHarness("codex");
+                string? addedHarnessId = null;
+                var window = new MicroSurfaceWindow(
+                    new MicroLocalization(MicroLanguage.ZhCn),
+                    profileSettings: profile,
+                    openHarnessInNewKeypad: harnessId =>
+                        addedHarnessId = harnessId);
+
+                window.PopulateHarnessContextMenu();
+                var deepSeekItem = window.HarnessContextMenu.Items
+                    .OfType<MenuItem>()
+                    .Single(item => Equals(item.Tag, "deepseek-harness"));
+
+                window.AddHarnessInNewKeypad(
+                    "deepseek-harness",
+                    "DeepSeek");
+                Assert.Equal("deepseek-harness", addedHarnessId);
+                Assert.Equal("codex", profile.Current.ActiveHarnessId);
+
+                // A MenuItem can still raise Click for the pointer gesture
+                // that began on its embedded "+" badge. That routed parent
+                // click must be consumed rather than switching this keypad.
+                deepSeekItem.RaiseEvent(new RoutedEventArgs(
+                    MenuItem.ClickEvent,
+                    deepSeekItem));
+                Assert.Equal("codex", profile.Current.ActiveHarnessId);
+
+                // Reopening the menu starts a new gesture, so an ordinary row
+                // click continues to switch the current keypad as before.
+                window.PopulateHarnessContextMenu();
+                deepSeekItem = window.HarnessContextMenu.Items
+                    .OfType<MenuItem>()
+                    .Single(item => Equals(item.Tag, "deepseek-harness"));
+                deepSeekItem.RaiseEvent(new RoutedEventArgs(
+                    MenuItem.ClickEvent,
+                    deepSeekItem));
+                Assert.Equal("deepseek-harness", profile.Current.ActiveHarnessId);
+                window.CloseForApplicationExit();
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(error);
+    }
+
+    [Fact]
     public void VoiceRecordingVisualUsesTheStandardCommandKeySurface()
     {
         Exception? error = null;
@@ -78,14 +143,21 @@ public sealed class WindowDesignTests
                     ShutdownMode = ShutdownMode.OnExplicitShutdown,
                 };
 
+                var profile = MicroProfileSettings.CreateTransient();
                 var window = new MicroSurfaceWindow(
-                    new MicroLocalization(MicroLanguage.ZhCn));
+                    new MicroLocalization(MicroLanguage.ZhCn),
+                    profileSettings: profile,
+                    openHarnessInNewKeypad: _ => { });
                 window.DesignSurface.Measure(new Size(590, 610));
                 window.DesignSurface.Arrange(new Rect(0, 0, 590, 610));
                 window.DesignSurface.UpdateLayout();
 
                 AssertSquare(window.AgentKey0);
                 Assert.Equal(96, window.AgentKey0.ActualWidth, 3);
+                Assert.Equal(Visibility.Collapsed, window.AgentBackGlyph.Visibility);
+                Assert.False(window.AgentBackGlyph.IsHitTestVisible);
+                Assert.Equal(0, Grid.GetRow(window.AgentBackGlyph));
+                Assert.Equal(1, Grid.GetColumn(window.AgentBackGlyph));
                 AssertSquare(window.ActionKey06);
                 AssertSquare(window.SettingsKey);
                 AssertSquare(window.ActionKey12);
@@ -106,8 +178,100 @@ public sealed class WindowDesignTests
                 Assert.Contains("Codex Micro", window.Title);
                 Assert.True(window.TopmostMenuItem.IsCheckable);
                 Assert.NotNull(window.DeviceFrame.ContextMenu);
+                Assert.Equal(2, window.SettingsMenuItem.Items.Count);
+                Assert.NotNull(window.SettingsKey.ContextMenu);
+                Assert.Equal(3, window.KnobContextMenu.Items.Count);
+                Assert.NotNull(window.ActionKey12.ContextMenu);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.CloseKeypadMenuItem.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.HarnessActionProgressRing.Visibility);
+                Assert.False(window.HarnessActionProgressRing.IsHitTestVisible);
+                Assert.Equal(76, window.HarnessActionProgressRing.Width, 3);
+                Assert.Equal(76, window.HarnessActionProgressRing.Height, 3);
+                Assert.Equal(Visibility.Collapsed, window.CodexSendBadge.Visibility);
+                Assert.False(window.CodexSendBadge.IsHitTestVisible);
+                Assert.Equal(20, window.CodexSendBadge.Width, 3);
+                Assert.Equal(20, window.CodexSendBadge.Height, 3);
+                Assert.Equal(HorizontalAlignment.Right, window.CodexSendBadge.HorizontalAlignment);
+                Assert.Equal(VerticalAlignment.Bottom, window.CodexSendBadge.VerticalAlignment);
+                Assert.NotEqual(Geometry.Empty, window.CodexSendPlane.Data);
+                Assert.Equal(3, Grid.GetRow(window.HarnessActionProgressRing));
+                Assert.Equal(3, Grid.GetColumn(window.HarnessActionProgressRing));
+                Assert.Equal(Visibility.Collapsed, window.HarnessActionStatusBadge.Visibility);
+                Assert.False(window.HarnessActionStatusBadge.IsHitTestVisible);
+                Assert.Equal(84, window.HarnessActionStatusBadge.Width, 3);
+                Assert.Equal(20, window.HarnessActionStatusBadge.Height, 3);
+                Assert.Equal(3, Grid.GetRow(window.HarnessActionStatusBadge));
+                Assert.Equal(3, Grid.GetColumn(window.HarnessActionStatusBadge));
+                window.PopulateHarnessContextMenu();
+                var harnessItems = window.HarnessContextMenu.Items
+                    .OfType<MenuItem>()
+                    .ToArray();
+                Assert.Contains(harnessItems, item =>
+                    Equals(item.Tag, "codex") && item.IsChecked);
+                Assert.Contains(harnessItems, item =>
+                    Equals(item.Tag, "deepseek-harness"));
+                Assert.All(harnessItems, item =>
+                    Assert.IsAssignableFrom<FrameworkElement>(item.Header));
+                foreach (var harnessItem in harnessItems)
+                {
+                    var header = Assert.IsType<Grid>(harnessItem.Header);
+                    Assert.Equal(34, header.Width, 3);
+                    Assert.IsType<CodexMicro.Desktop.Controls.KeycapIcon>(
+                        header.Children[0]);
+                    if (harnessItem.Tag is string)
+                    {
+                        Assert.Equal(2, header.Children.Count);
+                        var badge = Assert.IsType<Border>(header.Children[1]);
+                        Assert.Equal(16, badge.Width, 3);
+                        Assert.Equal(
+                            "+",
+                            Assert.IsType<TextBlock>(badge.Child).Text);
+                    }
+                    else
+                    {
+                        Assert.Single(header.Children);
+                    }
+                    var tooltip = Assert.IsType<ToolTip>(harnessItem.ToolTip);
+                    Assert.Equal(
+                        2,
+                        Assert.IsType<StackPanel>(tooltip.Content).Children.Count);
+                }
+                profile.SetActiveHarness("deepseek-harness");
+                Assert.Equal("DEEPSEEK", window.ActionIcon12.KeycapId);
+                Assert.Equal("DEEPSEEK", window.BrandCodexIcon.KeycapId);
+                Assert.Equal(
+                    "DEEPSEEK  /  MICRO  /  DIRECT BRIDGE",
+                    window.LeftSilkScreen.Text);
+                Assert.Equal(
+                    "DEEPSEEK  HARNESS",
+                    window.BrandWordmarkText.Text);
+                Assert.InRange(window.HarnessThemeWash.Opacity, 0.27, 0.29);
+                Assert.IsType<RadialGradientBrush>(
+                    window.HarnessThemeWash.Background);
+                profile.SetActiveHarness("codex");
+                Assert.Equal("CODEX", window.ActionIcon12.KeycapId);
+                Assert.Equal("CODEX", window.BrandCodexIcon.KeycapId);
+                Assert.Equal(
+                    "CODEX  /  MICRO  /  CRYSTAL HID",
+                    window.LeftSilkScreen.Text);
+                Assert.Equal("OPENAI  CODEX", window.BrandWordmarkText.Text);
+                Assert.Equal(0, window.HarnessThemeWash.Opacity, 3);
+                Assert.Equal(Visibility.Visible, window.ActionKey10.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.ActionKey10Split.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.ActionKey11Split.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.DialSelectionHud.Visibility);
                 Assert.Equal(250, window.DialSelectionHud.Width, 3);
+
+                window.ApplyCodexForegroundForVisualTest(isForeground: true);
+                Assert.Equal(Visibility.Visible, window.CodexSendBadge.Visibility);
+                profile.SetActiveHarness("deepseek-harness");
+                Assert.Equal(Visibility.Collapsed, window.CodexSendBadge.Visibility);
+                profile.SetActiveHarness("codex");
+                Assert.Equal(Visibility.Visible, window.CodexSendBadge.Visibility);
+                window.ApplyCodexForegroundForVisualTest(isForeground: false);
+                Assert.Equal(Visibility.Collapsed, window.CodexSendBadge.Visibility);
 
                 Assert.IsType<LinearGradientBrush>(
                     window.DeviceFrame.Background);
@@ -481,6 +645,69 @@ public sealed class WindowDesignTests
                 Assert.True(leftSilkRight < controlLeft);
                 Assert.True(rightSilkLeft > controlRight);
 
+                var deepSeekPreviewPath = Environment.GetEnvironmentVariable(
+                    "CODEX_MICRO_DEEPSEEK_PREVIEW_PATH");
+                profile.SetActiveHarness("deepseek-harness");
+                window.ApplyHarnessStateForVisualTest(new(
+                    "deepseek-harness",
+                    [
+                        new(
+                            "visual-running-session",
+                            "Running DeepSeek task",
+                            Running: true,
+                            UpdatedAt: DateTimeOffset.Now.ToUnixTimeMilliseconds()),
+                        new(
+                            "visual-idle-session",
+                            "Idle DeepSeek task",
+                            Running: false,
+                            UpdatedAt: DateTimeOffset.Now.AddMinutes(-1)
+                                .ToUnixTimeMilliseconds()),
+                    ],
+                    "visual-running-session",
+                    new(
+                        SessionList: true,
+                        SessionActivation: true,
+                        KnobSettings: true,
+                        VoiceInput: true,
+                        Actions: new HashSet<string>()),
+                    NavigationDepth: 0,
+                    new(
+                        Adapter: "ready",
+                        Browser: "connected",
+                        VoiceSetup: "ready",
+                        VoiceRuntime: "ready",
+                        VoiceMessage: "Local streaming ASR is ready."),
+                    DateTimeOffset.Now));
+                window.DesignSurface.UpdateLayout();
+                Assert.Equal(
+                    Color.FromRgb(0x30, 0x4F, 0xFE),
+                    Assert.IsType<SolidColorBrush>(
+                        window.AgentKey0.BorderBrush).Color);
+                Assert.Equal(
+                    Color.FromRgb(0x30, 0x4F, 0xFE),
+                    Assert.IsType<SolidColorBrush>(
+                        window.ActivityLed.Fill).Color);
+                if (!string.IsNullOrWhiteSpace(deepSeekPreviewPath))
+                {
+                    var deepSeekBitmap = new RenderTargetBitmap(
+                        590,
+                        610,
+                        96,
+                        96,
+                        PixelFormats.Pbgra32);
+                    deepSeekBitmap.Render(window.DesignSurface);
+                    var deepSeekEncoder = new PngBitmapEncoder();
+                    deepSeekEncoder.Frames.Add(BitmapFrame.Create(deepSeekBitmap));
+                    using var deepSeekStream = new FileStream(
+                        deepSeekPreviewPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read);
+                    deepSeekEncoder.Save(deepSeekStream);
+                }
+                profile.SetActiveHarness("codex");
+                window.ApplyCodexForegroundForVisualTest(isForeground: true);
+
                 var bitmap = new RenderTargetBitmap(
                     590,
                     610,
@@ -593,6 +820,39 @@ public sealed class WindowDesignTests
                     activeGlowBlue > inactiveGlowBlue + 12,
                     $"Active perimeter glow {activeGlowBlue} not clearly bluer " +
                     $"than inactive {inactiveGlowBlue}.");
+
+                // External Harnesses expose a running/idle bit rather than
+                // the richer Codex status palette. Running maps to the same
+                // blue thinking state and must render blue through the real
+                // XAML key template; green remains a completed transition.
+                var harnessRunningPixels = RenderIsolatedAgentKey(
+                    window.AgentKey0.Style,
+                    AgentLightingAppearance.FromHarnessSession(
+                        isRunning: true,
+                        isCurrentSession: true),
+                    out var harnessRunningBitmap);
+                var harnessRunningPreviewPath = Environment.GetEnvironmentVariable(
+                    "CODEX_MICRO_HARNESS_RUNNING_KEY_PREVIEW_PATH");
+                if (!string.IsNullOrWhiteSpace(harnessRunningPreviewPath))
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(harnessRunningBitmap));
+                    using var stream = new FileStream(
+                        harnessRunningPreviewPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read);
+                    encoder.Save(stream);
+                }
+                var harnessRunningBlue = BlueEmphasisAt(
+                    harnessRunningPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: wellSampleX,
+                    y: wellSampleY);
+                Assert.True(
+                    harnessRunningBlue > inactiveWellBlue + 35,
+                    $"Harness running well {harnessRunningBlue} is not the blue " +
+                    $"thinking state above inactive {inactiveWellBlue}.");
 
                 var currentKeyPixels = RenderIsolatedAgentKey(
                     window.AgentKey0.Style,

@@ -179,4 +179,38 @@ public sealed class AgentLightingAppearanceTests
         Assert.Equal("未分配", appearance.StatusName);
         Assert.Equal("off", appearance.EffectName);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IdleHarnessSessionRemainsDarkEvenWhenSelected(
+        bool isCurrentSession)
+    {
+        var appearance = AgentLightingAppearance.FromHarnessSession(
+            isRunning: false,
+            isCurrentSession);
+
+        Assert.False(appearance.IsActive);
+        Assert.Equal(isCurrentSession, appearance.IsCurrentSession);
+        Assert.Equal(0, appearance.DisplayOpacity);
+        Assert.Equal(0, appearance.WideGlowOpacity);
+        Assert.Equal(0, appearance.OuterGlowOpacity);
+        Assert.Equal("空闲", appearance.StatusName);
+        Assert.Equal("off", appearance.EffectName);
+    }
+
+    [Fact]
+    public void RunningHarnessSessionUsesBlueThinkingLight()
+    {
+        var appearance = AgentLightingAppearance.FromHarnessSession(
+            isRunning: true,
+            isCurrentSession: false);
+
+        Assert.True(appearance.IsActive);
+        Assert.False(appearance.IsCurrentSession);
+        Assert.Equal(Color.FromRgb(0x30, 0x4F, 0xFE), appearance.Color);
+        Assert.Equal(0.94, appearance.DisplayOpacity, 3);
+        Assert.Equal("运行中", appearance.StatusName);
+        Assert.Equal("solid", appearance.EffectName);
+    }
 }

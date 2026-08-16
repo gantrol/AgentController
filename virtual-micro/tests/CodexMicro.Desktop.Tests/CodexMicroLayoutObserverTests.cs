@@ -42,7 +42,8 @@ public sealed class CodexMicroLayoutObserverTests
         {
             try
             {
-                foreach (var keycapId in CodexKeycapCatalog.KnownIds)
+                foreach (var keycapId in CodexKeycapCatalog.KnownIds
+                             .Concat(["DEEPSEEK", "HARNESS"]))
                 {
                     var icon = new KeycapIcon
                     {
@@ -80,6 +81,8 @@ public sealed class CodexMicroLayoutObserverTests
             [desktop.codex-micro-layout]
             version = 1
             encoderMode = "reasoning"
+            voiceButtonMode = "realtime"
+            separateMicrophoneKeys = true
 
             [desktop.codex-micro-layout.slots.ACT06]
             keycapId = "BUG"
@@ -87,6 +90,7 @@ public sealed class CodexMicroLayoutObserverTests
 
             [desktop.codex-micro-layout.slots.ACT12]
             keycapId = "OAI"
+            action = { type = "skill", skillName = "review", skillPath = "C:\\skills\\review\\SKILL.md" }
 
             [desktop.codex-micro-layout.analogStick.up]
             type = "command"
@@ -96,9 +100,13 @@ public sealed class CodexMicroLayoutObserverTests
         var result = CodexMicroLayoutObserver.Parse(toml, "test");
 
         Assert.Equal("reasoning", result.EncoderMode);
+        Assert.Equal("realtime", result.VoiceButtonMode);
+        Assert.True(result.SeparateMicrophoneKeys);
         Assert.Equal("BUG", result.GetSlot("ACT06").KeycapId);
         Assert.Equal("feedback", result.GetSlot("ACT06").CommandId);
         Assert.Equal("OAI", result.GetSlot("ACT12").KeycapId);
+        Assert.Equal("skill", result.GetSlot("ACT12").Action?.Type);
+        Assert.Equal("review", result.GetSlot("ACT12").Action?.Id);
         Assert.Equal("newTask", result.AnalogActions["up"]);
         Assert.Equal("APPR", result.GetSlot("ACT07").KeycapId);
     }
