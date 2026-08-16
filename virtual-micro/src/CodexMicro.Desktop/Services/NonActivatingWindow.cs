@@ -6,6 +6,7 @@ internal static class NonActivatingWindow
 {
     internal const int WmMouseActivate = 0x0021;
     internal const int MaNoActivate = 3;
+    internal const long WsExTopmost = 0x00000008L;
     internal const long WsExNoActivate = 0x08000000L;
 
     private const int GwlExStyle = -20;
@@ -53,6 +54,60 @@ internal static class NonActivatingWindow
     internal static long AddNoActivateStyle(long extendedStyle) =>
         extendedStyle | WsExNoActivate;
 
+    internal static bool HasTopmostStyle(long extendedStyle) =>
+        (extendedStyle & WsExTopmost) != 0;
+
+    internal static bool ShouldReassertTopmost(
+        bool requestedTopmost,
+        bool targetVisible,
+        bool sameWindow,
+        bool sameProcess,
+        bool foregroundTopmost) =>
+        requestedTopmost &&
+        targetVisible &&
+        !sameWindow &&
+        !sameProcess &&
+        !foregroundTopmost;
+
+    public static IntPtr GetForegroundWindowHandle() => GetForegroundWindow();
+
+    public static bool ReassertTopmostAfterForegroundChange(
+        IntPtr windowHandle,
+        IntPtr foregroundWindow,
+        bool requestedTopmost)
+    {
+        if (windowHandle == IntPtr.Zero || foregroundWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(windowHandle, out var targetProcessId);
+        _ = GetWindowThreadProcessId(
+            foregroundWindow,
+            out var foregroundProcessId);
+        var sameProcess = targetProcessId != 0 &&
+            targetProcessId == foregroundProcessId;
+        if (!ShouldReassertTopmost(
+                requestedTopmost,
+                IsWindowVisible(windowHandle),
+                windowHandle == foregroundWindow,
+                sameProcess,
+                HasTopmostStyle(
+                    GetWindowLongPtr(foregroundWindow, GwlExStyle).ToInt64())))
+        {
+            return false;
+        }
+
+        return SetWindowPos(
+            windowHandle,
+            HwndTopmost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
     public static void ShowWithoutActivation(IntPtr windowHandle, bool topmost)
     {
         if (windowHandle == IntPtr.Zero)
@@ -80,6 +135,18 @@ internal static class NonActivatingWindow
         int width,
         int height,
         uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(
+        IntPtr windowHandle,
+        out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr windowHandle);
 
     private static IntPtr GetWindowLongPtr(IntPtr windowHandle, int index) =>
         IntPtr.Size == 8

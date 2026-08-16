@@ -92,6 +92,7 @@ internal sealed class MicroTrayIcon : IDisposable
         };
         _notifyIcon.DoubleClick += (_, _) => Toggle();
         _localization.LanguageChanged += Localization_LanguageChanged;
+        _surface.SurfacesChanged += Surface_SurfacesChanged;
         RefreshText();
     }
 
@@ -104,6 +105,7 @@ internal sealed class MicroTrayIcon : IDisposable
 
         _disposed = true;
         _localization.LanguageChanged -= Localization_LanguageChanged;
+        _surface.SurfacesChanged -= Surface_SurfacesChanged;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _menu.Dispose();
@@ -134,6 +136,9 @@ internal sealed class MicroTrayIcon : IDisposable
     }
 
     private void Localization_LanguageChanged(object? sender, EventArgs e) =>
+        RefreshText();
+
+    private void Surface_SurfacesChanged(object? sender, EventArgs e) =>
         RefreshText();
 
     private void ToggleStartup()
@@ -170,9 +175,14 @@ internal sealed class MicroTrayIcon : IDisposable
     private void RefreshText()
     {
         var english = _localization.IsEnglish;
+        var multiple = _surface.SurfaceCount > 1;
         _toggleItem.Text = _surface.IsVisible
-            ? english ? "Hide keypad" : "收起小键盘"
-            : english ? "Show keypad" : "显示小键盘";
+            ? english
+                ? multiple ? "Hide all keypads" : "Hide keypad"
+                : multiple ? "收起全部小键盘" : "收起小键盘"
+            : english
+                ? multiple ? "Show all keypads" : "Show keypad"
+                : multiple ? "显示全部小键盘" : "显示小键盘";
         _languageItem.Text = english ? "Language" : "语言";
         _startupItem.Text = english
             ? "Start with Windows"
@@ -190,8 +200,8 @@ internal sealed class MicroTrayIcon : IDisposable
         _enUsLanguageItem.Text = "English";
         _exitItem.Text = english ? "Exit" : "退出";
         _notifyIcon.Text = english
-            ? "Codex Micro keypad"
-            : "Codex Micro 小键盘";
+            ? $"Codex Micro · {_surface.SurfaceCount} keypad(s)"
+            : $"Codex Micro · {_surface.SurfaceCount} 个小键盘";
         _autoLanguageItem.Checked =
             _localization.SelectedLanguage == MicroLanguage.Auto;
         _zhCnLanguageItem.Checked =

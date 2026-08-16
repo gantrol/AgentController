@@ -96,6 +96,53 @@ internal readonly record struct AgentLightingAppearance(
             ResolveEffectName(lighting.Effect));
     }
 
+    /// <summary>
+    /// Maps a Harness session independently from selection. A recent or
+    /// selected session is navigation state, not proof that work is running,
+    /// so idle sessions must remain dark.
+    /// </summary>
+    internal static AgentLightingAppearance FromHarnessSession(
+        bool isRunning,
+        bool isCurrentSession)
+    {
+        if (!isRunning)
+        {
+            return new AgentLightingAppearance(
+                false,
+                isCurrentSession,
+                false,
+                InactiveColor,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "空闲",
+                "off");
+        }
+
+        // Follow the Micro status vocabulary used by the native Codex
+        // protocol: blue means work is actively thinking/generating, while
+        // green is reserved for a completed transition. A Harness snapshot
+        // exposes only running/idle, so it must never hold a completed-green
+        // key for the whole duration of a turn.
+        var color = Color.FromRgb(0x30, 0x4F, 0xFE);
+        return new AgentLightingAppearance(
+            true,
+            isCurrentSession,
+            false,
+            color,
+            isCurrentSession ? 1 : 0.94,
+            isCurrentSession ? 0.82 : 0.42,
+            isCurrentSession ? 0.48 : 0.22,
+            isCurrentSession ? 0.28 : 0.12,
+            isCurrentSession ? 0.52 : 0.43,
+            isCurrentSession ? 0.48 : 0.40,
+            "运行中",
+            isCurrentSession ? "selected" : "solid");
+    }
+
     internal static bool IndicatesCurrentSession(SlotLighting lighting) =>
         lighting.SlotId is >= 0 and < 6 && lighting.Effect == 4;
 

@@ -3,7 +3,15 @@ namespace CodexMicro.Desktop.Services;
 internal sealed record CodexKeycapDefinition(
     string Id,
     string Label,
-    string DefaultAction);
+    string DefaultAction,
+    string Size = "single")
+{
+    // WPF's binding engine resolves public CLR properties only. Keep these
+    // explicit presentation aliases public so the shared Codex/Harness item
+    // template never falls back to KeycapIcon's CODEX default.
+    public string IconId => Id;
+    public string DisplayText => Id;
+}
 
 internal static class CodexKeycapCatalog
 {
@@ -15,7 +23,8 @@ internal static class CodexKeycapCatalog
             ["APPR"] = new("APPR", "Approve", "approval.approve"),
             ["REJ"] = new("REJ", "Decline", "approval.decline"),
             ["SPLIT"] = new("SPLIT", "Fork chat", "forkThread"),
-            ["MIC"] = new("MIC", "Push to talk", "dictation.pushToTalk"),
+            ["MIC"] = new("MIC", "Push to talk", "dictation.pushToTalk", "double"),
+            ["MIC1"] = new("MIC1", "Microphone", "dictation.pushToTalk"),
             ["CODEX"] = new("CODEX", "Submit to Codex", "composer.submit"),
             ["BUG"] = new("BUG", "Feedback", "feedback"),
             ["OAI"] = new("OAI", "OpenAI developers", "developers.openai.com"),
@@ -29,6 +38,7 @@ internal static class CodexKeycapCatalog
             ["PLAY"] = new("PLAY", "Environment action", "environmentAction1"),
             ["GIT"] = new("GIT", "Commit", "git.commit"),
             ["BRCH"] = new("BRCH", "Branch", "toggleReviewTab"),
+            ["BRANCH"] = new("BRANCH", "Branch", "toggleReviewTab"),
             ["MRG"] = new("MRG", "Merge", "toggleReviewTab"),
             ["PR"] = new("PR", "Create pull request", "git.createPullRequest"),
             ["PAINT"] = new("PAINT", "Add photos", "composer.addPhotos"),
@@ -53,6 +63,13 @@ internal static class CodexKeycapCatalog
     public static bool IsKnown(string id) => Definitions.ContainsKey(id);
 
     public static IEnumerable<string> KnownIds => Definitions.Keys;
+
+    public static IReadOnlyList<CodexKeycapDefinition> All =>
+        [.. Definitions.Values];
+
+    public static IReadOnlyList<CodexKeycapDefinition> ForSlot(string slotId) =>
+        [.. Definitions.Values.Where(definition =>
+            definition.Size == (slotId == "ACT10_ACT11" ? "double" : "single"))];
 
     public static CodexKeycapDefinition Get(string id) =>
         Definitions.TryGetValue(id, out var definition)

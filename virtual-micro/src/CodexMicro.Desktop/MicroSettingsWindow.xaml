@@ -1,0 +1,1266 @@
+<Window x:Class="CodexMicro.Desktop.MicroSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Codex Micro · Software settings"
+        Width="920"
+        Height="760"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="MicroSurfaceResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <SolidColorBrush x:Key="SettingsSurface" Color="#FFFDFCFA" />
+            <SolidColorBrush x:Key="SettingsCard" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SettingsLine" Color="#FFE7E5E1" />
+            <SolidColorBrush x:Key="SettingsMuted" Color="#FF777A7D" />
+            <SolidColorBrush x:Key="SettingsAccent" Color="#FF7284E8" />
+
+            <Style x:Key="HeadingText" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+                <Setter Property="FontSize" Value="21" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="#FF202224" />
+            </Style>
+
+            <Style x:Key="OptionTitle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="#FF202224" />
+            </Style>
+
+            <Style x:Key="OptionDetail" TargetType="TextBlock">
+                <Setter Property="Margin" Value="0,4,0,0" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="Foreground" Value="{StaticResource SettingsMuted}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <Style x:Key="QuietButton" TargetType="Button">
+                <Setter Property="Foreground" Value="#FF55595D" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="10,7" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Surface"
+                                    Padding="{TemplateBinding Padding}"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="9">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Surface"
+                                            Property="Background"
+                                            Value="#0C202224" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Surface"
+                                            Property="Background"
+                                            Value="#16202224" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ActionButton" TargetType="Button"
+                   BasedOn="{StaticResource QuietButton}">
+                <Setter Property="MinWidth" Value="132" />
+                <Setter Property="Padding" Value="17,10" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="#FF25282B" />
+                <Setter Property="Background" Value="#FFF6F5F2" />
+                <Setter Property="BorderBrush" Value="#FFE3E1DC" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Surface"
+                                    Padding="{TemplateBinding Padding}"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="12">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Surface"
+                                            Property="Background"
+                                            Value="#FFFFFFFF" />
+                                    <Setter TargetName="Surface"
+                                            Property="BorderBrush"
+                                            Value="#FFC9C6BF" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Surface"
+                                            Property="Background"
+                                            Value="#FFECEAE5" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Surface"
+                                            Property="Opacity"
+                                            Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PillComboBoxItem" TargetType="ComboBoxItem">
+                <Setter Property="Padding" Value="12,8" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border x:Name="ItemSurface"
+                                    Padding="{TemplateBinding Padding}"
+                                    Background="Transparent"
+                                    CornerRadius="8">
+                                <ContentPresenter />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="ItemSurface"
+                                            Property="Background"
+                                            Value="#127284E8" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="ItemSurface"
+                                            Property="Background"
+                                            Value="#1E7284E8" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PillComboBox" TargetType="ComboBox">
+                <Setter Property="MinWidth" Value="205" />
+                <Setter Property="Height" Value="42" />
+                <Setter Property="Padding" Value="15,0,38,0" />
+                <Setter Property="Background" Value="#FFF8F7F5" />
+                <Setter Property="BorderBrush" Value="#FFE3E1DC" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Foreground" Value="#FF25282B" />
+                <Setter Property="ItemContainerStyle" Value="{StaticResource PillComboBoxItem}" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <ToggleButton x:Name="DropDownToggle"
+                                              Focusable="False"
+                                              ClickMode="Press"
+                                              Background="Transparent"
+                                              BorderThickness="0"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border x:Name="ComboSurface"
+                                                    Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    CornerRadius="13">
+                                                <Grid>
+                                                    <ContentPresenter Margin="15,0,38,0"
+                                                                      HorizontalAlignment="Left"
+                                                                      VerticalAlignment="Center"
+                                                                      Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                      ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}" />
+                                                    <Path Width="10"
+                                                          Height="6"
+                                                          Margin="0,0,15,0"
+                                                          HorizontalAlignment="Right"
+                                                          VerticalAlignment="Center"
+                                                          Data="M 1,1 L 5,5 L 9,1"
+                                                          Stroke="#FF70757A"
+                                                          StrokeThickness="1.6"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round" />
+                                                </Grid>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="ComboSurface"
+                                                            Property="BorderBrush"
+                                                            Value="#FFC9C6BF" />
+                                                    <Setter TargetName="ComboSurface"
+                                                            Property="Background"
+                                                            Value="#FFFFFFFF" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <Popup x:Name="PART_Popup"
+                                       Placement="Bottom"
+                                       AllowsTransparency="True"
+                                       Focusable="False"
+                                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                                       PopupAnimation="Fade">
+                                    <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                            Margin="0,5,0,0"
+                                            Padding="5"
+                                            Background="#FFFEFDFB"
+                                            BorderBrush="#FFDAD7D1"
+                                            BorderThickness="1"
+                                            CornerRadius="12">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="16"
+                                                              Direction="270"
+                                                              ShadowDepth="4"
+                                                              Opacity="0.22"
+                                                              Color="#FF33373A" />
+                                        </Border.Effect>
+                                        <ScrollViewer MaxHeight="250">
+                                            <ItemsPresenter />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="SettingsTextBox" TargetType="TextBox">
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="360" />
+                <Setter Property="Padding" Value="13,9" />
+                <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="Foreground" Value="#FF25282B" />
+                <Setter Property="Background" Value="#FFF8F7F5" />
+                <Setter Property="BorderBrush" Value="#FFE3E1DC" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border x:Name="TextSurface"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="11">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Margin="13,0"
+                                              VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="TextSurface"
+                                            Property="BorderBrush"
+                                            Value="#FF91A1F2" />
+                                    <Setter TargetName="TextSurface"
+                                            Property="Background"
+                                            Value="#FFFFFFFF" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PreviewSlotButton" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="2" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Outline"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="18">
+                                <Grid>
+                                    <ContentPresenter />
+                                    <Border x:Name="EditBadge"
+                                            Width="25"
+                                            Height="25"
+                                            Margin="0,6,6,0"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Background="#EEFFFFFF"
+                                            BorderBrush="#FFD3D9F8"
+                                            BorderThickness="1"
+                                            CornerRadius="13"
+                                            Opacity="0">
+                                        <Path Width="11"
+                                              Height="11"
+                                              Data="M 1,10 L 3.5,9.5 L 10,3 L 8,1 L 1.5,7.5 Z"
+                                              Fill="#FF6577DA" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Outline" Property="Background" Value="#0D7284E8" />
+                                    <Setter TargetName="Outline" Property="BorderBrush" Value="#B87284E8" />
+                                    <Setter TargetName="EditBadge" Property="Opacity" Value="1" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Outline" Property="Background" Value="#1B7284E8" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="SwitchToggle" TargetType="CheckBox">
+                <Setter Property="Width" Value="48" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <Border x:Name="Track"
+                                    Width="48"
+                                    Height="28"
+                                    Background="#FFE4E5E7"
+                                    CornerRadius="14">
+                                <Ellipse x:Name="Thumb"
+                                         Width="22"
+                                         Height="22"
+                                         Margin="3"
+                                         HorizontalAlignment="Left"
+                                         Fill="#FFFFFFFF">
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect BlurRadius="4"
+                                                          Direction="270"
+                                                          ShadowDepth="1"
+                                                          Opacity="0.24" />
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Track" Property="Background" Value="#FF7284E8" />
+                                    <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Track" Property="Opacity" Value="0.45" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Border x:Name="SettingsChrome"
+                Background="{StaticResource SettingsSurface}"
+                BorderBrush="#FFF1EFEB"
+                BorderThickness="1"
+                CornerRadius="24">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="28"
+                                  Direction="270"
+                                  ShadowDepth="8"
+                                  Opacity="0.24"
+                                  Color="#FF42464A" />
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="72" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="TitleBar"
+                      Margin="28,0,20,0"
+                      MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="WindowTitleText"
+                                       FontFamily="Segoe UI Variable Display, Segoe UI"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="#FF202224"
+                                       Text="Micro 软件设置" />
+                            <Border Margin="10,0,0,0"
+                                    Padding="8,3"
+                                    VerticalAlignment="Center"
+                                    Background="#137284E8"
+                                    CornerRadius="8">
+                                <TextBlock x:Name="LocalBadgeText"
+                                           FontSize="10.5"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource SettingsAccent}"
+                                           Text="本机扩展" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="WindowSubtitleText"
+                                   Margin="0,4,0,0"
+                                   FontSize="11.5"
+                                   Foreground="{StaticResource SettingsMuted}"
+                                   Text="配置小键盘软件层；不会改写 Codex 的全局默认模型。" />
+                    </StackPanel>
+                    <Button x:Name="CloseButton"
+                            Grid.Column="1"
+                            Width="38"
+                            Height="38"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource QuietButton}"
+                            Click="CloseButton_Click"
+                            AutomationProperties.Name="关闭设置">
+                        <Path Width="12"
+                              Height="12"
+                              Data="M 1,1 L 11,11 M 11,1 L 1,11"
+                              Stroke="#FF5E6266"
+                              StrokeThickness="1.6"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" />
+                    </Button>
+                </Grid>
+
+                <ScrollViewer x:Name="SettingsScrollViewer"
+                              Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="30,10,30,34">
+                        <Grid>
+                            <TextBlock x:Name="LayoutHeadingText"
+                                       Style="{StaticResource HeadingText}"
+                                       Text="Layout" />
+                            <Button x:Name="ResetButton"
+                                    HorizontalAlignment="Right"
+                                    Style="{StaticResource QuietButton}"
+                                    Click="ResetButton_Click"
+                                    Content="恢复扩展默认值" />
+                        </Grid>
+
+                        <Border x:Name="LayoutCard"
+                                Height="375"
+                                Margin="0,18,0,0"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <Grid>
+                                <!-- The preview is the running surface itself. The transparent
+                                     overlays only add editing hit targets on top of the real UI. -->
+                                <Grid x:Name="LiveMicroPreview"
+                                      Width="342"
+                                      Height="353.5"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      RenderOptions.BitmapScalingMode="HighQuality"
+                                      SnapsToDevicePixels="True">
+                                    <Rectangle x:Name="LiveMicroPreviewImage"
+                                               IsHitTestVisible="False">
+                                        <Rectangle.Fill>
+                                            <VisualBrush x:Name="LiveMicroPreviewBrush"
+                                                         AlignmentX="Center"
+                                                         AlignmentY="Center"
+                                                         Stretch="Uniform" />
+                                        </Rectangle.Fill>
+                                    </Rectangle>
+                                    <Viewbox Stretch="Uniform">
+                                        <Canvas Width="590" Height="610">
+                                            <Button Width="96" Height="96" Canvas.Left="88" Canvas.Top="310"
+                                                    Tag="ACT06" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT06" />
+                                            <Button Width="96" Height="96" Canvas.Left="194" Canvas.Top="310"
+                                                    Tag="ACT07" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT07" />
+                                            <Button Width="96" Height="96" Canvas.Left="300" Canvas.Top="310"
+                                                    Tag="ACT08" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT08" />
+                                            <Button Width="96" Height="96" Canvas.Left="406" Canvas.Top="310"
+                                                    Tag="ACT09" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT09" />
+                                            <Button x:Name="EditCombinedMicrophoneButton"
+                                                    Width="202" Height="96" Canvas.Left="194" Canvas.Top="416"
+                                                    Tag="ACT10_ACT11" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT10 / ACT11" />
+                                            <Button x:Name="EditMicrophone1Button"
+                                                    Width="96" Height="96" Canvas.Left="194" Canvas.Top="416"
+                                                    Tag="ACT10" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT10"
+                                                    Visibility="Collapsed" />
+                                            <Button x:Name="EditMicrophone2Button"
+                                                    Width="96" Height="96" Canvas.Left="300" Canvas.Top="416"
+                                                    Tag="ACT11" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT11"
+                                                    Visibility="Collapsed" />
+                                            <Button Width="96" Height="96" Canvas.Left="406" Canvas.Top="416"
+                                                    Tag="ACT12" Style="{StaticResource PreviewSlotButton}"
+                                                    Click="PreviewSlotButton_Click" ToolTip="Edit ACT12" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
+
+                                <Border Margin="0,0,30,28"
+                                        Padding="10,5"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Background="#FFF4F6FF"
+                                        BorderBrush="#FFDCE1FF"
+                                        BorderThickness="1"
+                                        CornerRadius="9">
+                                    <TextBlock x:Name="PreviewHintText"
+                                               FontSize="11"
+                                               Foreground="#FF5F6FC8"
+                                               Text="悬停并点击键帽进行编辑" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock x:Name="OptionsHeadingText"
+                                   Margin="0,30,0,0"
+                                   Style="{StaticResource HeadingText}"
+                                   Text="Options" />
+
+                        <Border x:Name="OptionsCard"
+                                Margin="0,18,0,0"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <StackPanel Margin="24,8">
+                                <Grid x:Name="AgentKeysOptionRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="AgentKeysTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Agent keys" />
+                                        <TextBlock x:Name="AgentKeysDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Choose what the six agent keys follow or trigger" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="AgentSourceCombo"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="AgentSourceCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="KnobOptionRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="KnobTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Knob" />
+                                        <TextBlock x:Name="KnobDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Choose what turning the knob controls" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="KnobModeCombo"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="KnobModeCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="JoystickOptionRow"
+                                      MinHeight="78"
+                                      Visibility="Collapsed">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="JoystickTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Joystick" />
+                                        <TextBlock x:Name="JoystickDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Configure four native Harness directions" />
+                                    </StackPanel>
+                                    <Button x:Name="JoystickMappingButton"
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource ActionButton}"
+                                            Content="Directions"
+                                            Click="JoystickMappingButton_Click" />
+                                </Grid>
+                                <Border x:Name="JoystickOptionSeparator"
+                                        Height="1"
+                                        Background="{StaticResource SettingsLine}"
+                                        Visibility="Collapsed" />
+                                <Grid x:Name="MicrophoneOptionRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="MicrophoneTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Microphone key" />
+                                        <TextBlock x:Name="MicrophoneDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Choose how the microphone key works" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="MicrophoneModeCombo"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="MicrophoneModeCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="SeparateMicrophonesOptionRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="SeparateMicrophonesTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Use separate microphone keys" />
+                                        <TextBlock x:Name="SeparateMicrophonesDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Map the two switches beneath the wide key separately" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="SeparateMicrophonesToggle"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource SwitchToggle}"
+                                              Checked="SeparateMicrophonesToggle_Changed"
+                                              Unchecked="SeparateMicrophonesToggle_Changed" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="SingleTapOptionRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="SingleTapTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Focus Codex with a single tap" />
+                                        <TextBlock x:Name="SingleTapDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Open the assigned task and focus Codex with one tap instead of two" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="SingleTapToggle"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource SwitchToggle}"
+                                              Checked="SingleTapToggle_Changed"
+                                              Unchecked="SingleTapToggle_Changed" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="ExtensionsHeadingText"
+                                   Margin="0,30,0,0"
+                                   Style="{StaticResource HeadingText}"
+                                   Text="Extensions" />
+
+                        <Border x:Name="ExtensionsCard"
+                                Margin="0,18,0,0"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <StackPanel Margin="24,8">
+                                <Grid x:Name="QuickModelARow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="QuickModelATitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Quick model A" />
+                                        <TextBlock x:Name="QuickModelADetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="First model in the lower-left quota knob pair" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="QuickModelACombo"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="QuickModelACombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="QuickModelBRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="QuickModelBTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Quick model B" />
+                                        <TextBlock x:Name="QuickModelBDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Second model in the lower-left quota knob pair" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="QuickModelBCombo"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="QuickModelBCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="HarnessOptionRow" MinHeight="88">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Codex key target" />
+                                        <TextBlock x:Name="HarnessDetailText"
+                                                   MaxWidth="490"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Select Codex, DeepSeek Harness, or another registered direct adapter" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="HarnessCombo"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessCombo_SelectionChanged" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="HarnessManagementHeadingText"
+                                   Margin="0,30,0,0"
+                                   Style="{StaticResource HeadingText}"
+                                   Text="Harness" />
+
+                        <Border x:Name="HarnessManagementCard"
+                                Margin="0,18,0,0"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <StackPanel Margin="24,8">
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessServiceTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Harness service" />
+                                        <TextBlock x:Name="HarnessServiceDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Start when offline; focus when running" />
+                                    </StackPanel>
+                                    <Button x:Name="ManageHarnessButton"
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource ActionButton}"
+                                            Content="Configure"
+                                            Click="ManageHarnessButton_Click" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessControlUriTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="WSL control URL" />
+                                        <TextBlock x:Name="HarnessControlUriDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Loopback HTTP endpoint; preferred over the pipe when set" />
+                                    </StackPanel>
+                                    <TextBox x:Name="HarnessControlUriTextBox"
+                                             Grid.Column="1"
+                                             Style="{StaticResource SettingsTextBox}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessVoiceTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Voice input" />
+                                        <TextBlock x:Name="HarnessVoiceDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Local Qwen, system speech, or remote streaming API" />
+                                    </StackPanel>
+                                    <Button x:Name="ConfigureHarnessVoiceButton"
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource ActionButton}"
+                                            Content="Open plugin settings"
+                                            Click="ConfigureHarnessVoiceButton_Click" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="HarnessAdapterHeadingText"
+                                   Margin="0,30,0,0"
+                                   Style="{StaticResource HeadingText}"
+                                   Text="Harness adapter" />
+
+                        <Border x:Name="HarnessAdapterCard"
+                                Margin="0,18,0,0"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <StackPanel Margin="24,8">
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessPipeTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Adapter pipe" />
+                                        <TextBlock x:Name="HarnessPipeDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Versioned local direct-plugin endpoint" />
+                                    </StackPanel>
+                                    <TextBox x:Name="HarnessPipeNameTextBox"
+                                             Grid.Column="1"
+                                             Style="{StaticResource SettingsTextBox}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessExecutableTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Executable" />
+                                        <TextBlock x:Name="HarnessExecutableDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Started directly without a command shell" />
+                                    </StackPanel>
+                                    <TextBox x:Name="HarnessExecutableTextBox"
+                                             Grid.Column="1"
+                                             Style="{StaticResource SettingsTextBox}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessArgumentsTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Arguments" />
+                                        <TextBlock x:Name="HarnessArgumentsDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Arguments passed to the executable" />
+                                    </StackPanel>
+                                    <TextBox x:Name="HarnessArgumentsTextBox"
+                                             Grid.Column="1"
+                                             Style="{StaticResource SettingsTextBox}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessWorkingDirectoryTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Working directory" />
+                                        <TextBlock x:Name="HarnessWorkingDirectoryDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="Project directory used by the Harness process" />
+                                    </StackPanel>
+                                    <TextBox x:Name="HarnessWorkingDirectoryTextBox"
+                                             Grid.Column="1"
+                                             Style="{StaticResource SettingsTextBox}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,28,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="HarnessAutoStartTitleText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="Start when offline" />
+                                        <TextBlock x:Name="HarnessAutoStartDetailText"
+                                                   Style="{StaticResource OptionDetail}"
+                                                   Text="The Harness button starts this process when its adapter is unavailable" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <TextBox x:Name="HarnessReadyTimeoutTextBox"
+                                                 Width="84"
+                                                 MinWidth="84"
+                                                 Margin="0,0,14,0"
+                                                 Style="{StaticResource SettingsTextBox}" />
+                                        <TextBlock x:Name="HarnessReadyTimeoutUnitText"
+                                                   Margin="-5,0,15,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource SettingsMuted}"
+                                                   Text="ms" />
+                                        <CheckBox x:Name="HarnessAutoStartToggle"
+                                                  Style="{StaticResource SwitchToggle}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="74">
+                                    <TextBlock x:Name="HarnessLaunchStatusText"
+                                               MaxWidth="470"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionDetail}"
+                                               Text="Settings are saved per Harness." />
+                                    <StackPanel HorizontalAlignment="Right"
+                                                VerticalAlignment="Center"
+                                                Orientation="Horizontal">
+                                        <Button x:Name="SaveHarnessButton"
+                                                Margin="0,0,10,0"
+                                                Style="{StaticResource ActionButton}"
+                                                Click="SaveHarnessButton_Click"
+                                                Content="Save" />
+                                        <Button x:Name="OpenHarnessButton"
+                                                Style="{StaticResource ActionButton}"
+                                                Click="OpenHarnessButton_Click"
+                                                Content="Open Harness" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="HarnessKeyMapHeadingText"
+                                   Margin="0,30,0,0"
+                                   Style="{StaticResource HeadingText}"
+                                   Text="Harness key map" />
+
+                        <TextBlock x:Name="HarnessKeyMapDetailText"
+                                   Margin="0,7,0,0"
+                                   Style="{StaticResource OptionDetail}"
+                                   Text="Mappings are stored independently for this Harness." />
+
+                        <Border x:Name="HarnessKeyMapCard"
+                                Margin="0,18,0,0"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <StackPanel Margin="24,8">
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessAgentMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="Agent keys ×6" />
+                                    <TextBlock x:Name="HarnessAgentMapValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionDetail}"
+                                               Text="Recent Harness sessions" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessAction06MapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT06 · Lightning" />
+                                    <ComboBox x:Name="HarnessAction06Combo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT06"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessAction07MapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT07 · Approve" />
+                                    <ComboBox x:Name="HarnessAction07Combo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT07"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessAction08MapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT08 · Reject" />
+                                    <ComboBox x:Name="HarnessAction08Combo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT08"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessAction09MapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT09 · Fork" />
+                                    <ComboBox x:Name="HarnessAction09Combo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT09"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessVoiceWideMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT10 + ACT11 · Wide key" />
+                                    <ComboBox x:Name="HarnessVoiceWideCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT10_ACT11"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessVoiceLeftMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT10 · Split key" />
+                                    <ComboBox x:Name="HarnessVoiceLeftCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT10"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessVoiceRightMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT11 · Split key" />
+                                    <ComboBox x:Name="HarnessVoiceRightCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="ACT11"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessJoystickUpMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="Joystick · Up" />
+                                    <ComboBox x:Name="HarnessJoystickUpCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="JOY_UP"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessJoystickDownMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="Joystick · Down" />
+                                    <ComboBox x:Name="HarnessJoystickDownCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="JOY_DOWN"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessJoystickLeftMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="Joystick · Left" />
+                                    <ComboBox x:Name="HarnessJoystickLeftCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="JOY_LEFT"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessJoystickRightMapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="Joystick · Right" />
+                                    <ComboBox x:Name="HarnessJoystickRightCombo"
+                                              Grid.Column="1"
+                                              Width="270"
+                                              Tag="JOY_RIGHT"
+                                              Style="{StaticResource PillComboBox}"
+                                              SelectionChanged="HarnessKeyMapCombo_SelectionChanged" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource SettingsLine}" />
+                                <Grid MinHeight="64">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="HarnessAction12MapTitleText"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="ACT12 · Harness logo" />
+                                    <TextBlock x:Name="HarnessAction12MapValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionDetail}"
+                                               Text="Open or focus Harness" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="DiagnosticsHeadingText"
+                                   Margin="0,30,0,0"
+                                   Style="{StaticResource HeadingText}"
+                                   Text="Connection" />
+
+                        <Border x:Name="DiagnosticsCard"
+                                Margin="0,18,0,0"
+                                Padding="24,18"
+                                Background="{StaticResource SettingsCard}"
+                                BorderBrush="{StaticResource SettingsLine}"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse x:Name="ConnectionStatusDot"
+                                                 Width="8" Height="8"
+                                                 Margin="0,0,9,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#FFB8B98B" />
+                                        <TextBlock x:Name="ConnectionStatusText"
+                                                   Style="{StaticResource OptionTitle}"
+                                                   Text="正在检查虚拟 HID" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="SaveStatusText"
+                                               Margin="17,5,0,0"
+                                               FontSize="11.5"
+                                               Foreground="{StaticResource SettingsMuted}"
+                                               Text="设置自动保存在本机。" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1"
+                                            Margin="24,0,0,0"
+                                            Orientation="Horizontal">
+                                    <Button x:Name="OpenOfficialSettingsButton"
+                                            Margin="0,0,10,0"
+                                            Style="{StaticResource ActionButton}"
+                                            Click="OpenOfficialSettingsButton_Click"
+                                            Content="官方 Micro 设置" />
+                                    <Button x:Name="ReconnectButton"
+                                            Style="{StaticResource ActionButton}"
+                                            Click="ReconnectButton_Click"
+                                            Content="重新连接" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

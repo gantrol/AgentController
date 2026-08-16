@@ -4,15 +4,32 @@ using System.Text.RegularExpressions;
 
 namespace CodexMicro.Desktop.Services;
 
+internal sealed record CodexMicroActionBinding(
+    string Type,
+    string Id,
+    string? SkillPath = null)
+{
+    public string DisplayValue => Type == "skill" ? $"Skill · {Id}" : Id;
+}
+
 internal sealed record CodexMicroSlotBinding(
     string KeycapId,
-    string? CommandId);
+    string? CommandId,
+    CodexMicroActionBinding? Action = null)
+{
+    public string ResolvedAction =>
+        Action?.DisplayValue ??
+        CommandId ??
+        CodexKeycapCatalog.Get(KeycapId).DefaultAction;
+}
 
 internal sealed record CodexMicroLayoutSnapshot(
     IReadOnlyDictionary<string, CodexMicroSlotBinding> Slots,
     string EncoderMode,
     IReadOnlyDictionary<string, string> AnalogActions,
-    string Source)
+    string Source,
+    string VoiceButtonMode = "push-to-talk",
+    bool SeparateMicrophoneKeys = false)
 {
     public CodexMicroSlotBinding GetSlot(string slotId) =>
         Slots.TryGetValue(slotId, out var slot)
@@ -22,8 +39,9 @@ internal sealed record CodexMicroLayoutSnapshot(
 
 /// <summary>
 /// Observes the same persisted setting used by the Codex settings surface.
-/// This is deliberately read-only: Codex remains the sole owner/writer of
-/// ~/.codex/config.toml and the simulator only mirrors keycap presentation.
+/// <see cref="CodexMicroConfigWriter"/> performs narrowly scoped, atomic
+/// updates to that authoritative file; this observer mirrors every external or
+/// in-app change back into the Micro surface.
 /// </summary>
 internal sealed partial class CodexMicroLayoutObserver : IDisposable
 {
@@ -35,6 +53,8 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
             ["ACT07"] = new("APPR", null),
             ["ACT08"] = new("REJ", null),
             ["ACT09"] = new("SPLIT", null),
+            ["ACT10"] = new("MIC1", null),
+            ["ACT11"] = new("EMPT1", null),
             ["ACT10_ACT11"] = new("MIC", null),
             ["ACT12"] = new("CODEX", null),
         };
@@ -44,12 +64,18 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
         "ACT07",
         "ACT08",
         "ACT09",
+        "ACT10",
+        "ACT11",
         "ACT10_ACT11",
         "ACT12",
     ];
 
     private static readonly HashSet<string> EncoderModes = new(
-        ["composer-navigation", "reasoning"],
+        ["composer-navigation", "reasoning", "conversation-scroll", "custom"],
+        StringComparer.Ordinal);
+
+    private static readonly HashSet<string> VoiceButtonModes = new(
+        ["push-to-talk", "realtime"],
         StringComparer.Ordinal);
 
     private readonly string _configPath;
@@ -73,6 +99,8 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
     public CodexMicroLayoutSnapshot Current { get; private set; }
 
     public string ConfigPath => _configPath;
+
+    internal void ReloadNow() => Reload();
 
     public void Start()
     {
@@ -131,6 +159,8 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
             StringComparer.Ordinal);
         var analog = new Dictionary<string, string>(StringComparer.Ordinal);
         var encoderMode = "composer-navigation";
+        var voiceButtonMode = "push-to-talk";
+        var separateMicrophoneKeys = false;
         string[] section = [];
 
         foreach (var rawLine in text.Split(['\r', '\n']))
@@ -160,6 +190,17 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
                 {
                     encoderMode = parsedMode;
                 }
+                else if (key == "voiceButtonMode" &&
+                    TryReadString(value, out var parsedVoiceMode) &&
+                    VoiceButtonModes.Contains(parsedVoiceMode))
+                {
+                    voiceButtonMode = parsedVoiceMode;
+                }
+                else if (key == "separateMicrophoneKeys" &&
+                    bool.TryParse(value.Trim().TrimEnd(','), out var parsedSplit))
+                {
+                    separateMicrophoneKeys = parsedSplit;
+                }
 
                 continue;
             }
@@ -177,6 +218,11 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
                 else if (key == "commandId" && TryReadString(value, out var commandId))
                 {
                     slots[section[3]] = binding with { CommandId = commandId };
+                }
+                else if (key == "action" &&
+                    TryReadInlineAction(value, out var action))
+                {
+                    slots[section[3]] = binding with { Action = action };
                 }
 
                 continue;
@@ -224,7 +270,13 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
             encoderMode = inlineMode;
         }
 
-        return new CodexMicroLayoutSnapshot(slots, encoderMode, analog, source);
+        return new CodexMicroLayoutSnapshot(
+            slots,
+            encoderMode,
+            analog,
+            source,
+            voiceButtonMode,
+            separateMicrophoneKeys);
     }
 
     private void ConfigChanged(object sender, FileSystemEventArgs e) =>
@@ -299,6 +351,8 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
         CodexMicroLayoutSnapshot left,
         CodexMicroLayoutSnapshot right) =>
         left.EncoderMode == right.EncoderMode &&
+        left.VoiceButtonMode == right.VoiceButtonMode &&
+        left.SeparateMicrophoneKeys == right.SeparateMicrophoneKeys &&
         left.Slots.Count == right.Slots.Count &&
         left.Slots.All(item =>
             right.Slots.TryGetValue(item.Key, out var value) && value == item.Value) &&
@@ -416,6 +470,41 @@ internal sealed partial class CodexMicroLayoutObserver : IDisposable
         {
             return false;
         }
+    }
+
+    private static bool TryReadInlineAction(
+        string text,
+        out CodexMicroActionBinding action)
+    {
+        action = default!;
+        var body = text.Trim().TrimEnd(',');
+        if (body.Length < 2 || body[0] != '{' || body[^1] != '}')
+        {
+            return false;
+        }
+
+        body = body[1..^1];
+        if (!TryFindProperty(body, "type", out var type))
+        {
+            return false;
+        }
+
+        if (type == "command" &&
+            TryFindProperty(body, "commandId", out var commandId))
+        {
+            action = new("command", commandId);
+            return true;
+        }
+
+        if (type == "skill" &&
+            TryFindProperty(body, "skillName", out var skillName) &&
+            TryFindProperty(body, "skillPath", out var skillPath))
+        {
+            action = new("skill", skillName, skillPath);
+            return true;
+        }
+
+        return false;
     }
 
     private static string StripComment(string line)

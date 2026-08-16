@@ -26,6 +26,20 @@ internal static class CodexWindowActivator
         return handle != IntPtr.Zero;
     }
 
+    internal static bool IsForeground(string? packageRoot = null)
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero ||
+            !IsWindowVisible(foreground) ||
+            IsIconic(foreground))
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(foreground, out var processId);
+        return processId != 0 && IsCodexProcess(processId, packageRoot);
+    }
+
     public static bool TryActivate(string? packageRoot)
     {
         var candidates = FindCandidates(packageRoot);

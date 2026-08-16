@@ -15,6 +15,14 @@
              Link="MicroSurfaceWindow.xaml.cs">
       <DependentUpon>MicroSurfaceWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="..\CodexMicro.Desktop\MicroSettingsWindow.xaml.cs"
+             Link="MicroSettingsWindow.xaml.cs">
+      <DependentUpon>MicroSettingsWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="..\CodexMicro.Desktop\KeycapEditorWindow.xaml.cs"
+             Link="KeycapEditorWindow.xaml.cs">
+      <DependentUpon>KeycapEditorWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="..\CodexMicro.Desktop\Controls\*.cs"
              Link="Controls\%(Filename)%(Extension)" />
     <Compile Include="..\CodexMicro.Desktop\Services\*.cs"
@@ -24,11 +32,27 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="..\CodexMicro.Desktop\MicroSettingsWindow.xaml"
+          Link="MicroSettingsWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="..\CodexMicro.Desktop\KeycapEditorWindow.xaml"
+          Link="KeycapEditorWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="..\CodexMicro.Desktop\App.xaml"
           Link="MicroSurfaceResources.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <!-- These XAML files live outside this project directory, so dotnet-watch
+         needs them listed explicitly for reliable Dev-mode restarts. -->
+    <Watch Include="..\CodexMicro.Desktop\MainWindow.xaml" />
+    <Watch Include="..\CodexMicro.Desktop\MicroSettingsWindow.xaml" />
+    <Watch Include="..\CodexMicro.Desktop\KeycapEditorWindow.xaml" />
+    <Watch Include="..\CodexMicro.Desktop\App.xaml" />
   </ItemGroup>
 
   <ItemGroup>

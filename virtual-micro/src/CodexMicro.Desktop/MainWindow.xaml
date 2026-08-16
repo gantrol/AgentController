@@ -69,12 +69,25 @@
                                       IsCheckable="True"
                                       Click="TopmostMenuItem_Click" />
                             <Separator />
+                            <MenuItem x:Name="SettingsMenuItem"
+                                      Header="设置">
+                                <MenuItem x:Name="OpenSoftwareSettingsMenuItem"
+                                          Header="软件设置"
+                                          Click="OpenSoftwareSettingsMenuItem_Click" />
+                                <MenuItem x:Name="OpenOfficialSettingsMenuItem"
+                                          Header="Codex Micro 官方设置"
+                                          Click="OpenOfficialSettingsMenuItem_Click" />
+                            </MenuItem>
                             <MenuItem x:Name="ReconnectMenuItem"
                                       Header="重新连接虚拟 HID"
                                       Click="ReconnectMenuItem_Click" />
                             <MenuItem x:Name="HidePanelMenuItem"
                                       Header="隐藏面板"
                                       Click="ExitMenuItem_Click" />
+                            <MenuItem x:Name="CloseKeypadMenuItem"
+                                      Header="关闭此小键盘"
+                                      Click="CloseKeypadMenuItem_Click"
+                                      Visibility="Collapsed" />
                         </ContextMenu>
                     </Border.ContextMenu>
                     <Border.Effect>
@@ -130,6 +143,23 @@
                                     <GradientStop Color="#E9F1F5F2" Offset="0.82" />
                                     <GradientStop Color="#E3E1EAE8" Offset="1" />
                                 </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="HarnessThemeWash"
+                                Margin="18"
+                                CornerRadius="50"
+                                Opacity="0"
+                                IsHitTestVisible="False"
+                                Panel.ZIndex="1">
+                            <Border.Background>
+                                <RadialGradientBrush Center="0.52,0.44"
+                                                     GradientOrigin="0.52,0.44"
+                                                     RadiusX="0.78"
+                                                     RadiusY="0.72">
+                                    <GradientStop Color="#0047D9FF" Offset="0" />
+                                    <GradientStop Color="#003A8DFF" Offset="0.62" />
+                                    <GradientStop Color="#000D4EFF" Offset="1" />
+                                </RadialGradientBrush>
                             </Border.Background>
                         </Border>
                         <Border x:Name="CrystalLowerRefraction"
@@ -190,7 +220,8 @@
                                                  Margin="0,0,6,0"
                                                  KeycapId="CODEX"
                                                  IconBrush="#80606A70" />
-                            <TextBlock Text="OPENAI  CODEX"
+                            <TextBlock x:Name="BrandWordmarkText"
+                                       Text="OPENAI  CODEX"
                                        FontSize="8"
                                        FontWeight="Bold"
                                        Foreground="#80606A70"
@@ -246,6 +277,21 @@
                                     LostMouseCapture="Dial_LostMouseCapture"
                                     MouseWheel="Dial_MouseWheel" />
 
+                            <TextBlock x:Name="HarnessDialModeLabel"
+                                       Grid.Row="0"
+                                       Grid.Column="0"
+                                       Margin="0,0,0,18"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Bottom"
+                                       IsHitTestVisible="False"
+                                       Panel.ZIndex="4"
+                                       FontFamily="Cascadia Mono, Consolas"
+                                       FontSize="8"
+                                       FontWeight="SemiBold"
+                                       Foreground="#8A58636A"
+                                       Text="CMD"
+                                       Visibility="Collapsed" />
+
                             <Border x:Name="DialSelectionHud"
                                     Grid.Row="0"
                                     Grid.Column="0"
@@ -291,6 +337,39 @@
                             </Border>
 
                             <Button x:Name="AgentKey0" Grid.Row="0" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG00" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 1 · AG00" />
+                            <Grid x:Name="AgentBackGlyph"
+                                  Grid.Row="0"
+                                  Grid.Column="1"
+                                  Width="38"
+                                  Height="38"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  IsHitTestVisible="False"
+                                  Panel.ZIndex="8"
+                                  Visibility="Collapsed">
+                                <Ellipse Fill="#E84F67"
+                                         Stroke="#F8FFFFFF"
+                                         StrokeThickness="1.5">
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect Color="#E84F67"
+                                                          BlurRadius="9"
+                                                          ShadowDepth="0"
+                                                          Opacity="0.72" />
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                                <Path Width="20"
+                                      Height="17"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Data="M 8,2 L 2,8 L 8,14 M 3,8 L 12,8 C 16,8 18,10 18,14"
+                                      Fill="Transparent"
+                                      Stroke="#FFFFFFFF"
+                                      StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Stretch="Uniform" />
+                            </Grid>
                             <Button x:Name="AgentKey1" Grid.Row="0" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG01" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 2 · AG01" />
 
                             <Grid x:Name="JoystickSurface"
@@ -452,8 +531,26 @@
                                         Style="{StaticResource DarkKnobButton}"
                                         Click="Settings_Click"
                                         PreviewMouseLeftButtonDown="Settings_PreviewMouseLeftButtonDown"
-                                        PreviewMouseRightButtonUp="Settings_PreviewMouseRightButtonUp"
-                                        ToolTip="短按切换 Sol / Luna · 长按打开 Codex Micro 设置 · 右键重新连接虚拟 HID&#x0a;三灯：Codex 运行时握手 / HID 连接 / 最近事件">
+                                        PreviewMouseRightButtonDown="Settings_PreviewMouseRightButtonDown"
+                                        ContextMenuOpening="Settings_ContextMenuOpening"
+                                        ToolTip="左键切换当前 Agent 的快捷模型 · Codex 长按打开官方 Micro 设置 · 右键打开右下角当前 Agent 设置&#x0a;三灯：运行时握手 / HID 连接 / 最近事件">
+                                    <Button.ContextMenu>
+                                        <ContextMenu x:Name="KnobContextMenu">
+                                            <MenuItem x:Name="KnobSettingsMenuItem"
+                                                      Header="设置">
+                                                <MenuItem x:Name="KnobOpenSoftwareSettingsMenuItem"
+                                                          Header="软件设置"
+                                                          Click="OpenSoftwareSettingsMenuItem_Click" />
+                                                <MenuItem x:Name="KnobOpenOfficialSettingsMenuItem"
+                                                          Header="Codex Micro 官方设置"
+                                                          Click="OpenOfficialSettingsMenuItem_Click" />
+                                            </MenuItem>
+                                            <Separator />
+                                            <MenuItem x:Name="KnobReconnectMenuItem"
+                                                      Header="重新连接虚拟 HID"
+                                                      Click="ReconnectMenuItem_Click" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
                                     <Grid x:Name="QuotaGauge"
                                           Width="52"
                                           Height="52"
@@ -513,9 +610,239 @@
                                                      KeycapId="MIC"
                                                      IconBrush="#171717" />
                             </Button>
-                            <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">
-                                <controls:KeycapIcon x:Name="ActionIcon12" Width="28" Height="28" KeycapId="CODEX" IconBrush="#171717" />
+                            <Button x:Name="ActionKey10Split"
+                                    Grid.Row="3"
+                                    Grid.Column="1"
+                                    Width="96"
+                                    Height="96"
+                                    Margin="5"
+                                    Tag="ACT10"
+                                    Style="{StaticResource CommandKey}"
+                                    PreviewMouseLeftButtonDown="Voice_PreviewMouseLeftButtonDown"
+                                    PreviewMouseLeftButtonUp="Voice_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="Voice_LostMouseCapture"
+                                    PreviewKeyDown="Voice_PreviewKeyDown"
+                                    PreviewKeyUp="Voice_PreviewKeyUp"
+                                    Visibility="Collapsed"
+                                    ToolTip="Microphone 1 · ACT10">
+                                <controls:KeycapIcon x:Name="ActionIcon10Split"
+                                                     Width="28"
+                                                     Height="28"
+                                                     KeycapId="MIC1"
+                                                     IconBrush="#171717" />
                             </Button>
+                            <Button x:Name="ActionKey11Split"
+                                    Grid.Row="3"
+                                    Grid.Column="2"
+                                    Width="96"
+                                    Height="96"
+                                    Margin="5"
+                                    Tag="ACT11"
+                                    Style="{StaticResource CommandKey}"
+                                    PreviewMouseLeftButtonDown="Voice_PreviewMouseLeftButtonDown"
+                                    PreviewMouseLeftButtonUp="Voice_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="Voice_LostMouseCapture"
+                                    PreviewKeyDown="Voice_PreviewKeyDown"
+                                    PreviewKeyUp="Voice_PreviewKeyUp"
+                                    Visibility="Collapsed"
+                                    ToolTip="Microphone 2 · ACT11">
+                                <controls:KeycapIcon x:Name="ActionIcon11Split"
+                                                     Width="28"
+                                                     Height="28"
+                                                     KeycapId="EMPT1"
+                                                     IconBrush="#171717" />
+                            </Button>
+                            <Button x:Name="ActionKey12" Grid.Row="3" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="ACT12" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Codex · ACT12">
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="HarnessContextMenu"
+                                                 Placement="Right"
+                                                 HorizontalOffset="8"
+                                                 Opened="HarnessContextMenu_Opened">
+                                        <ContextMenu.Template>
+                                            <ControlTemplate TargetType="ContextMenu">
+                                                <Border Padding="5"
+                                                        Background="#FFFEFDFB"
+                                                        BorderBrush="#FFDCD9D3"
+                                                        BorderThickness="1"
+                                                        CornerRadius="15">
+                                                    <Border.Effect>
+                                                        <DropShadowEffect BlurRadius="20"
+                                                                          Direction="270"
+                                                                          ShadowDepth="5"
+                                                                          Opacity="0.23"
+                                                                          Color="#FF34383B" />
+                                                    </Border.Effect>
+                                                    <StackPanel IsItemsHost="True"
+                                                                KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </ContextMenu.Template>
+                                        <ContextMenu.Resources>
+                                            <Style TargetType="MenuItem">
+                                                <Setter Property="MinWidth" Value="58" />
+                                                <Setter Property="Width" Value="58" />
+                                                <Setter Property="Padding" Value="7" />
+                                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="MenuItem">
+                                                            <Border x:Name="ChoiceSurface"
+                                                                    Width="52"
+                                                                    Height="52"
+                                                                    Margin="2"
+                                                                    Padding="{TemplateBinding Padding}"
+                                                                    Background="Transparent"
+                                                                    BorderBrush="Transparent"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="12">
+                                                                <Grid>
+                                                                    <ContentPresenter
+                                                                                      HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center"
+                                                                                      ContentSource="Header"
+                                                                                      RecognizesAccessKey="False" />
+                                                                    <Ellipse x:Name="ChoiceMark"
+                                                                             Width="7"
+                                                                             Height="7"
+                                                                             Margin="0,5,5,0"
+                                                                             HorizontalAlignment="Right"
+                                                                             VerticalAlignment="Top"
+                                                                             Fill="#FF7185EA"
+                                                                             Opacity="0" />
+                                                                </Grid>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsHighlighted" Value="True">
+                                                                    <Setter TargetName="ChoiceSurface" Property="Background" Value="#FFF3F5FF" />
+                                                                    <Setter TargetName="ChoiceSurface" Property="BorderBrush" Value="#FFD9DFFF" />
+                                                                </Trigger>
+                                                                <Trigger Property="IsChecked" Value="True">
+                                                                    <Setter TargetName="ChoiceSurface" Property="Background" Value="#FFF6F7FF" />
+                                                                    <Setter TargetName="ChoiceSurface" Property="BorderBrush" Value="#FFC9D2FF" />
+                                                                    <Setter TargetName="ChoiceMark" Property="Opacity" Value="1" />
+                                                                </Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                    <Setter TargetName="ChoiceSurface" Property="Opacity" Value="0.42" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                            <Style TargetType="Separator">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Separator">
+                                                            <Border Height="1"
+                                                                    Margin="8,5"
+                                                                    Background="#FFE8E6E1" />
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ContextMenu.Resources>
+                                        <!-- Keeps the popup measurable before Opened replaces it
+                                             with the live registry contents. -->
+                                        <MenuItem Header="Codex" IsEnabled="False" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                                <Grid Width="76"
+                                      Height="76"
+                                      IsHitTestVisible="False">
+                                    <controls:KeycapIcon x:Name="ActionIcon12"
+                                                         Width="28"
+                                                         Height="28"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"
+                                                         KeycapId="CODEX"
+                                                         IconBrush="#171717" />
+                                    <Border x:Name="CodexSendBadge"
+                                            Width="20"
+                                            Height="20"
+                                            Margin="0,0,4,4"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Bottom"
+                                            Background="#F4FFFFFF"
+                                            BorderBrush="#8A7185EA"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            SnapsToDevicePixels="True"
+                                            Visibility="Collapsed">
+                                        <Path x:Name="CodexSendPlane"
+                                              Width="13"
+                                              Height="13"
+                                              Data="M 2,8 L 15,2 L 10.5,15 L 7.7,9.7 Z M 7.7,9.7 L 15,2"
+                                              Fill="#FFF7F8F6"
+                                              Stroke="#FF304FFE"
+                                              StrokeEndLineCap="Round"
+                                              StrokeLineJoin="Round"
+                                              StrokeStartLineCap="Round"
+                                              StrokeThickness="1.35"
+                                              Stretch="Uniform" />
+                                    </Border>
+                                </Grid>
+                            </Button>
+                            <Ellipse x:Name="HarnessActionProgressRing"
+                                     Grid.Row="3"
+                                     Grid.Column="3"
+                                     Width="76"
+                                     Height="76"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center"
+                                     Fill="Transparent"
+                                     IsHitTestVisible="False"
+                                     Panel.ZIndex="7"
+                                     Stroke="#FF7EA5F7"
+                                     StrokeDashArray="2,2.8"
+                                     StrokeThickness="2.4"
+                                     RenderTransformOrigin="0.5,0.5"
+                                     Visibility="Collapsed">
+                                <Ellipse.RenderTransform>
+                                    <RotateTransform x:Name="HarnessActionProgressRotate" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                            <Ellipse x:Name="HarnessConnectionStatusDot"
+                                     Grid.Row="3"
+                                     Grid.Column="3"
+                                     Width="9"
+                                     Height="9"
+                                     Margin="0,0,16,16"
+                                     HorizontalAlignment="Right"
+                                     VerticalAlignment="Bottom"
+                                     Fill="#FFB7BABD"
+                                     Stroke="#FFFFFFFF"
+                                     StrokeThickness="1.4"
+                                     Panel.ZIndex="8"
+                                     Visibility="Collapsed"
+                                     ToolTip="Harness status" />
+                            <Border x:Name="HarnessActionStatusBadge"
+                                    Grid.Row="3"
+                                    Grid.Column="3"
+                                    Width="84"
+                                    Height="20"
+                                    Margin="0,0,0,10"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Background="#F2EEF4FF"
+                                    BorderBrush="#B8C7D2FF"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    IsHitTestVisible="False"
+                                    Opacity="0"
+                                    Visibility="Collapsed"
+                                    Panel.ZIndex="30">
+                                <TextBlock x:Name="HarnessActionStatusText"
+                                           Margin="7,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="8.6"
+                                           FontWeight="SemiBold"
+                                           Foreground="#FF34415B"
+                                           Text="正在连接"
+                                           TextAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
 
                         </Grid>
                     </Grid>
