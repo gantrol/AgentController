@@ -56,6 +56,8 @@ async function request(endpoint: string, payload: unknown): Promise<Bridge.Micro
 async function mount(rows: Array<Record<string, unknown>> = []): Promise<{
   endpoint: string
   openWebUi: ReturnType<typeof vi.fn>
+  eventHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
+  reportHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
   controlHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
   voiceButtonHandler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
 }> {
@@ -97,11 +99,22 @@ async function mount(rows: Array<Record<string, unknown>> = []): Promise<{
     },
   }
   await Bridge.apply(context as unknown as Parameters<typeof Bridge.apply>[0])
+  const eventHandler = routeHandlers.get(Bridge.MICRO_EVENTS_ENDPOINT)
+  const reportHandler = routeHandlers.get(Bridge.MICRO_REPORT_ENDPOINT)
   const controlHandler = routeHandlers.get(Bridge.MICRO_CONTROL_ENDPOINT)
   const voiceButtonHandler = routeHandlers.get(Bridge.MICRO_VOICE_BUTTON_ENDPOINT)
+  if (eventHandler === undefined) throw new Error('event route was not registered')
+  if (reportHandler === undefined) throw new Error('report route was not registered')
   if (controlHandler === undefined) throw new Error('control route was not registered')
   if (voiceButtonHandler === undefined) throw new Error('voice-button route was not registered')
-  return { endpoint, openWebUi, controlHandler, voiceButtonHandler }
+  return {
+    endpoint,
+    openWebUi,
+    eventHandler,
+    reportHandler,
+    controlHandler,
+    voiceButtonHandler,
+  }
 }
 
 const baseRequest = { version: Bridge.MICRO_PROTOCOL_VERSION, source: 'codex-micro' } as const
@@ -222,6 +235,7 @@ describe('external DeepSeek Harness host bundle', () => {
 
     expect(result.success).toBe(true)
     expect(result.state?.sessions.map(row => row.id)).toEqual(['new', 'old'])
+    expect(result.state?.sessions.map(row => row.status)).toEqual(['running', 'idle'])
     expect(result.state?.sessions[0]?.displayTitle).toBe('Current task')
     expect(result.state?.capabilities.voiceInput).toBe(true)
     expect(result.state?.capabilities.knobSettings).toBe(true)
@@ -232,6 +246,75 @@ describe('external DeepSeek Harness host bundle', () => {
       adapter: 'ready',
       browser: 'disconnected',
     })
+  })
+
+  it('merges browser-owned completion, waiting, and error states into state reads', async () => {
+    const {
+      endpoint,
+      eventHandler,
+      reportHandler,
+    } = await mount([
+      { sessionId: 'running', updatedAt: 50, running: true, blank: false },
+      { sessionId: 'completed', updatedAt: 40, running: false, blank: false },
+      { sessionId: 'waiting', updatedAt: 30, running: true, blank: false },
+      { sessionId: 'error', updatedAt: 20, running: false, blank: false },
+      { sessionId: 'idle', updatedAt: 10, running: false, blank: false },
+    ])
+    httpServer = createHttpServer((req, res) => {
+      if (req.url?.startsWith(Bridge.MICRO_EVENTS_ENDPOINT) === true) {
+        void eventHandler(req, res)
+      } else if (req.url === Bridge.MICRO_REPORT_ENDPOINT) {
+        void reportHandler(req, res)
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
+    const origin = `http://127.0.0.1:${String(address.port)}`
+    const streamAbort = new AbortController()
+    const stream = await fetch(
+      `${origin}${Bridge.MICRO_EVENTS_ENDPOINT}?browserId=status-browser`,
+      { signal: streamAbort.signal },
+    )
+    const reported = await fetch(`${origin}${Bridge.MICRO_REPORT_ENDPOINT}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        version: Bridge.MICRO_PROTOCOL_VERSION,
+        browserId: 'status-browser',
+        currentSessionId: 'running',
+        visible: true,
+        focused: true,
+        surface: 'dedicated',
+        navigationDepth: 0,
+        sessionStates: [
+          { id: 'running', status: 'running' },
+          { id: 'completed', status: 'completed' },
+          { id: 'waiting', status: 'waiting' },
+          { id: 'error', status: 'error' },
+          { id: 'idle', status: 'idle' },
+        ],
+      }),
+    })
+    expect(reported.status).toBe(204)
+
+    const result = await request(endpoint, { ...baseRequest, action: 'state/read' })
+    expect(result.state?.sessions.map(row => [row.id, row.status])).toEqual([
+      ['running', 'running'],
+      ['completed', 'completed'],
+      ['waiting', 'waiting'],
+      ['error', 'error'],
+      ['idle', 'idle'],
+    ])
+
+    streamAbort.abort()
+    await stream.body?.cancel().catch(() => {})
   })
 
   it('rejects unsupported bridge commands', async () => {

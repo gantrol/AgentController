@@ -156,13 +156,13 @@ Codex Micro 的协议适配参考上游
 
 ## Full oneclick 包
 
-`Deepseek-Harness-Keypad-Full-v0.2.4-oneclick.exe` 使用与在线配置相同的 8 步状态机，
+`Deepseek-Harness-Keypad-Full-v0.2.5-oneclick.exe` 使用与在线配置相同的 8 步状态机，
 但从安装目录的 `payload/deepseek-runtime.wsl` 导入干净载荷，不再下载 Linux 用户态、
 Node、pnpm 或 Harness。载荷预装的是 DeepSeek 官方 npm 包 `@deepseek-ai/dsh`，版本
 和 Node / pnpm 一起记录在 Bridge 的 `scripts/runtime-versions.env`；Bridge 没有修改
 DSH 源码，后续替换官方版本只需更新该清单并重建。
 
-另有 `Deepseek-Harness-Keypad-Full-v0.2.4-oneclick-no-dotnet.exe`，DSH 载荷完全相同，
+另有 `Deepseek-Harness-Keypad-Full-v0.2.5-oneclick-no-dotnet.exe`，DSH 载荷完全相同，
 但不包含 Windows .NET 运行时。它和便携 ZIP 需要安装
 [Microsoft .NET 10 Desktop Runtime x64 官方安装程序](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-10.0.10-windows-x64-installer)；
 推荐 oneclick 已自带 .NET。两种 oneclick 都按当前用户安装到 Windows API 返回的

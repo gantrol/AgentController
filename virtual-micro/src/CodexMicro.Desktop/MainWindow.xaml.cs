@@ -29,6 +29,8 @@ public partial class MicroSurfaceWindow : Window
     private static readonly TimeSpan QuotaRefreshInterval =
         TimeSpan.FromMinutes(2);
     private static readonly TimeSpan HarnessStateRefreshInterval =
+        TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan VoiceServiceHealthRefreshInterval =
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ForegroundRefreshInterval =
         TimeSpan.FromMilliseconds(250);
@@ -94,6 +96,8 @@ public partial class MicroSurfaceWindow : Window
     private readonly MicroHarnessRegistry _harnessRegistry = new();
     private readonly DeepSeekSetupCoordinator _deepSeekSetupCoordinator;
     private readonly MicroVoiceInputService _voiceInput;
+    private readonly MicroVoiceWarmUpSettingsTracker
+        _voiceWarmUpSettings = new();
     private readonly SemaphoreSlim _externalVoiceGate = new(1, 1);
     private readonly SemaphoreSlim _streamingDictationGate = new(1, 1);
     private readonly Dictionary<FrameworkElement, (string Title, string Detail)>
@@ -120,6 +124,11 @@ public partial class MicroSurfaceWindow : Window
         _harnessStateRefreshTimer = new()
         {
             Interval = HarnessStateRefreshInterval,
+        };
+    private readonly System.Windows.Threading.DispatcherTimer
+        _voiceServiceHealthRefreshTimer = new()
+        {
+            Interval = VoiceServiceHealthRefreshInterval,
         };
     private readonly System.Windows.Threading.DispatcherTimer
         _harnessActionElapsedTimer = new()
@@ -341,6 +350,8 @@ public partial class MicroSurfaceWindow : Window
         _dialSelectionHideTimer.Tick += DialSelectionHideTimer_Tick;
         _quotaRefreshTimer.Tick += QuotaRefreshTimer_Tick;
         _harnessStateRefreshTimer.Tick += HarnessStateRefreshTimer_Tick;
+        _voiceServiceHealthRefreshTimer.Tick +=
+            VoiceServiceHealthRefreshTimer_Tick;
         _harnessActionElapsedTimer.Tick += HarnessActionElapsedTimer_Tick;
         _foregroundRefreshTimer.Tick += ForegroundRefreshTimer_Tick;
         _localization.LanguageChanged += Localization_LanguageChanged;
@@ -456,6 +467,8 @@ public partial class MicroSurfaceWindow : Window
         _modelActionCancellation?.Cancel();
         _quotaRefreshTimer.Tick -= QuotaRefreshTimer_Tick;
         _harnessStateRefreshTimer.Tick -= HarnessStateRefreshTimer_Tick;
+        _voiceServiceHealthRefreshTimer.Tick -=
+            VoiceServiceHealthRefreshTimer_Tick;
         _harnessActionElapsedTimer.Stop();
         _harnessActionElapsedTimer.Tick -= HarnessActionElapsedTimer_Tick;
         PauseForegroundRefresh();
@@ -609,6 +622,7 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _harnessStateRefreshTimer.Start();
+        _voiceServiceHealthRefreshTimer.Start();
         _ = RefreshHarnessStateAsync();
         _ = RefreshVoiceServiceHealthAsync();
     }
@@ -616,6 +630,7 @@ public partial class MicroSurfaceWindow : Window
     private void PauseHarnessStateRefresh()
     {
         _harnessStateRefreshTimer.Stop();
+        _voiceServiceHealthRefreshTimer.Stop();
         _harnessStateCancellation?.Cancel();
         _voiceHealthCancellation?.Cancel();
     }
@@ -623,6 +638,10 @@ public partial class MicroSurfaceWindow : Window
     private void HarnessStateRefreshTimer_Tick(object? sender, EventArgs e)
     {
         _ = RefreshHarnessStateAsync();
+    }
+
+    private void VoiceServiceHealthRefreshTimer_Tick(object? sender, EventArgs e)
+    {
         _ = RefreshVoiceServiceHealthAsync();
     }
 
@@ -655,6 +674,8 @@ public partial class MicroSurfaceWindow : Window
                 var selected = snapshot.Sessions.FirstOrDefault(item =>
                     item.Id == (snapshot.CurrentSessionId ??
                         _selectedHarnessSessionId));
+                selected ??= snapshot.Sessions.FirstOrDefault(item =>
+                    item.Status == MicroHarnessSessionStatus.WaitingForInput);
                 selected ??= snapshot.Sessions.FirstOrDefault(item => item.Running);
                 selected ??= snapshot.Sessions.FirstOrDefault();
                 _selectedHarnessSessionId = selected?.Id;
@@ -5074,18 +5095,15 @@ public partial class MicroSurfaceWindow : Window
             _agentKeys[slotId].IsEnabled = true;
             var current = slotId == _currentAgentSlotId;
             var appearance = AgentLightingAppearance.FromHarnessSession(
-                session.Running,
+                session.Status,
                 current);
             ApplyAgentLightingAppearance(slotId, appearance);
             SetHelp(
                 _agentKeys[slotId],
                 session.DisplayTitle,
                 $"{harness.DisplayName} 会话 · AG{slotId:00} · " +
-                $"{(session.Running
-                    ? "运行中"
-                    : current
-                        ? "当前会话 · 空闲"
-                        : "最近会话 · 空闲")} · 单击通过插件直连打开。\n" +
+                $"{(current ? "当前会话 · " : "最近会话 · ")}" +
+                $"{appearance.StatusName} · 单击通过插件直连打开。\n" +
                 "不会发送 Codex HID。" );
         }
     }
@@ -6349,14 +6367,19 @@ public partial class MicroSurfaceWindow : Window
 
     private void RestartKeypadVoiceWarmUp()
     {
-        _voiceWarmUpCancellation?.Cancel();
-        _voiceHealthCancellation?.Cancel();
         if (_windowClosed)
         {
             return;
         }
 
         var settings = _profileSettings.Current.VoiceSettings;
+        if (!_voiceWarmUpSettings.Update(settings))
+        {
+            return;
+        }
+
+        _voiceWarmUpCancellation?.Cancel();
+        _voiceHealthCancellation?.Cancel();
         if (!settings.SetupCompleted)
         {
             SetVoiceServiceState(

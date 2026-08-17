@@ -35,17 +35,38 @@ class FakeEventSource {
   }
 }
 
+interface FakeSessionSummary {
+  sessionId: string
+  running: boolean
+  parentSessionId?: string
+  pendingInteraction?: 'approval' | 'plan-review' | 'question'
+  completed: boolean
+}
+
 class FakeSessionList {
   current: string | undefined = 'session-1'
+  items: FakeSessionSummary[] = [
+    { sessionId: 'session-1', running: false, completed: false },
+  ]
   readonly listeners = new Set<() => void>()
 
-  getSnapshot(): { current?: string } {
-    return this.current === undefined ? {} : { current: this.current }
+  getSnapshot(): {
+    current?: string
+    items: FakeSessionSummary[]
+  } {
+    return {
+      ...(this.current === undefined ? {} : { current: this.current }),
+      items: this.items,
+    }
   }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
+  }
+
+  publish(): void {
+    for (const listener of this.listeners) listener()
   }
 }
 
@@ -128,6 +149,12 @@ let reports: Array<Record<string, unknown>>
 let voiceButtonRequests: Array<Record<string, unknown>>
 let voiceButtonResult: { success: boolean; active: boolean; message: string }
 let composerDraft: { value: string }
+let sessionRuntimeStates: Record<string, {
+  pending: readonly []
+  running?: boolean
+  lastAgentError?: string | null
+  promptError?: unknown | null
+}>
 
 beforeEach(() => {
   FakeEventSource.instances = []
@@ -148,6 +175,7 @@ beforeEach(() => {
     active: true,
     message: 'The keypad microphone is listening.',
   }
+  sessionRuntimeStates = {}
   vi.stubGlobal('EventSource', FakeEventSource)
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
@@ -198,11 +226,11 @@ function mount(initialDraft = ''): FakeEventSource {
       open: openSession,
       fork: forkSession,
       scope: (id: string) => ({ id }),
-      binding: () => ({
+      binding: (id: string) => ({
         session: {
           cancel: cancelTurn,
           loadOlder: vi.fn(async () => {}),
-          getSnapshot: () => ({ pending: [] }),
+          getSnapshot: () => sessionRuntimeStates[id] ?? { pending: [] },
         },
       }),
     },
@@ -248,6 +276,76 @@ function mount(initialDraft = ''): FakeEventSource {
 }
 
 describe('external DeepSeek Harness browser bundle', () => {
+  it('reports running, completed, waiting, error, and idle session states', async () => {
+    sessionList.current = 'running'
+    sessionList.items = [
+      { sessionId: 'running', running: true, completed: false },
+      { sessionId: 'completed', running: false, completed: true },
+      {
+        sessionId: 'waiting',
+        running: true,
+        pendingInteraction: 'approval',
+        completed: false,
+      },
+      { sessionId: 'error', running: false, completed: false },
+      { sessionId: 'idle', running: false, completed: false },
+      {
+        sessionId: 'child',
+        parentSessionId: 'running',
+        running: true,
+        completed: false,
+      },
+    ]
+    sessionRuntimeStates.error = {
+      pending: [],
+      lastAgentError: 'model failed',
+    }
+
+    mount()
+
+    await vi.waitFor(() => {
+      expect(reports).toContainEqual(expect.objectContaining({
+        sessionStates: [
+          { id: 'running', status: 'running' },
+          { id: 'completed', status: 'completed' },
+          { id: 'waiting', status: 'waiting' },
+          { id: 'error', status: 'error' },
+          { id: 'idle', status: 'idle' },
+        ],
+      }))
+    })
+
+    sessionList.items = sessionList.items.map(item => item.sessionId === 'running'
+      ? { ...item, running: false, completed: false }
+      : item)
+    sessionList.publish()
+    await vi.waitFor(() => {
+      expect(reports.at(-1)?.sessionStates).toEqual(expect.arrayContaining([
+        { id: 'running', status: 'completed' },
+      ]))
+    })
+
+    sessionList.items = sessionList.items.map(item => item.sessionId === 'running'
+      ? { ...item, running: true }
+      : item)
+    sessionList.publish()
+    await vi.waitFor(() => {
+      expect(reports.at(-1)?.sessionStates).toEqual(expect.arrayContaining([
+        { id: 'running', status: 'running' },
+      ]))
+    })
+
+    sessionList.items = sessionList.items.map(item => item.sessionId === 'running'
+      ? { ...item, running: false }
+      : item)
+    sessionList.publish()
+    await vi.waitFor(() => {
+      expect(reports.at(-1)?.sessionStates).toEqual(expect.arrayContaining([
+        { id: 'running', status: 'completed' },
+      ]))
+    })
+  })
+
   it('registers exactly one composer voice control and no plugin settings page', () => {
     mount()
     expect(context?.entries.map(entry => `${entry.name}:${entry.id}`)).toEqual([

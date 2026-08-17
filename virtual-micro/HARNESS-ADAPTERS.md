@@ -127,10 +127,17 @@ It returns one UTF-8 JSON line before closing the connection:
 
 `state/read` adds a typed `state` object with declared capabilities, native
 action ids, the browser-authoritative current session, and up to six recent
-Harness sessions. Agent keys display only those sessions while the Harness is
-active. The upper-left dial defaults to composer-scoped dynamic control
-navigation with a browser highlight, and can be changed to reasoning-only or
-recent-session selection in that Harness's Options;
+Harness sessions. Each session includes `status` (`idle`, `running`,
+`completed`, `waiting`, or `error`) plus the legacy `running` bit. DeepSeek's
+browser report supplies its live completion reminders and pending-interaction
+state, so the Agent keys use the same blue/green/amber/red vocabulary as the
+native Codex surface without guessing from selection. Agent keys display only
+explicit runtime state. Because DeepSeek's own completion reminder excludes
+the selected session, the browser bridge also latches that session's
+`running → idle` edge as completed until its next run. Sessions are shown only
+while the Harness is active. The upper-left dial defaults to composer-scoped
+dynamic control navigation with a browser highlight, and can be changed to
+reasoning-only or recent-session selection in that Harness's Options;
 `action/execute` uses the Harness's Workspace, Session, conversation-view,
 pending-interaction, history, and layout services. The host uses bounded
 connection and readiness timeouts and treats an absent, malformed, or negative

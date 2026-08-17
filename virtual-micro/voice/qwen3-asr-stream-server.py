@@ -7,6 +7,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -54,6 +57,34 @@ LANGUAGES = {
 
 class ProtocolError(Exception):
     pass
+
+
+@contextmanager
+def single_instance(port: int) -> Iterator[None]:
+    try:
+        import fcntl
+    except ImportError as error:
+        raise SystemExit(
+            "The bundled Qwen ASR server must run inside WSL/Linux."
+        ) from error
+
+    lock_path = f"/tmp/codex-micro-qwen-asr-{os.getuid()}-{port}.lock"
+    handle = open(lock_path, "a+", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise SystemExit(
+                "Another Codex Micro Qwen ASR instance is already starting "
+                f"or running on port {port}."
+            ) from error
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()))
+        handle.flush()
+        yield
+    finally:
+        handle.close()
 
 
 def parse_control(text: str) -> dict[str, Any]:
@@ -254,12 +285,7 @@ def arguments() -> argparse.Namespace:
     return parsed
 
 
-def main() -> None:
-    args = arguments()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[codex-micro-qwen-asr] %(levelname)s %(message)s",
-    )
+def serve(args: argparse.Namespace) -> None:
     logging.info("Loading %s with the vLLM streaming backend…", args.model)
     try:
         from qwen_asr import Qwen3ASRModel
@@ -294,6 +320,16 @@ def main() -> None:
     app.router.add_get("/health", server.health)
     app.router.add_get("/v1/stream", server.stream)
     web.run_app(app, host=args.host, port=args.port, print=None)
+
+
+def main() -> None:
+    args = arguments()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[codex-micro-qwen-asr] %(levelname)s %(message)s",
+    )
+    with single_instance(args.port):
+        serve(args)
 
 
 if __name__ == "__main__":

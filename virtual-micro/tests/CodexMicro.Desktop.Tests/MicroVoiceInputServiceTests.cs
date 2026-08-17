@@ -92,6 +92,28 @@ public sealed class MicroVoiceInputServiceTests
         Assert.Equal(string.Empty, settings.LocalPythonPath);
     }
 
+    [Fact]
+    public void WarmUpTrackerIgnoresEquivalentVoiceProfiles()
+    {
+        var tracker = new MicroVoiceWarmUpSettingsTracker();
+        var settings = MicroVoiceProfile.Default with
+        {
+            Provider = MicroVoiceProviders.LocalQwen,
+            SetupCompleted = true,
+        };
+
+        Assert.True(tracker.Update(settings));
+        Assert.False(tracker.Update(settings with { }));
+        Assert.True(tracker.Update(settings with
+        {
+            LocalModel = "Qwen/Qwen3-ASR-1.7B",
+        }));
+        Assert.False(tracker.Update(settings with
+        {
+            LocalModel = "Qwen/Qwen3-ASR-1.7B",
+        }));
+    }
+
     [Theory]
     [InlineData("ws://speech.example.test/v1/stream")]
     [InlineData("http://127.0.0.1:8765/v1/stream")]

@@ -534,7 +534,7 @@ internal static class MicroEnglishTranslations
         ("运行中", "Running"),
         ("可打开", "Ready to open"),
         ("{harness.DisplayName} 会话 · AG{slotId:00} · ", "{harness.DisplayName} session · AG{slotId:00} · "),
-        (")} · 单击通过插件直连打开。\n", ")} · Click to open through the direct adapter.\n"),
+        ("单击通过插件直连打开。", "Click to open through the direct adapter."),
         ("{harness.DisplayName} 会话旋钮", "{harness.DisplayName} session encoder"),
         ("滚轮或拖动：在此 Harness 返回的六个最近会话间选择。\n", "Wheel or drag: select among the six recent sessions returned by this Harness.\n"),
         ("短按：通过直连插件打开选中的会话；不会发送 Codex HID。", "Press: open the selected session through the direct adapter; no Codex HID input is sent."),

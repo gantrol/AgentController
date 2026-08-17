@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.4",
+    [string]$Version = "0.2.5",
     [string]$Runtime = "win-x64",
     [double]$MaximumPackageMiB = 15,
     [ValidateSet("standard", "deepseek", "deepseek-full")]

@@ -4,6 +4,8 @@ import { useEffect, type ComponentType } from 'react'
 import type {
   MicroActionId,
   MicroBrowserReport,
+  MicroBrowserSessionState,
+  MicroSessionStatus,
 } from '../protocol.ts'
 import {
   MICRO_EVENTS_ENDPOINT,
@@ -70,11 +72,52 @@ interface SessionFace {
   loadOlder(): Promise<void>
   getSnapshot(): {
     pending: readonly PendingWait[]
+    running?: boolean
+    lastAgentError?: string | null
+    promptError?: unknown | null
   }
 }
 
+type PendingInteractionStatus = 'approval' | 'plan-review' | 'question'
+
+interface SessionStatusSummary {
+  running: boolean
+  pendingInteraction?: PendingInteractionStatus
+  completed?: boolean
+}
+
+interface SessionListEntry extends SessionStatusSummary {
+  sessionId: string
+  parentSessionId?: string
+}
+
+interface LegacySessionListSummary extends SessionStatusSummary {
+  id: string
+  parentId?: string
+}
+
+interface SessionListSnapshot {
+  current?: string
+  /** Current DSH runtime contract. */
+  items?: readonly SessionListEntry[]
+  /** Compatibility with the pre-lineage list shape. */
+  ids?: readonly string[]
+  byId?: Readonly<Record<string, LegacySessionListSummary>>
+}
+
+interface SessionProjectionRow {
+  id: string
+  parentId?: string
+  summary: SessionStatusSummary
+}
+
+interface SessionProjectionMemory {
+  readonly previousRunning: Map<string, boolean>
+  readonly selectedCompletions: Set<string>
+}
+
 interface SessionsFace {
-  readonly list: SnapshotFace<{ current?: string }>
+  readonly list: SnapshotFace<SessionListSnapshot>
   open(sessionId: string): void
   fork(options: { sessionId: string; increaseTitle?: boolean }): Promise<string>
   scope(sessionId: string): unknown | undefined
@@ -196,6 +239,93 @@ const ACTION_IDS = new Set<MicroActionId>([
   'goal/open',
 ])
 
+const MAX_REPORTED_SESSION_STATES = 24
+
+function projectSessionStatus(
+  summary: SessionStatusSummary,
+  session: SessionFace | undefined,
+  selectedCompletion: boolean,
+): MicroSessionStatus {
+  const snapshot = session?.getSnapshot()
+  if (summary.pendingInteraction !== undefined || (snapshot?.pending.length ?? 0) > 0) {
+    return 'waiting'
+  }
+  if (summary.running || snapshot?.running === true) return 'running'
+  if (snapshot?.lastAgentError != null || snapshot?.promptError != null) return 'error'
+  if (summary.completed === true || selectedCompletion) return 'completed'
+  return 'idle'
+}
+
+function sessionProjectionRows(snapshot: SessionListSnapshot): SessionProjectionRow[] {
+  if (snapshot.items !== undefined) {
+    return snapshot.items.map(item => ({
+      id: item.sessionId,
+      ...(item.parentSessionId === undefined ? {} : { parentId: item.parentSessionId }),
+      summary: item,
+    }))
+  }
+
+  const byId = snapshot.byId
+  if (byId === undefined) return []
+  const ids = snapshot.ids === undefined ? Object.keys(byId) : [...snapshot.ids]
+  if (snapshot.current !== undefined && !ids.includes(snapshot.current)) ids.unshift(snapshot.current)
+  return ids.flatMap((id): SessionProjectionRow[] => {
+    const summary = byId[id]
+    return summary === undefined
+      ? []
+      : [{
+          id,
+          ...(summary.parentId === undefined ? {} : { parentId: summary.parentId }),
+          summary,
+        }]
+  })
+}
+
+function updateSelectedCompletions(
+  rows: readonly SessionProjectionRow[],
+  currentSessionId: string | undefined,
+  memory: SessionProjectionMemory,
+): void {
+  const seen = new Set<string>()
+  for (const row of rows) {
+    seen.add(row.id)
+    const previous = memory.previousRunning.get(row.id)
+    if (row.summary.running) {
+      memory.selectedCompletions.delete(row.id)
+    } else if (previous === true && row.id === currentSessionId) {
+      // DSH's own `completed` flag intentionally excludes the selected row.
+      // Latch that row's completion edge so the keypad still turns green.
+      memory.selectedCompletions.add(row.id)
+    }
+    memory.previousRunning.set(row.id, row.summary.running)
+  }
+  for (const id of memory.previousRunning.keys()) {
+    if (seen.has(id)) continue
+    memory.previousRunning.delete(id)
+    memory.selectedCompletions.delete(id)
+  }
+}
+
+function projectSessionStates(
+  sessions: SessionsFace,
+  snapshot: SessionListSnapshot,
+  memory: SessionProjectionMemory,
+): MicroBrowserSessionState[] {
+  const rows = sessionProjectionRows(snapshot)
+  updateSelectedCompletions(rows, snapshot.current, memory)
+  return rows
+    .filter(row => row.parentId === undefined)
+    .slice(0, MAX_REPORTED_SESSION_STATES)
+    .map(row => ({
+      id: row.id,
+      status: projectSessionStatus(
+        row.summary,
+        sessions.binding(row.id)?.session,
+        memory.selectedCompletions.has(row.id),
+      ),
+    }))
+}
+
 function mintBrowserId(): string {
   try {
     const existing = window.sessionStorage.getItem('dsh.codexMicro.browserId')
@@ -285,6 +415,10 @@ export function apply(ctx: ClientContext): void {
     modelDirectories,
     () => sessions.list.getSnapshot().current,
   )
+  const sessionProjectionMemory: SessionProjectionMemory = {
+    previousRunning: new Map(),
+    selectedCompletions: new Set(),
+  }
   const viewBindings = new Map<string, ConversationViewBinding>()
   ctx.effect(() => () => { voice.dispose() }, 'client-micro-bridge: keypad voice button')
   ctx.effect(() => () => { composerNavigator.dispose() }, 'client-micro-bridge: composer navigator')
@@ -331,6 +465,7 @@ export function apply(ctx: ClientContext): void {
     ): Promise<void> => {
       const state = sessions.list.getSnapshot()
       const modelState = modelController.getSnapshot()
+      const sessionStates = projectSessionStates(sessions, state, sessionProjectionMemory)
       const body: MicroBrowserReport = {
         version: MICRO_PROTOCOL_VERSION,
         browserId,
@@ -346,6 +481,7 @@ export function apply(ctx: ClientContext): void {
             ? {}
             : { currentModel: modelState.current.model }
           : { currentModel: modelState.currentLabel }),
+        ...(sessionStates.length === 0 ? {} : { sessionStates }),
         ...(requestId === undefined ? {} : { requestId }),
         ...(success === undefined ? {} : { success }),
         ...(message === undefined ? {} : { message }),
