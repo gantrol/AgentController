@@ -133,6 +133,7 @@ internal static class MicroEnglishTranslations
         ("Harness 已连接 · 当前没有运行中的会话", "Harness connected · no sessions are running"),
         ("{runningCount} 个 Harness 会话正在运行", "{runningCount} Harness sessions running"),
         ("{harness.DisplayName} 适配器已连接", "{harness.DisplayName} adapter connected"),
+        ("{harness.DisplayName}插件端", "{harness.DisplayName} plugin endpoint"),
         ("Harness 适配器离线", "Harness adapter offline"),
         ("{harness.DisplayName} 尚未配置。点击 DeepSeek 键可选择“自动配置”或“连接已有 Harness”。", "{harness.DisplayName} is not configured. Click the DeepSeek key to choose automatic setup or connect an existing Harness."),
         ("请填写已有 {harness.DisplayName} 的控制地址；官方默认 Web 地址为 http://127.0.0.1:3080。若使用自定义端口，请填写实际端口。", "Enter the control address for the existing {harness.DisplayName}. The official default Web address is http://127.0.0.1:3080; enter the actual port when it was customized."),

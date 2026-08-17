@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using CodexMicro.Desktop.Services;
@@ -29,6 +30,7 @@ public sealed class AgentLightingVisualTests
         string Name,
         bool Running,
         bool VoiceReady,
+        bool VoiceListening,
         string Browser,
         Color Runtime,
         Color Driver,
@@ -91,8 +93,9 @@ public sealed class AgentLightingVisualTests
         {
             var profile = MicroProfileSettings.CreateTransient();
             profile.SetActiveHarness("deepseek-harness");
+            var localization = new MicroLocalization(MicroLanguage.ZhCn);
             var window = new MicroSurfaceWindow(
-                new MicroLocalization(MicroLanguage.ZhCn),
+                localization,
                 profileSettings: profile);
             window.DesignSurface.Measure(new Size(590, 610));
             window.DesignSurface.Arrange(new Rect(0, 0, 590, 610));
@@ -104,7 +107,10 @@ public sealed class AgentLightingVisualTests
                 window,
                 ColorFromRgb(0xB8B98B),
                 ColorFromRgb(0xB8B98B),
-                ColorFromRgb(0xB8B98B));
+                ColorFromRgb(0xB8B98B),
+                runtimeGlow: false,
+                driverGlow: false,
+                activityGlow: false);
 
             var cases = new HarnessLedCase[]
             {
@@ -112,6 +118,7 @@ public sealed class AgentLightingVisualTests
                     "connected / idle",
                     Running: false,
                     VoiceReady: false,
+                    VoiceListening: false,
                     Browser: "connected",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0x78A6FF),
@@ -120,14 +127,16 @@ public sealed class AgentLightingVisualTests
                     "browser waiting / voice ready",
                     Running: false,
                     VoiceReady: true,
+                    VoiceListening: false,
                     Browser: "starting",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0xFFC85A),
-                    Activity: ColorFromRgb(0x304FFE)),
+                    Activity: ColorFromRgb(0x78A6FF)),
                 new(
                     "connected / running / voice unavailable",
                     Running: true,
                     VoiceReady: false,
+                    VoiceListening: false,
                     Browser: "connected",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0x78A6FF),
@@ -136,16 +145,27 @@ public sealed class AgentLightingVisualTests
                     "browser waiting / running / voice ready",
                     Running: true,
                     VoiceReady: true,
+                    VoiceListening: false,
                     Browser: "starting",
                     Runtime: ColorFromRgb(0x78A6FF),
                     Driver: ColorFromRgb(0xFFC85A),
+                    Activity: ColorFromRgb(0x78A6FF)),
+                new(
+                    "connected / voice listening",
+                    Running: false,
+                    VoiceReady: false,
+                    VoiceListening: true,
+                    Browser: "connected",
+                    Runtime: ColorFromRgb(0x78A6FF),
+                    Driver: ColorFromRgb(0x78A6FF),
                     Activity: ColorFromRgb(0x304FFE)),
             };
 
             foreach (var ledCase in cases)
             {
                 window.ApplyVoiceServiceStateForVisualTest(
-                    ledCase.VoiceReady);
+                    ledCase.VoiceReady,
+                    listening: ledCase.VoiceListening);
                 window.ApplyHarnessStateForVisualTest(CreateHarnessSnapshot(
                     ledCase.Running,
                     ledCase.Browser));
@@ -154,7 +174,10 @@ public sealed class AgentLightingVisualTests
                     window,
                     ledCase.Runtime,
                     ledCase.Driver,
-                    ledCase.Activity);
+                    ledCase.Activity,
+                    runtimeGlow: true,
+                    driverGlow: true,
+                    activityGlow: ledCase.VoiceReady || ledCase.VoiceListening);
 
                 if (ledCase.Name == "browser waiting / voice ready")
                 {
@@ -163,6 +186,28 @@ public sealed class AgentLightingVisualTests
                         "CODEX_MICRO_DEEPSEEK_IDLE_PREVIEW_PATH");
                 }
             }
+
+            window.ApplyVoiceServiceStateForVisualTest(
+                ready: false,
+                checking: true);
+            AssertLedAppearance(
+                window.ActivityLed,
+                ColorFromRgb(0xFFC85A),
+                expectedGlow: true);
+            window.ApplyVoiceServiceStateForVisualTest(
+                ready: false,
+                error: true);
+            AssertLedAppearance(
+                window.ActivityLed,
+                ColorFromRgb(0xFF7994),
+                expectedGlow: true);
+            Assert.Equal(
+                "DeepSeek Harness插件端",
+                ToolTipTitle(window.DriverLed));
+            localization.SetLanguage(MicroLanguage.EnUs);
+            Assert.Equal(
+                "DeepSeek Harness plugin endpoint",
+                ToolTipTitle(window.DriverLed));
 
             window.CloseForApplicationExit();
         });
@@ -495,15 +540,44 @@ public sealed class AgentLightingVisualTests
         MicroSurfaceWindow window,
         Color runtime,
         Color driver,
-        Color activity)
+        Color activity,
+        bool runtimeGlow,
+        bool driverGlow,
+        bool activityGlow)
     {
-        Assert.Equal(runtime, FillColor(window.RuntimeLed));
-        Assert.Equal(driver, FillColor(window.DriverLed));
-        Assert.Equal(activity, FillColor(window.ActivityLed));
+        AssertLedAppearance(window.RuntimeLed, runtime, runtimeGlow);
+        AssertLedAppearance(window.DriverLed, driver, driverGlow);
+        AssertLedAppearance(window.ActivityLed, activity, activityGlow);
+    }
+
+    private static void AssertLedAppearance(
+        Shape led,
+        Color expectedColor,
+        bool expectedGlow)
+    {
+        Assert.Equal(expectedColor, FillColor(led));
+        if (!expectedGlow)
+        {
+            Assert.Null(led.Effect);
+            return;
+        }
+
+        var glow = Assert.IsType<DropShadowEffect>(led.Effect);
+        Assert.Equal(expectedColor, glow.Color);
+        Assert.Equal(8, glow.BlurRadius, 3);
+        Assert.Equal(0, glow.ShadowDepth, 3);
+        Assert.Equal(0.78, glow.Opacity, 3);
     }
 
     private static Color FillColor(Shape shape) =>
         Assert.IsType<SolidColorBrush>(shape.Fill).Color;
+
+    private static string ToolTipTitle(FrameworkElement element)
+    {
+        var tooltip = Assert.IsType<ToolTip>(element.ToolTip);
+        var panel = Assert.IsType<StackPanel>(tooltip.Content);
+        return Assert.IsType<TextBlock>(panel.Children[0]).Text;
+    }
 
     private static void AssertTemplateCarrierOpacity(
         Button key,

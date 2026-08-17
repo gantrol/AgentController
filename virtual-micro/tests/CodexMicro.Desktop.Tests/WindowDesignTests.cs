@@ -825,7 +825,7 @@ public sealed class WindowDesignTests
                     Assert.IsType<SolidColorBrush>(
                         window.AgentKey0.BorderBrush).Color);
                 Assert.Equal(
-                    Color.FromRgb(0x30, 0x4F, 0xFE),
+                    Color.FromRgb(0x78, 0xA6, 0xFF),
                     Assert.IsType<SolidColorBrush>(
                         window.ActivityLed.Fill).Color);
                 if (!string.IsNullOrWhiteSpace(deepSeekPreviewPath))

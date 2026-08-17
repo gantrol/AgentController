@@ -36,6 +36,19 @@ public partial class MicroSurfaceWindow : Window
         TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan AgentDoubleTapThreshold =
         TimeSpan.FromMilliseconds(520);
+    private const double StatusLedGlowBlurRadius = 8;
+    private const double StatusLedGlowOpacity = 0.78;
+
+    private static readonly StatusLedAppearance NeutralStatusLed =
+        new(Color.FromRgb(0xB8, 0xB9, 0x8B), Glow: false);
+    private static readonly StatusLedAppearance HealthyStatusLed =
+        new(Color.FromRgb(0x78, 0xA6, 0xFF), Glow: true);
+    private static readonly StatusLedAppearance ActiveStatusLed =
+        new(Color.FromRgb(0x30, 0x4F, 0xFE), Glow: true);
+    private static readonly StatusLedAppearance WaitingStatusLed =
+        new(Color.FromRgb(0xFF, 0xC8, 0x5A), Glow: true);
+    private static readonly StatusLedAppearance ErrorStatusLed =
+        new(Color.FromRgb(0xFF, 0x79, 0x94), Glow: true);
 
     private readonly record struct JoystickReport(
         double Angle,
@@ -54,6 +67,10 @@ public partial class MicroSurfaceWindow : Window
         bool Success,
         bool Active,
         string Message);
+
+    private readonly record struct StatusLedAppearance(
+        Color Color,
+        bool Glow);
 
     private enum KeypadVoiceServiceState
     {
@@ -5447,25 +5464,31 @@ public partial class MicroSurfaceWindow : Window
         var snapshot = _harnessStateSnapshot?.HarnessId == harness.Id
             ? _harnessStateSnapshot
             : null;
+        var pluginEndpointTitle = _localization.IsEnglish
+            ? $"{harness.DisplayName} plugin endpoint"
+            : $"{harness.DisplayName}插件端";
         if (snapshot is null)
         {
-            SetLed(RuntimeLed, "#FFB8B98B", "Harness 适配器离线");
-            SetLed(DriverLed, "#FFB8B98B", "网页桥接未连接");
+            SetLed(RuntimeLed, NeutralStatusLed, "Harness 适配器离线");
+            SetLed(
+                DriverLed,
+                NeutralStatusLed,
+                "网页桥接未连接",
+                title: pluginEndpointTitle);
             RefreshVoiceServiceLed();
             return;
         }
 
         SetLed(
             RuntimeLed,
-            "#FF78A6FF",
-            $"{harness.DisplayName} 适配器已连接",
-            glow: true);
+            HealthyStatusLed,
+            $"{harness.DisplayName} 适配器已连接");
         var browserConnected = snapshot.Components?.Browser == "connected";
         SetLed(
             DriverLed,
-            browserConnected ? "#FF78A6FF" : "#FFFFC85A",
+            browserConnected ? HealthyStatusLed : WaitingStatusLed,
             browserConnected ? "Harness 网页桥接已连接" : "等待 Harness 网页桥接",
-            glow: browserConnected);
+            title: pluginEndpointTitle);
         RefreshVoiceServiceLed();
     }
 
@@ -5494,19 +5517,18 @@ public partial class MicroSurfaceWindow : Window
 
     private void RefreshVoiceServiceLed()
     {
-        var (color, glow) = _voiceServiceState switch
+        var appearance = _voiceServiceState switch
         {
-            KeypadVoiceServiceState.Ready => ("#FF304FFE", true),
-            KeypadVoiceServiceState.Listening => ("#FF304FFE", true),
-            KeypadVoiceServiceState.Checking => ("#FFFFC85A", false),
-            KeypadVoiceServiceState.Error => ("#FFFF7994", false),
-            _ => ("#FFB8B98B", false),
+            KeypadVoiceServiceState.Ready => HealthyStatusLed,
+            KeypadVoiceServiceState.Listening => ActiveStatusLed,
+            KeypadVoiceServiceState.Checking => WaitingStatusLed,
+            KeypadVoiceServiceState.Error => ErrorStatusLed,
+            _ => NeutralStatusLed,
         };
         SetLed(
             ActivityLed,
-            color,
+            appearance,
             _voiceServiceMessage,
-            glow,
             _localization.IsEnglish ? "Voice service" : "语音服务");
     }
 
@@ -5859,24 +5881,28 @@ public partial class MicroSurfaceWindow : Window
     internal void ApplyVoiceServiceStateForVisualTest(
         bool ready,
         bool checking = false,
-        bool error = false)
+        bool error = false,
+        bool listening = false)
     {
         var state = error
             ? KeypadVoiceServiceState.Error
             : checking
                 ? KeypadVoiceServiceState.Checking
-                : ready
-                    ? KeypadVoiceServiceState.Ready
-                    : KeypadVoiceServiceState.Unavailable;
+                : listening
+                    ? KeypadVoiceServiceState.Listening
+                    : ready
+                        ? KeypadVoiceServiceState.Ready
+                        : KeypadVoiceServiceState.Unavailable;
         SetVoiceServiceState(
             state,
-            ready
-                ? "小键盘语音服务已就绪。"
-                : checking
-                    ? "正在检查小键盘语音服务。"
-                    : error
-                        ? "小键盘语音服务错误。"
-                        : "小键盘语音服务尚未启动。");
+            state switch
+            {
+                KeypadVoiceServiceState.Ready => "小键盘语音服务已就绪。",
+                KeypadVoiceServiceState.Listening => "小键盘正在聆听。",
+                KeypadVoiceServiceState.Checking => "正在检查小键盘语音服务。",
+                KeypadVoiceServiceState.Error => "小键盘语音服务错误。",
+                _ => "小键盘语音服务尚未启动。",
+            });
     }
 
     internal void ApplyQuickModel(CodexQuickModel model)
@@ -6554,10 +6580,30 @@ public partial class MicroSurfaceWindow : Window
 
     private void SetLed(
         Ellipse led,
+        StatusLedAppearance appearance,
+        string tooltip,
+        string? title = null) =>
+        SetLed(led, appearance.Color, tooltip, appearance.Glow, title);
+
+    private void SetLed(
+        Ellipse led,
         string color,
         string tooltip,
         bool glow = false,
-        string? title = null)
+        string? title = null) =>
+        SetLed(
+            led,
+            (Color)ColorConverter.ConvertFromString(color),
+            tooltip,
+            glow,
+            title);
+
+    private void SetLed(
+        Ellipse led,
+        Color color,
+        string tooltip,
+        bool glow,
+        string? title)
     {
         if (led == ActivityLed &&
             !IsCodexHarnessActive() &&
@@ -6567,15 +6613,14 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        var parsedColor = (Color)ColorConverter.ConvertFromString(color);
-        led.Fill = new SolidColorBrush(parsedColor);
+        led.Fill = new SolidColorBrush(color);
         led.Effect = glow
             ? new DropShadowEffect
             {
-                Color = parsedColor,
-                BlurRadius = 8,
+                Color = color,
+                BlurRadius = StatusLedGlowBlurRadius,
                 ShadowDepth = 0,
-                Opacity = 0.78,
+                Opacity = StatusLedGlowOpacity,
             }
             : null;
         var helpTitle = !string.IsNullOrWhiteSpace(title)

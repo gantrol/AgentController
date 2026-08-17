@@ -31,6 +31,12 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="MicroSurfaceResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="StatusLedStyle" TargetType="{x:Type Ellipse}">
+                <Setter Property="Width" Value="7" />
+                <Setter Property="Height" Value="7" />
+                <Setter Property="Fill" Value="#B8B98B" />
+                <Setter Property="SnapsToDevicePixels" Value="True" />
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
     <Grid Background="Transparent">
@@ -538,9 +544,9 @@
                                             VerticalAlignment="Center"
                                             Margin="10,0,0,0"
                                             Panel.ZIndex="2">
-                                    <Ellipse x:Name="RuntimeLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#9EBDFF" ToolTip="Codex 运行时握手" />
-                                    <Ellipse x:Name="DriverLed" Width="7" Height="7" Margin="0,0,0,4" Fill="#B8B98B" ToolTip="虚拟 HID 驱动" />
-                                    <Ellipse x:Name="ActivityLed" Width="7" Height="7" Fill="#B8B98B" ToolTip="事件 / 语音服务状态" />
+                                    <Ellipse x:Name="RuntimeLed" Margin="0,0,0,4" Style="{StaticResource StatusLedStyle}" ToolTip="Codex 运行时握手" />
+                                    <Ellipse x:Name="DriverLed" Margin="0,0,0,4" Style="{StaticResource StatusLedStyle}" ToolTip="虚拟 HID 驱动" />
+                                    <Ellipse x:Name="ActivityLed" Style="{StaticResource StatusLedStyle}" ToolTip="事件 / 语音服务状态" />
                                 </StackPanel>
                                 <Button x:Name="SettingsKey"
                                         Width="96"
