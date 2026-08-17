@@ -1,6 +1,6 @@
 {
   "name": "@agentcontroller/dsh-micro-bridge-deepseek-harness",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "External DeepSeek Harness adapter for AgentController Micro native actions and keypad dictation",
   "license": "MIT",
   "type": "module",
@@ -37,6 +37,7 @@
     "build": "node scripts/clean.mjs && tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "vitest run tests/node-half.client.spec.ts -t \"e2e:\"",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build",
     "prepare": "pnpm run build"
   },

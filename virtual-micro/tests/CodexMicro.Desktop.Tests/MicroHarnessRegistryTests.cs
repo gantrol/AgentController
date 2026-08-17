@@ -968,6 +968,76 @@ public sealed class MicroHarnessRegistryTests
             item is { Step: 5, TotalSteps: 7 });
     }
 
+    [Theory]
+    [InlineData(false, 1, 6_789)]
+    [InlineData(true, 0, 4_321)]
+    public async Task DeepSeekActivationOwnsExactlyOneWindowsSurfaceLaunch(
+        bool adapterAlreadyLaunched,
+        int expectedLaunches,
+        int expectedProcessId)
+    {
+        var pipeName = $"codex-micro-deepseek-surface-{Guid.NewGuid():N}";
+        var definition = new MicroHarnessDefinition(
+            "deepseek-harness",
+            "DeepSeek Harness",
+            "Test direct adapter",
+            null,
+            true,
+            new(pipeName, null, null, null, false));
+        var launches = new List<MicroHarnessDefinition>();
+        var registry = new MicroHarnessRegistry(
+            [definition],
+            settingsPath: Path.Combine(
+                Path.GetTempPath(),
+                $"missing-{Guid.NewGuid():N}",
+                "settings.json"),
+            surfaceLauncher: harness =>
+            {
+                launches.Add(harness);
+                return new(true, 6_789, null);
+            });
+        var serverTask = Task.Run(async () =>
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                await using var server = new NamedPipeServerStream(
+                    pipeName,
+                    PipeDirection.InOut,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous);
+                await server.WaitForConnectionAsync();
+                using var reader = new StreamReader(
+                    server,
+                    Encoding.UTF8,
+                    leaveOpen: true);
+                await using var writer = new StreamWriter(
+                    server,
+                    new UTF8Encoding(false),
+                    leaveOpen: true)
+                {
+                    AutoFlush = true,
+                };
+                _ = await reader.ReadLineAsync();
+                await writer.WriteLineAsync(attempt == 0
+                    ? adapterAlreadyLaunched
+                        ? "{\"success\":true,\"message\":\"opening dedicated window\",\"status\":\"opening\",\"windowProcessId\":4321}"
+                        : "{\"success\":true,\"message\":\"opening dedicated window\",\"status\":\"opening\"}"
+                    : "{\"success\":true,\"message\":\"dedicated surface connected\",\"status\":\"background\"}");
+            }
+        });
+
+        var result = await registry.ActivateUntilSurfaceReadyAsync(definition.Id);
+        await serverTask;
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(MicroHarnessDispatchStage.Background, result.Stage);
+        Assert.Equal(expectedProcessId, result.WindowProcessId);
+        Assert.Equal(expectedLaunches, launches.Count);
+        Assert.All(launches, launched =>
+            Assert.Equal(definition.Id, launched.Id));
+    }
+
     [Fact]
     public async Task ColdStartProbesReadinessBeforeDispatchingActivation()
     {

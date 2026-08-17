@@ -15,6 +15,7 @@
 
 ## 历史、证据与验收
 
+- [Deepseek Harness Keypad v0.2.6 正式版说明](release-deepseek-harness-keypad-v0.2.6.md)
 - [Deepseek Harness Keypad v0.2.5 正式版说明](release-deepseek-harness-keypad-v0.2.5.md)
 - [Deepseek Harness Keypad v0.2.4 正式版说明](release-deepseek-harness-keypad-v0.2.4.md)
 - [v0.7 手柄指令清单](controller-command-reference-v0.7.md)：仅用于追踪旧实现与规范差异，不作为最新合同。

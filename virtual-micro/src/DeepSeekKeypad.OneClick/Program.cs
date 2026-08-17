@@ -69,7 +69,7 @@ internal sealed record InstallerOptions(
 internal sealed class InstallerForm : Form
 {
     private const string ProductId = "deepseek-harness-keypad";
-    private const string ReleaseVersion = "0.2.5";
+    private const string ReleaseVersion = "0.2.6";
     private const string InstallDirectoryName = "Deepseek Harness Keypad";
     private const string ExecutableName = "CodexMicro.exe";
     private const string MarkerName = ".deepseek-harness-keypad.install.json";

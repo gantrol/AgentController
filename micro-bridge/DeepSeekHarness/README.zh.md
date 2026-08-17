@@ -47,6 +47,10 @@ WSL 模式使用带大小限制的回环 HTTP UTF-8 JSON；原生 Windows 模式
 `\\.\pipe\deepseek-harness-micro-v1` 上使用单行 JSON。协议版本为 `1`，来源为
 `codex-micro`。
 
+普通 DSH 标签页可以上报状态，但不会接收小键盘的聚焦、会话、动作或听写帧。没有
+已确认的专用窗口时，Bridge 返回 `opening`，由 Windows 小键盘主程序优先使用 Edge
+打开 app-mode 窗口，不依赖 WSL 的 Windows 可执行文件 interop。
+
 通用动作：
 
 - `activate`
@@ -68,6 +72,7 @@ WSL 模式使用带大小限制的回环 HTTP UTF-8 JSON；原生 Windows 模式
 
 ```powershell
 pnpm run verify
+pnpm run test:e2e
 ```
 
 该命令执行严格 TypeScript 检查、浏览器/命名管道/回环 HTTP 测试，并构建 Host 与

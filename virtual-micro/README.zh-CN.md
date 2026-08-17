@@ -140,19 +140,19 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.5
+.\scripts\package-micro.ps1 -Version 0.2.6
 # 准备带桥接插件和在线自动配置入口的 DeepSeek 特调包
-.\scripts\package-micro.ps1 -Version 0.2.5 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.6 -Preset deepseek
 ```
 
 产物：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.5/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.5-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.6/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.6-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
-- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.5-win-x64.zip`；
+- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.6-win-x64.zip`；
 - 可单独安装到已有 DSH 的 Bridge：
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.5.zip`（也带独立 SHA-256）。
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.6.zip`（也带独立 SHA-256）。
 
 封包脚本收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
 启动适配器，不复制模型、Python 环境、Desktop Runtime、调试符号或驱动。

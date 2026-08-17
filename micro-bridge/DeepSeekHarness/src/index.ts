@@ -165,9 +165,8 @@ export const internals: {
   platform: NodeJS.Platform
   runNativeCommand: NativeCommandRunner
   now: () => number
+  isWsl: () => boolean
   windowsAppBrowser: () => string | undefined
-  wslWindowsAppBrowser: () => string | undefined
-  wslWindowsUrlHandler: () => string | undefined
   launchWindowsAppBrowser: (executable: string, url: string) => Promise<number>
   openWebUi: (url: string, signal: AbortSignal) => Promise<number | undefined>
 } = {
@@ -175,6 +174,8 @@ export const internals: {
   platform: process.platform,
   runNativeCommand,
   now: Date.now,
+  isWsl: () => process.env.WSL_INTEROP !== undefined
+    || process.env.WSL_DISTRO_NAME !== undefined,
   windowsAppBrowser() {
     const roots = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles]
       .filter((value): value is string => value !== undefined && value.trim() !== '')
@@ -182,26 +183,6 @@ export const internals: {
       join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
       join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'),
     ])
-    return candidates.find(candidate => existsSync(candidate))
-  },
-  wslWindowsAppBrowser() {
-    if (process.env.WSL_INTEROP === undefined &&
-        process.env.WSL_DISTRO_NAME === undefined) return undefined
-    const candidates = [
-      '/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-      '/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe',
-      '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
-      '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    ]
-    return candidates.find(candidate => existsSync(candidate))
-  },
-  wslWindowsUrlHandler() {
-    if (process.env.WSL_INTEROP === undefined &&
-        process.env.WSL_DISTRO_NAME === undefined) return undefined
-    const candidates = [
-      '/mnt/c/Windows/System32/rundll32.exe',
-      '/mnt/c/WINDOWS/System32/rundll32.exe',
-    ]
     return candidates.find(candidate => existsSync(candidate))
   },
   launchWindowsAppBrowser(executable, url) {
@@ -242,29 +223,10 @@ export const internals: {
         await internals.runNativeCommand('open', [url], signal)
         return undefined
       case 'linux':
-        {
-          const windowsAppBrowser = internals.wslWindowsAppBrowser()
-          if (windowsAppBrowser !== undefined) {
-            // The Harness host lives in WSL, but its UI remains a native
-            // Windows app window.  Launch app mode directly so repeated
-            // Micro activation can be matched and raised by HWND instead of
-            // spraying ordinary browser tabs through the URL handler.
-            await internals.launchWindowsAppBrowser(windowsAppBrowser, url)
-            // The pid returned by a WSL interop spawn belongs to the Linux
-            // relay, not the native Windows browser.  Let Micro locate the
-            // guarded Harness window by title/process instead.
-            return undefined
-          }
-          const windowsUrlHandler = internals.wslWindowsUrlHandler()
-          if (windowsUrlHandler !== undefined) {
-            await internals.runNativeCommand(
-              windowsUrlHandler,
-              ['url.dll,FileProtocolHandler', url],
-              signal,
-            )
-            return undefined
-          }
-        }
+        // A WSL host cannot assume that Windows executable interop is
+        // registered. The Windows Micro process owns the physical key and
+        // launches the Edge app-mode surface after receiving `opening`.
+        if (internals.isWsl()) return undefined
         await internals.runNativeCommand('xdg-open', [url], signal)
         return undefined
       default:
@@ -382,10 +344,12 @@ function resolveSessionStatus(
   browserStatus: MicroSessionStatus | undefined,
 ): MicroSessionStatus {
   // Pending interaction is the DeepSeek sidebar's primary state even while
-  // the underlying turn remains active. The host list is authoritative for
-  // the coarse running bit; browser-only completion/error states apply once
-  // the host confirms that work is no longer running.
+  // the underlying turn remains active. A dedicated browser surface can see a
+  // turn start before the host session list refreshes, so its running state
+  // must light the Agent key immediately. Browser-only completion/error states
+  // still apply only after the host confirms that work is no longer running.
   if (browserStatus === 'waiting') return 'waiting'
+  if (browserStatus === 'running') return 'running'
   if (row.running) return 'running'
   if (browserStatus === 'completed' || browserStatus === 'error') {
     return browserStatus
@@ -408,7 +372,7 @@ class MicroBridge {
   private readonly reportWaiters = new Map<string, (report?: MicroBrowserReport) => void>()
   private readonly nativeTasks = new Set<Promise<unknown>>()
   private readonly abort = new AbortController()
-  private readonly pendingFrames: MicroBrowserFrame[] = []
+  private readonly pendingDedicatedFrames: MicroBrowserFrame[] = []
   private readonly pendingVoiceRequests: MicroKeypadVoiceRequest[] = []
   private readonly voiceRequestWaiters = new Set<
     (request?: MicroKeypadVoiceRequest) => void
@@ -473,11 +437,7 @@ class MicroBridge {
         this.dedicatedBrowsers.delete(browserId)
       }
     })
-    if (this.pendingFrames.length !== 0) {
-      for (const frame of this.pendingFrames.splice(0)) {
-        res.write(sseFrame(frame))
-      }
-    }
+    this.flushPendingDedicatedFrames(browserId)
   }
 
   /** Accept browser presence and exact frame acknowledgements. */
@@ -500,6 +460,7 @@ class MicroBridge {
       if (report.surface === 'dedicated') {
         this.dedicatedBrowsers.add(report.browserId)
         this.dedicatedOpenPending = false
+        this.flushPendingDedicatedFrames(report.browserId)
       } else {
         this.dedicatedBrowsers.delete(report.browserId)
       }
@@ -853,7 +814,7 @@ class MicroBridge {
       case 'activate': {
         const requestId = randomUUID()
         const frame = { version: MICRO_PROTOCOL_VERSION, type: 'activate', requestId } as const
-        const delivery = await this.deliver(frame, FOCUS_ACK_TIMEOUT_MS)
+        const delivery = await this.deliver(frame, FOCUS_ACK_TIMEOUT_MS, 'dedicated')
         if (!delivery.delivered) {
           const processId = await this.scheduleOpenOnce()
           return response(
@@ -880,11 +841,11 @@ class MicroBridge {
         // Windows it can remain true while another top-level application is
         // in front, so let Codex Micro perform and verify the native HWND
         // activation instead of returning a false "foreground" success.
-        if (!delivery.report.visible && delivery.report.surface !== 'dedicated') {
+        if (delivery.report.surface !== 'dedicated') {
           const processId = await this.scheduleOpenOnce()
           return response(
             true,
-            'DeepSeek Harness was in a background tab; a dedicated window is opening.',
+            'DeepSeek Harness lost its dedicated surface; a dedicated window is opening.',
             'opening',
             undefined,
             processId,
@@ -908,9 +869,9 @@ class MicroBridge {
           requestId: randomUUID(),
           sessionId: request.sessionId,
         }
-        const delivery = await this.deliver(frame, FOCUS_ACK_TIMEOUT_MS)
+        const delivery = await this.deliver(frame, FOCUS_ACK_TIMEOUT_MS, 'dedicated')
         if (!delivery.delivered) {
-          this.pendingFrames.push(frame)
+          this.pendingDedicatedFrames.push(frame)
           const processId = await this.scheduleOpenOnce()
           return response(
             true,
@@ -935,11 +896,11 @@ class MicroBridge {
         if (!delivery.report.success) {
           return response(false, delivery.report.message ?? 'DeepSeek Harness rejected the session.')
         }
-        if (!delivery.report.visible && delivery.report.surface !== 'dedicated') {
+        if (delivery.report.surface !== 'dedicated') {
           const processId = await this.scheduleOpenOnce()
           return response(
             true,
-            'The selected DeepSeek Harness session opened in a background tab; a dedicated window is opening.',
+            'The selected DeepSeek Harness session lost its dedicated surface; a dedicated window is opening.',
             'opening',
             undefined,
             processId,
@@ -961,9 +922,9 @@ class MicroBridge {
           actionId: request.actionId,
           ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         }
-        const delivery = await this.deliver(frame, ACTION_ACK_TIMEOUT_MS)
+        const delivery = await this.deliver(frame, ACTION_ACK_TIMEOUT_MS, 'dedicated')
         if (!delivery.delivered) {
-          this.pendingFrames.push(frame)
+          this.pendingDedicatedFrames.push(frame)
           const processId = await this.scheduleOpenOnce()
           return response(
             true,
@@ -1042,9 +1003,9 @@ class MicroBridge {
             ? {}
             : { dictationPhase: request.dictationPhase }),
         }
-        const delivery = await this.deliver(frame, ACTION_ACK_TIMEOUT_MS)
+        const delivery = await this.deliver(frame, ACTION_ACK_TIMEOUT_MS, 'dedicated')
         if (!delivery.delivered) {
-          this.pendingFrames.push(frame)
+          this.pendingDedicatedFrames.push(frame)
           const processId = await this.scheduleOpenOnce()
           return response(
             false,
@@ -1091,9 +1052,11 @@ class MicroBridge {
           id: row.sessionId,
           displayTitle: displayTitle(row),
           status,
-          // Preserve the v1 coarse bit for older keypads. `waiting` can be
-          // primary while the underlying turn is still running.
-          running: row.running,
+          // Preserve the v1 coarse bit for older keypads, but derive it from
+          // the merged status so a browser-observed start lights the Agent key
+          // while the host list is still catching up. `waiting` is also an
+          // active turn for clients that do not understand detailed statuses.
+          running: status === 'running' || status === 'waiting',
           updatedAt: row.updatedAt,
         }
       })
@@ -1122,8 +1085,9 @@ class MicroBridge {
   private async deliver(
     frame: MicroBrowserFrame & { requestId: string },
     timeoutMs: number,
+    requiredSurface?: MicroBrowserReport['surface'],
   ): Promise<{ delivered: boolean; report?: MicroBrowserReport }> {
-    const target = this.preferredBrowser()
+    const target = this.preferredBrowser(requiredSurface)
     if (target === undefined) return { delivered: false }
     const report = this.waitForReport(frame.requestId, timeoutMs)
     target.response.write(sseFrame(frame))
@@ -1152,7 +1116,7 @@ class MicroBridge {
     })
   }
 
-  private preferredBrowser(): {
+  private preferredBrowser(requiredSurface?: MicroBrowserReport['surface']): {
     response: ServerResponse
     state?: MicroBrowserReport & { reportedAt: number }
   } | undefined {
@@ -1165,12 +1129,15 @@ class MicroBridge {
     for (const [browserId, response] of this.browserConnections) {
       if (response.destroyed || response.writableEnded) {
         this.browserConnections.delete(browserId)
+        this.browserReports.delete(browserId)
+        this.dedicatedBrowsers.delete(browserId)
         continue
       }
       const state = this.browserReports.get(browserId)
+      if (requiredSurface !== undefined && state?.surface !== requiredSurface) continue
       const score = (state?.focused === true ? 4 : 0)
         + (state?.visible === true ? 2 : 0)
-        + (state?.surface === 'dedicated' ? 1 : 0)
+        + (state?.surface === 'dedicated' ? 8 : 0)
       const candidate = {
         response,
         score,
@@ -1187,6 +1154,21 @@ class MicroBridge {
     return {
       response: preferred.response,
       ...(preferred.state === undefined ? {} : { state: preferred.state }),
+    }
+  }
+
+  /**
+   * Physical-key frames must never be consumed by a normal DSH browser tab.
+   * Wait until the SSE connection has explicitly reported itself as the
+   * dedicated app surface, regardless of whether events or the report arrives
+   * first during startup.
+   */
+  private flushPendingDedicatedFrames(browserId: string): void {
+    if (!this.dedicatedBrowsers.has(browserId)) return
+    const response = this.browserConnections.get(browserId)
+    if (response === undefined || response.destroyed || response.writableEnded) return
+    for (const frame of this.pendingDedicatedFrames.splice(0)) {
+      response.write(sseFrame(frame))
     }
   }
 

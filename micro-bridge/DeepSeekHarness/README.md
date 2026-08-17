@@ -52,6 +52,11 @@ WSL mode uses bounded UTF-8 JSON over loopback HTTP. Native Windows mode can
 use one JSON line on `\\.\pipe\deepseek-harness-micro-v1`. Protocol version is
 `1` and source is `codex-micro`.
 
+Normal DSH tabs can report state, but they never receive physical-key focus,
+session, action, or dictation frames. If no confirmed dedicated surface is
+connected, the bridge returns `opening` so the Windows keypad host can open an
+Edge-first app-mode window without depending on WSL executable interop.
+
 General actions:
 
 - `activate`
@@ -73,6 +78,7 @@ and the keypad; the keypad connects directly to its configured voice provider.
 
 ```powershell
 pnpm run verify
+pnpm run test:e2e
 ```
 
 This runs strict TypeScript checking, browser/pipe/loopback-HTTP tests, and
