@@ -50,7 +50,7 @@ public sealed class AgentLightingVisualTests
                 new MicroLocalization(MicroLanguage.ZhCn));
             var cases = CreateLightingCases();
 
-            Assert.Equal(17, cases.Count);
+            Assert.Equal(23, cases.Count);
             foreach (var lightingCase in cases)
             {
                 var rendered = RenderAgentKey(
@@ -222,8 +222,18 @@ public sealed class AgentLightingVisualTests
             0x304FFE,
             isCurrentSession: true,
             effect: 4),
-        HarnessCase("RUNNING", "Harness · background", isCurrent: false),
-        HarnessCase("RUNNING", "Harness · current", isCurrent: true),
+        HarnessCase(
+            "RUNNING",
+            "Harness · background",
+            MicroHarnessSessionStatus.Running,
+            0x304FFE,
+            isCurrent: false),
+        HarnessCase(
+            "RUNNING",
+            "Harness · current",
+            MicroHarnessSessionStatus.Running,
+            0x304FFE,
+            isCurrent: true),
         ProtocolCase("COMPLETED", "Codex · background", 0x00FF4C),
         ProtocolCase(
             "COMPLETED",
@@ -231,6 +241,18 @@ public sealed class AgentLightingVisualTests
             0x00FF4C,
             isCurrentSession: true,
             effect: 4),
+        HarnessCase(
+            "COMPLETED",
+            "Harness · background",
+            MicroHarnessSessionStatus.Completed,
+            0x00FF4C,
+            isCurrent: false),
+        HarnessCase(
+            "COMPLETED",
+            "Harness · current",
+            MicroHarnessSessionStatus.Completed,
+            0x00FF4C,
+            isCurrent: true),
         ProtocolCase("IDLE", "Codex · protocol", 0xFFFFFF),
         new(
             "CURRENT",
@@ -247,6 +269,18 @@ public sealed class AgentLightingVisualTests
             0xFF6D00,
             isCurrentSession: true,
             effect: 4),
+        HarnessCase(
+            "WAITING",
+            "Harness · background",
+            MicroHarnessSessionStatus.WaitingForInput,
+            0xFF6D00,
+            isCurrent: false),
+        HarnessCase(
+            "WAITING",
+            "Harness · current",
+            MicroHarnessSessionStatus.WaitingForInput,
+            0xFF6D00,
+            isCurrent: true),
         ProtocolCase("ERROR", "Codex · background", 0xFF0033),
         ProtocolCase(
             "ERROR",
@@ -254,6 +288,18 @@ public sealed class AgentLightingVisualTests
             0xFF0033,
             isCurrentSession: true,
             effect: 4),
+        HarnessCase(
+            "ERROR",
+            "Harness · background",
+            MicroHarnessSessionStatus.Error,
+            0xFF0033,
+            isCurrent: false),
+        HarnessCase(
+            "ERROR",
+            "Harness · current",
+            MicroHarnessSessionStatus.Error,
+            0xFF0033,
+            isCurrent: true),
         ProtocolCase("CUSTOM", "Protocol · purple", 0x7C3AED),
         ProtocolCase("CUSTOM", "Protocol · cyan", 0x00B8D4),
         new(
@@ -262,7 +308,7 @@ public sealed class AgentLightingVisualTests
             InactiveCarrierColor,
             ExpectedActive: false,
             AgentLightingAppearance.FromHarnessSession(
-                isRunning: false,
+                MicroHarnessSessionStatus.Idle,
                 isCurrentSession: false)),
         new(
             "IDLE",
@@ -270,7 +316,7 @@ public sealed class AgentLightingVisualTests
             InactiveCarrierColor,
             ExpectedActive: false,
             AgentLightingAppearance.FromHarnessSession(
-                isRunning: false,
+                MicroHarnessSessionStatus.Idle,
                 isCurrentSession: true)),
         new(
             "OFF",
@@ -306,14 +352,16 @@ public sealed class AgentLightingVisualTests
     private static LightingCase HarnessCase(
         string state,
         string variant,
+        MicroHarnessSessionStatus status,
+        int rgb,
         bool isCurrent) =>
         new(
             state,
             variant,
-            ColorFromRgb(0x304FFE),
+            ColorFromRgb(rgb),
             ExpectedActive: true,
             AgentLightingAppearance.FromHarnessSession(
-                isRunning: true,
+                status,
                 isCurrentSession: isCurrent));
 
     private static MicroHarnessStateSnapshot CreateHarnessSnapshot(
@@ -325,7 +373,9 @@ public sealed class AgentLightingVisualTests
                 new(
                     "scripted-session",
                     running ? "Running task" : "Idle task",
-                    running,
+                    running
+                        ? MicroHarnessSessionStatus.Running
+                        : MicroHarnessSessionStatus.Idle,
                     DateTimeOffset.Now.ToUnixTimeMilliseconds()),
             ],
             "scripted-session",

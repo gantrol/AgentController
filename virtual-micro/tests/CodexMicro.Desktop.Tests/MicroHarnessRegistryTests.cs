@@ -479,6 +479,7 @@ public sealed class MicroHarnessRegistryTests
         var session = Assert.Single(snapshot.Sessions);
         Assert.Equal("wsl-session", session.Id);
         Assert.Equal("Linux session", session.DisplayTitle);
+        Assert.Equal(MicroHarnessSessionStatus.Idle, session.Status);
     }
 
     [Fact]
@@ -584,7 +585,7 @@ public sealed class MicroHarnessRegistryTests
             Assert.Contains("\"action\":\"state/read\"", request);
             await writer.WriteLineAsync(
                 """
-                {"success":true,"message":"ready","state":{"capabilities":{"sessionList":true,"sessionActivation":true,"knobSettings":false,"voiceInput":true,"actions":["session/new","session/fork","turn/cancel","composer/back","composer/submit"]},"components":{"adapter":"ready","browser":"connected","currentModel":"DeepSeek-V4-Pro"},"navigationDepth":2,"currentSessionId":"newer","sessions":[{"id":"older","displayTitle":"Older","running":false,"updatedAt":10},{"id":"newer","displayTitle":"Newer","running":true,"updatedAt":20}]}}
+                {"success":true,"message":"ready","state":{"capabilities":{"sessionList":true,"sessionActivation":true,"knobSettings":false,"voiceInput":true,"actions":["session/new","session/fork","turn/cancel","composer/back","composer/submit"]},"components":{"adapter":"ready","browser":"connected","currentModel":"DeepSeek-V4-Pro"},"navigationDepth":2,"currentSessionId":"waiting","sessions":[{"id":"legacy-idle","displayTitle":"Legacy idle","running":false,"updatedAt":10},{"id":"completed","displayTitle":"Completed","status":"completed","running":false,"updatedAt":20},{"id":"error","displayTitle":"Error","status":"error","running":false,"updatedAt":30},{"id":"running","displayTitle":"Running","status":"running","running":true,"updatedAt":40},{"id":"waiting","displayTitle":"Waiting","status":"waiting","running":false,"updatedAt":50}]}}
                 """);
         });
 
@@ -592,8 +593,19 @@ public sealed class MicroHarnessRegistryTests
         await serverTask;
 
         Assert.NotNull(snapshot);
-        Assert.Equal("newer", snapshot.CurrentSessionId);
-        Assert.Equal(["newer", "older"], snapshot.Sessions.Select(item => item.Id));
+        Assert.Equal("waiting", snapshot.CurrentSessionId);
+        Assert.Equal(
+            ["waiting", "running", "error", "completed", "legacy-idle"],
+            snapshot.Sessions.Select(item => item.Id));
+        Assert.Equal(
+            [
+                MicroHarnessSessionStatus.WaitingForInput,
+                MicroHarnessSessionStatus.Running,
+                MicroHarnessSessionStatus.Error,
+                MicroHarnessSessionStatus.Completed,
+                MicroHarnessSessionStatus.Idle,
+            ],
+            snapshot.Sessions.Select(item => item.Status));
         Assert.True(snapshot.Capabilities.SessionActivation);
         Assert.False(snapshot.Capabilities.KnobSettings);
         Assert.True(snapshot.Capabilities.VoiceInput);

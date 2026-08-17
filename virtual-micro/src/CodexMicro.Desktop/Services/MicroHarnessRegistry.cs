@@ -220,11 +220,23 @@ internal sealed record MicroHarnessCapabilities(
     internal bool Supports(string actionId) => Actions.Contains(actionId);
 }
 
+internal enum MicroHarnessSessionStatus
+{
+    Idle,
+    Running,
+    Completed,
+    WaitingForInput,
+    Error,
+}
+
 internal sealed record MicroHarnessSession(
     string Id,
     string DisplayTitle,
-    bool Running,
-    long UpdatedAt);
+    MicroHarnessSessionStatus Status,
+    long UpdatedAt)
+{
+    internal bool Running => Status == MicroHarnessSessionStatus.Running;
+}
 
 internal sealed record MicroHarnessComponentSnapshot(
     string Adapter,
@@ -942,11 +954,16 @@ internal sealed class MicroHarnessRegistry
                     : id;
                 var running = value.TryGetProperty("running", out var runningValue) &&
                     runningValue.ValueKind == JsonValueKind.True;
+                var status = TryReadString(value, "status", out var statusValue)
+                    ? ParseSessionStatus(statusValue, running)
+                    : running
+                        ? MicroHarnessSessionStatus.Running
+                        : MicroHarnessSessionStatus.Idle;
                 var updatedAt = value.TryGetProperty("updatedAt", out var updatedAtValue) &&
                     updatedAtValue.TryGetInt64(out var timestamp)
                         ? timestamp
                         : 0;
-                sessions.Add(new(id, title, running, updatedAt));
+                sessions.Add(new(id, title, status, updatedAt));
             }
         }
 
@@ -1020,6 +1037,20 @@ internal sealed class MicroHarnessRegistry
             components,
             DateTimeOffset.Now);
     }
+
+    private static MicroHarnessSessionStatus ParseSessionStatus(
+        string value,
+        bool runningFallback) => value switch
+    {
+        "idle" => MicroHarnessSessionStatus.Idle,
+        "running" => MicroHarnessSessionStatus.Running,
+        "completed" => MicroHarnessSessionStatus.Completed,
+        "waiting" => MicroHarnessSessionStatus.WaitingForInput,
+        "error" => MicroHarnessSessionStatus.Error,
+        _ => runningFallback
+            ? MicroHarnessSessionStatus.Running
+            : MicroHarnessSessionStatus.Idle,
+    };
 
     private async Task<MicroHarnessDispatchResult> DispatchWithOptionalLaunchAsync(
         MicroHarnessDefinition harness,

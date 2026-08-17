@@ -124,12 +124,23 @@ export interface MicroCapabilities {
   actions: MicroActionId[]
 }
 
+/** Agent-key state projected from DeepSeek Harness's live session list. */
+export type MicroSessionStatus = 'idle' | 'running' | 'completed' | 'waiting' | 'error'
+
 /** One recent DeepSeek Harness session displayed on an Agent key. */
 export interface MicroSessionSummary {
   id: string
   displayTitle: string
+  /** Exact live state used by the keypad light; `running` remains for v1 compatibility. */
+  status: MicroSessionStatus
   running: boolean
   updatedAt: number
+}
+
+/** Browser-owned state that is not present in the host's durable session-list RPC. */
+export interface MicroBrowserSessionState {
+  id: string
+  status: MicroSessionStatus
 }
 
 export interface MicroComponentSnapshot {
@@ -225,6 +236,12 @@ export interface MicroBrowserReport {
   navigationDepth: number
   /** Display name of the currently selected DeepSeek model, when known. */
   currentModel?: string
+  /**
+   * Live sidebar states. In particular, `completed` and `waiting` exist only
+   * in the browser runtime, so omitting this projection would make the
+   * keypad's green and amber Agent lights impossible to synchronize.
+   */
+  sessionStates?: MicroBrowserSessionState[]
   requestId?: string
   success?: boolean
   message?: string

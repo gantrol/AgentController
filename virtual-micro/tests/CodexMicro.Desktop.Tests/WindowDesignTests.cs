@@ -782,13 +782,31 @@ public sealed class WindowDesignTests
                         new(
                             "visual-running-session",
                             "Running DeepSeek task",
-                            Running: true,
+                            Status: MicroHarnessSessionStatus.Running,
                             UpdatedAt: DateTimeOffset.Now.ToUnixTimeMilliseconds()),
+                        new(
+                            "visual-completed-session",
+                            "Completed DeepSeek task",
+                            Status: MicroHarnessSessionStatus.Completed,
+                            UpdatedAt: DateTimeOffset.Now.AddMinutes(-1)
+                                .ToUnixTimeMilliseconds()),
+                        new(
+                            "visual-waiting-session",
+                            "Waiting DeepSeek task",
+                            Status: MicroHarnessSessionStatus.WaitingForInput,
+                            UpdatedAt: DateTimeOffset.Now.AddMinutes(-2)
+                                .ToUnixTimeMilliseconds()),
+                        new(
+                            "visual-error-session",
+                            "Failed DeepSeek task",
+                            Status: MicroHarnessSessionStatus.Error,
+                            UpdatedAt: DateTimeOffset.Now.AddMinutes(-3)
+                                .ToUnixTimeMilliseconds()),
                         new(
                             "visual-idle-session",
                             "Idle DeepSeek task",
-                            Running: false,
-                            UpdatedAt: DateTimeOffset.Now.AddMinutes(-1)
+                            Status: MicroHarnessSessionStatus.Idle,
+                            UpdatedAt: DateTimeOffset.Now.AddMinutes(-4)
                                 .ToUnixTimeMilliseconds()),
                     ],
                     "visual-running-session",
@@ -962,14 +980,13 @@ public sealed class WindowDesignTests
                     $"Active perimeter glow {activeGlowBlue} not clearly bluer " +
                     $"than inactive {inactiveGlowBlue}.");
 
-                // External Harnesses expose a running/idle bit rather than
-                // the richer Codex status palette. Running maps to the same
-                // blue thinking state and must render blue through the real
-                // XAML key template; green remains a completed transition.
+                // External Harnesses project the same status vocabulary as
+                // Codex. Running and completed must render blue and green
+                // through the real XAML key template.
                 var harnessRunningPixels = RenderIsolatedAgentKey(
                     window.AgentKey0.Style,
                     AgentLightingAppearance.FromHarnessSession(
-                        isRunning: true,
+                        MicroHarnessSessionStatus.Running,
                         isCurrentSession: true),
                     out var harnessRunningBitmap);
                 var harnessRunningPreviewPath = Environment.GetEnvironmentVariable(
@@ -994,6 +1011,22 @@ public sealed class WindowDesignTests
                     harnessRunningBlue > inactiveWellBlue + 35,
                     $"Harness running well {harnessRunningBlue} is not the blue " +
                     $"thinking state above inactive {inactiveWellBlue}.");
+
+                var harnessCompletedPixels = RenderIsolatedAgentKey(
+                    window.AgentKey0.Style,
+                    AgentLightingAppearance.FromHarnessSession(
+                        MicroHarnessSessionStatus.Completed,
+                        isCurrentSession: false),
+                    out _);
+                var completedGreen = GreenEmphasisAt(
+                    harnessCompletedPixels,
+                    width: IsolatedAgentRenderSize,
+                    x: wellSampleX,
+                    y: wellSampleY);
+                Assert.True(
+                    completedGreen > inactiveWellBlue + 35,
+                    $"Harness completed well {completedGreen} is not the green " +
+                    $"completion state above inactive {inactiveWellBlue}.");
 
                 var currentKeyPixels = RenderIsolatedAgentKey(
                     window.AgentKey0.Style,
@@ -1102,6 +1135,19 @@ public sealed class WindowDesignTests
         var green = pixels[offset + 1];
         var red = pixels[offset + 2];
         return blue - ((red + green) / 2.0);
+    }
+
+    private static double GreenEmphasisAt(
+        byte[] pixels,
+        int width,
+        int x,
+        int y)
+    {
+        var offset = ((y * width) + x) * 4;
+        var blue = pixels[offset];
+        var green = pixels[offset + 1];
+        var red = pixels[offset + 2];
+        return green - ((red + blue) / 2.0);
     }
 
     private static double RedEmphasisAt(

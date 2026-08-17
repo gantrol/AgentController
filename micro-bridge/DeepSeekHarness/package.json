@@ -1,6 +1,6 @@
 {
   "name": "@agentcontroller/dsh-micro-bridge-deepseek-harness",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "External DeepSeek Harness adapter for AgentController Micro native actions and keypad dictation",
   "license": "MIT",
   "type": "module",

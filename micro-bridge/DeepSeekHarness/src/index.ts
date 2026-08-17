@@ -17,12 +17,14 @@ import type {
   MicroActionId,
   MicroBrowserReport,
   MicroBrowserFrame,
+  MicroBrowserSessionState,
   MicroDictationFrame,
   MicroKeypadVoiceRequest,
   MicroRequest,
   MicroResponse,
   MicroSessionActivationFrame,
   MicroSessionSummary,
+  MicroSessionStatus,
   MicroStateSnapshot,
   MicroVoiceStatusFrame,
 } from './protocol.ts'
@@ -43,6 +45,7 @@ export type {
   MicroActionId,
   MicroBrowserReport,
   MicroBrowserFrame,
+  MicroBrowserSessionState,
   MicroCapabilities,
   MicroDictationFrame,
   MicroDictationRequest,
@@ -52,6 +55,7 @@ export type {
   MicroSessionActivationFrame,
   MicroSessionActivationRequest,
   MicroSessionSummary,
+  MicroSessionStatus,
   MicroStateRequest,
   MicroStateSnapshot,
   MicroVoiceRequestPoll,
@@ -85,6 +89,7 @@ const MAX_PENDING_VOICE_REQUESTS = 4
 const NATIVE_OPEN_COOLDOWN_MS = 5_000
 const NATIVE_OPEN_PENDING_TIMEOUT_MS = 12_000
 const MAX_VISIBLE_SESSIONS = 6
+const MAX_BROWSER_SESSION_STATES = 24
 const ACTION_IDS = new Set<MicroActionId>([
   'session/new',
   'session/fork',
@@ -370,6 +375,22 @@ function displayTitle(row: SessionListRow): string {
   const cwd = row.cwd?.replace(/[/\\]+$/u, '')
   const base = cwd?.split(/[/\\]/u).pop()
   return base === undefined || base === '' ? row.sessionId : base
+}
+
+function resolveSessionStatus(
+  row: SessionListRow,
+  browserStatus: MicroSessionStatus | undefined,
+): MicroSessionStatus {
+  // Pending interaction is the DeepSeek sidebar's primary state even while
+  // the underlying turn remains active. The host list is authoritative for
+  // the coarse running bit; browser-only completion/error states apply once
+  // the host confirms that work is no longer running.
+  if (browserStatus === 'waiting') return 'waiting'
+  if (row.running) return 'running'
+  if (browserStatus === 'completed' || browserStatus === 'error') {
+    return browserStatus
+  }
+  return 'idle'
 }
 
 interface KeypadVoiceResult {
@@ -1056,17 +1077,26 @@ class MicroBridge {
     const currentSessionId = browserCurrent === null
       ? undefined
       : browserCurrent ?? this.currentSessionId
+    const browserSessionStates = new Map(
+      browserState?.sessionStates?.map(item => [item.id, item.status] as const) ?? [],
+    )
     const sessions: MicroSessionSummary[] = listed.result.value.items
       .filter(row => (!row.blank || row.sessionId === currentSessionId)
         && row.parentSessionId === undefined)
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .slice(0, MAX_VISIBLE_SESSIONS)
-      .map(row => ({
-        id: row.sessionId,
-        displayTitle: displayTitle(row),
-        running: row.running,
-        updatedAt: row.updatedAt,
-      }))
+      .map(row => {
+        const status = resolveSessionStatus(row, browserSessionStates.get(row.sessionId))
+        return {
+          id: row.sessionId,
+          displayTitle: displayTitle(row),
+          status,
+          // Preserve the v1 coarse bit for older keypads. `waiting` can be
+          // primary while the underlying turn is still running.
+          running: row.running,
+          updatedAt: row.updatedAt,
+        }
+      })
     const state: MicroStateSnapshot = {
       capabilities: {
         sessionList: true,
@@ -1202,9 +1232,29 @@ class MicroBridge {
       && (report.navigationDepth === undefined
         || (Number.isInteger(report.navigationDepth) && (report.navigationDepth as number) >= 0))
       && (report.currentModel === undefined || typeof report.currentModel === 'string')
+      && (report.sessionStates === undefined || this.isBrowserSessionStates(report.sessionStates))
       && (report.requestId === undefined || typeof report.requestId === 'string')
       && (report.success === undefined || typeof report.success === 'boolean')
       && (report.message === undefined || typeof report.message === 'string')
+  }
+
+  private isBrowserSessionStates(value: unknown): value is MicroBrowserSessionState[] {
+    if (!Array.isArray(value) || value.length > MAX_BROWSER_SESSION_STATES) return false
+    const ids = new Set<string>()
+    for (const item of value) {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) return false
+      const fields = item as Record<string, unknown>
+      if (typeof fields.id !== 'string' || fields.id.trim() === '' || ids.has(fields.id)) {
+        return false
+      }
+      if (fields.status !== 'idle'
+        && fields.status !== 'running'
+        && fields.status !== 'completed'
+        && fields.status !== 'waiting'
+        && fields.status !== 'error') return false
+      ids.add(fields.id)
+    }
+    return true
   }
 
   /**

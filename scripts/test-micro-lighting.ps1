@@ -24,7 +24,7 @@ $previewVariables = [ordered]@{
     CODEX_MICRO_PREVIEW_PATH =
         (Join-Path $OutputDirectory 'physical-surface-state-matrix.png')
     CODEX_MICRO_DEEPSEEK_PREVIEW_PATH =
-        (Join-Path $OutputDirectory 'deepseek-running-blue.png')
+        (Join-Path $OutputDirectory 'deepseek-agent-state-sync.png')
     CODEX_MICRO_DEEPSEEK_IDLE_PREVIEW_PATH =
         (Join-Path $OutputDirectory 'deepseek-browser-waiting-idle.png')
 }

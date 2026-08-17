@@ -97,15 +97,15 @@ internal readonly record struct AgentLightingAppearance(
     }
 
     /// <summary>
-    /// Maps a Harness session independently from selection. A recent or
-    /// selected session is navigation state, not proof that work is running,
-    /// so idle sessions must remain dark.
+    /// Maps the exact state projected by an external Harness independently
+    /// from selection. A recent or selected session is navigation state, not
+    /// proof that work is running, so only explicit activity is illuminated.
     /// </summary>
     internal static AgentLightingAppearance FromHarnessSession(
-        bool isRunning,
+        MicroHarnessSessionStatus status,
         bool isCurrentSession)
     {
-        if (!isRunning)
+        if (status == MicroHarnessSessionStatus.Idle)
         {
             return new AgentLightingAppearance(
                 false,
@@ -122,12 +122,21 @@ internal readonly record struct AgentLightingAppearance(
                 "off");
         }
 
-        // Follow the Micro status vocabulary used by the native Codex
-        // protocol: blue means work is actively thinking/generating, while
-        // green is reserved for a completed transition. A Harness snapshot
-        // exposes only running/idle, so it must never hold a completed-green
-        // key for the whole duration of a turn.
-        var color = Color.FromRgb(0x30, 0x4F, 0xFE);
+        // Use the same vocabulary as the native Codex protocol. DeepSeek's
+        // browser runtime owns completion reminders and pending-interaction
+        // state, so green/amber are rendered only when explicitly reported.
+        var (color, statusName) = status switch
+        {
+            MicroHarnessSessionStatus.Running =>
+                (Color.FromRgb(0x30, 0x4F, 0xFE), "运行中"),
+            MicroHarnessSessionStatus.Completed =>
+                (Color.FromRgb(0x00, 0xFF, 0x4C), "已完成"),
+            MicroHarnessSessionStatus.WaitingForInput =>
+                (Color.FromRgb(0xFF, 0x6D, 0x00), "等待输入"),
+            MicroHarnessSessionStatus.Error =>
+                (Color.FromRgb(0xFF, 0x00, 0x33), "错误"),
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, null),
+        };
         return new AgentLightingAppearance(
             true,
             isCurrentSession,
@@ -139,7 +148,7 @@ internal readonly record struct AgentLightingAppearance(
             isCurrentSession ? 0.28 : 0.12,
             isCurrentSession ? 0.52 : 0.43,
             isCurrentSession ? 0.48 : 0.40,
-            "运行中",
+            statusName,
             isCurrentSession ? "selected" : "solid");
     }
 

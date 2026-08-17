@@ -187,7 +187,7 @@ public sealed class AgentLightingAppearanceTests
         bool isCurrentSession)
     {
         var appearance = AgentLightingAppearance.FromHarnessSession(
-            isRunning: false,
+            MicroHarnessSessionStatus.Idle,
             isCurrentSession);
 
         Assert.False(appearance.IsActive);
@@ -199,18 +199,30 @@ public sealed class AgentLightingAppearanceTests
         Assert.Equal("off", appearance.EffectName);
     }
 
-    [Fact]
-    public void RunningHarnessSessionUsesBlueThinkingLight()
+    [Theory]
+    [InlineData((int)MicroHarnessSessionStatus.Running, 0x304FFE, "运行中")]
+    [InlineData((int)MicroHarnessSessionStatus.Completed, 0x00FF4C, "已完成")]
+    [InlineData((int)MicroHarnessSessionStatus.WaitingForInput, 0xFF6D00, "等待输入")]
+    [InlineData((int)MicroHarnessSessionStatus.Error, 0xFF0033, "错误")]
+    public void ActiveHarnessSessionUsesTheSynchronizedStatusColor(
+        int statusValue,
+        int expectedRgb,
+        string expectedName)
     {
         var appearance = AgentLightingAppearance.FromHarnessSession(
-            isRunning: true,
+            (MicroHarnessSessionStatus)statusValue,
             isCurrentSession: false);
 
         Assert.True(appearance.IsActive);
         Assert.False(appearance.IsCurrentSession);
-        Assert.Equal(Color.FromRgb(0x30, 0x4F, 0xFE), appearance.Color);
+        Assert.Equal(
+            Color.FromRgb(
+                (byte)(expectedRgb >> 16),
+                (byte)(expectedRgb >> 8),
+                (byte)expectedRgb),
+            appearance.Color);
         Assert.Equal(0.94, appearance.DisplayOpacity, 3);
-        Assert.Equal("运行中", appearance.StatusName);
+        Assert.Equal(expectedName, appearance.StatusName);
         Assert.Equal("solid", appearance.EffectName);
     }
 }

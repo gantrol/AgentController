@@ -78,7 +78,9 @@ Bridge 只在 DeepSeek 与小键盘之间转发“切换语音”请求以及增
 
 小键盘先检查 `/health` 返回 `ready: true` 和 `dsh-stream-v1`，未就绪时才启动脚本；
 模型加载完成后再连接 WebSocket。退出时只停止由当前小键盘启动的进程，绝不会接管
-或终止原本就在运行的服务。“退出小键盘时停止”也可关闭。
+或终止原本就在运行的服务。“退出小键盘时停止”也可关闭。窗口位置、Harness 等
+非语音配置变化不会取消或重复启动正在进行的预热；WSL 服务还会持有当前端口的
+非阻塞单实例锁，重复启动会在加载模型、占用第二份显存之前退出。
 
 Qwen3-ASR 的流式接口使用 vLLM 后端。以 WSL 中的当前用户为例，一次性准备环境：
 
@@ -138,19 +140,19 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.4
+.\scripts\package-micro.ps1 -Version 0.2.5
 # 准备带桥接插件和在线自动配置入口的 DeepSeek 特调包
-.\scripts\package-micro.ps1 -Version 0.2.4 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.5 -Preset deepseek
 ```
 
 产物：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.4/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.4-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.5/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.5-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
-- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.4-win-x64.zip`；
+- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.5-win-x64.zip`；
 - 可单独安装到已有 DSH 的 Bridge：
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.4.zip`（也带独立 SHA-256）。
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.5.zip`（也带独立 SHA-256）。
 
 封包脚本收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
 启动适配器，不复制模型、Python 环境、Desktop Runtime、调试符号或驱动。
