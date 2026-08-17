@@ -75,15 +75,17 @@ example, port 3098 exposes `deepseek-harness-micro-v1-3098`; register that
 value as an external manifest's `pipeName` when the instance should appear as
 a separate Micro target.
 
-If a browser page is already connected, activation is delivered to the best
-focused/visible client through the bridge's same-origin SSE channel. The
-browser reports its current session, visibility, focus result, and whether it
-is the dedicated Micro surface to `POST /integrations/codex-micro/report`.
-When the only client is a hidden tab (or no client exists), the bridge opens
-one Edge/Chrome app-mode window tagged `codexMicroSurface=1`. A pending/open
-guard prevents repeated button presses from multiplying tabs while it starts.
-The WPF host then uses Win32 foreground activation on that dedicated browser
-window without synthesizing keyboard or pointer input.
+The browser reports its current session, visibility, focus result, and whether
+it is the dedicated Micro surface to
+`POST /integrations/codex-micro/report`. Normal browser tabs may contribute
+read-only state, but physical-key activation, session, action, and dictation
+frames are delivered only to a confirmed dedicated surface. When none exists,
+the bridge returns `opening` and the Windows WPF host opens one app-mode window,
+preferring Edge and using Chrome only as a compatibility fallback. The window
+is tagged `codexMicroSurface=1`; a pending/open guard prevents repeated button
+presses from multiplying windows while it starts. The WPF host then uses Win32
+foreground activation only on a dedicated browser window, without synthesizing
+keyboard or pointer input.
 
 The ACT12 key displays the seven activation phases directly on the key. During
 program-managed first use, the same key and setup window display the eight

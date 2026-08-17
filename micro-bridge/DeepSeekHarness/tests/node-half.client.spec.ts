@@ -119,36 +119,113 @@ async function mount(rows: Array<Record<string, unknown>> = []): Promise<{
 
 const baseRequest = { version: Bridge.MICRO_PROTOCOL_VERSION, source: 'codex-micro' } as const
 
+async function readSseFrame(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs = 1_500,
+): Promise<Bridge.MicroBrowserFrame> {
+  const decoder = new TextDecoder()
+  const reading = (async (): Promise<Bridge.MicroBrowserFrame> => {
+    let buffered = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) throw new Error('SSE stream ended before a frame arrived')
+      buffered += decoder.decode(value, { stream: true })
+      let boundary = buffered.indexOf('\n\n')
+      while (boundary !== -1) {
+        const block = buffered.slice(0, boundary)
+        buffered = buffered.slice(boundary + 2)
+        const data = block
+          .split(/\r?\n/u)
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trimStart())
+          .join('\n')
+        if (data !== '') return JSON.parse(data) as Bridge.MicroBrowserFrame
+        boundary = buffered.indexOf('\n\n')
+      }
+    }
+  })()
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      reading,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`Timed out waiting ${String(timeoutMs)}ms for an SSE frame`))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
+
+interface ConnectedTestBrowser {
+  abort: AbortController
+  reader: ReadableStreamDefaultReader<Uint8Array>
+}
+
+async function connectTestBrowser(
+  origin: string,
+  browserId: string,
+  surface: Bridge.MicroBrowserReport['surface'],
+  focused: boolean,
+): Promise<ConnectedTestBrowser> {
+  const abort = new AbortController()
+  const stream = await fetch(
+    `${origin}${Bridge.MICRO_EVENTS_ENDPOINT}?browserId=${encodeURIComponent(browserId)}`,
+    { signal: abort.signal },
+  )
+  if (stream.body === null) throw new Error(`missing ${browserId} SSE body`)
+  const reader = stream.body.getReader()
+  const reported = await fetch(`${origin}${Bridge.MICRO_REPORT_ENDPOINT}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      version: Bridge.MICRO_PROTOCOL_VERSION,
+      browserId,
+      currentSessionId: null,
+      visible: true,
+      focused,
+      surface,
+      navigationDepth: 0,
+    }),
+  })
+  if (reported.status !== 204) {
+    abort.abort()
+    await reader.cancel().catch(() => {})
+    throw new Error(`${browserId} report failed with ${String(reported.status)}`)
+  }
+  return { abort, reader }
+}
+
+async function disconnectTestBrowser(browser: ConnectedTestBrowser): Promise<void> {
+  browser.abort.abort()
+  await browser.reader.cancel().catch(() => {})
+}
+
 describe('external DeepSeek Harness host bundle', () => {
-  it('opens a dedicated Windows app surface from WSL without a command shell', async () => {
+  it('defers a WSL app surface to the Windows keypad host', async () => {
     const runNativeCommand = vi.fn(async () => {})
     const launchWindowsAppBrowser = vi.fn(async () => 27_001)
     Bridge.internals.platform = 'linux'
-    Bridge.internals.wslWindowsAppBrowser = () =>
-      '/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
-    Bridge.internals.wslWindowsUrlHandler = () =>
-      '/mnt/c/Windows/System32/rundll32.exe'
+    Bridge.internals.isWsl = () => true
     Bridge.internals.runNativeCommand = runNativeCommand
     Bridge.internals.launchWindowsAppBrowser = launchWindowsAppBrowser
 
-    await Bridge.internals.openWebUi(
+    const processId = await Bridge.internals.openWebUi(
       'http://127.0.0.1:3080/?codexMicroSurface=1',
       new AbortController().signal,
     )
 
-    expect(launchWindowsAppBrowser).toHaveBeenCalledWith(
-      '/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-      'http://127.0.0.1:3080/?codexMicroSurface=1',
-    )
+    expect(processId).toBeUndefined()
+    expect(launchWindowsAppBrowser).not.toHaveBeenCalled()
     expect(runNativeCommand).not.toHaveBeenCalled()
   })
 
-  it('falls back to the Windows URL handler from WSL when app mode is unavailable', async () => {
+  it('uses the native Linux URL handler outside WSL', async () => {
     const runNativeCommand = vi.fn(async () => {})
     Bridge.internals.platform = 'linux'
-    Bridge.internals.wslWindowsAppBrowser = () => undefined
-    Bridge.internals.wslWindowsUrlHandler = () =>
-      '/mnt/c/Windows/System32/rundll32.exe'
+    Bridge.internals.isWsl = () => false
     Bridge.internals.runNativeCommand = runNativeCommand
 
     await Bridge.internals.openWebUi(
@@ -157,11 +234,8 @@ describe('external DeepSeek Harness host bundle', () => {
     )
 
     expect(runNativeCommand).toHaveBeenCalledWith(
-      '/mnt/c/Windows/System32/rundll32.exe',
-      [
-        'url.dll,FileProtocolHandler',
-        'http://127.0.0.1:3080/?codexMicroSurface=1',
-      ],
+      'xdg-open',
+      ['http://127.0.0.1:3080/?codexMicroSurface=1'],
       expect.any(AbortSignal),
     )
   })
@@ -193,6 +267,283 @@ describe('external DeepSeek Harness host bundle', () => {
       success: true,
       state: { sessions: [{ id: 'wsl-session' }] },
     })
+  })
+
+  it('e2e: a focused normal Chrome tab cannot intercept the DeepSeek key', async () => {
+    const {
+      eventHandler,
+      reportHandler,
+      controlHandler,
+      openWebUi,
+    } = await mount()
+    httpServer = createHttpServer((req, res) => {
+      if (req.url?.startsWith(Bridge.MICRO_EVENTS_ENDPOINT) === true) {
+        void eventHandler(req, res)
+      } else if (req.url === Bridge.MICRO_REPORT_ENDPOINT) {
+        void reportHandler(req, res)
+      } else if (req.url === Bridge.MICRO_CONTROL_ENDPOINT) {
+        void controlHandler(req, res)
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
+    const origin = `http://127.0.0.1:${String(address.port)}`
+    const tabAbort = new AbortController()
+    let tabStream: Response | undefined
+    try {
+      tabStream = await fetch(
+        `${origin}${Bridge.MICRO_EVENTS_ENDPOINT}?browserId=focused-chrome-tab`,
+        { signal: tabAbort.signal },
+      )
+      const reported = await fetch(`${origin}${Bridge.MICRO_REPORT_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: Bridge.MICRO_PROTOCOL_VERSION,
+          browserId: 'focused-chrome-tab',
+          currentSessionId: null,
+          visible: true,
+          focused: true,
+          surface: 'tab',
+          navigationDepth: 0,
+        }),
+      })
+      expect(reported.status).toBe(204)
+
+      const activated = await fetch(`${origin}${Bridge.MICRO_CONTROL_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...baseRequest, action: 'activate' }),
+      })
+
+      expect(activated.status).toBe(200)
+      await expect(activated.json()).resolves.toMatchObject({
+        success: true,
+        status: 'opening',
+        windowProcessId: 41_944,
+      })
+      expect(openWebUi).toHaveBeenCalledOnce()
+      expect(openWebUi.mock.calls[0]?.[0]).toContain('codexMicroSurface=1')
+    } finally {
+      tabAbort.abort()
+      await tabStream?.body?.cancel().catch(() => {})
+    }
+  })
+
+  it('e2e: the DeepSeek key beats a focused tab and targets the dedicated surface', async () => {
+    const {
+      eventHandler,
+      reportHandler,
+      controlHandler,
+      openWebUi,
+    } = await mount([
+      { sessionId: 'agent-light-session', updatedAt: 50, running: false, blank: false },
+    ])
+    httpServer = createHttpServer((req, res) => {
+      if (req.url?.startsWith(Bridge.MICRO_EVENTS_ENDPOINT) === true) {
+        void eventHandler(req, res)
+      } else if (req.url === Bridge.MICRO_REPORT_ENDPOINT) {
+        void reportHandler(req, res)
+      } else if (req.url === Bridge.MICRO_CONTROL_ENDPOINT) {
+        void controlHandler(req, res)
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
+    const origin = `http://127.0.0.1:${String(address.port)}`
+    const tabAbort = new AbortController()
+    const dedicatedAbort = new AbortController()
+    let tabStream: Response | undefined
+    let dedicatedReader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    try {
+      tabStream = await fetch(
+        `${origin}${Bridge.MICRO_EVENTS_ENDPOINT}?browserId=focused-chrome-tab`,
+        { signal: tabAbort.signal },
+      )
+      const tabReported = await fetch(`${origin}${Bridge.MICRO_REPORT_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: Bridge.MICRO_PROTOCOL_VERSION,
+          browserId: 'focused-chrome-tab',
+          currentSessionId: 'agent-light-session',
+          visible: true,
+          focused: true,
+          surface: 'tab',
+          navigationDepth: 0,
+          sessionStates: [{ id: 'agent-light-session', status: 'idle' }],
+        }),
+      })
+      expect(tabReported.status).toBe(204)
+
+      const dedicatedStream = await fetch(
+        `${origin}${Bridge.MICRO_EVENTS_ENDPOINT}?browserId=deepseek-app`,
+        { signal: dedicatedAbort.signal },
+      )
+      if (dedicatedStream.body === null) throw new Error('missing dedicated SSE body')
+      dedicatedReader = dedicatedStream.body.getReader()
+      const dedicatedReported = await fetch(`${origin}${Bridge.MICRO_REPORT_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: Bridge.MICRO_PROTOCOL_VERSION,
+          browserId: 'deepseek-app',
+          currentSessionId: 'agent-light-session',
+          visible: true,
+          focused: false,
+          surface: 'dedicated',
+          navigationDepth: 0,
+          sessionStates: [{ id: 'agent-light-session', status: 'running' }],
+        }),
+      })
+      expect(dedicatedReported.status).toBe(204)
+
+      const stateRead = await fetch(`${origin}${Bridge.MICRO_CONTROL_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...baseRequest, action: 'state/read' }),
+      })
+      await expect(stateRead.json()).resolves.toMatchObject({
+        success: true,
+        state: {
+          currentSessionId: 'agent-light-session',
+          sessions: [{ id: 'agent-light-session', status: 'running', running: true }],
+        },
+      })
+
+      const activation = fetch(`${origin}${Bridge.MICRO_CONTROL_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...baseRequest, action: 'activate' }),
+      })
+      const frame = await readSseFrame(dedicatedReader)
+      expect(frame).toMatchObject({
+        version: Bridge.MICRO_PROTOCOL_VERSION,
+        type: 'activate',
+        requestId: expect.any(String),
+      })
+      if (!('requestId' in frame)) throw new Error('activation frame is missing requestId')
+      const acknowledged = await fetch(`${origin}${Bridge.MICRO_REPORT_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: Bridge.MICRO_PROTOCOL_VERSION,
+          browserId: 'deepseek-app',
+          currentSessionId: 'agent-light-session',
+          visible: true,
+          focused: true,
+          surface: 'dedicated',
+          navigationDepth: 0,
+          sessionStates: [{ id: 'agent-light-session', status: 'running' }],
+          requestId: frame.requestId,
+          success: true,
+          message: 'Dedicated DeepSeek surface focused.',
+        }),
+      })
+      expect(acknowledged.status).toBe(204)
+      await expect((await activation).json()).resolves.toMatchObject({
+        success: true,
+        status: 'background',
+      })
+      expect(openWebUi).not.toHaveBeenCalled()
+    } finally {
+      tabAbort.abort()
+      dedicatedAbort.abort()
+      await Promise.all([
+        tabStream?.body?.cancel().catch(() => {}),
+        dedicatedReader?.cancel().catch(() => {}),
+      ])
+    }
+  })
+
+  it('e2e: a reconnecting tab cannot steal an action queued for the dedicated surface', async () => {
+    const {
+      eventHandler,
+      reportHandler,
+      controlHandler,
+      openWebUi,
+    } = await mount()
+    httpServer = createHttpServer((req, res) => {
+      if (req.url?.startsWith(Bridge.MICRO_EVENTS_ENDPOINT) === true) {
+        void eventHandler(req, res)
+      } else if (req.url === Bridge.MICRO_REPORT_ENDPOINT) {
+        void reportHandler(req, res)
+      } else if (req.url === Bridge.MICRO_CONTROL_ENDPOINT) {
+        void controlHandler(req, res)
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
+    const origin = `http://127.0.0.1:${String(address.port)}`
+    const browsers: ConnectedTestBrowser[] = []
+    try {
+      browsers.push(await connectTestBrowser(
+        origin,
+        'initial-chrome-tab',
+        'tab',
+        true,
+      ))
+      const activation = await fetch(`${origin}${Bridge.MICRO_CONTROL_ENDPOINT}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...baseRequest,
+          action: 'session/activate',
+          sessionId: 'queued-session',
+        }),
+      })
+      await expect(activation.json()).resolves.toMatchObject({
+        success: true,
+        status: 'opening',
+      })
+      expect(openWebUi).toHaveBeenCalledOnce()
+
+      // This connection reproduces the startup race that used to drain every
+      // pending physical-key frame before its surface report was known.
+      browsers.push(await connectTestBrowser(
+        origin,
+        'late-chrome-tab',
+        'tab',
+        false,
+      ))
+      const dedicated = await connectTestBrowser(
+        origin,
+        'deepseek-app',
+        'dedicated',
+        false,
+      )
+      browsers.push(dedicated)
+
+      await expect(readSseFrame(dedicated.reader)).resolves.toMatchObject({
+        version: Bridge.MICRO_PROTOCOL_VERSION,
+        type: 'session/activate',
+        requestId: expect.any(String),
+        sessionId: 'queued-session',
+      })
+    } finally {
+      await Promise.all(browsers.map(disconnectTestBrowser))
+    }
   })
 
   it('opens at most one dedicated web surface while startup is pending', async () => {

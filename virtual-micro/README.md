@@ -169,19 +169,19 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.5
+.\scripts\package-micro.ps1 -Version 0.2.6
 # Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
-.\scripts\package-micro.ps1 -Version 0.2.5 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.6 -Preset deepseek
 ```
 
 Outputs:
 
-- single-file executable: `.artifacts/micro-release/0.2.5/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-0.2.5-win-x64.zip`;
+- single-file executable: `.artifacts/micro-release/0.2.6/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.2.6-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
-- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.5-win-x64.zip`;
+- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.6-win-x64.zip`;
 - standalone existing-DSH plugin:
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.5.zip`, with its own checksum.
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.6.zip`, with its own checksum.
 
 The packaging script includes `CodexMicro.exe`, the READMEs, the first-run
 setup guide, the license, and the keypad-side `voice` launcher/adapter. It does

@@ -32,7 +32,10 @@ internal static class HarnessWindowActivator
             return false;
         }
 
-        return FindCandidates(TitleFragments(harness), preferredProcessId)
+        return FindCandidates(
+                TitleFragments(harness),
+                preferredProcessId,
+                RequiresDedicatedAppWindow(harness))
             .Any(candidate => candidate.Handle == foreground);
     }
 
@@ -42,7 +45,8 @@ internal static class HarnessWindowActivator
     {
         var candidate = FindCandidates(
                 TitleFragments(harness),
-                preferredProcessId)
+                preferredProcessId,
+                RequiresDedicatedAppWindow(harness))
             .OrderByDescending(item => item.Score)
             .FirstOrDefault();
         if (candidate.Handle == IntPtr.Zero)
@@ -124,7 +128,8 @@ internal static class HarnessWindowActivator
 
     private static IEnumerable<WindowCandidate> FindCandidates(
         IReadOnlyList<string> titleFragments,
-        int? preferredProcessId)
+        int? preferredProcessId,
+        bool dedicatedAppOnly)
     {
         var candidates = new List<WindowCandidate>();
         _ = EnumWindows((handle, state) =>
@@ -145,6 +150,10 @@ internal static class HarnessWindowActivator
                 Math.Max(GetWindowTextLength(handle) + 1, 2));
             _ = GetWindowText(handle, title, title.Capacity);
             var text = title.ToString();
+            if (dedicatedAppOnly && !IsDedicatedBrowserWindowTitle(text))
+            {
+                return true;
+            }
             var isPreferredProcess = preferredProcessId is > 0 &&
                 processId == (uint)preferredProcessId.Value;
             var hasPrimaryTitle = titleFragments.Count > 0 &&
@@ -183,6 +192,20 @@ internal static class HarnessWindowActivator
             return true;
         }, IntPtr.Zero);
         return candidates;
+    }
+
+    private static bool RequiresDedicatedAppWindow(
+        MicroHarnessDefinition harness) =>
+        harness.Id.Contains("deepseek", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsDedicatedBrowserWindowTitle(string title)
+    {
+        ArgumentNullException.ThrowIfNull(title);
+        return !title.Contains(" - Google Chrome", StringComparison.OrdinalIgnoreCase) &&
+            !title.Contains(" - Microsoft Edge", StringComparison.OrdinalIgnoreCase) &&
+            !title.Contains(" - Brave", StringComparison.OrdinalIgnoreCase) &&
+            !title.Contains(" - Vivaldi", StringComparison.OrdinalIgnoreCase) &&
+            !title.Contains(" — Mozilla Firefox", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSupportedBrowser(uint processId)

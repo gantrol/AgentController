@@ -298,6 +298,9 @@ internal sealed class MicroHarnessRegistry
     private IReadOnlyList<MicroHarnessDefinition> _definitions;
     private Dictionary<string, MicroHarnessKeyMap> _keyMaps;
     private readonly Dictionary<string, string> _knobModes;
+    private readonly Func<
+        MicroHarnessDefinition,
+        DeepSeekSurfaceLaunchResult> _surfaceLauncher;
     private readonly HashSet<string> _setupCompleted;
     private readonly Dictionary<string, MicroHarnessTimeoutDiagnostic>
         _lastTimeouts;
@@ -305,8 +308,11 @@ internal sealed class MicroHarnessRegistry
     internal MicroHarnessRegistry(
         IEnumerable<MicroHarnessDefinition>? definitions = null,
         string? manifestDirectory = null,
-        string? settingsPath = null)
+        string? settingsPath = null,
+        Func<MicroHarnessDefinition, DeepSeekSurfaceLaunchResult>?
+            surfaceLauncher = null)
     {
+        _surfaceLauncher = surfaceLauncher ?? DeepSeekSurfaceLauncher.TryLaunch;
         _settingsPath = settingsPath ?? GetDefaultSettingsPath();
         _diagnosticsPath = GetDiagnosticsPath(_settingsPath);
         _lastTimeouts = ReadTimeoutDiagnostics(_diagnosticsPath);
@@ -644,6 +650,24 @@ internal sealed class MicroHarnessRegistry
             return result with { Step = 5, TotalSteps = 7 };
         }
 
+        DeepSeekSurfaceLaunchResult? surfaceLaunch = null;
+        var surfaceProcessId = result.WindowProcessId;
+        if (string.Equals(
+                harness.Id,
+                "deepseek-harness",
+                StringComparison.OrdinalIgnoreCase) &&
+            result.WindowProcessId is null)
+        {
+            surfaceLaunch = _surfaceLauncher(harness);
+            surfaceProcessId = surfaceLaunch.Value.ProcessId ?? surfaceProcessId;
+            Report(new(
+                MicroHarnessDispatchStage.Opening,
+                surfaceLaunch.Value.Started
+                    ? "Opening the dedicated DeepSeek app window on Windows."
+                    : "Waiting for the dedicated DeepSeek window after its Windows launcher failed."),
+                4);
+        }
+
         Report(new(
             MicroHarnessDispatchStage.Opening,
             $"Waiting for {harness.DisplayName} browser surface."), 5);
@@ -664,7 +688,12 @@ internal sealed class MicroHarnessRegistry
                 continue;
             }
 
-            result = ToDispatchResult(exchange);
+            var exchangeResult = ToDispatchResult(exchange);
+            result = exchangeResult with
+            {
+                WindowProcessId = exchangeResult.WindowProcessId ??
+                    surfaceProcessId,
+            };
             if (!result.Success ||
                 result.Stage != MicroHarnessDispatchStage.Opening)
             {
@@ -678,7 +707,15 @@ internal sealed class MicroHarnessRegistry
             }
         }
 
-        return result with { Step = 5, TotalSteps = 7 };
+        return result with
+        {
+            Message = surfaceLaunch is { Started: false, Error: not null }
+                ? $"{result.Message} {surfaceLaunch.Value.Error}"
+                : result.Message,
+            WindowProcessId = result.WindowProcessId ?? surfaceProcessId,
+            Step = 5,
+            TotalSteps = 7,
+        };
     }
 
     internal Task<MicroHarnessDispatchResult> ActivateSessionAsync(
