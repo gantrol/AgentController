@@ -57,6 +57,17 @@ internal sealed record MicroHarnessDispatchResult(
     int? Step = null,
     int? TotalSteps = null);
 
+internal sealed record MicroHarnessTimeoutDiagnostic(
+    string HarnessId,
+    DateTimeOffset TimedOutAt,
+    int ConfiguredTimeoutMilliseconds,
+    int ElapsedMilliseconds,
+    int ProbeAttempts,
+    string LastProbeMessage,
+    int? LauncherProcessId,
+    bool? LauncherWasRunning,
+    int? LauncherExitCode);
+
 internal sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
 {
     public void Report(T value) => callback(value);
@@ -244,9 +255,12 @@ internal sealed class MicroHarnessRegistry
     private const int ConnectTimeoutMilliseconds = 650;
     private const int RetryConnectTimeoutMilliseconds = 350;
     private const int ResponseTimeoutMilliseconds = 4_000;
+    private const int ReadyProbeResponseTimeoutMilliseconds = 2_000;
     private const int SurfaceReadyTimeoutMilliseconds = 20_000;
     private const int SurfaceRetryIntervalMilliseconds = 750;
-    private const int DeepSeekReadyTimeoutMilliseconds = 120_000;
+    internal const int DeepSeekReadyTimeoutMilliseconds = 300_000;
+    internal const int MaximumReadyTimeoutMilliseconds = 600_000;
+    private const int PreviousDeepSeekReadyTimeoutMilliseconds = 120_000;
     private const int LegacyDeepSeekReadyTimeoutMilliseconds = 60_000;
     internal const string DeepSeekOfficialWebUri =
         "http://127.0.0.1:3080/";
@@ -266,11 +280,15 @@ internal sealed class MicroHarnessRegistry
     };
 
     private readonly string? _settingsPath;
+    private readonly string? _diagnosticsPath;
+    private readonly object _diagnosticsGate = new();
     private readonly SemaphoreSlim _launchGate = new(1, 1);
     private IReadOnlyList<MicroHarnessDefinition> _definitions;
     private Dictionary<string, MicroHarnessKeyMap> _keyMaps;
     private readonly Dictionary<string, string> _knobModes;
     private readonly HashSet<string> _setupCompleted;
+    private readonly Dictionary<string, MicroHarnessTimeoutDiagnostic>
+        _lastTimeouts;
 
     internal MicroHarnessRegistry(
         IEnumerable<MicroHarnessDefinition>? definitions = null,
@@ -278,6 +296,8 @@ internal sealed class MicroHarnessRegistry
         string? settingsPath = null)
     {
         _settingsPath = settingsPath ?? GetDefaultSettingsPath();
+        _diagnosticsPath = GetDiagnosticsPath(_settingsPath);
+        _lastTimeouts = ReadTimeoutDiagnostics(_diagnosticsPath);
         _definitions = definitions is null
             ? Discover(manifestDirectory)
             : Normalize(definitions);
@@ -311,8 +331,9 @@ internal sealed class MicroHarnessRegistry
             stored.Harnesses?.TryGetValue(
                 "deepseek-harness",
                 out var storedDeepSeek) == true &&
-            storedDeepSeek.ReadyTimeoutMilliseconds ==
-                LegacyDeepSeekReadyTimeoutMilliseconds;
+            storedDeepSeek.ReadyTimeoutMilliseconds is
+                LegacyDeepSeekReadyTimeoutMilliseconds or
+                PreviousDeepSeekReadyTimeoutMilliseconds;
         _definitions = ApplyOverrides(
             _definitions,
             stored.Harnesses ??
@@ -360,6 +381,18 @@ internal sealed class MicroHarnessRegistry
     internal IReadOnlyList<MicroHarnessDefinition> Definitions => _definitions;
 
     internal bool LastSaveSucceeded { get; private set; } = true;
+
+    internal MicroHarnessTimeoutDiagnostic? GetLastTimeoutDiagnostic(
+        string harnessId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(harnessId);
+        lock (_diagnosticsGate)
+        {
+            return _lastTimeouts.TryGetValue(harnessId, out var diagnostic)
+                ? diagnostic
+                : null;
+        }
+    }
 
     internal bool IsSetupCompleted(string harnessId) =>
         _setupCompleted.Contains(Resolve(harnessId).Id);
@@ -1035,6 +1068,7 @@ internal sealed class MicroHarnessRegistry
         }
 
         await _launchGate.WaitAsync(cancellationToken);
+        Process? launchedProcess = null;
         try
         {
             // Another click may have completed startup while this one waited.
@@ -1052,7 +1086,7 @@ internal sealed class MicroHarnessRegistry
             progress?.Report(new(
                 MicroHarnessDispatchStage.Starting,
                 $"Starting {harness.DisplayName}."));
-            var launchError = TryStart(harness);
+            launchedProcess = TryStart(harness, out var launchError);
             if (launchError is not null)
             {
                 return new(
@@ -1064,30 +1098,84 @@ internal sealed class MicroHarnessRegistry
             progress?.Report(new(
                 MicroHarnessDispatchStage.WaitingForAdapter,
                 $"Waiting for {harness.DisplayName} adapter."));
-            var deadline = DateTimeOffset.UtcNow.AddMilliseconds(
+            var waitStartedAt = DateTimeOffset.UtcNow;
+            var waitStartedTimestamp = Stopwatch.GetTimestamp();
+            var readyTimeout = TimeSpan.FromMilliseconds(
                 harness.Connection.ReadyTimeoutMilliseconds);
-            while (DateTimeOffset.UtcNow < deadline)
+            var probeAttempts = 0;
+            var lastProbe = retry;
+            while (Stopwatch.GetElapsedTime(waitStartedTimestamp) < readyTimeout)
             {
                 await Task.Delay(ReadyPollInterval, cancellationToken);
+                probeAttempts++;
+                var probe = await ExchangeAsync(
+                    harness,
+                    new
+                    {
+                        version = 1,
+                        source = "codex-micro",
+                        action = "state/read",
+                    },
+                    RetryConnectTimeoutMilliseconds,
+                    cancellationToken,
+                    ReadyProbeResponseTimeoutMilliseconds);
+                lastProbe = probe;
+                if (!probe.Connected || !probe.Success)
+                {
+                    continue;
+                }
+
+                // Readiness polling must never replay the user's action. Once
+                // a side-effect-free state request succeeds, dispatch the
+                // original request exactly once and return its real result.
                 var ready = await ExchangeAsync(
                     harness,
                     request,
                     RetryConnectTimeoutMilliseconds,
                     cancellationToken,
                     responseTimeoutMilliseconds);
-                if (ready.Connected)
-                {
-                    return ToDispatchResult(ready);
-                }
+                return ToDispatchResult(ready);
             }
 
+            var elapsed = Stopwatch.GetElapsedTime(waitStartedTimestamp);
+            var elapsedMilliseconds = (int)Math.Min(
+                int.MaxValue,
+                Math.Ceiling(elapsed.TotalMilliseconds));
+            var lastProbeMessage = CompactDiagnosticMessage(lastProbe.Message);
+            var processState = ReadProcessState(launchedProcess);
+            var diagnostic = new MicroHarnessTimeoutDiagnostic(
+                harness.Id,
+                waitStartedAt.Add(elapsed),
+                harness.Connection.ReadyTimeoutMilliseconds,
+                elapsedMilliseconds,
+                probeAttempts,
+                lastProbeMessage,
+                launchedProcess?.Id,
+                processState.Running,
+                processState.ExitCode);
+            RecordTimeoutDiagnostic(diagnostic);
+            var seconds = Math.Max(
+                1,
+                (int)Math.Ceiling(elapsed.TotalSeconds));
+            var launcherDetail = processState switch
+            {
+                { Running: true } =>
+                    $" Launcher PID {launchedProcess!.Id} was still running.",
+                { Running: false, ExitCode: int exitCode } =>
+                    $" Launcher PID {launchedProcess!.Id} exited with code {exitCode}.",
+                _ => string.Empty,
+            };
             return new(
                 false,
-                $"{harness.DisplayName} was started but its adapter did not become ready in time.",
+                $"{harness.DisplayName} was started but its adapter did not " +
+                $"become ready within {seconds} seconds after " +
+                $"{probeAttempts} checks. Last check: {lastProbeMessage}." +
+                launcherDetail,
                 MicroHarnessDispatchStage.Failed);
         }
         finally
         {
+            launchedProcess?.Dispose();
             _launchGate.Release();
         }
     }
@@ -1111,7 +1199,9 @@ internal sealed class MicroHarnessRegistry
             exchange.WindowProcessId);
     }
 
-    private static string? TryStart(MicroHarnessDefinition harness)
+    private static Process? TryStart(
+        MicroHarnessDefinition harness,
+        out string? error)
     {
         try
         {
@@ -1125,10 +1215,11 @@ internal sealed class MicroHarnessRegistry
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
             };
-            using var process = Process.Start(startInfo);
-            return process is null
+            var process = Process.Start(startInfo);
+            error = process is null
                 ? $"{harness.DisplayName} could not be started."
                 : null;
+            return process;
         }
         catch (Exception exception) when (
             exception is Win32Exception or
@@ -1136,7 +1227,9 @@ internal sealed class MicroHarnessRegistry
                 IOException or
                 UnauthorizedAccessException)
         {
-            return $"{harness.DisplayName} could not be started ({exception.GetType().Name}).";
+            error =
+                $"{harness.DisplayName} could not be started ({exception.GetType().Name}).";
+            return null;
         }
     }
 
@@ -1232,11 +1325,11 @@ internal sealed class MicroHarnessRegistry
     {
         _ = connectTimeoutMilliseconds;
         var connected = false;
+        using var responseTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        responseTimeout.CancelAfter(responseTimeoutMilliseconds);
         try
         {
-            using var responseTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
-            responseTimeout.CancelAfter(responseTimeoutMilliseconds);
             var requestJson = JsonSerializer.Serialize(request);
             using var message = new HttpRequestMessage(
                 HttpMethod.Post,
@@ -1262,10 +1355,22 @@ internal sealed class MicroHarnessRegistry
 
             return ParseExchangeResponse(harness, body);
         }
+        catch (OperationCanceledException exception)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // SocketsHttpHandler reports its connection timeout with the same
+            // exception type as our response deadline. Only our linked token
+            // proves that a slow request exhausted the response phase and may
+            // already have been accepted by the adapter.
+            var responseDeadlineReached = responseTimeout.IsCancellationRequested;
+            return new(responseDeadlineReached, false,
+                responseDeadlineReached
+                    ? $"{harness.DisplayName} adapter response failed ({exception.GetType().Name})."
+                    : $"{harness.DisplayName} adapter is not connected ({exception.GetType().Name}).",
+                default);
+        }
         catch (Exception exception) when (
-            exception is HttpRequestException or
-                OperationCanceledException or
-                IOException)
+            exception is HttpRequestException or IOException)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return new(connected, false,
@@ -1429,7 +1534,10 @@ internal sealed class MicroHarnessRegistry
         MicroHarnessConnectionSettings value,
         string? projectPath)
     {
-        var timeout = Math.Clamp(value.ReadyTimeoutMilliseconds, 1_000, 120_000);
+        var timeout = Math.Clamp(
+            value.ReadyTimeoutMilliseconds,
+            1_000,
+            MaximumReadyTimeoutMilliseconds);
         return value with
         {
             PipeName = NormalizeText(value.PipeName),
@@ -1476,6 +1584,38 @@ internal sealed class MicroHarnessRegistry
 
     private static string? NormalizeText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string CompactDiagnosticMessage(string value)
+    {
+        var compact = value
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Trim();
+        return compact.Length <= 512
+            ? compact
+            : compact[..509] + "...";
+    }
+
+    private static (bool? Running, int? ExitCode) ReadProcessState(
+        Process? process)
+    {
+        if (process is null)
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            return process.HasExited
+                ? (false, process.ExitCode)
+                : (true, null);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or Win32Exception)
+        {
+            return (null, null);
+        }
+    }
 
     private static bool IsLegacyFixedDeepSeekLaunch(
         MicroHarnessConnectionSettings value)
@@ -1587,6 +1727,75 @@ internal sealed class MicroHarnessRegistry
                 JsonException)
         {
             return new StoredOverrides();
+        }
+    }
+
+    private void RecordTimeoutDiagnostic(
+        MicroHarnessTimeoutDiagnostic diagnostic)
+    {
+        lock (_diagnosticsGate)
+        {
+            _lastTimeouts[diagnostic.HarnessId] = diagnostic;
+            if (_diagnosticsPath is null)
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(_diagnosticsPath)!);
+                var value = new StoredDiagnostics
+                {
+                    LastTimeouts = new Dictionary<
+                        string,
+                        MicroHarnessTimeoutDiagnostic>(
+                            _lastTimeouts,
+                            StringComparer.OrdinalIgnoreCase),
+                };
+                var temporaryPath = _diagnosticsPath + ".tmp";
+                File.WriteAllText(
+                    temporaryPath,
+                    JsonSerializer.Serialize(value, new JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                    }));
+                File.Move(temporaryPath, _diagnosticsPath, overwrite: true);
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    UnauthorizedAccessException or
+                    JsonException)
+            {
+                // Diagnostics must never turn a recoverable launch timeout
+                // into a settings or application failure.
+            }
+        }
+    }
+
+    private static Dictionary<string, MicroHarnessTimeoutDiagnostic>
+        ReadTimeoutDiagnostics(string? path)
+    {
+        if (path is null || !File.Exists(path))
+        {
+            return new(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var stored = JsonSerializer.Deserialize<StoredDiagnostics>(
+                File.ReadAllText(path),
+                JsonOptions());
+            return stored?.LastTimeouts is { } values
+                ? new(values, StringComparer.OrdinalIgnoreCase)
+                : new(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                UnauthorizedAccessException or
+                JsonException)
+        {
+            return new(StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -1816,6 +2025,19 @@ internal sealed class MicroHarnessRegistry
         return Path.Combine(localAppData, "CodexMicro", "harness-settings.json");
     }
 
+    private static string? GetDiagnosticsPath(string? settingsPath)
+    {
+        if (settingsPath is null)
+        {
+            return null;
+        }
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(settingsPath));
+        return directory is null
+            ? null
+            : Path.Combine(directory, "harness-diagnostics.json");
+    }
+
     private readonly record struct PipeExchange(
         bool Connected,
         bool Success,
@@ -1866,5 +2088,14 @@ internal sealed class MicroHarnessRegistry
         public Dictionary<string, string>? KnobModes { get; set; }
 
         public string[]? SetupCompletedHarnesses { get; set; }
+    }
+
+    private sealed class StoredDiagnostics
+    {
+        public Dictionary<string, MicroHarnessTimeoutDiagnostic>? LastTimeouts
+        {
+            get;
+            set;
+        }
     }
 }

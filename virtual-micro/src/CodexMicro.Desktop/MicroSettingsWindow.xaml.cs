@@ -314,9 +314,24 @@ public partial class MicroSettingsWindow : Window
         HarnessAutoStartDetailText.Text = english
             ? "The Harness button starts this process when its adapter is unavailable"
             : "按钮发现适配器离线时，自动启动此进程";
-        HarnessLaunchStatusText.Text = english
-            ? "Settings are isolated per Harness and saved on this device."
-            : "设置按 Harness 隔离并保存在本机。";
+        var lastTimeout = !isCodex
+            ? _harnessRegistry.GetLastTimeoutDiagnostic(harness.Id)
+            : null;
+        HarnessLaunchStatusText.Text = lastTimeout is null
+            ? english
+                ? "Settings are isolated per Harness and saved on this device."
+                : "设置按 Harness 隔离并保存在本机。"
+            : english
+                ? $"Last cold-start timeout: " +
+                    $"{lastTimeout.TimedOutAt.ToLocalTime():g}; " +
+                    $"{lastTimeout.ElapsedMilliseconds / 1000d:F1}s, " +
+                    $"{lastTimeout.ProbeAttempts} checks. " +
+                    $"Last check: {lastTimeout.LastProbeMessage}"
+                : $"上次冷启动超时：" +
+                    $"{lastTimeout.TimedOutAt.ToLocalTime():g}；" +
+                    $"{lastTimeout.ElapsedMilliseconds / 1000d:F1} 秒，" +
+                    $"探测 {lastTimeout.ProbeAttempts} 次。" +
+                    $"最后结果：{lastTimeout.LastProbeMessage}";
         SaveHarnessButton.Content = english ? "Save" : "保存";
         OpenHarnessButton.Content = english ? "Open Harness" : "打开 Harness";
         HarnessKeyMapHeadingText.Text = english
@@ -938,11 +953,12 @@ public partial class MicroSettingsWindow : Window
         if (!int.TryParse(
                 HarnessReadyTimeoutTextBox.Text,
                 out var readyTimeoutMilliseconds) ||
-            readyTimeoutMilliseconds is < 1_000 or > 120_000)
+            readyTimeoutMilliseconds is < 1_000 or
+                > MicroHarnessRegistry.MaximumReadyTimeoutMilliseconds)
         {
             HarnessLaunchStatusText.Text = _localization.IsEnglish
-                ? "Ready timeout must be between 1000 and 120000 ms."
-                : "就绪超时必须在 1000 到 120000 毫秒之间。";
+                ? "Ready timeout must be between 1000 and 600000 ms."
+                : "就绪超时必须在 1000 到 600000 毫秒之间。";
             return false;
         }
 

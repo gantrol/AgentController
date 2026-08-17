@@ -326,7 +326,7 @@ public sealed class MicroHarnessRegistryTests
             Assert.Equal(
                 "http://127.0.0.1:3080/__agentcontroller/micro/request",
                 deepSeek.ControlUri);
-            Assert.Equal(120_000,
+            Assert.Equal(300_000,
                 deepSeek.Connection.ReadyTimeoutMilliseconds);
             var future = Assert.Single(registry.Definitions, item =>
                 item.Id == "future-harness");
@@ -381,8 +381,10 @@ public sealed class MicroHarnessRegistryTests
         }
     }
 
-    [Fact]
-    public void MigratesTheFormerDeepSeekColdStartTimeout()
+    [Theory]
+    [InlineData(60_000)]
+    [InlineData(120_000)]
+    public void MigratesFormerDeepSeekColdStartTimeouts(int formerTimeout)
     {
         var directory = Path.Combine(
             Path.GetTempPath(),
@@ -398,17 +400,17 @@ public sealed class MicroHarnessRegistryTests
                 deepSeek.Id,
                 deepSeek.Connection with
                 {
-                    ReadyTimeoutMilliseconds = 60_000,
+                    ReadyTimeoutMilliseconds = formerTimeout,
                 }));
 
             var restored = new MicroHarnessRegistry(settingsPath: settingsPath);
 
             Assert.Equal(
-                120_000,
+                300_000,
                 restored.Resolve("deepseek-harness")
                     .Connection.ReadyTimeoutMilliseconds);
             Assert.Contains(
-                "120000",
+                "300000",
                 File.ReadAllText(settingsPath),
                 StringComparison.Ordinal);
         }
@@ -952,5 +954,210 @@ public sealed class MicroHarnessRegistryTests
             item is { Step: 4, TotalSteps: 7 });
         Assert.Contains(progress, item =>
             item is { Step: 5, TotalSteps: 7 });
+    }
+
+    [Fact]
+    public async Task ColdStartProbesReadinessBeforeDispatchingActivation()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-harness-cold-start-probe-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var portReservation = new TcpListener(IPAddress.Loopback, 0);
+            portReservation.Start();
+            var port = ((IPEndPoint)portReservation.LocalEndpoint).Port;
+            portReservation.Stop();
+            using var listener = new HttpListener();
+            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            var requests = new List<string>();
+            var serverTask = Task.Run(async () =>
+            {
+                // Let both pre-launch HTTP attempts exhaust the handler's
+                // 650 ms loopback connection timeout before the adapter joins.
+                await Task.Delay(1_500);
+                listener.Start();
+                for (var index = 0; index < 2; index++)
+                {
+                    var context = await listener.GetContextAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(5));
+                    using var reader = new StreamReader(
+                        context.Request.InputStream,
+                        context.Request.ContentEncoding);
+                    var request = await reader.ReadToEndAsync();
+                    requests.Add(request);
+                    var response = index == 0
+                        ? "{\"success\":true,\"message\":\"adapter ready\",\"state\":{}}"
+                        : "{\"success\":true,\"message\":\"activation dispatched once\",\"status\":\"background\"}";
+                    var bytes = Encoding.UTF8.GetBytes(response);
+                    context.Response.StatusCode = 200;
+                    context.Response.ContentType = "application/json";
+                    context.Response.ContentLength64 = bytes.Length;
+                    await context.Response.OutputStream.WriteAsync(bytes);
+                    context.Response.Close();
+                }
+            });
+            var definition = new MicroHarnessDefinition(
+                "cold-harness",
+                "Cold Harness",
+                "Delayed loopback adapter",
+                null,
+                true,
+                new(
+                    null,
+                    Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+                    "/d /c exit 0",
+                    directory,
+                    true,
+                    5_000,
+                    $"http://127.0.0.1:{port}/__agentcontroller/micro/request"));
+            var registry = new MicroHarnessRegistry(
+                [definition],
+                settingsPath: Path.Combine(directory, "harness-settings.json"));
+
+            var result = await registry.ActivateAsync(definition.Id);
+            await serverTask;
+
+            Assert.True(result.Success, result.Message);
+            Assert.Equal("activation dispatched once", result.Message);
+            Assert.Equal(2, requests.Count);
+            Assert.Contains("\"action\":\"state/read\"", requests[0]);
+            Assert.Contains("\"action\":\"activate\"", requests[1]);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PersistsTheLastColdStartTimeoutWithProbeAndProcessDetails()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-harness-timeout-diagnostic-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var portReservation = new TcpListener(IPAddress.Loopback, 0);
+            portReservation.Start();
+            var port = ((IPEndPoint)portReservation.LocalEndpoint).Port;
+            portReservation.Stop();
+            var definition = new MicroHarnessDefinition(
+                "timeout-harness",
+                "Timeout Harness",
+                "Offline loopback adapter",
+                null,
+                true,
+                new(
+                    null,
+                    Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+                    "/d /c exit 0",
+                    directory,
+                    true,
+                    1_000,
+                    $"http://127.0.0.1:{port}/__agentcontroller/micro/request"));
+            var settingsPath = Path.Combine(directory, "harness-settings.json");
+            var registry = new MicroHarnessRegistry(
+                [definition],
+                settingsPath: settingsPath);
+
+            var result = await registry.ActivateAsync(definition.Id);
+
+            Assert.False(result.Success);
+            Assert.Contains("Last check:", result.Message);
+            var diagnostic = registry.GetLastTimeoutDiagnostic(definition.Id);
+            Assert.NotNull(diagnostic);
+            Assert.Equal(1_000, diagnostic.ConfiguredTimeoutMilliseconds);
+            Assert.True(diagnostic.ElapsedMilliseconds >= 1_000);
+            Assert.True(diagnostic.ProbeAttempts >= 1);
+            Assert.Contains("not connected", diagnostic.LastProbeMessage);
+            Assert.NotNull(diagnostic.LauncherProcessId);
+            Assert.Equal(false, diagnostic.LauncherWasRunning);
+            Assert.Equal(0, diagnostic.LauncherExitCode);
+
+            var restored = new MicroHarnessRegistry(
+                [definition],
+                settingsPath: settingsPath);
+            Assert.Equal(
+                diagnostic,
+                restored.GetLastTimeoutDiagnostic(definition.Id));
+            Assert.True(File.Exists(Path.Combine(
+                directory,
+                "harness-diagnostics.json")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SlowHttpResponseIsNotMistakenForAnOfflineAdapter()
+    {
+        using var portReservation = new TcpListener(IPAddress.Loopback, 0);
+        portReservation.Start();
+        var port = ((IPEndPoint)portReservation.LocalEndpoint).Port;
+        portReservation.Stop();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        var serverTask = Task.Run(async () =>
+        {
+            var context = await listener.GetContextAsync();
+            using var reader = new StreamReader(
+                context.Request.InputStream,
+                context.Request.ContentEncoding);
+            _ = await reader.ReadToEndAsync();
+            await Task.Delay(4_500);
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(
+                    "{\"success\":true,\"message\":\"late response\"}");
+                context.Response.ContentLength64 = bytes.Length;
+                await context.Response.OutputStream.WriteAsync(bytes);
+                context.Response.Close();
+            }
+            catch (Exception exception) when (
+                exception is HttpListenerException or IOException or
+                    ObjectDisposedException)
+            {
+                // The client intentionally cancels before this late response.
+            }
+        });
+        var definition = new MicroHarnessDefinition(
+            "slow-http-harness",
+            "Slow HTTP Harness",
+            "Connected adapter with a delayed acknowledgement",
+            null,
+            true,
+            new(
+                null,
+                "this-launcher-must-not-run.exe",
+                null,
+                null,
+                true,
+                1_000,
+                $"http://127.0.0.1:{port}/__agentcontroller/micro/request"));
+        var registry = new MicroHarnessRegistry(
+            [definition],
+            settingsPath: Path.Combine(
+                Path.GetTempPath(),
+                $"missing-{Guid.NewGuid():N}",
+                "settings.json"));
+        var progress = new List<MicroHarnessDispatchProgress>();
+
+        var result = await registry.ActivateAsync(
+            definition.Id,
+            new InlineProgress<MicroHarnessDispatchProgress>(progress.Add));
+        await serverTask;
+
+        Assert.False(result.Success);
+        Assert.Contains("response failed", result.Message);
+        Assert.DoesNotContain(progress, item =>
+            item.Stage == MicroHarnessDispatchStage.Starting);
     }
 }

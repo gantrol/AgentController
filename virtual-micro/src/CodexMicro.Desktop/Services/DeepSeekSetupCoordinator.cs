@@ -350,7 +350,8 @@ internal sealed class DeepSeekSetupCoordinator
             BuildManagedLaunchArguments(port.Value),
             Path.GetDirectoryName(wslExecutable),
             AutoStart: true,
-            ReadyTimeoutMilliseconds: 120_000,
+            ReadyTimeoutMilliseconds:
+                MicroHarnessRegistry.DeepSeekReadyTimeoutMilliseconds,
             ControlUri: BuildControlUri(port.Value));
         if (!_registry.UpdateConnectionSettings("deepseek-harness", connection))
         {

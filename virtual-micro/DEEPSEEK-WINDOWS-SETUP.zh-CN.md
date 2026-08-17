@@ -186,6 +186,12 @@ EXE。`.wsl` 导入格式需要 WSL 2.4.4 或更新版本，说明与更新方�
 - **第 7/8 步**：检查端口占用和托管启动配置；
 - **第 8/8 步**：网页已启动但桥接未连接时，重试或查看 Harness 输出。
 
+DeepSeek 的冷启动就绪等待默认是 300 秒，可在适配器设置中配置为 1–600 秒。程序先用
+无副作用的 `state/read` 探测桥接，确认就绪后只发送一次真正的打开请求。若仍然超时，
+适配器设置卡会显示上次超时的时间、耗时、探测次数和最后结果；同一份信息保存在
+`%LOCALAPPDATA%\CodexMicro\harness-diagnostics.json`，并包含启动器 PID、退出状态，便于
+区分“WSL / DSH 没启动”与“服务已启动但桥接没有响应”。
+
 DeepSeek API 返回 401、`MISSING_CREDENTIAL` 或输入框不可用时，属于 Harness 的模型
 或工作区配置，不是 WSL 安装失败。按
 [DeepSeek 官方模型配置指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.zh.md)

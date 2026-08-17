@@ -41,6 +41,13 @@ arguments, working directory, automatic startup, and readiness timeout. Edits
 are stored per Harness in `%LOCALAPPDATA%\CodexMicro\harness-settings.json` and
 override manifest defaults. An executable is started directly with
 `UseShellExecute=false`; the adapter never invokes a command shell.
+Readiness is checked with the side-effect-free `state/read` request before the
+original action is dispatched once. The built-in DeepSeek cold-start timeout is
+300 seconds (configurable from 1 to 600 seconds); stored 60- and 120-second
+defaults migrate automatically. The latest cold-start timeout, final probe
+result, launcher PID/state, and elapsed time are retained in
+`%LOCALAPPDATA%\CodexMicro\harness-diagnostics.json` and shown on the adapter
+settings card.
 
 ## Built-in DeepSeek Harness adapter
 
