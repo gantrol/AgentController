@@ -77,6 +77,8 @@ public partial class MainWindow : Window
     private readonly BridgeFeedbackPresenter _feedbackPresenter;
     private readonly SemaphoreSlim _dataRefreshGate = new(1, 1);
     private readonly SemaphoreSlim _dialAutomationGate = new(1, 1);
+    private readonly CancellationTokenSource _microKeypadCancellation =
+        new();
     private readonly ObservableCollection<SidebarEntry> _sidebarEntries = [];
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
@@ -5477,7 +5479,11 @@ public partial class MainWindow : Window
         menu.Items.Add(
             strings.TrayOpenMicroSurface,
             null,
-            (_, _) => _microKeypad.LaunchOrOpenDownloadPage());
+            (_, _) => _ = RunMicroKeypadActionAsync(restart: false));
+        menu.Items.Add(
+            strings.TrayRestartMicroSurface,
+            null,
+            (_, _) => _ = RunMicroKeypadActionAsync(restart: true));
         menu.Items.Add(
             strings.TrayOpenAgent(_activeAgent.DisplayName),
             null,
@@ -5546,10 +5552,73 @@ public partial class MainWindow : Window
         SetSelectedNav(SettingsNavButton);
     }
 
-    private void MicroKeypadButton_Click(
+    private async void MicroKeypadButton_Click(
         object sender,
         RoutedEventArgs e) =>
-        _microKeypad.LaunchOrOpenDownloadPage();
+        await RunMicroKeypadActionAsync(restart: false);
+
+    private async void MicroKeypadShowMenuItem_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await RunMicroKeypadActionAsync(restart: false);
+
+    private async void MicroKeypadRestartMenuItem_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await RunMicroKeypadActionAsync(restart: true);
+
+    private async Task RunMicroKeypadActionAsync(bool restart)
+    {
+        MicroKeypadButton.IsEnabled = false;
+        try
+        {
+            var result = restart
+                ? await _microKeypad.RestartAsync(
+                    _microKeypadCancellation.Token)
+                : await _microKeypad.ShowAsync(
+                    _microKeypadCancellation.Token);
+            var strings = _localization.Strings;
+            var message = strings.Get(result.Outcome switch
+            {
+                MicroKeypadActionOutcome.Shown =>
+                    StringKeys.MessageMicroKeypadShown,
+                MicroKeypadActionOutcome.Started =>
+                    StringKeys.MessageMicroKeypadStarted,
+                MicroKeypadActionOutcome.Restarted =>
+                    StringKeys.MessageMicroKeypadRestarted,
+                MicroKeypadActionOutcome.Busy =>
+                    StringKeys.MessageMicroKeypadBusy,
+                MicroKeypadActionOutcome.DownloadOpened =>
+                    StringKeys.MessageMicroKeypadDownloadOpened,
+                _ => StringKeys.MessageMicroKeypadFailed,
+            });
+            if (result.Outcome == MicroKeypadActionOutcome.Failed &&
+                !string.IsNullOrWhiteSpace(result.Detail))
+            {
+                message = $"{message} {result.Detail}";
+            }
+
+            AddEvent(message);
+            FooterStatusText.Text = message;
+            ShowFeedback(
+                restart
+                    ? strings.TrayRestartMicroSurface
+                    : strings.TrayOpenMicroSurface,
+                message);
+        }
+        catch (OperationCanceledException)
+        {
+            // Application shutdown cancels readiness polling.
+        }
+        finally
+        {
+            if (!Dispatcher.HasShutdownStarted &&
+                !Dispatcher.HasShutdownFinished)
+            {
+                MicroKeypadButton.IsEnabled = true;
+            }
+        }
+    }
 
     private void TitleBar_MouseLeftButtonDown(
         object sender,
@@ -5873,6 +5942,7 @@ public partial class MainWindow : Window
         _rateLimitResetCancellation?.Cancel();
         _rateLimitResetCancellation?.Dispose();
         _rateLimitResetCancellation = null;
+        _microKeypadCancellation.Cancel();
         if (_configSaveTimer.IsEnabled)
         {
             PersistConfigSettings();

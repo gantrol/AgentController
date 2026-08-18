@@ -307,6 +307,9 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
     public string TrayOpenMicroSurface =>
         Get(StringKeys.TrayOpenMicroSurface);
 
+    public string TrayRestartMicroSurface =>
+        Get(StringKeys.TrayRestartMicroSurface);
+
     public string TrayExit => Get(StringKeys.TrayExit);
 
     public string AppSubtitle(

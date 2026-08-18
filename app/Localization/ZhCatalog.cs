@@ -248,6 +248,8 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "打开 Agent Controller",
             [StringKeys.TrayOpenMicroSurface] =
                 "启动独立 Micro 小键盘",
+            [StringKeys.TrayRestartMicroSurface] =
+                "重启 Codex Micro",
             [StringKeys.TrayOpenAgent] = "打开 {0}",
             [StringKeys.TrayExit] = "退出",
 
@@ -453,6 +455,18 @@ public sealed class ZhCatalog : DictionaryStringCatalog
                 "已打开 {0} 快捷键设置",
             [StringKeys.MessageControllerSoftwareOpenFailed] =
                 "无法打开手柄配置软件",
+            [StringKeys.MessageMicroKeypadShown] =
+                "Codex Micro 小键盘已显示。",
+            [StringKeys.MessageMicroKeypadStarted] =
+                "Codex Micro 原本未运行，现已启动。",
+            [StringKeys.MessageMicroKeypadRestarted] =
+                "Codex Micro 已重启并就绪。",
+            [StringKeys.MessageMicroKeypadBusy] =
+                "Codex Micro 正在启动、退出或重启。",
+            [StringKeys.MessageMicroKeypadDownloadOpened] =
+                "尚未安装 Codex Micro，已打开下载页。",
+            [StringKeys.MessageMicroKeypadFailed] =
+                "无法控制 Codex Micro。",
             [StringKeys.MessageWindowHiddenBackground] =
                 "窗口已隐藏，桥接继续在后台运行",
 

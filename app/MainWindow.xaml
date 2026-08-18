@@ -195,6 +195,14 @@
                                     ToolTip="{loc:Loc tray.open-micro-surface}"
                                     AutomationProperties.Name="{loc:Loc tray.open-micro-surface}"
                                     Click="MicroKeypadButton_Click">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{loc:Loc tray.open-micro-surface}"
+                                                  Click="MicroKeypadShowMenuItem_Click" />
+                                        <MenuItem Header="{loc:Loc tray.restart-micro-surface}"
+                                                  Click="MicroKeypadRestartMenuItem_Click" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
                                 <!-- Original virtual-micro application mark:
                                      device body, encoder, and three keycaps. -->
                                 <Viewbox Width="21"
