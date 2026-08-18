@@ -958,6 +958,7 @@ public partial class MicroSurfaceWindow : Window
             var harness = ActiveHarness();
             var externalHarness = harness.Id != "codex";
             var focusAgentAfterTap = isAgentKey && ShouldFocusAgentAfterTap(key);
+            var agentFocusResolvedBeforeTap = false;
             try
             {
                 // Harness selection is a hard routing boundary. Once an
@@ -1010,6 +1011,43 @@ public partial class MicroSurfaceWindow : Window
                     return;
                 }
 
+                var codexIsForeground = ShouldActivateCodexForKey(key) &&
+                    IsHarnessForeground(harness);
+                if (isAgentKey && focusAgentAfterTap)
+                {
+                    // A non-activating keypad click leaves the previous app in
+                    // the foreground.  Resolve the requested Agent focus before
+                    // emitting AGxx so Codex can route the same click to the
+                    // intended session instead of only being raised afterward.
+                    agentFocusResolvedBeforeTap = true;
+                    if (ShouldActivateCodexBeforeHid(
+                            key,
+                            codexIsForeground,
+                            focusAgentAfterTap))
+                    {
+                        ShowHarnessActionStatus(
+                            _localization.IsEnglish ? "OPENING CODEX" : "正在打开 Codex",
+                            MicroHarnessDispatchStage.Opening,
+                            autoHide: false);
+                        var activated = await ActivateCodexAsync(
+                            initialDelayMilliseconds: 0);
+                        ShowHarnessActionStatus(
+                            activated
+                                ? _localization.IsEnglish ? "IN FRONT" : "已置前"
+                                : _localization.IsEnglish ? "NOT FOUND" : "未找到窗口",
+                            activated
+                                ? MicroHarnessDispatchStage.Foreground
+                                : MicroHarnessDispatchStage.Failed,
+                            autoHide: true);
+                        if (!activated)
+                        {
+                            return;
+                        }
+
+                        codexIsForeground = true;
+                    }
+                }
+
                 if (key == "AG00")
                 {
                     CodexRequestCardCancellationResult cancellation;
@@ -1041,8 +1079,6 @@ public partial class MicroSurfaceWindow : Window
                     }
                 }
 
-                var codexIsForeground = key == "ACT12" &&
-                    IsHarnessForeground(harness);
                 if (!ShouldSendCodexHidForKey(
                         key,
                         codexIsForeground))
@@ -1079,11 +1115,11 @@ public partial class MicroSurfaceWindow : Window
             }
             finally
             {
-                // AG00's Plan-card compatibility branch can consume the input
-                // before HID delivery. Foreground activation is an independent
-                // part of every Agent click, including a repeated click on the
-                // already-selected slot, so it must survive every early return.
-                if (!externalHarness && focusAgentAfterTap)
+                // Keep a safety net for failures that occur before Agent focus
+                // can be resolved. Normal Agent dispatch activates before HID.
+                if (!externalHarness &&
+                    focusAgentAfterTap &&
+                    !agentFocusResolvedBeforeTap)
                 {
                     _ = await ActivateCodexAsync(
                         initialDelayMilliseconds: isAgentKey ? 0 : 90);
@@ -3270,6 +3306,14 @@ public partial class MicroSurfaceWindow : Window
 
     internal static bool ShouldActivateCodexForKey(string key) =>
         key == "ACT12" || TryParseAgentSlot(key, out _);
+
+    internal static bool ShouldActivateCodexBeforeHid(
+        string key,
+        bool codexIsForeground,
+        bool focusAgentAfterTap) =>
+        focusAgentAfterTap &&
+        !codexIsForeground &&
+        TryParseAgentSlot(key, out _);
 
     internal static bool ShouldSendCodexHidForKey(
         string key,
