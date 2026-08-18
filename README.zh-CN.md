@@ -64,9 +64,11 @@ Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想�
 独立出来，同时直接复用原 WPF XAML、控件模板和动画，透明与样式不再近似重画。
 framework-dependent 单文件 zip 约 6.4 MiB，需要安装
 [微软官方 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)；
-标题栏的 `MICRO` 按钮和托盘菜单只负责启动外部 `CodexMicro.exe`。小键盘与手柄输入
+标题栏的 `MICRO` 按钮负责显示或启动外部 `CodexMicro.exe`；按钮右键菜单和
+Agent Controller 托盘还可以请求经过就绪验证的安全重启。小键盘与手柄输入
 保留各自的 Broker 逻辑租约，并共享当前用户唯一的 Broker。窗口固定大小并采用
-应用内移动，不会触发 Windows Snap 自动改窗口大小；通知区域图标提供显示/收起和退出。
+应用内移动，不会触发 Windows Snap 自动改窗口大小；通知区域图标提供显示/收起、
+重启和退出。
 
 可惜的是，也需要依赖驱动，**未签名开发者驱动包**。该驱动包可以省掉 C/C++ 编译步骤，但不是正式安装包；请先[在本机二次签名并安装](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)，或从源码自行构建驱动。
 

@@ -61,11 +61,12 @@ The [Codex Micro keypad](virtual-micro/README.md) now runs independently of
 and animations for pixel-accurate transparency and styling. Its
 framework-dependent single-file zip is about 6.4 MiB and requires the
 [official Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
-The `MICRO` title-bar and tray commands only launch the
-external `CodexMicro.exe`. Keypad and controller input keep separate logical
+The `MICRO` title-bar command shows or launches the external
+`CodexMicro.exe`; its context menu and the Agent Controller tray can also
+request a verified graceful restart. Keypad and controller input keep separate logical
 Broker leases while sharing one current-user Broker. The fixed-size window uses
 app-owned movement, so it cannot trigger Windows Snap or automatic resizing;
-its notification-area icon provides Show/Hide and Exit commands.
+its notification-area icon provides Show/Hide, Restart, and Exit commands.
 
 Unfortunately, it also depends on an **unsigned developer driver package**. The package saves the C/C++ compilation step, but it is not a production installer: [sign it locally and install it](virtual-micro/UNSIGNED-DRIVER.md), or build the driver from source.
 

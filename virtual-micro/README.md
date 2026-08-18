@@ -42,7 +42,9 @@ roughly `75 MiB` self-contained WPF bundle. Standalone use requires the
 - Closing the window or pressing Alt+F4 hides it to the Windows notification
   area instead of terminating the process.
 - Double-click the notification-area icon to show/hide the keypad. Its menu has
-  Show/Hide and Exit commands.
+  Show/Hide, Restart, and Exit commands. Restart first releases voice capture,
+  held Micro keys, joystick state, and Broker leases; the replacement process
+  waits for the previous single-instance owner to exit before starting.
 - Start with Windows can be enabled or disabled from the tray menu. When
   enabled, sign-in starts the keypad and displays its panel immediately.
 - In Codex mode, Reverse dial direction is available in Micro software settings.
