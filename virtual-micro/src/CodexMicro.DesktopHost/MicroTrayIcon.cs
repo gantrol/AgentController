@@ -11,6 +11,7 @@ internal sealed class MicroTrayIcon : IDisposable
     private readonly MicroLocalization _localization;
     private readonly MicroStartupRegistration _startupRegistration;
     private readonly Action<MicroLanguage> _setLanguage;
+    private readonly Action _restart;
     private readonly Action _exit;
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
@@ -20,6 +21,7 @@ internal sealed class MicroTrayIcon : IDisposable
     private readonly ToolStripMenuItem _autoLanguageItem;
     private readonly ToolStripMenuItem _zhCnLanguageItem;
     private readonly ToolStripMenuItem _enUsLanguageItem;
+    private readonly ToolStripMenuItem _restartItem;
     private readonly ToolStripMenuItem _exitItem;
     private Icon? _icon;
     private bool _disposed;
@@ -29,12 +31,14 @@ internal sealed class MicroTrayIcon : IDisposable
         MicroLocalization localization,
         MicroStartupRegistration startupRegistration,
         Action<MicroLanguage> setLanguage,
+        Action restart,
         Action exit)
     {
         _surface = surface;
         _localization = localization;
         _startupRegistration = startupRegistration;
         _setLanguage = setLanguage;
+        _restart = restart;
         _exit = exit;
         _menu = new ContextMenuStrip();
         _toggleItem = new ToolStripMenuItem(
@@ -55,6 +59,10 @@ internal sealed class MicroTrayIcon : IDisposable
             _zhCnLanguageItem,
             _enUsLanguageItem,
         ]);
+        _restartItem = new ToolStripMenuItem(
+            string.Empty,
+            image: null,
+            (_, _) => _restart());
         _exitItem = new ToolStripMenuItem(
             string.Empty,
             image: null,
@@ -63,6 +71,7 @@ internal sealed class MicroTrayIcon : IDisposable
         _menu.Items.Add(_startupItem);
         _menu.Items.Add(_languageItem);
         _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add(_restartItem);
         _menu.Items.Add(_exitItem);
         _menu.Opening += (_, _) =>
         {
@@ -99,6 +108,38 @@ internal sealed class MicroTrayIcon : IDisposable
         _menu.Dispose();
         _icon?.Dispose();
         _icon = null;
+    }
+
+    internal void ShowRestarted()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _notifyIcon.ShowBalloonTip(
+            3000,
+            "Codex Micro",
+            _localization.IsEnglish
+                ? "The keypad restarted successfully."
+                : "小键盘已成功重启。",
+            ToolTipIcon.Info);
+    }
+
+    internal void ShowRestartFailed(string detail)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _notifyIcon.ShowBalloonTip(
+            5000,
+            _localization.IsEnglish
+                ? "Codex Micro restart failed"
+                : "Codex Micro 重启失败",
+            detail,
+            ToolTipIcon.Error);
     }
 
     private void Toggle()
@@ -175,6 +216,9 @@ internal sealed class MicroTrayIcon : IDisposable
             : "自动（跟随 Agent Controller / Windows）";
         _zhCnLanguageItem.Text = "简体中文";
         _enUsLanguageItem.Text = "English";
+        _restartItem.Text = english
+            ? "Restart Codex Micro"
+            : "重启 Codex Micro";
         _exitItem.Text = english ? "Exit" : "退出";
         _notifyIcon.Text = english
             ? $"Codex Micro · {_surface.SurfaceCount} keypad(s)"

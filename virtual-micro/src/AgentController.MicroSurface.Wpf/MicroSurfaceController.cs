@@ -24,6 +24,7 @@ public sealed class MicroSurfaceController : IDisposable
         new(StringComparer.OrdinalIgnoreCase);
     private int _nextOrdinal = 1;
     private bool _disposed;
+    private Task? _shutdownTask;
 
     public MicroSurfaceController(
         MicroLocalization? localization = null)
@@ -101,12 +102,25 @@ public sealed class MicroSurfaceController : IDisposable
 
         if (_dispatcher.CheckAccess())
         {
-            DisposeOnDispatcher();
+            _ = ShutdownAsync();
         }
         else
         {
-            _dispatcher.Invoke(DisposeOnDispatcher);
+            _dispatcher.Invoke(() => _ = ShutdownAsync());
         }
+    }
+
+    public Task ShutdownAsync()
+    {
+        if (!_dispatcher.CheckAccess())
+        {
+            return _dispatcher
+                .InvokeAsync(ShutdownAsync)
+                .Task
+                .Unwrap();
+        }
+
+        return _shutdownTask ??= ShutdownOnDispatcherAsync();
     }
 
     private void CreateSurface(
@@ -229,7 +243,7 @@ public sealed class MicroSurfaceController : IDisposable
         }
     }
 
-    private void DisposeOnDispatcher()
+    private async Task ShutdownOnDispatcherAsync()
     {
         if (_disposed)
         {
@@ -237,11 +251,11 @@ public sealed class MicroSurfaceController : IDisposable
         }
 
         _disposed = true;
-        foreach (var entry in _surfaces.Values.ToArray())
-        {
-            entry.Window.CloseForApplicationExit();
-        }
-
+        var closeTasks = _surfaces.Values
+            .Select(entry => entry.Window.CloseForApplicationExitAsync())
+            .ToArray();
         _surfaces.Clear();
+        SurfacesChanged?.Invoke(this, EventArgs.Empty);
+        await Task.WhenAll(closeTasks);
     }
 }

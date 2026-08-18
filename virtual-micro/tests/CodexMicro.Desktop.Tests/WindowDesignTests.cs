@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using CodexMicro.Desktop.Services;
 using CodexMicro.Protocol;
 using Xunit;
@@ -16,6 +17,51 @@ namespace CodexMicro.Desktop.Tests;
 public sealed class WindowDesignTests
 {
     private const int IsolatedAgentRenderSize = 166;
+
+    [Fact]
+    public void ApplicationCloseTaskWaitsForWindowCleanup()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                _ = Application.Current ?? new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+                var window = new MicroSurfaceWindow(
+                    new MicroLocalization(MicroLanguage.ZhCn));
+
+                var close = window.CloseForApplicationExitAsync();
+                if (!close.IsCompleted)
+                {
+                    var dispatcher = Dispatcher.CurrentDispatcher;
+                    var frame = new DispatcherFrame();
+                    _ = close.ContinueWith(
+                        _ => dispatcher.BeginInvoke(
+                            new Action(() => frame.Continue = false)),
+                        TaskScheduler.Default);
+                    Dispatcher.PushFrame(frame);
+                }
+
+                close.GetAwaiter().GetResult();
+                Assert.True(close.IsCompletedSuccessfully);
+                Assert.Same(
+                    close,
+                    window.CloseForApplicationExitAsync());
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(error);
+    }
 
     [Fact]
     public void PlusActionAddsAKeypadWithoutChangingTheCurrentKeypad()

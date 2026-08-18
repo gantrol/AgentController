@@ -1,3 +1,7 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using AgentController.MicroSurface.Wpf;
 using AgentController.MicroBroker;
 using CodexMicro.Desktop.Services;
@@ -8,6 +12,10 @@ public partial class App : System.Windows.Application
 {
     private const string SingleInstanceName =
         "Local\\CodexMicro.Keypad.1C01985F-1A5E-47DB-8E70-240EBA2F4D76";
+    private const string RelaunchAfterArgument = "--relaunch-after";
+    private const string RestartedArgument = "--restarted";
+    private static readonly TimeSpan RelaunchWaitTimeout =
+        TimeSpan.FromSeconds(30);
 
     private Mutex? _singleInstance;
     private bool _ownsSingleInstance;
@@ -16,7 +24,10 @@ public partial class App : System.Windows.Application
     private MicroLanguageSettings? _languageSettings;
     private MicroLocalization? _localization;
     private MicroStartupRegistration? _startupRegistration;
+    private MicroKeypadControlServer? _controlServer;
+    private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private bool _exiting;
+    private bool _restartQueued;
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -27,6 +38,12 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (!WaitForPreviousInstance(e.Args))
+        {
+            Shutdown(2);
+            return;
+        }
+
         _singleInstance = new Mutex(
             initiallyOwned: true,
             SingleInstanceName,
@@ -34,6 +51,17 @@ public partial class App : System.Windows.Application
         _ownsSingleInstance = isFirstInstance;
         if (!isFirstInstance)
         {
+            if (!e.Args.Contains(
+                    "--background",
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                _ = MicroKeypadControlClient.TrySendAsync(
+                        MicroKeypadControlCommand.Show,
+                        TimeSpan.FromSeconds(2))
+                    .GetAwaiter()
+                    .GetResult();
+            }
+
             Shutdown();
             return;
         }
@@ -53,6 +81,7 @@ public partial class App : System.Windows.Application
                 _localization.SetLanguage(language);
                 _languageSettings.Save(language);
             },
+            RestartApplication,
             ExitApplication);
         if (!e.Args.Contains(
                 "--background",
@@ -60,12 +89,29 @@ public partial class App : System.Windows.Application
         {
             _surface.Show();
         }
+
+        _controlServer = new MicroKeypadControlServer(
+            HandleControlCommandAsync,
+            AfterControlResponseAsync);
+        _controlServer.Start();
+
+        if (e.Args.Contains(
+                RestartedArgument,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            _trayIcon.ShowRestarted();
+        }
     }
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
         _trayIcon?.Dispose();
         _trayIcon = null;
+        if (_controlServer is not null)
+        {
+            _ = _controlServer.DisposeAsync();
+            _controlServer = null;
+        }
         _surface?.Dispose();
         _surface = null;
         _localization = null;
@@ -82,18 +128,227 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
-    private void ExitApplication()
+    private async void ExitApplication()
+    {
+        await StopApplicationAsync(restart: false);
+    }
+
+    private async void RestartApplication()
+    {
+        _restartQueued = true;
+        await StopApplicationAsync(restart: true);
+    }
+
+    private async Task StopApplicationAsync(bool restart)
     {
         if (_exiting)
         {
             return;
         }
 
+        if (restart && !TryStartSuccessor())
+        {
+            _restartQueued = false;
+            return;
+        }
+
         _exiting = true;
-        _trayIcon?.Dispose();
-        _trayIcon = null;
-        _surface?.Dispose();
-        _surface = null;
-        Shutdown();
+        try
+        {
+            if (_surface is not null)
+            {
+                await _surface.ShutdownAsync();
+                _surface = null;
+            }
+
+            if (_controlServer is not null)
+            {
+                await _controlServer.DisposeAsync();
+                _controlServer = null;
+            }
+
+            _trayIcon?.Dispose();
+            _trayIcon = null;
+            Shutdown();
+        }
+        catch (Exception exception)
+        {
+            _exiting = false;
+            _restartQueued = false;
+            _trayIcon?.ShowRestartFailed(exception.Message);
+        }
+    }
+
+    private Task<MicroKeypadControlResponse> HandleControlCommandAsync(
+        MicroKeypadControlCommand command,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return Dispatcher
+            .InvokeAsync(() => HandleControlCommand(command))
+            .Task;
+    }
+
+    private MicroKeypadControlResponse HandleControlCommand(
+        MicroKeypadControlCommand command)
+    {
+        if (command == MicroKeypadControlCommand.Ping)
+        {
+            return ControlResponse(
+                accepted: true,
+                _exiting || _restartQueued
+                    ? MicroKeypadControlState.Restarting
+                    : MicroKeypadControlState.Ready);
+        }
+
+        if (_exiting || _restartQueued || _surface is null)
+        {
+            return ControlResponse(
+                accepted: false,
+                MicroKeypadControlState.Busy,
+                "The keypad is already shutting down or restarting.");
+        }
+
+        if (command == MicroKeypadControlCommand.Show)
+        {
+            _surface.Show();
+            return ControlResponse(
+                accepted: true,
+                MicroKeypadControlState.Ready);
+        }
+
+        if (command == MicroKeypadControlCommand.Restart)
+        {
+            _restartQueued = true;
+            return ControlResponse(
+                accepted: true,
+                MicroKeypadControlState.Restarting);
+        }
+
+        return ControlResponse(
+            accepted: false,
+            MicroKeypadControlState.Rejected,
+            "Unsupported keypad control command.");
+    }
+
+    private MicroKeypadControlResponse ControlResponse(
+        bool accepted,
+        MicroKeypadControlState state,
+        string? detail = null) =>
+        new(
+            MicroKeypadControlClient.ProtocolVersion,
+            accepted,
+            state,
+            _instanceId,
+            detail);
+
+    private Task AfterControlResponseAsync(
+        MicroKeypadControlCommand command,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        if (command == MicroKeypadControlCommand.Restart)
+        {
+            _ = Dispatcher.BeginInvoke(
+                new Action(RestartApplication));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private bool TryStartSuccessor()
+    {
+        var executable = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(executable) ||
+            !File.Exists(executable))
+        {
+            _trayIcon?.ShowRestartFailed(
+                _localization?.IsEnglish == true
+                    ? "The running executable could not be located."
+                    : "无法定位当前正在运行的程序文件。");
+            return false;
+        }
+
+        try
+        {
+            var start = new ProcessStartInfo
+            {
+                FileName = executable,
+                WorkingDirectory = AppContext.BaseDirectory,
+                UseShellExecute = false,
+            };
+            start.ArgumentList.Add(RelaunchAfterArgument);
+            start.ArgumentList.Add(
+                Environment.ProcessId.ToString(
+                    CultureInfo.InvariantCulture));
+            start.ArgumentList.Add(RestartedArgument);
+            if (_surface is not { IsVisible: true })
+            {
+                start.ArgumentList.Add("--background");
+            }
+
+            var successor = Process.Start(start);
+            if (successor is null)
+            {
+                _trayIcon?.ShowRestartFailed(
+                    _localization?.IsEnglish == true
+                        ? "Windows did not create the replacement process."
+                        : "Windows 未能创建接班进程。");
+                return false;
+            }
+
+            successor.Dispose();
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+                Win32Exception)
+        {
+            _trayIcon?.ShowRestartFailed(exception.Message);
+            return false;
+        }
+    }
+
+    private static bool WaitForPreviousInstance(string[] arguments)
+    {
+        var index = Array.FindIndex(
+            arguments,
+            argument => argument.Equals(
+                RelaunchAfterArgument,
+                StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            return true;
+        }
+
+        if (index + 1 >= arguments.Length ||
+            !int.TryParse(
+                arguments[index + 1],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var processId) ||
+            processId <= 0 ||
+            processId == Environment.ProcessId)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var previous = Process.GetProcessById(processId);
+            return previous.WaitForExit(
+                checked((int)RelaunchWaitTimeout.TotalMilliseconds));
+        }
+        catch (ArgumentException)
+        {
+            // The previous process exited before the successor opened it.
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+                Win32Exception)
+        {
+            return false;
+        }
     }
 }

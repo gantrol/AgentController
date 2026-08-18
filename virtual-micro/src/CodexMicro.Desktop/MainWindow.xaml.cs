@@ -229,6 +229,9 @@ public partial class MicroSurfaceWindow : Window
     private bool _actionTargetIsForeground;
     private IntPtr _lastForegroundWindow;
     private bool _windowClosed;
+    private readonly TaskCompletionSource<bool> _closeCompletion = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _closeCleanupStarted;
     private bool _allowApplicationClose;
     private bool _voiceCloseReleasePending;
     private bool _windowMoving;
@@ -459,60 +462,111 @@ public partial class MicroSurfaceWindow : Window
         }
     }
 
-    private async void Window_Closed(object? sender, EventArgs e)
+    private void Window_Closed(object? sender, EventArgs e)
     {
-        _windowClosed = true;
-        _voiceBridgeCancellation?.Cancel();
-        _voiceWarmUpCancellation?.Cancel();
-        _voiceHealthCancellation?.Cancel();
-        _settingsWindow?.Close();
-        _settingsWindow = null;
-        _encoderSteps.Clear();
-        _dialSelectionFeedbackVersion++;
-        _dialSelectionHideTimer.Stop();
-        _dialSelectionHideTimer.Tick -= DialSelectionHideTimer_Tick;
-        PauseQuotaRefresh();
-        PauseHarnessStateRefresh();
-        _modelActionCancellation?.Cancel();
-        _quotaRefreshTimer.Tick -= QuotaRefreshTimer_Tick;
-        _harnessStateRefreshTimer.Tick -= HarnessStateRefreshTimer_Tick;
-        _voiceServiceHealthRefreshTimer.Tick -=
-            VoiceServiceHealthRefreshTimer_Tick;
-        _harnessActionElapsedTimer.Stop();
-        _harnessActionElapsedTimer.Tick -= HarnessActionElapsedTimer_Tick;
-        PauseForegroundRefresh();
-        _foregroundRefreshTimer.Tick -= ForegroundRefreshTimer_Tick;
-        if (_windowSource is not null)
+        _ = CompleteWindowCloseAsync();
+    }
+
+    private async Task CompleteWindowCloseAsync()
+    {
+        if (Interlocked.Exchange(ref _closeCleanupStarted, 1) != 0)
         {
-            _windowSource.RemoveHook(WindowMessageHook);
-            _windowSource = null;
+            return;
         }
 
-        _inactiveDialInputRouter?.Dispose();
-        _inactiveDialInputRouter = null;
-        _joystickReportQueue.Clear();
-        _layoutObserver.LayoutChanged -= LayoutObserver_LayoutChanged;
-        _layoutObserver.Dispose();
-        _agentRosterObserver.RosterChanged -= AgentRosterObserver_RosterChanged;
-        _agentRosterObserver.Dispose();
-        _localization.LanguageChanged -= Localization_LanguageChanged;
-        _profileSettings.Changed -= ProfileSettings_Changed;
-        _harnessRegistry.Changed -= HarnessRegistry_Changed;
-        _voiceInput.Changed -= VoiceInput_Changed;
-        _broker.Dispose();
-        if (_voiceBridgeTask is not null)
+        _windowClosed = true;
+        try
+        {
+            _voiceBridgeCancellation?.Cancel();
+            _voiceWarmUpCancellation?.Cancel();
+            _voiceHealthCancellation?.Cancel();
+            _settingsWindow?.Close();
+            _settingsWindow = null;
+            _encoderSteps.Clear();
+            _dialSelectionFeedbackVersion++;
+            _dialSelectionHideTimer.Stop();
+            _dialSelectionHideTimer.Tick -= DialSelectionHideTimer_Tick;
+            PauseQuotaRefresh();
+            PauseHarnessStateRefresh();
+            _modelActionCancellation?.Cancel();
+            _quotaRefreshTimer.Tick -= QuotaRefreshTimer_Tick;
+            _harnessStateRefreshTimer.Tick -= HarnessStateRefreshTimer_Tick;
+            _voiceServiceHealthRefreshTimer.Tick -=
+                VoiceServiceHealthRefreshTimer_Tick;
+            _harnessActionElapsedTimer.Stop();
+            _harnessActionElapsedTimer.Tick -= HarnessActionElapsedTimer_Tick;
+            PauseForegroundRefresh();
+            _foregroundRefreshTimer.Tick -= ForegroundRefreshTimer_Tick;
+            if (_windowSource is not null)
+            {
+                _windowSource.RemoveHook(WindowMessageHook);
+                _windowSource = null;
+            }
+
+            _inactiveDialInputRouter?.Dispose();
+            _inactiveDialInputRouter = null;
+            _joystickReportQueue.Clear();
+            _layoutObserver.LayoutChanged -= LayoutObserver_LayoutChanged;
+            _layoutObserver.Dispose();
+            _agentRosterObserver.RosterChanged -=
+                AgentRosterObserver_RosterChanged;
+            _agentRosterObserver.Dispose();
+            _localization.LanguageChanged -= Localization_LanguageChanged;
+            _profileSettings.Changed -= ProfileSettings_Changed;
+            _harnessRegistry.Changed -= HarnessRegistry_Changed;
+            _voiceInput.Changed -= VoiceInput_Changed;
+            if (_voiceBridgeTask is not null)
+            {
+                try
+                {
+                    await _voiceBridgeTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Closing owns cancellation of the DeepSeek button poll.
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(
+                $"Codex Micro close cleanup failed: {exception}");
+        }
+        finally
         {
             try
             {
-                await _voiceBridgeTask;
+                // Held keys and joystick state must be neutralized even when
+                // an unrelated observer or window cleanup step failed.
+                _broker.Dispose();
             }
-            catch (OperationCanceledException)
+            catch (Exception exception)
             {
-                // Closing owns cancellation of the DeepSeek button poll.
+                Debug.WriteLine(
+                    $"Codex Micro broker close cleanup failed: {exception}");
             }
+
+            try
+            {
+                await _voiceInput.DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine(
+                    $"Codex Micro voice runtime cleanup failed: {exception}");
+            }
+
+            try
+            {
+                _externalVoiceGate.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Cleanup is idempotent when shutdown paths converge.
+            }
+
+            _closeCompletion.TrySetResult(true);
         }
-        await _voiceInput.DisposeAsync();
-        _externalVoiceGate.Dispose();
     }
 
     private void Window_IsVisibleChanged(
@@ -7019,6 +7073,16 @@ public partial class MicroSurfaceWindow : Window
         Close();
     }
 
+    internal Task CloseForApplicationExitAsync()
+    {
+        if (!_windowClosed)
+        {
+            CloseForApplicationExit();
+        }
+
+        return _closeCompletion.Task;
+    }
+
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (_voiceCloseReleasePending)
@@ -7035,6 +7099,11 @@ public partial class MicroSurfaceWindow : Window
             try
             {
                 await ReleaseVoiceAsync();
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine(
+                    $"Codex Micro voice release during close failed: {exception}");
             }
             finally
             {
