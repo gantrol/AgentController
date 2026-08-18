@@ -42,6 +42,41 @@ public sealed class InputRoutingPolicyTests
             codexIsForeground: false));
     }
 
+    [Theory]
+    [InlineData("AG00")]
+    [InlineData("AG01")]
+    [InlineData("AG02")]
+    [InlineData("AG03")]
+    [InlineData("AG04")]
+    [InlineData("AG05")]
+    public void FocusedAgentTapActivatesCodexBeforeSendingHid(string key)
+    {
+        Assert.True(MicroSurfaceWindow.ShouldActivateCodexBeforeHid(
+            key,
+            codexIsForeground: false,
+            focusAgentAfterTap: true));
+        Assert.False(MicroSurfaceWindow.ShouldActivateCodexBeforeHid(
+            key,
+            codexIsForeground: true,
+            focusAgentAfterTap: true));
+        Assert.False(MicroSurfaceWindow.ShouldActivateCodexBeforeHid(
+            key,
+            codexIsForeground: false,
+            focusAgentAfterTap: false));
+    }
+
+    [Theory]
+    [InlineData("ACT12")]
+    [InlineData("ACT06")]
+    [InlineData("AG06")]
+    public void NonAgentKeysNeverUseAgentPreFocusPolicy(string key)
+    {
+        Assert.False(MicroSurfaceWindow.ShouldActivateCodexBeforeHid(
+            key,
+            codexIsForeground: false,
+            focusAgentAfterTap: true));
+    }
+
     [Fact]
     public void CodexLaunchUsesTheRegisteredDesktopApplication()
     {
