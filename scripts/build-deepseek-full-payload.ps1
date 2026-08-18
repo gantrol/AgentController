@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.6",
+    [string]$Version = "0.2.7",
     [string]$DistributionSource = "Ubuntu-24.04",
-    [string]$BuildDistributionName = "CodexMicro-DeepSeek-Build-v025",
-    [string]$VerifyDistributionName = "CodexMicro-DeepSeek-Verify-v025",
+    [string]$BuildDistributionName = "CodexMicro-DeepSeek-Build-v027",
+    [string]$VerifyDistributionName = "CodexMicro-DeepSeek-Verify-v027",
     [string]$OutputPath,
     [switch]$KeepBuildDistributions,
     [switch]$SkipRuntimeProbe

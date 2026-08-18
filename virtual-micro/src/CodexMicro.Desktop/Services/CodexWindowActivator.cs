@@ -6,6 +6,8 @@ namespace CodexMicro.Desktop.Services;
 
 internal static class CodexWindowActivator
 {
+    private const string CodexApplicationId =
+        @"shell:AppsFolder\OpenAI.Codex_2p2nqsd0c76g0!App";
     private const int SwRestore = 9;
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
@@ -108,6 +110,29 @@ internal static class CodexWindowActivator
             !IsIconic(candidate.Handle) &&
             GetForegroundWindow() == candidate.Handle;
     }
+
+    internal static bool TryLaunch()
+    {
+        try
+        {
+            Process.Start(CreateLaunchStartInfo())?.Dispose();
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+                System.ComponentModel.Win32Exception or
+                System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
+
+    internal static ProcessStartInfo CreateLaunchStartInfo() => new()
+    {
+        FileName = "explorer.exe",
+        Arguments = CodexApplicationId,
+        UseShellExecute = true,
+    };
 
     private static List<WindowCandidate> FindCandidates(string? packageRoot)
     {

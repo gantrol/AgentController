@@ -5,7 +5,7 @@ set -euo pipefail
 # one-click payload. This script must only run inside that throw-away distro.
 
 managed_user="${CODEX_MICRO_DSH_USER:-codexmicro}"
-release_version="${CODEX_MICRO_RELEASE_VERSION:-0.2.6}"
+release_version="${CODEX_MICRO_RELEASE_VERSION:-0.2.7}"
 runtime_root="/home/$managed_user/.local/share/codex-micro/deepseek"
 marker_root="/etc/codex-micro"
 

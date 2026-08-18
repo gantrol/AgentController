@@ -123,7 +123,10 @@ service, run this from the extracted package directory:
 
 - Six Agent keys send `AG00` through `AG05` and render slot lighting returned
   by Codex.
-- Four command keys send `ACT06` through `ACT09`; the Codex key sends `ACT12`.
+- Four command keys send `ACT06` through `ACT09`. In Codex mode, the Codex
+  key starts the app when needed or brings its main window to the foreground;
+  that activation press never submits composer text. Once Codex is already in
+  the foreground, the next press sends `ACT12`.
 - In Codex mode, push-to-talk sends `ACT10 down` on press and `ACT10 up` on
   release. In an external Harness, the key directly controls keypad-owned audio
   capture and recognition.
@@ -156,7 +159,9 @@ Framework. System `Vhf.sys` enumerates:
 The keypad never calls the private driver IOCTL directly. One current-user
 Broker child owns the driver handle, input sequence, held-input leases, and
 output stream. The keypad connects to an existing Agent Controller Broker when
-present; otherwise `CodexMicro.exe --micro-broker` starts the same host.
+present; otherwise `CodexMicro.exe --micro-broker` starts the same host. A
+graceful disconnect from the last client stops that child immediately, while a
+Broker shared with another running client remains available.
 
 Only an unsigned developer-driver workflow is currently provided. Never turn
 off Windows driver-signing enforcement or install an untrusted certificate.
@@ -169,19 +174,19 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.6
+.\scripts\package-micro.ps1 -Version 0.2.7
 # Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
-.\scripts\package-micro.ps1 -Version 0.2.6 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.7 -Preset deepseek
 ```
 
 Outputs:
 
-- single-file executable: `.artifacts/micro-release/0.2.6/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-0.2.6-win-x64.zip`;
+- single-file executable: `.artifacts/micro-release/0.2.7/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.2.7-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
-- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.6-win-x64.zip`;
+- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.7-win-x64.zip`;
 - standalone existing-DSH plugin:
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.6.zip`, with its own checksum.
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.7.zip`, with its own checksum.
 
 The packaging script includes `CodexMicro.exe`, the READMEs, the first-run
 setup guide, the license, and the keypad-side `voice` launcher/adapter. It does

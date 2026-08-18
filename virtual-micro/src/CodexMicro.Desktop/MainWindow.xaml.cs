@@ -1025,13 +1025,30 @@ public partial class MicroSurfaceWindow : Window
                     }
                 }
 
-                if (key == "ACT12")
+                var codexIsForeground = key == "ACT12" &&
+                    IsHarnessForeground(harness);
+                if (!ShouldSendCodexHidForKey(
+                        key,
+                        codexIsForeground))
                 {
                     ShowHarnessActionStatus(
                         _localization.IsEnglish ? "OPENING CODEX" : "正在打开 Codex",
                         MicroHarnessDispatchStage.Opening,
                         autoHide: false);
+                    var activated = await ActivateCodexAsync(
+                        initialDelayMilliseconds: 0,
+                        launchIfMissing: true);
+                    ShowHarnessActionStatus(
+                        activated
+                            ? _localization.IsEnglish ? "IN FRONT" : "已置前"
+                            : _localization.IsEnglish ? "NOT FOUND" : "未找到窗口",
+                        activated
+                            ? MicroHarnessDispatchStage.Foreground
+                            : MicroHarnessDispatchStage.Failed,
+                        autoHide: true);
+                    return;
                 }
+
                 var result = await RunActionAsync(
                     () => _broker.TapKeyAsync(key),
                     key);
@@ -1050,22 +1067,10 @@ public partial class MicroSurfaceWindow : Window
                 // before HID delivery. Foreground activation is an independent
                 // part of every Agent click, including a repeated click on the
                 // already-selected slot, so it must survive every early return.
-                if (!externalHarness &&
-                    (key == "ACT12" || focusAgentAfterTap))
+                if (!externalHarness && focusAgentAfterTap)
                 {
-                    var activated = await ActivateCodexAsync(
+                    _ = await ActivateCodexAsync(
                         initialDelayMilliseconds: isAgentKey ? 0 : 90);
-                    if (key == "ACT12")
-                    {
-                        ShowHarnessActionStatus(
-                            activated
-                                ? _localization.IsEnglish ? "IN FRONT" : "已置前"
-                                : _localization.IsEnglish ? "NOT FOUND" : "未找到窗口",
-                            activated
-                                ? MicroHarnessDispatchStage.Foreground
-                                : MicroHarnessDispatchStage.Failed,
-                            autoHide: true);
-                    }
                 }
             }
         }
@@ -3061,6 +3066,11 @@ public partial class MicroSurfaceWindow : Window
     internal static bool ShouldActivateCodexForKey(string key) =>
         key == "ACT12" || TryParseAgentSlot(key, out _);
 
+    internal static bool ShouldSendCodexHidForKey(
+        string key,
+        bool codexIsForeground) =>
+        key != "ACT12" || codexIsForeground;
+
     internal void SetVoiceRecordingVisual(bool recording)
     {
         var brush = new SolidColorBrush(
@@ -3952,38 +3962,88 @@ public partial class MicroSurfaceWindow : Window
     }
 
     private async Task<bool> ActivateCodexAsync(
-        int initialDelayMilliseconds = 90)
+        int initialDelayMilliseconds = 90,
+        bool launchIfMissing = false)
     {
         await Task.Delay(initialDelayMilliseconds);
-        for (var attempt = 0; attempt < 5; attempt++)
+        var attemptsBeforeLaunch = launchIfMissing ? 1 : 5;
+        for (var attempt = 0; attempt < attemptsBeforeLaunch; attempt++)
         {
-            try
+            if (TryActivateCodexWindow(out var activationError))
             {
-                if (CodexWindowActivator.TryActivate(
-                    packageRoot: null))
-                {
-                    return true;
-                }
+                return true;
             }
-            catch (Exception exception) when (
-                exception is Win32Exception or
-                    EntryPointNotFoundException or
-                    DllNotFoundException)
+
+            if (activationError is not null)
             {
                 SetLed(ActivityLed, "#FF7994", "Codex 主窗口激活失败");
-                SetStatus($"Codex 主窗口激活失败。\n{exception.Message}");
+                SetStatus($"Codex 主窗口激活失败。\n{activationError.Message}");
                 return false;
             }
 
-            if (attempt < 4)
+            if (attempt < attemptsBeforeLaunch - 1)
             {
                 await Task.Delay(140);
             }
         }
 
+        if (launchIfMissing)
+        {
+            if (!CodexWindowActivator.TryLaunch())
+            {
+                SetLed(ActivityLed, "#FF7994", "Codex 启动失败");
+                SetStatus("没有找到 Codex 主窗口，也无法启动已安装的 Codex 应用。");
+                return false;
+            }
+
+            ShowHarnessActionStatus(
+                _localization.IsEnglish ? "STARTING CODEX" : "正在启动 Codex",
+                MicroHarnessDispatchStage.Starting,
+                autoHide: false);
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                await Task.Delay(200);
+                if (_windowClosed)
+                {
+                    return false;
+                }
+
+                if (TryActivateCodexWindow(out var activationError))
+                {
+                    return true;
+                }
+
+                if (activationError is not null)
+                {
+                    SetLed(ActivityLed, "#FF7994", "Codex 主窗口激活失败");
+                    SetStatus($"Codex 主窗口激活失败。\n{activationError.Message}");
+                    return false;
+                }
+            }
+        }
+
         SetLed(ActivityLed, "#FFD66E", "未找到 Codex 主窗口");
-        SetStatus("事件已交付，但当前没有可激活的 Codex 主窗口。");
+        SetStatus(launchIfMissing
+            ? "已请求启动 Codex，但在等待时间内没有找到其主窗口。"
+            : "当前没有可激活的 Codex 主窗口。");
         return false;
+    }
+
+    private static bool TryActivateCodexWindow(out Exception? error)
+    {
+        try
+        {
+            error = null;
+            return CodexWindowActivator.TryActivate(packageRoot: null);
+        }
+        catch (Exception exception) when (
+            exception is Win32Exception or
+                EntryPointNotFoundException or
+                DllNotFoundException)
+        {
+            error = exception;
+            return false;
+        }
     }
 
     private async void Joystick_Click(object sender, RoutedEventArgs e)
@@ -4927,7 +4987,7 @@ public partial class MicroSurfaceWindow : Window
         SetLed(ActivityLed, "#9EBDFF", "HID / RPC 已就绪");
         SetStatus(
             $"{_transportName} 与 Codex 运行时握手已完成。\n" +
-            "点击黑色设置旋钮打开设置；Codex 键会将 Codex 切到前台。");
+            "Codex 键在应用不位于前台时只启动或置前；置前后再次按下才发送当前输入。");
     }
 
     private void ApplyTransportReadyState()
@@ -5435,13 +5495,13 @@ public partial class MicroSurfaceWindow : Window
     private void RefreshActionKeyPresentation()
     {
         var harness = ActiveHarness();
+        var english = _localization.IsEnglish;
         var canSend = SupportsHarnessComposerSubmit(harness);
         var sends = canSend && _actionTargetIsForeground;
         ActionSendBadge.Visibility = sends
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        var english = _localization.IsEnglish;
         var displayName = harness.Id == "codex" ? "Codex" : harness.DisplayName;
         SetHelp(
             ActionKey12,

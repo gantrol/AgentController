@@ -510,6 +510,46 @@ public sealed class BrokerCoexistenceTests
     }
 
     [Fact]
+    public async Task LastExplicitDisconnectStopsBrokerWithoutIdleDelay()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pipeName = $"AgentController.MicroBroker.Tests.{suffix}";
+        var leasePath = Path.Combine(
+            Path.GetTempPath(),
+            "agent-controller-micro-broker-tests",
+            $"{suffix}.lock");
+        var driver = new FakeDriverEndpoint(
+            codexLinkObservedOnConnect: true);
+        using var host = new MicroBrokerHost(
+            driver,
+            pipeName,
+            leasePath,
+            TimeSpan.FromSeconds(30),
+            codexLinkTimeout: TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource();
+        var hostTask = host.RunAsync(cancellation.Token);
+        var client = new MicroBrokerClient(
+            "graceful-exit-test-client",
+            brokerExecutablePath: null,
+            pipeName,
+            launchEnabled: false);
+
+        _ = client.Connect();
+        client.Dispose();
+
+        var completed = await Task.WhenAny(
+            hostTask,
+            Task.Delay(TimeSpan.FromSeconds(3)));
+        if (!ReferenceEquals(completed, hostTask))
+        {
+            cancellation.Cancel();
+        }
+
+        Assert.Same(hostTask, completed);
+        Assert.Equal(0, await hostTask);
+    }
+
+    [Fact]
     public async Task MissingCodexHandshakeAutomaticallyRebuildsTransport()
     {
         var suffix = Guid.NewGuid().ToString("N");
