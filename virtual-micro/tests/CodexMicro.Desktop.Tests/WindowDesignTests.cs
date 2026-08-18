@@ -227,19 +227,47 @@ public sealed class WindowDesignTests
 
                 Assert.Equal(1, Grid.GetColumn(window.HarnessActionProgressRing));
                 Assert.Equal(2, Grid.GetColumnSpan(window.HarnessActionProgressRing));
-                Assert.Equal(1, Grid.GetColumn(window.HarnessActionStatusBadge));
-                Assert.Equal(
-                    Visibility.Visible,
-                    window.HarnessActionStatusBadge.Visibility);
-                Assert.StartsWith("6/8 连接语音通道", window.HarnessActionStatusText.Text);
                 Assert.Equal(
                     Visibility.Collapsed,
-                    window.HarnessProgressStatusText.Visibility);
+                    window.HarnessActionStatusBadge.Visibility);
                 Assert.Equal(
                     Visibility.Visible,
+                    window.HarnessProgressStatusText.Visibility);
+                Assert.StartsWith(
+                    "连接语音通道",
+                    window.HarnessProgressStatusText.Text);
+                Assert.Equal(16.5, window.HarnessProgressStatusText.FontSize);
+                Assert.Equal("6/8", window.QuotaValueText.Text);
+                Assert.Equal(
+                    Visibility.Collapsed,
                     window.BrandWordmarkPanel.Visibility);
                 Assert.Contains(
                     "6/8 连接语音通道",
+                    AutomationProperties.GetItemStatus(window.ActionKey10));
+                Assert.Contains(
+                    "6/8 连接语音通道",
+                    AutomationProperties.GetItemStatus(window.SettingsKey));
+
+                window.ApplyVoiceStatusForVisualTest(
+                    "连接 / 启用麦克风后重试",
+                    failed: true);
+
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.HarnessActionStatusBadge.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.HarnessActionProgressRing.Visibility);
+                Assert.Equal("!", window.QuotaValueText.Text);
+                Assert.Equal(
+                    "连接 / 启用麦克风后重试",
+                    window.HarnessProgressStatusText.Text);
+                Assert.Equal(16.5, window.HarnessProgressStatusText.FontSize);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    window.BrandWordmarkPanel.Visibility);
+                Assert.Contains(
+                    "连接 / 启用麦克风后重试",
                     AutomationProperties.GetItemStatus(window.ActionKey10));
                 window.CloseForApplicationExit();
             }

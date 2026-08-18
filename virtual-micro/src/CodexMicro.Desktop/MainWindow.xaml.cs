@@ -65,6 +65,14 @@ public partial class MicroSurfaceWindow : Window
         string Detail,
         MicroHarnessDispatchStage Stage);
 
+    private readonly record struct VoiceSurfaceStatus(
+        int Version,
+        string Text,
+        string Detail,
+        MicroHarnessDispatchStage Stage,
+        int? Step,
+        int? TotalSteps);
+
     private readonly record struct HarnessVoiceResult(
         bool Success,
         bool Active,
@@ -217,6 +225,7 @@ public partial class MicroSurfaceWindow : Window
     private DateTimeOffset _harnessActionStartedAt;
     private string _harnessActionBaseText = string.Empty;
     private SettingsDisplayProgress? _settingsDisplayProgress;
+    private VoiceSurfaceStatus? _voiceSurfaceStatus;
     private bool _actionTargetIsForeground;
     private IntPtr _lastForegroundWindow;
     private bool _windowClosed;
@@ -725,6 +734,10 @@ public partial class MicroSurfaceWindow : Window
                     : "请先在小键盘中完成语音配置。");
             return;
         }
+        if (TryShowMissingVoiceCaptureDevice(settings))
+        {
+            return;
+        }
         if (settings.Provider != MicroVoiceProviders.LocalQwen)
         {
             SetVoiceServiceState(
@@ -763,17 +776,20 @@ public partial class MicroSurfaceWindow : Window
                 return;
             }
 
-            SetVoiceServiceState(
-                ready
-                    ? KeypadVoiceServiceState.Ready
-                    : KeypadVoiceServiceState.Unavailable,
-                ready
-                    ? _localization.IsEnglish
-                        ? "The keypad-owned Qwen voice service is ready."
-                        : "小键盘持有的 Qwen 语音服务已就绪。"
-                    : _localization.IsEnglish
-                        ? "The keypad-owned Qwen voice service is not running."
-                        : "小键盘持有的 Qwen 语音服务尚未启动。");
+            if (!TryShowMissingVoiceCaptureDevice(current))
+            {
+                SetVoiceServiceState(
+                    ready
+                        ? KeypadVoiceServiceState.Ready
+                        : KeypadVoiceServiceState.Unavailable,
+                    ready
+                        ? _localization.IsEnglish
+                            ? "The keypad-owned Qwen voice service is ready."
+                            : "小键盘持有的 Qwen 语音服务已就绪。"
+                        : _localization.IsEnglish
+                            ? "The keypad-owned Qwen voice service is not running."
+                            : "小键盘持有的 Qwen 语音服务尚未启动。");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1467,6 +1483,34 @@ public partial class MicroSurfaceWindow : Window
                 _ = button.CaptureMouse();
             }
 
+            if (!await EnsureDeepSeekForegroundForVoiceAsync(harness))
+            {
+                ResetHarnessVoiceStartState(button);
+                var message = _localization.IsEnglish
+                    ? "DeepSeek could not be opened in the foreground. Open DeepSeek from the taskbar, then press the voice key again."
+                    : "未能调起并置前 DeepSeek。请从任务栏打开 DeepSeek，然后再次点按语音键。";
+                ShowHarnessActionStatus(
+                    _localization.IsEnglish
+                        ? "OPEN DEEPSEEK, THEN RETRY"
+                        : "打开 DeepSeek 后重试",
+                    MicroHarnessDispatchStage.Failed,
+                    autoHide: false,
+                    onVoiceKey: true,
+                    detail: message);
+                SetLed(ActivityLed, "#FFD66E", message);
+                SetStatus(message);
+                return new(false, Active: false, message);
+            }
+            if (!_voicePressed && VoiceGesturePolicy.StopOnRelease(
+                    _profileSettings.Current.TapToToggleVoice))
+            {
+                ResetHarnessVoiceStartState(button);
+                return new(
+                    true,
+                    Active: false,
+                    "Voice input ended before microphone capture began.");
+            }
+
             var result = await _voiceInput.StartAsync(sessionId);
             SetLed(
                 ActivityLed,
@@ -1479,7 +1523,11 @@ public partial class MicroSurfaceWindow : Window
                     MicroHarnessDispatchStage.Completed,
                     autoHide: false,
                     onVoiceKey: true);
-                if (!startedByBridgeButton)
+                if (IsDeepSeekHarness(harness))
+                {
+                    _ = await EnsureDeepSeekForegroundForVoiceAsync(harness);
+                }
+                else if (!startedByBridgeButton)
                 {
                     await TryActivateHarnessWindowAsync(
                         harness,
@@ -1488,24 +1536,56 @@ public partial class MicroSurfaceWindow : Window
                 return new(true, Active: true, result.Message);
             }
 
-            _voicePressed = false;
-            SetVoiceRecordingVisual(recording: false);
-            if (button is not null && Mouse.Captured == button)
+            ResetHarnessVoiceStartState(button);
+            var actionLabel = result.RecoveryAction switch
             {
-                button.ReleaseMouseCapture();
-            }
-            _voicePressedButton = null;
-            _voiceHarnessId = null;
-            _voiceTargetSessionId = null;
-            _voiceDictationId = null;
-            _lastDeliveredVoicePartial = null;
-            _voiceStartedByBridgeButton = false;
+                MicroVoiceRecoveryAction.ConnectOrEnableMicrophone =>
+                    _localization.IsEnglish
+                        ? "ENABLE A MICROPHONE, THEN RETRY"
+                        : "连接 / 启用麦克风后重试",
+                MicroVoiceRecoveryAction.RestartVoiceService when
+                    result.ServiceRestarted =>
+                    _localization.IsEnglish
+                        ? "RESTART FAILED · RESTART SERVICE"
+                        : "自动重启未恢复 · 请手动重启",
+                MicroVoiceRecoveryAction.RestartVoiceService =>
+                    _localization.IsEnglish
+                        ? "RESTART VOICE SERVICE, THEN RETRY"
+                        : "重启语音服务后重试",
+                MicroVoiceRecoveryAction.OpenVoiceSettings =>
+                    _localization.IsEnglish
+                        ? "CHECK VOICE SETTINGS, THEN RETRY"
+                        : "检查语音设置后重试",
+                _ => VoiceFailureLabel(step: 1, totalSteps: 3),
+            };
+            var recoveryStatus = result.RecoveryAction switch
+            {
+                MicroVoiceRecoveryAction.ConnectOrEnableMicrophone =>
+                    _localization.IsEnglish
+                        ? "No active Windows microphone is available. Open Settings > System > Sound > Input, connect or enable a microphone, then press the voice key again."
+                        : "未检测到可用的 Windows 麦克风。请打开“设置 → 系统 → 声音 → 输入”，连接或启用麦克风后再次点按语音键。",
+                MicroVoiceRecoveryAction.RestartVoiceService when
+                    result.ServiceRestarted =>
+                    _localization.IsEnglish
+                        ? $"The keypad restarted the local Qwen voice service once, but the link is still broken. Restart the Qwen voice service manually, then press the voice key again.\n{result.Message}"
+                        : $"小键盘已自动重启本地 Qwen 语音服务一次，但链路仍未恢复。请手动重启 Qwen 语音服务后再次点按语音键。\n{result.Message}",
+                MicroVoiceRecoveryAction.RestartVoiceService =>
+                    _localization.IsEnglish
+                        ? $"The keypad could not recover the Qwen voice service automatically. Restart the Qwen voice service manually, then press the voice key again.\n{result.Message}"
+                        : $"小键盘未能自动恢复 Qwen 语音服务。请手动重启 Qwen 语音服务后再次点按语音键。\n{result.Message}",
+                MicroVoiceRecoveryAction.OpenVoiceSettings =>
+                    _localization.IsEnglish
+                        ? $"Voice input could not start. Open keypad voice settings, run Save and verify, then try again.\n{result.Message}"
+                        : $"语音输入未能启动。请打开小键盘语音设置，执行“保存并验证”后重试。\n{result.Message}",
+                _ => result.Message,
+            };
             ShowHarnessActionStatus(
-                VoiceFailureLabel(step: 1, totalSteps: 3),
-                MicroHarnessDispatchStage.Background,
-                autoHide: true,
-                onVoiceKey: true);
-            SetStatus(result.Message);
+                actionLabel,
+                MicroHarnessDispatchStage.Failed,
+                autoHide: result.RecoveryAction == MicroVoiceRecoveryAction.None,
+                onVoiceKey: true,
+                detail: recoveryStatus);
+            SetStatus(recoveryStatus);
             if (result.SetupRequired)
             {
                 OpenKeypadVoiceSettings();
@@ -1516,6 +1596,64 @@ public partial class MicroSurfaceWindow : Window
         {
             _externalVoiceGate.Release();
         }
+    }
+
+    private async Task<bool> EnsureDeepSeekForegroundForVoiceAsync(
+        MicroHarnessDefinition harness)
+    {
+        if (!IsDeepSeekHarness(harness) || IsHarnessForeground(harness))
+        {
+            return true;
+        }
+
+        ShowHarnessActionStatus(
+            _localization.IsEnglish
+                ? "OPENING DEEPSEEK"
+                : "正在调起 DeepSeek",
+            MicroHarnessDispatchStage.Opening,
+            autoHide: false,
+            onVoiceKey: true);
+        SetStatus(_localization.IsEnglish
+            ? "DeepSeek is not in the foreground. The keypad is opening and focusing it before voice capture."
+            : "DeepSeek 当前不在前台；小键盘正在先调起并置前 DeepSeek，再开始语音采集。");
+
+        try
+        {
+            if (await TryActivateHarnessWindowAsync(
+                    harness,
+                    TimeSpan.FromSeconds(1.6)))
+            {
+                return true;
+            }
+
+            await ActivateHarnessAsync(harness);
+            return IsHarnessForeground(harness);
+        }
+        catch (Exception exception) when (
+            exception is not OperationCanceledException)
+        {
+            SetStatus(_localization.IsEnglish
+                ? $"DeepSeek activation failed: {exception.Message}"
+                : $"调起 DeepSeek 失败：{exception.Message}");
+            return false;
+        }
+    }
+
+    private void ResetHarnessVoiceStartState(Button? button)
+    {
+        _voicePressed = false;
+        SetVoiceRecordingVisual(recording: false);
+        if (button is not null && Mouse.Captured == button)
+        {
+            button.ReleaseMouseCapture();
+        }
+        _voicePressedButton = null;
+        _voiceHarnessId = null;
+        _voiceTargetSessionId = null;
+        _voiceDictationId = null;
+        _lastDeliveredVoicePartial = null;
+        _voiceStartedByBridgeButton = false;
+        _lastPublishedVoiceState = null;
     }
 
     private void OpenKeypadVoiceSettings()
@@ -1761,6 +1899,22 @@ public partial class MicroSurfaceWindow : Window
                 SetVoiceServiceState(
                     KeypadVoiceServiceState.Checking,
                     snapshot.Message);
+                break;
+            case "restarting":
+                SetVoiceServiceState(
+                    KeypadVoiceServiceState.Checking,
+                    snapshot.Message);
+                ShowHarnessActionStatus(
+                    _localization.IsEnglish
+                        ? "RESTARTING VOICE SERVICE"
+                        : "正在重启语音服务",
+                    MicroHarnessDispatchStage.Starting,
+                    autoHide: false,
+                    onVoiceKey: true,
+                    detail: snapshot.Message);
+                SetStatus(_localization.IsEnglish
+                    ? "The local voice link failed. The keypad is restarting its Qwen service once and will retry automatically."
+                    : "本地语音链路失败；小键盘正在重启其持有的 Qwen 服务，并自动重试一次。");
                 break;
             case "listening":
             case "stopping":
@@ -2248,6 +2402,18 @@ public partial class MicroSurfaceWindow : Window
             onVoiceKey,
             onSettingsKey);
 
+    internal void ApplyVoiceStatusForVisualTest(
+        string text,
+        bool failed = false) =>
+        ShowHarnessActionStatus(
+            text,
+            failed
+                ? MicroHarnessDispatchStage.Failed
+                : MicroHarnessDispatchStage.Connecting,
+            autoHide: false,
+            onVoiceKey: true,
+            detail: "Visual voice status test.");
+
     private string ProgressLabel(
         int step,
         int totalSteps,
@@ -2399,6 +2565,23 @@ public partial class MicroSurfaceWindow : Window
         }
 
         var version = ++_harnessActionStatusVersion;
+        if (onVoiceKey)
+        {
+            var hasProgress = TryReadProgressFraction(
+                text,
+                out var voiceStep,
+                out var voiceTotalSteps);
+            ShowVoiceSurfaceStatus(new(
+                version,
+                text,
+                detail ?? string.Empty,
+                stage,
+                hasProgress ? voiceStep : null,
+                hasProgress ? voiceTotalSteps : null),
+                autoHide);
+            return;
+        }
+
         if (!onVoiceKey &&
             IsDeepSeekHarness(ActiveHarness()) &&
             TryReadProgressFraction(text, out var step, out var totalSteps))
@@ -2414,9 +2597,11 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        if (_settingsDisplayProgress is not null)
+        if (_settingsDisplayProgress is not null ||
+            _voiceSurfaceStatus is not null)
         {
             _settingsDisplayProgress = null;
+            _voiceSurfaceStatus = null;
             _harnessActionElapsedTimer.Stop();
             HideHarnessProgressStatus();
             UpdateQuotaPresentation();
@@ -2504,6 +2689,7 @@ public partial class MicroSurfaceWindow : Window
         bool autoHide)
     {
         _settingsDisplayProgress = progress;
+        _voiceSurfaceStatus = null;
         HarnessActionStatusBadge.BeginAnimation(OpacityProperty, null);
         HarnessActionStatusBadge.Visibility = Visibility.Collapsed;
         HarnessActionStatusBadge.Opacity = 0;
@@ -2651,6 +2837,12 @@ public partial class MicroSurfaceWindow : Window
 
     private void HarnessActionElapsedTimer_Tick(object? sender, EventArgs e)
     {
+        if (_voiceSurfaceStatus is { } voiceStatus)
+        {
+            ApplyVoiceSurfaceStatus(voiceStatus);
+            return;
+        }
+
         if (_settingsDisplayProgress is { } settingsProgress)
         {
             ApplySettingsDisplayProgress(settingsProgress);
@@ -2726,6 +2918,18 @@ public partial class MicroSurfaceWindow : Window
             _harnessActionElapsedTimer.Stop();
             HideHarnessProgressStatus();
             UpdateQuotaPresentation();
+            return;
+        }
+
+        if (_voiceSurfaceStatus is { Version: var voiceVersion } &&
+            voiceVersion == version)
+        {
+            _voiceSurfaceStatus = null;
+            _harnessActionElapsedTimer.Stop();
+            StopHarnessActionProgressRing();
+            HideHarnessProgressStatus();
+            UpdateQuotaPresentation();
+            RefreshHarnessPresentation();
             return;
         }
 
@@ -2960,6 +3164,7 @@ public partial class MicroSurfaceWindow : Window
             }
 
             _settingsDisplayProgress = null;
+            _voiceSurfaceStatus = null;
             _harnessModelSwitching = true;
             _harnessActionElapsedTimer.Stop();
             HideHarnessProgressStatus();
@@ -5396,6 +5601,7 @@ public partial class MicroSurfaceWindow : Window
             _actionTargetIsForeground = false;
             _harnessActionStatusVersion++;
             _settingsDisplayProgress = null;
+            _voiceSurfaceStatus = null;
             _harnessActionElapsedTimer.Stop();
             HideHarnessProgressStatus();
             _harnessStateCancellation?.Cancel();
@@ -5995,6 +6201,11 @@ public partial class MicroSurfaceWindow : Window
         var harness = ActiveHarness();
         var deepSeek = IsDeepSeekHarness(harness);
         ApplySettingsDisplayTheme(light: deepSeek);
+        if (_voiceSurfaceStatus is { } voiceStatus)
+        {
+            ApplyVoiceSurfaceStatus(voiceStatus);
+            return;
+        }
         if (deepSeek && _settingsDisplayProgress is { } progress)
         {
             ApplySettingsDisplayProgress(progress);
@@ -6449,8 +6660,13 @@ public partial class MicroSurfaceWindow : Window
                     : "请先在小键盘中完成语音配置。");
             return;
         }
+        var captureUnavailable = TryShowMissingVoiceCaptureDevice(settings);
         if (settings.Provider != MicroVoiceProviders.LocalQwen)
         {
+            if (captureUnavailable)
+            {
+                return;
+            }
             SetVoiceServiceState(
                 KeypadVoiceServiceState.Ready,
                 settings.Provider == MicroVoiceProviders.System
@@ -6463,15 +6679,18 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        SetVoiceServiceState(
-            KeypadVoiceServiceState.Checking,
-            settings.LocalStartMode == MicroLocalVoiceStartModes.KeypadStart
-                ? _localization.IsEnglish
-                    ? "Starting the keypad-owned Qwen voice service."
-                    : "正在启动小键盘持有的 Qwen 语音服务。"
-                : _localization.IsEnglish
-                    ? "Checking the keypad-owned Qwen voice service."
-                    : "正在检查小键盘持有的 Qwen 语音服务。");
+        if (!captureUnavailable)
+        {
+            SetVoiceServiceState(
+                KeypadVoiceServiceState.Checking,
+                settings.LocalStartMode == MicroLocalVoiceStartModes.KeypadStart
+                    ? _localization.IsEnglish
+                        ? "Starting the keypad-owned Qwen voice service."
+                        : "正在启动小键盘持有的 Qwen 语音服务。"
+                    : _localization.IsEnglish
+                        ? "Checking the keypad-owned Qwen voice service."
+                        : "正在检查小键盘持有的 Qwen 语音服务。");
+        }
         var cancellation = new CancellationTokenSource();
         _voiceWarmUpCancellation = cancellation;
         _ = WarmUpKeypadVoiceAsync(cancellation);
@@ -6498,17 +6717,20 @@ public partial class MicroSurfaceWindow : Window
                 cancellation.Token);
             if (!_windowClosed)
             {
-                SetVoiceServiceState(
-                    ready
-                        ? KeypadVoiceServiceState.Ready
-                        : KeypadVoiceServiceState.Unavailable,
-                    ready
-                        ? _localization.IsEnglish
-                            ? "The keypad-owned Qwen voice service is ready."
-                            : "小键盘持有的 Qwen 语音服务已就绪。"
-                        : _localization.IsEnglish
-                            ? "The keypad-owned Qwen voice service is not running."
-                            : "小键盘持有的 Qwen 语音服务尚未启动。");
+                if (!TryShowMissingVoiceCaptureDevice(settings))
+                {
+                    SetVoiceServiceState(
+                        ready
+                            ? KeypadVoiceServiceState.Ready
+                            : KeypadVoiceServiceState.Unavailable,
+                        ready
+                            ? _localization.IsEnglish
+                                ? "The keypad-owned Qwen voice service is ready."
+                                : "小键盘持有的 Qwen 语音服务已就绪。"
+                            : _localization.IsEnglish
+                                ? "The keypad-owned Qwen voice service is not running."
+                                : "小键盘持有的 Qwen 语音服务尚未启动。");
+                }
             }
         }
         catch (OperationCanceledException)
@@ -6534,6 +6756,140 @@ public partial class MicroSurfaceWindow : Window
             }
             cancellation.Dispose();
         }
+    }
+
+    private void ShowVoiceSurfaceStatus(
+        VoiceSurfaceStatus status,
+        bool autoHide)
+    {
+        _settingsDisplayProgress = null;
+        _voiceSurfaceStatus = status;
+        HarnessActionStatusBadge.BeginAnimation(OpacityProperty, null);
+        HarnessActionStatusBadge.Visibility = Visibility.Collapsed;
+        HarnessActionStatusBadge.Opacity = 0;
+
+        Grid.SetColumn(HarnessActionProgressRing, 1);
+        Grid.SetColumnSpan(HarnessActionProgressRing, 2);
+        var busy = !autoHide && status.Stage is not (
+            MicroHarnessDispatchStage.Failed or
+            MicroHarnessDispatchStage.Foreground or
+            MicroHarnessDispatchStage.Completed);
+        if (busy)
+        {
+            if (!_harnessActionElapsedTimer.IsEnabled)
+            {
+                _harnessActionStartedAt = DateTimeOffset.UtcNow;
+                _harnessActionElapsedTimer.Start();
+            }
+            StartHarnessActionProgressRing(status.Stage);
+        }
+        else
+        {
+            _harnessActionElapsedTimer.Stop();
+            StopHarnessActionProgressRing();
+        }
+
+        _harnessActionBaseText = status.Text;
+        ApplyVoiceSurfaceStatus(status);
+        AutomationProperties.SetItemStatus(
+            ActionKey10,
+            Localize(status.Text));
+        AutomationProperties.SetItemStatus(
+            SettingsKey,
+            Localize(status.Text));
+        if (autoHide)
+        {
+            _ = HideHarnessActionStatusAsync(status.Version);
+        }
+    }
+
+    private void ApplyVoiceSurfaceStatus(VoiceSurfaceStatus status)
+    {
+        ApplySettingsDisplayTheme(light: IsDeepSeekHarness(ActiveHarness()));
+        QuotaCaptionText.Visibility = Visibility.Collapsed;
+        if (status.Step is { } step && status.TotalSteps is { } totalSteps)
+        {
+            var boundedStep = Math.Clamp(step, 0, totalSteps);
+            QuotaValueText.Text = $"{boundedStep}/{totalSteps}";
+            QuotaValueText.FontSize = 16;
+            QuotaProgressRing.Data = CreateQuotaArcGeometry(
+                100d * boundedStep / totalSteps);
+        }
+        else
+        {
+            QuotaValueText.Text = status.Stage == MicroHarnessDispatchStage.Failed
+                ? "!"
+                : status.Stage is MicroHarnessDispatchStage.Foreground or
+                    MicroHarnessDispatchStage.Completed
+                    ? "MIC"
+                    : "···";
+            QuotaValueText.FontSize = status.Stage == MicroHarnessDispatchStage.Failed
+                ? 20
+                : 13;
+            QuotaProgressRing.Data = Geometry.Empty;
+        }
+        QuotaGauge.Opacity = 1;
+        QuotaProgressRing.Stroke = new SolidColorBrush(
+            status.Stage == MicroHarnessDispatchStage.Failed
+                ? Color.FromRgb(0xA7, 0x42, 0x56)
+                : status.Stage is MicroHarnessDispatchStage.Foreground or
+                    MicroHarnessDispatchStage.Completed
+                    ? Color.FromRgb(0x28, 0x66, 0x4A)
+                    : Color.FromRgb(0x22, 0x22, 0x22));
+
+        BrandWordmarkPanel.Visibility = Visibility.Collapsed;
+        HarnessProgressStatusText.Text = FormatHarnessActionStatusText(
+            ProgressStageText(status.Text));
+        HarnessProgressStatusText.Foreground = new SolidColorBrush(
+            status.Stage == MicroHarnessDispatchStage.Failed
+                ? Color.FromRgb(0x8B, 0x40, 0x55)
+                : status.Stage is MicroHarnessDispatchStage.Foreground or
+                    MicroHarnessDispatchStage.Completed
+                    ? Color.FromRgb(0x31, 0x5A, 0x86)
+                    : status.Stage == MicroHarnessDispatchStage.Background
+                        ? Color.FromRgb(0x72, 0x5B, 0x23)
+                        : Color.FromRgb(0x34, 0x41, 0x5B));
+        HarnessProgressStatusText.Visibility = Visibility.Visible;
+
+        var detail = FormatHarnessActionStatusText(status.Text);
+        if (!string.IsNullOrWhiteSpace(status.Detail) &&
+            !string.Equals(
+                status.Detail.Trim(),
+                status.Text.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            detail += $"\n{status.Detail.Trim()}";
+        }
+        ApplyHelp(
+            SettingsKey,
+            _localization.IsEnglish ? "Voice status" : "语音状态",
+            detail);
+        ApplyHelp(
+            ActionKey10,
+            _localization.IsEnglish ? "Voice status" : "语音状态",
+            detail);
+    }
+
+    private bool TryShowMissingVoiceCaptureDevice(
+        MicroVoiceProfile settings)
+    {
+        if (settings.Provider == MicroVoiceProviders.System)
+        {
+            return false;
+        }
+
+        var availability = MicroVoiceCaptureDevices.Current;
+        if (availability.Available)
+        {
+            return false;
+        }
+
+        SetVoiceServiceState(
+            KeypadVoiceServiceState.Error,
+            _localization.IsEnglish
+                ? availability.Message
+                : "未检测到可用的 Windows 麦克风。请连接或启用录音设备后重试。");
+        return true;
     }
 
     private void HarnessRegistry_Changed(object? sender, EventArgs e)
