@@ -16,10 +16,20 @@ internal sealed record MicroVoiceInputSnapshot(
     string Partial,
     string Message);
 
+internal enum MicroVoiceRecoveryAction
+{
+    None,
+    OpenVoiceSettings,
+    ConnectOrEnableMicrophone,
+    RestartVoiceService,
+}
+
 internal sealed record MicroVoiceStartResult(
     bool Success,
     bool SetupRequired,
-    string Message);
+    string Message,
+    MicroVoiceRecoveryAction RecoveryAction = MicroVoiceRecoveryAction.None,
+    bool ServiceRestarted = false);
 
 internal sealed record MicroVoiceStopResult(
     bool Success,
@@ -40,6 +50,63 @@ internal interface IMicroSpeechSession : IAsyncDisposable
     Task StartAsync(CancellationToken cancellationToken);
 
     Task<string> StopAsync(CancellationToken cancellationToken);
+}
+
+internal readonly record struct MicroVoiceCaptureAvailability(
+    bool Available,
+    int DeviceCount,
+    string Message);
+
+/// <summary>
+/// Reports the same WinMM capture inventory used by <see cref="WaveIn"/>.
+/// Provider health alone is not enough to mark voice ready: a streaming ASR
+/// server can be healthy while Windows has no active recording endpoint.
+/// </summary>
+internal static class MicroVoiceCaptureDevices
+{
+    internal const string MissingDeviceMessage =
+        "No active Windows microphone is available. Connect or enable a recording device, then try voice input again.";
+
+    internal static MicroVoiceCaptureAvailability Current
+    {
+        get
+        {
+            try
+            {
+                return FromDeviceCount(WaveIn.DeviceCount);
+            }
+            catch (Exception exception) when (
+                exception is NAudio.MmException or
+                    DllNotFoundException or
+                    EntryPointNotFoundException)
+            {
+                return new(
+                    Available: false,
+                    DeviceCount: 0,
+                    $"Windows microphone devices could not be enumerated: {exception.Message}");
+            }
+        }
+    }
+
+    internal static MicroVoiceCaptureAvailability FromDeviceCount(int deviceCount) =>
+        deviceCount > 0
+            ? new(
+                Available: true,
+                deviceCount,
+                $"{deviceCount} Windows microphone device(s) available.")
+            : new(
+                Available: false,
+                DeviceCount: 0,
+                MissingDeviceMessage);
+
+    internal static void EnsureAvailable()
+    {
+        var availability = Current;
+        if (!availability.Available)
+        {
+            throw new InvalidOperationException(availability.Message);
+        }
+    }
 }
 
 /// <summary>
@@ -81,6 +148,9 @@ internal sealed class MicroVoiceInputService : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
+        MicroVoiceProfile? requestedSettings = null;
+        var serviceRestartAttempted = false;
+        var serviceRestarted = false;
         try
         {
             if (_session is not null)
@@ -103,10 +173,30 @@ internal sealed class MicroVoiceInputService : IAsyncDisposable
                 return new(
                     false,
                     true,
-                    "VOICE_SETUP_REQUIRED: Configure voice in the Codex Micro keypad.");
+                    "VOICE_SETUP_REQUIRED: Configure voice in the Codex Micro keypad.",
+                    MicroVoiceRecoveryAction.OpenVoiceSettings);
             }
 
             Validate(settings);
+            requestedSettings = settings;
+            if (settings.Provider != MicroVoiceProviders.System)
+            {
+                var availability = MicroVoiceCaptureDevices.Current;
+                if (!availability.Available)
+                {
+                    Publish(new(
+                        "error",
+                        Active: false,
+                        sessionId,
+                        Partial: string.Empty,
+                        availability.Message));
+                    return new(
+                        false,
+                        false,
+                        availability.Message,
+                        MicroVoiceRecoveryAction.ConnectOrEnableMicrophone);
+                }
+            }
             _activeSettings = settings;
             _activeSessionId = sessionId;
             Publish(new(
@@ -117,40 +207,64 @@ internal sealed class MicroVoiceInputService : IAsyncDisposable
                 Message: settings.Provider == MicroVoiceProviders.LocalQwen
                     ? "The keypad is preparing the local Qwen voice service."
                     : "The keypad is starting voice recognition."));
-            if (settings.Provider == MicroVoiceProviders.LocalQwen)
-            {
-                await _localRuntime.EnsureReadyAsync(
-                    settings,
-                    cancellationToken);
-            }
             var credential = settings.Provider == MicroVoiceProviders.RemoteWebSocket
                 ? _credentials.Read(
                     _profileSettings.VoiceCredentialScope,
                     settings.Provider)
                 : null;
-            var speech = CreateSession(settings, credential, capture: true);
-            speech.Updated += Speech_Updated;
-            _session = speech;
             try
             {
-                await speech.StartAsync(cancellationToken);
+                if (settings.Provider == MicroVoiceProviders.LocalQwen)
+                {
+                    await _localRuntime.EnsureReadyAsync(
+                        settings,
+                        cancellationToken);
+                }
+                await StartSpeechSessionAsync(
+                    settings,
+                    credential,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is not OperationCanceledException &&
+                settings.Provider == MicroVoiceProviders.LocalQwen &&
+                !IsCaptureDeviceFailure(exception))
+            {
+                serviceRestartAttempted = true;
                 Publish(new(
-                    "listening",
+                    "restarting",
                     Active: true,
                     sessionId,
                     Partial: string.Empty,
-                    Message: "The keypad microphone is listening."));
-                return new(true, false, "The keypad microphone is listening.");
+                    Message: "The local Qwen voice link failed. The keypad is restarting its voice service once."));
+                if (!await _localRuntime.TryRestartOwnedAsync(
+                        settings,
+                        cancellationToken))
+                {
+                    throw;
+                }
+
+                serviceRestarted = true;
+                await StartSpeechSessionAsync(
+                    settings,
+                    credential,
+                    cancellationToken);
             }
-            catch
-            {
-                speech.Updated -= Speech_Updated;
-                _session = null;
-                _activeSettings = null;
-                _activeSessionId = null;
-                await speech.DisposeAsync();
-                throw;
-            }
+
+            var listeningMessage = serviceRestarted
+                ? "The keypad restarted the local voice service and the microphone is listening."
+                : "The keypad microphone is listening.";
+            Publish(new(
+                "listening",
+                Active: true,
+                sessionId,
+                Partial: string.Empty,
+                Message: listeningMessage));
+            return new(
+                true,
+                false,
+                listeningMessage,
+                ServiceRestarted: serviceRestarted);
         }
         catch (OperationCanceledException)
         {
@@ -169,13 +283,31 @@ internal sealed class MicroVoiceInputService : IAsyncDisposable
         {
             _activeSettings = null;
             _activeSessionId = null;
+            var recoveryAction = ResolveRecoveryAction(
+                requestedSettings,
+                exception);
+            var message = recoveryAction switch
+            {
+                MicroVoiceRecoveryAction.ConnectOrEnableMicrophone =>
+                    MicroVoiceCaptureDevices.MissingDeviceMessage,
+                MicroVoiceRecoveryAction.RestartVoiceService when serviceRestarted =>
+                    $"The keypad restarted the local voice service once, but the voice link still failed: {exception.Message}",
+                MicroVoiceRecoveryAction.RestartVoiceService when serviceRestartAttempted =>
+                    $"The local voice link failed and the keypad could not restart an owned service. Restart the Qwen voice service, then try again. {exception.Message}",
+                _ => exception.Message,
+            };
             Publish(new(
                 "error",
                 Active: false,
                 sessionId,
                 Partial: string.Empty,
-                Message: exception.Message));
-            return new(false, false, exception.Message);
+                Message: message));
+            return new(
+                false,
+                false,
+                message,
+                recoveryAction,
+                ServiceRestarted: serviceRestarted);
         }
         finally
         {
@@ -397,6 +529,59 @@ internal sealed class MicroVoiceInputService : IAsyncDisposable
         }
     }
 
+    internal static MicroVoiceRecoveryAction ResolveRecoveryAction(
+        MicroVoiceProfile? settings,
+        Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (IsCaptureDeviceFailure(exception))
+        {
+            return MicroVoiceRecoveryAction.ConnectOrEnableMicrophone;
+        }
+
+        return settings?.Provider == MicroVoiceProviders.LocalQwen
+            ? MicroVoiceRecoveryAction.RestartVoiceService
+            : MicroVoiceRecoveryAction.OpenVoiceSettings;
+    }
+
+    internal static bool IsCaptureDeviceFailure(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is NAudio.MmException ||
+                current.Message.Contains(
+                    MicroVoiceCaptureDevices.MissingDeviceMessage,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task StartSpeechSessionAsync(
+        MicroVoiceProfile settings,
+        string? credential,
+        CancellationToken cancellationToken)
+    {
+        var speech = CreateSession(settings, credential, capture: true);
+        speech.Updated += Speech_Updated;
+        _session = speech;
+        try
+        {
+            await speech.StartAsync(cancellationToken);
+        }
+        catch
+        {
+            speech.Updated -= Speech_Updated;
+            _session = null;
+            await speech.DisposeAsync();
+            throw;
+        }
+    }
+
     private static IMicroSpeechSession CreateSession(
         MicroVoiceProfile settings,
         string? credential,
@@ -611,6 +796,7 @@ internal sealed class StreamingSpeechSession : IMicroSpeechSession
             return;
         }
 
+        MicroVoiceCaptureDevices.EnsureAvailable();
         _sendTask = SendAudioAsync(_lifetime.Token);
         _captureDevice = new WaveIn
         {
@@ -620,7 +806,20 @@ internal sealed class StreamingSpeechSession : IMicroSpeechSession
             NumberOfBuffers = 4,
         };
         _captureDevice.DataAvailable += Capture_DataAvailable;
-        _captureDevice.StartRecording();
+        try
+        {
+            _captureDevice.StartRecording();
+        }
+        catch (NAudio.MmException exception) when (
+            exception.Result == NAudio.MmResult.BadDeviceId)
+        {
+            _captureDevice.DataAvailable -= Capture_DataAvailable;
+            _captureDevice.Dispose();
+            _captureDevice = null;
+            throw new InvalidOperationException(
+                MicroVoiceCaptureDevices.MissingDeviceMessage,
+                exception);
+        }
     }
 
     public async Task<string> StopAsync(CancellationToken cancellationToken)

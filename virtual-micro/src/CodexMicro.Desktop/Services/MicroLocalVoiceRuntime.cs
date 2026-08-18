@@ -105,44 +105,57 @@ internal sealed class MicroLocalVoiceRuntime : IAsyncDisposable
                     "Local Qwen ASR is not ready. Start it manually or select a keypad auto-start mode.");
             }
 
-            var startInfo = CreateStartInfo(settings, _appDirectory);
-            _logTail.Clear();
-            var process = new Process
+            await StartOwnedProcessAsync(
+                settings,
+                healthUri,
+                operation.Token);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Restarts only a Qwen process that this keypad instance launched. An
+    /// externally managed process is never adopted or terminated; callers can
+    /// surface a manual-restart instruction when this method returns false.
+    /// </summary>
+    internal async Task<bool> TryRestartOwnedAsync(
+        MicroVoiceProfile settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        Validate(settings);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _lifetime.Token);
+        await _gate.WaitAsync(operation.Token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (settings.LocalStartMode == MicroLocalVoiceStartModes.Manual ||
+                _ownedProcess is null)
             {
-                StartInfo = startInfo,
-                EnableRaisingEvents = true,
-            };
-            process.OutputDataReceived += Process_OutputDataReceived;
-            process.ErrorDataReceived += Process_OutputDataReceived;
-            if (!process.Start())
-            {
-                process.Dispose();
-                throw new InvalidOperationException(
-                    "The keypad could not start the local Qwen ASR launcher.");
+                return false;
             }
 
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            _ownedProcess = process;
-            _stopOwnedProcess = settings.LocalStopWithKeypad;
-            try
+            var healthUri = ValidateHealthUri(settings.LocalHealthUrl);
+            await StopOwnedProcessAsync(force: true);
+            if (!await WaitUntilUnavailableAsync(healthUri, operation.Token))
             {
-                await WaitUntilReadyAsync(
-                    process,
-                    healthUri,
-                    settings.LocalReadyTimeoutSeconds,
-                    operation.Token);
+                // Another owner is still serving this endpoint. Do not kill or
+                // replace a process that the keypad did not start.
+                return false;
             }
-            catch (OperationCanceledException)
-            {
-                await StopOwnedProcessAsync();
-                throw;
-            }
-            catch
-            {
-                await StopOwnedProcessAsync();
-                throw;
-            }
+
+            await StartOwnedProcessAsync(
+                settings,
+                healthUri,
+                operation.Token);
+            return true;
         }
         finally
         {
@@ -373,6 +386,67 @@ internal sealed class MicroLocalVoiceRuntime : IAsyncDisposable
 
         throw new TimeoutException(BuildFailureMessage(
             $"Local Qwen ASR did not become ready within {timeoutSeconds} seconds."));
+    }
+
+    private async Task StartOwnedProcessAsync(
+        MicroVoiceProfile settings,
+        Uri healthUri,
+        CancellationToken cancellationToken)
+    {
+        var startInfo = CreateStartInfo(settings, _appDirectory);
+        _logTail.Clear();
+        var process = new Process
+        {
+            StartInfo = startInfo,
+            EnableRaisingEvents = true,
+        };
+        process.OutputDataReceived += Process_OutputDataReceived;
+        process.ErrorDataReceived += Process_OutputDataReceived;
+        if (!process.Start())
+        {
+            process.OutputDataReceived -= Process_OutputDataReceived;
+            process.ErrorDataReceived -= Process_OutputDataReceived;
+            process.Dispose();
+            throw new InvalidOperationException(
+                "The keypad could not start the local Qwen ASR launcher.");
+        }
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        _ownedProcess = process;
+        _stopOwnedProcess = settings.LocalStopWithKeypad;
+        try
+        {
+            await WaitUntilReadyAsync(
+                process,
+                healthUri,
+                settings.LocalReadyTimeoutSeconds,
+                cancellationToken);
+        }
+        catch
+        {
+            await StopOwnedProcessAsync();
+            throw;
+        }
+    }
+
+    private async Task<bool> WaitUntilUnavailableAsync(
+        Uri healthUri,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!await IsReadyAsync(healthUri, cancellationToken))
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken);
+        }
+
+        return !await IsReadyAsync(healthUri, cancellationToken);
     }
 
     private async Task<bool> IsReadyAsync(

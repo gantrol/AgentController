@@ -47,6 +47,9 @@ public sealed class MicroVoiceInputServiceTests
 
         Assert.False(result.Success);
         Assert.True(result.SetupRequired);
+        Assert.Equal(
+            MicroVoiceRecoveryAction.OpenVoiceSettings,
+            result.RecoveryAction);
         Assert.False(voice.Current.Active);
         Assert.Equal("error", voice.Current.Phase);
         Assert.Equal("deepseek-session", voice.Current.SessionId);
@@ -90,6 +93,55 @@ public sealed class MicroVoiceInputServiceTests
         Assert.False(Path.IsPathFullyQualified(settings.LocalLauncherPath));
         Assert.False(Path.IsPathFullyQualified(settings.LocalWorkingDirectory));
         Assert.Equal(string.Empty, settings.LocalPythonPath);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(3, true)]
+    public void StreamingVoiceReadinessRequiresAnActiveWindowsMicrophone(
+        int deviceCount,
+        bool expectedAvailable)
+    {
+        var availability = MicroVoiceCaptureDevices.FromDeviceCount(deviceCount);
+
+        Assert.Equal(expectedAvailable, availability.Available);
+        Assert.Equal(deviceCount, availability.DeviceCount);
+        if (!expectedAvailable)
+        {
+            Assert.Contains("microphone", availability.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Connect or enable", availability.Message);
+        }
+    }
+
+    [Fact]
+    public void MissingCaptureDeviceProducesAnActionableRecovery()
+    {
+        var error = new InvalidOperationException(
+            MicroVoiceCaptureDevices.MissingDeviceMessage);
+
+        Assert.True(MicroVoiceInputService.IsCaptureDeviceFailure(error));
+        Assert.Equal(
+            MicroVoiceRecoveryAction.ConnectOrEnableMicrophone,
+            MicroVoiceInputService.ResolveRecoveryAction(
+                MicroVoiceProfile.Default with
+                {
+                    Provider = MicroVoiceProviders.LocalQwen,
+                },
+                error));
+    }
+
+    [Fact]
+    public void LocalLinkFailureRequestsAServiceRestart()
+    {
+        Assert.Equal(
+            MicroVoiceRecoveryAction.RestartVoiceService,
+            MicroVoiceInputService.ResolveRecoveryAction(
+                MicroVoiceProfile.Default with
+                {
+                    Provider = MicroVoiceProviders.LocalQwen,
+                },
+                new InvalidOperationException("stream handshake failed")));
     }
 
     [Fact]
@@ -255,6 +307,93 @@ public sealed class MicroVoiceInputServiceTests
         };
 
         await runtime.EnsureReadyAsync(settings);
+    }
+
+    [Fact]
+    public async Task ExistingExternalQwenServiceIsNeverRestartedByTheKeypad()
+    {
+        using var client = new HttpClient(new StubHttpHandler(_ => new(
+            HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"ready\":true,\"protocol\":\"dsh-stream-v1\"}",
+                Encoding.UTF8,
+                "application/json"),
+        }));
+        await using var runtime = new MicroLocalVoiceRuntime(client);
+        var settings = MicroVoiceProfile.Default with
+        {
+            Provider = MicroVoiceProviders.LocalQwen,
+            LocalStartMode = MicroLocalVoiceStartModes.OnDemand,
+        };
+
+        await runtime.EnsureReadyAsync(settings);
+
+        Assert.False(await runtime.TryRestartOwnedAsync(settings));
+    }
+
+    [Fact]
+    public async Task KeypadOwnedQwenLauncherCanBeRestartedAndReprobed()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-owned-voice-runtime-tests",
+            Guid.NewGuid().ToString("N"));
+        var voiceDirectory = Path.Combine(directory, "voice");
+        var launcher = Path.Combine(voiceDirectory, "test-qwen-launcher.ps1");
+        try
+        {
+            Directory.CreateDirectory(voiceDirectory);
+            File.WriteAllText(
+                launcher,
+                "param([string]$Distribution,[string]$Model,[int]$Port)\r\nStart-Sleep -Seconds 60\r\n");
+            var probeCount = 0;
+            using var client = new HttpClient(new StubHttpHandler(_ =>
+            {
+                var probe = Interlocked.Increment(ref probeCount);
+                var ready = probe is 2 or >= 4;
+                return new HttpResponseMessage(
+                    ready ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable)
+                {
+                    Content = ready
+                        ? new StringContent(
+                            "{\"ready\":true,\"protocol\":\"dsh-stream-v1\"}",
+                            Encoding.UTF8,
+                            "application/json")
+                        : new StringContent(string.Empty),
+                };
+            }));
+            await using (var runtime = new MicroLocalVoiceRuntime(
+                client,
+                directory))
+            {
+                var settings = MicroVoiceProfile.Default with
+                {
+                    Provider = MicroVoiceProviders.LocalQwen,
+                    LocalStartMode = MicroLocalVoiceStartModes.OnDemand,
+                    LocalLauncherPath = "{AppDir}\\voice\\test-qwen-launcher.ps1",
+                    LocalWorkingDirectory = "{AppDir}\\voice",
+                    LocalReadyTimeoutSeconds = 10,
+                };
+
+                await runtime.EnsureReadyAsync(settings);
+
+                Assert.True(await runtime.TryRestartOwnedAsync(settings));
+                Assert.True(probeCount >= 4);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 
     [Fact]
