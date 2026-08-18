@@ -210,7 +210,7 @@ public sealed class MicroBrokerHost : IDisposable
                 }
 
                 handlers.Add(Task.Run(
-                    () => HandleConnectionAsync(server, lifetime.Token),
+                    () => HandleConnectionAsync(server, lifetime),
                     CancellationToken.None));
             }
         }
@@ -244,8 +244,9 @@ public sealed class MicroBrokerHost : IDisposable
 
     private async Task HandleConnectionAsync(
         NamedPipeServerStream pipe,
-        CancellationToken cancellationToken)
+        CancellationTokenSource lifetime)
     {
+        var cancellationToken = lifetime.Token;
         await using (pipe.ConfigureAwait(false))
         {
             BrokerRequest? request = null;
@@ -261,6 +262,17 @@ public sealed class MicroBrokerHost : IDisposable
                         response,
                         cancellationToken)
                     .ConfigureAwait(false);
+                if (
+                    request.Operation == MicroBrokerProtocol.Disconnect &&
+                    _clients.IsEmpty)
+                {
+                    // A graceful last-client exit is authoritative. Keeping
+                    // the executable alive for the crash-recovery idle delay
+                    // leaves upgrades and rebuilds needlessly file-locked.
+                    // The response is flushed first so the client can finish
+                    // its own deterministic shutdown.
+                    lifetime.Cancel();
+                }
             }
             catch (Exception exception) when (
                 exception is InvalidDataException or
@@ -583,6 +595,7 @@ public sealed class MicroBrokerHost : IDisposable
     {
         Neutralize(client);
         client.MarkDisconnected();
+        _ = TryRemoveClient(request.ClientId, client);
         return Success(request, client);
     }
 

@@ -15,6 +15,7 @@
 
 ## 历史、证据与验收
 
+- [Codex / Deepseek Keypads v0.2.7 正式版说明](release-keypads-v0.2.7.md)
 - [Deepseek Harness Keypad v0.2.6 正式版说明](release-deepseek-harness-keypad-v0.2.6.md)
 - [Deepseek Harness Keypad v0.2.5 正式版说明](release-deepseek-harness-keypad-v0.2.5.md)
 - [Deepseek Harness Keypad v0.2.4 正式版说明](release-deepseek-harness-keypad-v0.2.4.md)

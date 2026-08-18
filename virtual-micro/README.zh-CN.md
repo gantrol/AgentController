@@ -104,7 +104,9 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 ## 控件
 
 - 6 个 Agent 键发送 `AG00`–`AG05`，并显示 Codex 返回的槽位灯光；
-- 4 个命令键发送 `ACT06`–`ACT09`，Codex 键发送 `ACT12`；
+- 4 个命令键发送 `ACT06`–`ACT09`；Codex 模式下，Codex 键会在需要时启动应用，
+  或将已有主窗口置前；本次激活不会提交输入框。Codex 已在前台后，再按一次才发送
+  `ACT12`；
 - Codex 模式下，语音键按下发送 `ACT10 down`，松开后发送 `ACT10 up`；外部 Harness
   模式下，该键直接控制小键盘自己的语音采集与识别；
 - Codex 模式下，白色旋钮可设为常规输入区导航或“仅推理强度”；后者旋转时只改变
@@ -128,7 +130,9 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 小键盘本身不直接调用私有驱动 IOCTL。当前用户唯一的 Broker 子进程拥有驱动句柄、
 输入 sequence、held-input 租约和输出流；如果 Agent Controller 已启动，小键盘会连接
-现有 Broker，否则由 `CodexMicro.exe --micro-broker` 启动同一实现。
+现有 Broker，否则由 `CodexMicro.exe --micro-broker` 启动同一实现。最后一个客户端
+正常断开时，Broker 子进程会立即退出；若仍有 Agent Controller 等客户端使用，则
+继续保留。
 
 当前只提供未签名开发者驱动流程。不要关闭 Windows 驱动签名强制，也不要安装来源
 不明的证书。构建、签名和安装细节见
@@ -140,19 +144,19 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.6
+.\scripts\package-micro.ps1 -Version 0.2.7
 # 准备带桥接插件和在线自动配置入口的 DeepSeek 特调包
-.\scripts\package-micro.ps1 -Version 0.2.6 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.7 -Preset deepseek
 ```
 
 产物：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.6/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.6-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.7/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.7-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
-- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.6-win-x64.zip`；
+- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.7-win-x64.zip`；
 - 可单独安装到已有 DSH 的 Bridge：
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.6.zip`（也带独立 SHA-256）。
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.7.zip`（也带独立 SHA-256）。
 
 封包脚本收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
 启动适配器，不复制模型、Python 环境、Desktop Runtime、调试符号或驱动。
