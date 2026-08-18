@@ -29,7 +29,7 @@ export type VoiceTranslate = (key: VoiceLocaleKey) => string
 
 export interface KeypadVoiceSnapshot {
   active: boolean
-  phase: 'idle' | 'starting' | 'listening' | 'stopping' | 'error'
+  phase: 'idle' | 'starting' | 'restarting' | 'listening' | 'stopping' | 'error'
   sessionId?: string
   message: string
 }
@@ -138,7 +138,7 @@ export function ensureVoiceStyles(): void {
   const style = document.createElement('style')
   style.dataset.plugin = STYLE_ID
   style.textContent = `
-.acmv-mic{width:32px;height:32px;border:0;border-radius:9px;background:transparent;color:var(--dsw-alias-content-secondary,#666);display:grid;place-items:center;cursor:pointer;position:relative;transition:background .15s,color .15s,transform .15s}.acmv-mic:hover{background:var(--dsw-alias-background-hover,rgba(0,0,0,.06));color:var(--dsw-alias-content-primary,#222)}.acmv-mic:active{transform:scale(.94)}.acmv-mic:disabled{cursor:wait;opacity:.68}.acmv-mic[data-active=true]{background:rgba(69,120,255,.12);color:#3979ee}.acmv-mic[data-error=true]{color:#c4514c}.acmv-mic-dot{position:absolute;right:4px;top:4px;width:6px;height:6px;border-radius:50%;background:#4a82ef;box-shadow:0 0 0 3px rgba(74,130,239,.12)}.acmv-mic[data-phase=starting] .acmv-mic-dot,.acmv-mic[data-phase=stopping] .acmv-mic-dot{animation:acmv-pulse 1s infinite alternate}@keyframes acmv-pulse{from{opacity:.35;transform:scale(.8)}to{opacity:1;transform:scale(1.1)}}
+.acmv-mic{width:32px;height:32px;border:0;border-radius:9px;background:transparent;color:var(--dsw-alias-content-secondary,#666);display:grid;place-items:center;cursor:pointer;position:relative;transition:background .15s,color .15s,transform .15s}.acmv-mic:hover{background:var(--dsw-alias-background-hover,rgba(0,0,0,.06));color:var(--dsw-alias-content-primary,#222)}.acmv-mic:active{transform:scale(.94)}.acmv-mic:disabled{cursor:wait;opacity:.68}.acmv-mic[data-active=true]{background:rgba(69,120,255,.12);color:#3979ee}.acmv-mic[data-error=true]{color:#c4514c}.acmv-mic-dot{position:absolute;right:4px;top:4px;width:6px;height:6px;border-radius:50%;background:#4a82ef;box-shadow:0 0 0 3px rgba(74,130,239,.12)}.acmv-mic[data-phase=starting] .acmv-mic-dot,.acmv-mic[data-phase=restarting] .acmv-mic-dot,.acmv-mic[data-phase=stopping] .acmv-mic-dot{animation:acmv-pulse 1s infinite alternate}@keyframes acmv-pulse{from{opacity:.35;transform:scale(.8)}to{opacity:1;transform:scale(1.1)}}
 `
   document.head.append(style)
 }
@@ -157,8 +157,10 @@ export function VoiceButton({ session, voice, t }: VoiceButtonProps): ReactNode 
   const state = useSyncExternalStore(voice.subscribe, voice.getSnapshot, voice.getSnapshot)
   const addressed = state.sessionId === session.sessionId
   const active = addressed && state.active
-  const busy = addressed && (state.phase === 'starting' || state.phase === 'stopping')
-  const label = state.phase === 'starting' ? t('micRequesting')
+  const busy = addressed && (state.phase === 'starting'
+    || state.phase === 'restarting'
+    || state.phase === 'stopping')
+  const label = state.phase === 'starting' || state.phase === 'restarting' ? t('micRequesting')
     : state.phase === 'stopping' ? t('micStopping')
       : active ? t('micListening') : t('micStart')
   const title = addressed && state.message !== '' ? state.message : label

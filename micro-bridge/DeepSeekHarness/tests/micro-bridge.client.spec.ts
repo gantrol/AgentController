@@ -552,6 +552,23 @@ describe('external DeepSeek Harness browser bundle', () => {
         message: 'The keypad microphone is listening.',
       })
     })
+
+    source.emit({
+      version: 1,
+      type: 'voice/status',
+      active: true,
+      phase: 'restarting',
+      sessionId: 'session-1',
+      message: 'Restarting the keypad-owned voice service.',
+    })
+    await vi.waitFor(() => {
+      expect(voice.getSnapshot()).toMatchObject({
+        active: true,
+        phase: 'restarting',
+        sessionId: 'session-1',
+        message: 'Restarting the keypad-owned voice service.',
+      })
+    })
   })
 
   it('sends the DeepSeek voice button only to the keypad bridge endpoint', async () => {
@@ -644,6 +661,82 @@ describe('external DeepSeek Harness browser bundle', () => {
     })
   })
 
+  it('e2e: preserves a user edit while later live dictation frames arrive', async () => {
+    const source = mount('已有内容：')
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'manual-edit-partial-1',
+      sessionId: 'session-1',
+      text: '你好',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'manual-edit-stream',
+      dictationPhase: 'partial',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('已有内容：你好')
+    })
+
+    composerDraft.value = '用户手改：您好'
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'manual-edit-partial-2',
+      sessionId: 'session-1',
+      text: '你好世界',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'manual-edit-stream',
+      dictationPhase: 'partial',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('用户手改：您好世界')
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'manual-edit-partial-2',
+        success: true,
+      }))
+    })
+
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'manual-edit-revision',
+      sessionId: 'session-1',
+      text: '您好，世界',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'manual-edit-stream',
+      dictationPhase: 'partial',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('用户手改：您好世界')
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'manual-edit-revision',
+        success: true,
+      }))
+    })
+
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'manual-edit-final',
+      sessionId: 'session-1',
+      text: '您好，世界！',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'manual-edit-stream',
+      dictationPhase: 'final',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('用户手改：您好世界！')
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'manual-edit-final',
+        success: true,
+      }))
+    })
+  })
+
   it('restores the original draft when a live keypad preview is cancelled', async () => {
     const source = mount('原稿')
     source.emit({
@@ -674,6 +767,44 @@ describe('external DeepSeek Harness browser bundle', () => {
     })
     await vi.waitFor(() => {
       expect(composerDraft.value).toBe('原稿')
+    })
+  })
+
+  it('keeps a manual edit when live keypad dictation is cancelled', async () => {
+    const source = mount('原稿')
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'manual-cancel-partial',
+      sessionId: 'session-1',
+      text: '临时识别',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'manual-cancel-stream',
+      dictationPhase: 'partial',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('原稿临时识别')
+    })
+
+    composerDraft.value = '用户保留稿'
+    source.emit({
+      version: 1,
+      type: 'composer/dictate',
+      requestId: 'manual-cancel',
+      sessionId: 'session-1',
+      text: '',
+      language: 'zh-CN',
+      autoSubmit: false,
+      dictationId: 'manual-cancel-stream',
+      dictationPhase: 'cancel',
+    })
+    await vi.waitFor(() => {
+      expect(composerDraft.value).toBe('用户保留稿')
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'manual-cancel',
+        success: true,
+      }))
     })
   })
 

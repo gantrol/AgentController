@@ -721,4 +721,18 @@ describe('external DeepSeek Harness host bundle', () => {
       message: 'The keypad microphone is listening.',
     })
   })
+
+  it('accepts and relays the keypad-owned voice restart phase', async () => {
+    const { endpoint } = await mount()
+    const result = await request(endpoint, {
+      ...baseRequest,
+      action: 'voice/status',
+      active: true,
+      phase: 'restarting',
+      sessionId: 'session-voice',
+      message: 'Restarting the keypad-owned voice service.',
+    })
+
+    expect(result).toMatchObject({ success: true, status: 'completed' })
+  })
 })

@@ -281,6 +281,7 @@ function parseRequest(line: Buffer): MicroRequest | undefined {
       return typeof request.active === 'boolean'
         && (request.phase === 'idle'
           || request.phase === 'starting'
+          || request.phase === 'restarting'
           || request.phase === 'listening'
           || request.phase === 'stopping'
           || request.phase === 'error')

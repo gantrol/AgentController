@@ -85,7 +85,7 @@ export interface MicroVoiceRequestResult extends MicroRequestBase {
 export interface MicroVoiceStatusRequest extends MicroRequestBase {
   action: 'voice/status'
   active: boolean
-  phase: 'idle' | 'starting' | 'listening' | 'stopping' | 'error'
+  phase: 'idle' | 'starting' | 'restarting' | 'listening' | 'stopping' | 'error'
   message: string
   sessionId?: string
 }
@@ -219,7 +219,7 @@ export interface MicroVoiceStatusFrame {
   version: typeof MICRO_PROTOCOL_VERSION
   type: 'voice/status'
   active: boolean
-  phase: 'idle' | 'starting' | 'listening' | 'stopping' | 'error'
+  phase: 'idle' | 'starting' | 'restarting' | 'listening' | 'stopping' | 'error'
   message: string
   sessionId?: string
 }

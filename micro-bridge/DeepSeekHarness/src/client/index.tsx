@@ -389,6 +389,15 @@ export function appendDictation(draft: string, text: string, language = ''): str
   return `${draft}${cjk ? '' : ' '}${next}`
 }
 
+/** Return only speech added after the last transcript, never a rewritten prefix. */
+function incrementalDictationSuffix(previous: string, next: string): string {
+  const before = previous.trim()
+  const after = next.trim()
+  if (before === '') return after
+  if (!after.startsWith(before)) return ''
+  return after.slice(before.length).trimStart()
+}
+
 /** Subscribe to host frames and report authoritative browser state. */
 export function apply(ctx: ClientContext): void {
   const sessions = ctx.get('sessions') as SessionsFace | undefined
@@ -453,6 +462,8 @@ export function apply(ctx: ClientContext): void {
       sessionId: string
       base: string
       rendered: string
+      transcript: string
+      preserveManualEdits: boolean
     }>()
     const source = new EventSource(
       `${MICRO_EVENTS_ENDPOINT}?browserId=${encodeURIComponent(browserId)}`,
@@ -681,7 +692,8 @@ export function apply(ctx: ClientContext): void {
         const phase = fields.phase
         if (typeof fields.active !== 'boolean'
             || typeof fields.message !== 'string'
-            || (phase !== 'idle' && phase !== 'starting' && phase !== 'listening'
+            || (phase !== 'idle' && phase !== 'starting' && phase !== 'restarting'
+              && phase !== 'listening'
               && phase !== 'stopping' && phase !== 'error')
             || (fields.sessionId !== undefined && typeof fields.sessionId !== 'string')) return
         voice.applyStatus({
@@ -751,7 +763,8 @@ export function apply(ctx: ClientContext): void {
               const tracked = streamingDrafts.get(dictationId)
               if (tracked !== undefined && tracked.sessionId === targetId) {
                 // Do not overwrite a draft the user edited while speaking.
-                if (input.state.getSnapshot().draft === tracked.rendered) {
+                if (!tracked.preserveManualEdits
+                    && input.state.getSnapshot().draft === tracked.rendered) {
                   input.setDraft(tracked.base)
                 }
                 streamingDrafts.delete(dictationId)
@@ -771,13 +784,27 @@ export function apply(ctx: ClientContext): void {
               if (existing !== undefined && existing.sessionId !== targetId) {
                 throw new Error('Streaming keypad dictation changed its target session.')
               }
+              const currentDraft = input.state.getSnapshot().draft
               const tracked = existing ?? {
                 sessionId: targetId,
-                base: input.state.getSnapshot().draft,
-                rendered: input.state.getSnapshot().draft,
+                base: currentDraft,
+                rendered: currentDraft,
+                transcript: '',
+                preserveManualEdits: false,
               }
-              tracked.rendered = appendDictation(tracked.base, fields.text, language)
-              input.setDraft(tracked.rendered)
+              if (currentDraft !== tracked.rendered) {
+                tracked.preserveManualEdits = true
+              }
+              const nextTranscript = fields.text.trim()
+              tracked.rendered = tracked.preserveManualEdits
+                ? appendDictation(
+                  currentDraft,
+                  incrementalDictationSuffix(tracked.transcript, nextTranscript),
+                  language,
+                )
+                : appendDictation(tracked.base, nextTranscript, language)
+              tracked.transcript = nextTranscript
+              if (tracked.rendered !== currentDraft) input.setDraft(tracked.rendered)
               if (dictationPhase === 'partial') {
                 streamingDrafts.set(dictationId, tracked)
                 await report(requestId, true, 'Streaming keypad dictation was updated.')
