@@ -61,10 +61,27 @@ is also automatic or unavailable.
 ## Voice ownership and local Qwen auto-start
 
 Voice belongs entirely to the keypad. The keypad owns microphone capture,
-recognition settings, the service process, and remote API keys. The Bridge only
+recognition settings, the service process, and remote API keys. The third status
+LED is blue only when both the voice provider and a Windows recording device are
+available. A healthy Qwen process with no active microphone is reported as a
+device error instead of a ready state, and pressing the voice key shows a
+persistent connect/enable-microphone instruction. Voice progress and recovery
+instructions use the large bottom status area and the Settings-key gauge rather
+than a tiny label below the voice key. If an owned local Qwen stream
+breaks, the keypad restarts that service and retries the streaming handshake
+once; externally managed services are left untouched and receive a manual
+restart instruction. The Bridge only
 relays a voice-toggle request plus incremental/final text between DeepSeek and the keypad.
 The DeepSeek plugin adds exactly one voice button; it does not capture audio,
 connect to Qwen, or expose voice settings.
+
+If the user edits the composer during streaming dictation, the Bridge enters a
+manual-edit protection mode. Later frames append only newly recognized suffixes;
+ASR revisions and cancellation never overwrite or roll back the user's edit.
+
+Starting DeepSeek voice input also verifies the dedicated DeepSeek window is in
+the foreground. The keypad first restores an existing window and, if none is
+available, runs the normal Harness activation path before opening the microphone.
 
 Open Keypad software settings → Voice input, select Local streaming Qwen, and
 choose Use local example. It selects Start with keypad by default; you can
