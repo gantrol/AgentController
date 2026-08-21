@@ -206,10 +206,11 @@ dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.c
 .\scripts\package-micro.ps1 -Version 0.2.8 -Preset deepseek
 ```
 
-The user-facing Release contains one recommended download:
+The user-facing Release contains one recommended online package:
 
-- `dist/DeepSeek-Keypad-Setup-0.2.8.exe`, including .NET, the DSH WSL
-  payload, and the Bridge.
+- `dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`, including the Bridge and
+  managed setup entry. First-run setup installs the pinned DSH online instead
+  of bundling a full WSL root filesystem.
 
 The following are maintainer build and diagnostic outputs, not ordinary user
 download choices:
@@ -221,7 +222,7 @@ download choices:
 - standalone existing-DSH plugin:
   `dist/Deepseek-Harness-Keypad-Bridge-v0.2.8.zip`, with its own checksum.
 
-The recommended installer includes `CodexMicro.exe`, the READMEs, the first-run
+The recommended online package includes `CodexMicro.exe`, the READMEs, the first-run
 setup guide, the license, and the keypad-side `voice` launcher/adapter. It does
 not include a model or Python environment. The `deepseek` preset builds a
 runtime-only Bridge archive for maintainers and embeds the same payload for managed

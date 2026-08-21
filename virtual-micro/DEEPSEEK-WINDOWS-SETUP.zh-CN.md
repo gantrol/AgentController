@@ -1,7 +1,7 @@
 # Windows 首次使用 DeepSeek Harness
 
-本文适用于 `DeepSeek-Keypad-Setup-<版本>.exe`。这是普通用户唯一需要下载的安装包；
-便携包、无 .NET 包与独立 Bridge 仅作为维护者构建产物，不列为常规 Release 选项。
+本文适用于 `Deepseek-Harness-Keypad-v<版本>-win-x64.zip`。这是普通用户唯一需要下载
+的在线包；完整 WSL 离线包与独立 Bridge 仅作为维护者构建产物，不列为常规 Release 选项。
 程序不假定自身位于某个盘符，也不
 要求 DeepSeek Harness 源码位于固定目录。第一次点击 DeepSeek 键时，程序先探测
 已有服务，再让用户明确选择：
@@ -135,7 +135,7 @@ npx @deepseek-ai/dsh web --port 3090
 这些命令来自 DeepSeek 官方 README 和 CLI 参考。Node 的安装方式以
 [Node.js 官方下载页](https://nodejs.org/en/download)为准。
 
-桥接插件必须安装到实际使用的 `web` profile。推荐安装包已经在安装目录的
+桥接插件必须安装到实际使用的 `web` profile。推荐在线包已经在解压目录的
 `plugins/DeepSeekHarness` 中包含同一份精简运行载荷，无需再下载另一个 Release
 资产。请在 **Harness 所在的同一个运行环境**中使用该目录，再按 DeepSeek 官方
 插件命令安装：
@@ -174,23 +174,19 @@ Codex Micro 的协议适配参考上游
 示例路径只用于说明，程序配置仍使用 `{AppDir}`、`{LocalAppData}`、环境变量或相对
 路径，不写死本机盘符和用户目录。
 
-## 推荐安装包
+## 推荐在线包
 
-`DeepSeek-Keypad-Setup-0.2.8.exe` 使用与在线配置相同的 8 步状态机，
-但从安装目录的 `payload/deepseek-runtime.wsl` 导入干净载荷，不再下载 Linux 用户态、
-Node、pnpm 或 Harness。载荷预装的是 DeepSeek 官方 npm 包 `@deepseek-ai/dsh`，版本
-和 Node / pnpm 一起记录在 Bridge 的 `scripts/runtime-versions.env`；Bridge 没有修改
-DSH 源码，后续替换官方版本只需更新该清单并重建。
+解压 `Deepseek-Harness-Keypad-v0.2.8-win-x64.zip` 后运行 `CodexMicro.exe`。程序使用
+8 步状态机在线准备 Linux 用户态、Node、pnpm 与固定版本的官方 `@deepseek-ai/dsh`。
+版本与 Node / pnpm 一起记录在 Bridge 的 `scripts/runtime-versions.env`；Bridge 没有
+修改 DSH 源码，后续替换官方版本只需更新该清单并重建。
 
-推荐安装包已包含 Windows .NET 运行时，并按当前用户安装到 Windows API 返回的
-LocalAppData 目录，注册后台自启动、开始菜单和卸载入口，不写死盘符。维护者仍可
-构建 framework-dependent、便携或独立 Bridge 产物用于诊断，但默认发布流程不会
-把它们上传给普通用户选择。
+在线包不内置数百 MiB 的完整 WSL 根文件系统，也不内置 Windows .NET；Windows 需先
+安装 [Microsoft .NET 10 Desktop Runtime x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)。
+维护者仍可构建包含干净 `.wsl` 载荷的离线包用于断网验收，但默认发布流程不会上传。
 
-推荐安装包仍需要 Windows 的 WSL 系统功能；WSL 内核和虚拟化功能不能安全地藏进普通
-EXE。`.wsl` 导入格式需要 WSL 2.4.4 或更新版本，说明与更新方式以
-[Microsoft 自定义 WSL 发行版指南](https://learn.microsoft.com/en-us/windows/wsl/build-custom-distro)
-和 [WSL 官方安装指南](https://learn.microsoft.com/en-us/windows/wsl/install)为准。
+托管模式仍需要 Windows 的 WSL 系统功能；说明与更新方式以
+[WSL 官方安装指南](https://learn.microsoft.com/en-us/windows/wsl/install)为准。
 
 ## 托管版本升级与回滚
 
@@ -202,7 +198,7 @@ EXE。`.wsl` 导入格式需要 WSL 2.4.4 或更新版本，说明与更新方�
 发现 rc.6 等旧版时，界面先说明 rc.8 存储格式不兼容，再由用户确认。升级事务会：
 
 1. 停止专用 WSL，完整移动旧运行时为带版本与时间戳的备份；
-2. 从安装包的 `.wsl` 载荷离线准备 rc.8，或由维护者构建从官方 npm 安装固定版本；
+2. 在线从官方 npm 安装固定的 rc.8；维护者离线包才使用内置 `.wsl` 载荷；
 3. 只复制 `.credentials.yaml`、`settings.yaml` 和 `.anonymous-user-id`；
 4. 创建全新的 `sessions`、`storages` 与 `profiles`，不导入旧会话数据库；
 5. 用原端口启动，分别检查官方 Web 根地址和 Micro Bridge；

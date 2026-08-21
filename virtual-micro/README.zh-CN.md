@@ -167,9 +167,10 @@ dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.c
 .\scripts\package-micro.ps1 -Version 0.2.8 -Preset deepseek
 ```
 
-面向用户的 Release 只发布一个推荐安装包：
+面向用户的 Release 只发布一个推荐在线包：
 
-- `dist/DeepSeek-Keypad-Setup-0.2.8.exe`，内置 .NET、DSH WSL 载荷与 Bridge。
+- `dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`，包含 Bridge 与自动配置入口；
+  首次配置时在线安装固定的 DSH，不内置完整 WSL 根文件系统。
 
 以下是维护者构建与诊断产物，不作为普通用户的下载选项：
 
@@ -180,10 +181,10 @@ dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.c
 - 可单独安装到已有 DSH 的 Bridge：
   `dist/Deepseek-Harness-Keypad-Bridge-v0.2.8.zip`（也带独立 SHA-256）。
 
-推荐安装包收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
+推荐在线包收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
 启动适配器，不复制模型、Python 环境、Desktop Runtime、调试符号或驱动。
 `deepseek` 预设会先构建精简的 DeepSeek Harness Bridge 运行包，并可产出独立插件
-zip；推荐安装包内保留同一载荷供专用 WSL 安装。两份都不包含源码、测试或开发依赖。
+zip；在线包内保留 Bridge 供专用 WSL 安装。两份都不包含源码、测试或开发依赖。
 预设还包含无固定路径的托管安装脚本和显式首次选择；默认目标为 DeepSeek，
 默认语音为系统识别。本地 Qwen、远程流式识别和未来的离线 WSL payload 保留为
 可选能力。驱动仍作为单独的安全边界安装。

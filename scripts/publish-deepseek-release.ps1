@@ -24,12 +24,10 @@ if ([string]::IsNullOrWhiteSpace($NotesFile)) {
     $NotesFile = "public\docs\release-deepseek-keypad-v$releaseVersion.md"
 }
 
-$assetName = "DeepSeek-Keypad-Setup-$releaseVersion.exe"
+$assetName = "Deepseek-Harness-Keypad-v$releaseVersion-win-x64.zip"
 $assetPath = Join-Path $repoRoot "dist\$assetName"
 $checksumPath = "$assetPath.sha256"
 $notesPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $NotesFile))
-$payloadPath = Join-Path $repoRoot `
-    ".artifacts\deepseek-full\$releaseVersion\deepseek-runtime.wsl"
 
 function Invoke-Checked([string]$Command, [string[]]$Arguments) {
     & $Command @Arguments
@@ -67,28 +65,22 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
 Push-Location $repoRoot
 try {
     if (-not $SkipBuild) {
-        & (Join-Path $PSScriptRoot "build-deepseek-full-payload.ps1") `
+        & (Join-Path $PSScriptRoot "package-micro.ps1") `
             -Version $releaseVersion `
-            -OutputPath $payloadPath
+            -Preset deepseek
         if ($LASTEXITCODE -ne 0) {
-            throw "DeepSeek WSL payload build failed with exit code $LASTEXITCODE."
-        }
-        & (Join-Path $PSScriptRoot "package-deepseek-oneclick.ps1") `
-            -Version $releaseVersion `
-            -BundledWslPayload $payloadPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "DeepSeek installer packaging failed with exit code $LASTEXITCODE."
+            throw "DeepSeek online package build failed with exit code $LASTEXITCODE."
         }
     }
 
     $assetHash = Assert-ReleaseAsset
     Write-Host "User release asset: $assetName"
     Write-Host "SHA256: $assetHash"
-    Write-Host "No portable, no-.NET, payload, or Bridge variants will be uploaded."
+    Write-Host "No offline EXE, WSL payload, checksum, or Bridge asset will be uploaded."
 
     if (-not $PSCmdlet.ShouldProcess(
             "$Repository release $Tag",
-            "Publish exactly one user-facing installer")) {
+            "Publish exactly one user-facing online package")) {
         return
     }
 
@@ -126,17 +118,17 @@ try {
                 "Remove them explicitly before retrying." -f
                 ($unexpectedAssets -join ', '))
         }
+        Invoke-Checked "gh" @(
+            "release", "upload", $Tag, $assetPath,
+            "--repo", $Repository, "--clobber")
         $arguments = @(
             "release", "edit", $Tag,
             "--repo", $Repository,
             "--title", $title,
-            "--notes-file", $notesPath)
-        if ($Draft) { $arguments += "--draft" }
-        if ($Prerelease) { $arguments += "--prerelease" }
+            "--notes-file", $notesPath,
+            $(if ($Draft) { "--draft" } else { "--draft=false" }),
+            $(if ($Prerelease) { "--prerelease" } else { "--prerelease=false" }))
         Invoke-Checked "gh" $arguments
-        Invoke-Checked "gh" @(
-            "release", "upload", $Tag, $assetPath,
-            "--repo", $Repository, "--clobber")
     }
     else {
         $arguments = @(

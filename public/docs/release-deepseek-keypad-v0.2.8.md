@@ -1,11 +1,13 @@
 # DeepSeek 键盘 0.2.8
 
-普通用户只需下载并运行：
+普通用户只需下载并解压：
 
-`DeepSeek-Keypad-Setup-0.2.8.exe`
+`Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`
 
-本版内置 DeepSeek Harness `v0.1.0-rc.8`、Windows .NET 运行时、专用 WSL 载荷与
-Micro Bridge，不需要在多个安装包之间选择。
+运行其中的 `CodexMicro.exe`。本包包含 Micro Bridge 与自动配置入口；首次配置时会
+在线安装并锁定 DeepSeek Harness `v0.1.0-rc.8`，不把数百 MiB 的完整 WSL 根文件系统
+塞进每位用户的下载包。Windows 需安装 .NET 10 Desktop Runtime x64，托管模式仍需
+启用 WSL。
 
 ## 主要变化
 
@@ -20,9 +22,11 @@ WSL 系统功能仍由 Windows 提供。安装和升级细节见包内
 
 ## English
 
-Users only need `DeepSeek-Keypad-Setup-0.2.8.exe`. It bundles the Windows
-.NET runtime, a clean WSL payload with DeepSeek Harness `v0.1.0-rc.8`, and the
-Micro Bridge. The managed upgrade is rollback-safe and does not import the
-storage-incompatible legacy session database. An end-to-end PNG upload test
-with `deepseek-v4-flash-vision-exp` successfully read the image contents;
+Users only need `Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`. Extract it and
+run `CodexMicro.exe`. The small online package includes the Micro Bridge and
+installs the pinned DeepSeek Harness `v0.1.0-rc.8` during managed first-run
+setup instead of bundling a full WSL root filesystem. It requires the .NET 10
+Desktop Runtime x64 and WSL. The managed upgrade is rollback-safe and does not
+import the storage-incompatible legacy session database. An end-to-end PNG
+upload test with `deepseek-v4-flash-vision-exp` successfully read the image;
 text-only backend models remain text-only.
