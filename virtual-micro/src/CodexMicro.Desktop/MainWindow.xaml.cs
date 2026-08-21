@@ -103,6 +103,7 @@ public partial class MicroSurfaceWindow : Window
     private readonly CodexMicroConfigWriter _configWriter;
     private readonly MicroHarnessRegistry _harnessRegistry = new();
     private readonly DeepSeekSetupCoordinator _deepSeekSetupCoordinator;
+    private bool _deepSeekManagedRuntimeChecked;
     private readonly MicroVoiceInputService _voiceInput;
     private readonly MicroVoiceWarmUpSettingsTracker
         _voiceWarmUpSettings = new();
@@ -1758,8 +1759,8 @@ public partial class MicroSurfaceWindow : Window
         ShowSoftwareSettings();
         _settingsWindow?.FocusHarnessVoiceSettings();
         SetStatus(_localization.IsEnglish
-            ? "Voice capture, recognition, model endpoints, and credentials are configured on this keypad. DeepSeek receives text only."
-            : "语音采集、识别、模型地址和密钥均在此小键盘配置；DeepSeek 只接收文字。");
+            ? "Voice capture and recognition are configured on this keypad; the voice path sends final text to DeepSeek. Image input is handled separately by Harness when the selected model supports it."
+            : "语音采集与识别均在此小键盘配置；语音通路只向 DeepSeek 发送最终文字。图片输入由 Harness 单独处理，并取决于当前模型是否支持。");
     }
 
     private void RestartVoiceBridgeMonitor()
@@ -2236,11 +2237,22 @@ public partial class MicroSurfaceWindow : Window
         MicroHarnessDefinition harness,
         bool onSettingsKey)
     {
-        if (IsDeepSeekHarness(harness) &&
-            !_harnessRegistry.IsSetupCompleted(harness.Id) &&
-            !await EnsureDeepSeekSetupAsync(harness, onSettingsKey))
+        if (IsDeepSeekHarness(harness))
         {
-            return;
+            if (!_harnessRegistry.IsSetupCompleted(harness.Id) &&
+                !await EnsureDeepSeekSetupAsync(harness, onSettingsKey))
+            {
+                return;
+            }
+
+            harness = _harnessRegistry.Resolve(harness.Id);
+            if (!_deepSeekManagedRuntimeChecked &&
+                !await EnsureDeepSeekManagedRuntimeAsync(
+                    harness,
+                    onSettingsKey))
+            {
+                return;
+            }
         }
 
         // Managed setup writes a new endpoint and launch command into the
@@ -6343,8 +6355,8 @@ public partial class MicroSurfaceWindow : Window
                         : $"当前模型：{currentModel}。";
                 var controls = hasSession
                     ? english
-                        ? "Left-click switches between the two quick models configured in DeepSeek Harness. Right-click opens this Agent's adapter and key-map settings."
-                        : "左键在 DeepSeek Harness 中配置的两个快捷模型间切换；右键直达此 Agent 的适配器与独立键位设置。"
+                        ? "Left-click switches to the next model in the DeepSeek Harness catalog. Right-click opens this Agent's adapter and key-map settings."
+                        : "左键切换到 DeepSeek Harness 模型目录中的下一个模型；右键直达此 Agent 的适配器与独立键位设置。"
                     : english
                         ? "Left-click opens and connects DeepSeek Harness first. Right-click opens this Agent's adapter and key-map settings."
                         : "当前尚无可切换会话；左键先打开并连接 DeepSeek Harness，右键直达此 Agent 的适配器与独立键位设置。";
@@ -6854,6 +6866,131 @@ public partial class MicroSurfaceWindow : Window
             }
             cancellation.Dispose();
         }
+    }
+
+    private async Task<bool> EnsureDeepSeekManagedRuntimeAsync(
+        MicroHarnessDefinition harness,
+        bool onSettingsKey)
+    {
+        DeepSeekManagedRuntimeStatus status;
+        try
+        {
+            status = await _deepSeekSetupCoordinator
+                .InspectManagedRuntimeAsync(harness);
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                InvalidOperationException or
+                OperationCanceledException)
+        {
+            ShowHarnessActionStatus(
+                _localization.IsEnglish
+                    ? "UPGRADE CHECK FAILED"
+                    : "升级检查失败",
+                MicroHarnessDispatchStage.Background,
+                autoHide: true,
+                onSettingsKey: onSettingsKey);
+            SetStatus($"DeepSeek 托管版本检查失败：{exception.Message}");
+            return false;
+        }
+
+        if (status.State is DeepSeekManagedRuntimeState.NotManaged or
+            DeepSeekManagedRuntimeState.Current)
+        {
+            _deepSeekManagedRuntimeChecked = true;
+            return true;
+        }
+        if (status.State == DeepSeekManagedRuntimeState.Unavailable)
+        {
+            ShowHarnessActionStatus(
+                _localization.IsEnglish
+                    ? "UPGRADE NEEDS ATTENTION"
+                    : "升级需要处理",
+                MicroHarnessDispatchStage.Background,
+                autoHide: true,
+                onSettingsKey: onSettingsKey);
+            SetStatus(status.Message);
+            return false;
+        }
+
+        if (status.State == DeepSeekManagedRuntimeState.UpgradeRequired)
+        {
+            var current = status.ActualVersion ??
+                (_localization.IsEnglish ? "missing" : "缺失");
+            var prompt = _localization.IsEnglish
+                ? $"The app-managed DeepSeek Harness is {current}; this keypad requires {status.ExpectedVersion}.\n\n" +
+                  "rc.8 uses an incompatible storage format. The old runtime and conversations will be kept as a backup, while credentials and settings are copied into a fresh rc.8 home. They will not be imported into rc.8.\n\nUpgrade now?"
+                : $"程序托管的 DeepSeek Harness 当前为 {current}；本小键盘需要 {status.ExpectedVersion}。\n\n" +
+                  "rc.8 的存储格式不兼容。升级会完整保留旧运行时与旧会话作为备份，只把凭据和设置复制到全新的 rc.8 数据目录，不会把旧会话导入 rc.8。\n\n现在升级吗？";
+            var choice = MessageBox.Show(
+                this,
+                prompt,
+                _localization.IsEnglish
+                    ? "Upgrade managed DeepSeek Harness"
+                    : "升级托管 DeepSeek Harness",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.Yes);
+            if (choice != MessageBoxResult.Yes)
+            {
+                _deepSeekManagedRuntimeChecked = true;
+                SetStatus(_localization.IsEnglish
+                    ? $"Managed DeepSeek remains on {current}; no files were changed."
+                    : $"托管 DeepSeek 继续使用 {current}；未修改任何文件。");
+                return true;
+            }
+        }
+
+        ShowDeepSeekSetupProgress(new(
+            5,
+            DeepSeekSetupCoordinator.TotalSetupSteps,
+            _localization.IsEnglish ? "Back up runtime" : "备份旧运行时",
+            status.State == DeepSeekManagedRuntimeState.UpgradePending
+                ? _localization.IsEnglish
+                    ? "Resuming the pending rc.8 health check."
+                    : "正在继续上次未提交的 rc.8 健康检查。"
+                : _localization.IsEnglish
+                    ? "Preparing a rollback-safe managed upgrade."
+                    : "正在准备可回滚的托管升级。"),
+            onSettingsKey);
+        DeepSeekSetupResult result;
+        try
+        {
+            result = await _deepSeekSetupCoordinator.UpgradeManagedRuntimeAsync(
+                new CallbackProgress<DeepSeekSetupProgress>(value =>
+                    ShowDeepSeekSetupProgress(value, onSettingsKey)));
+        }
+        catch (OperationCanceledException)
+        {
+            SetStatus(_localization.IsEnglish
+                ? "The managed DeepSeek upgrade was cancelled; its backup was retained."
+                : "已取消托管 DeepSeek 升级；旧版备份仍然保留。");
+            return false;
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidOperationException)
+        {
+            SetStatus($"DeepSeek 托管升级失败：{exception.Message}");
+            return false;
+        }
+
+        ShowHarnessActionStatus(
+            result.Success
+                ? _localization.IsEnglish
+                    ? "8/8 UPGRADED"
+                    : "8/8 升级完成"
+                : _localization.IsEnglish
+                    ? $"{result.Step}/8 UPGRADE NEEDS ATTENTION"
+                    : $"{result.Step}/8 升级需要处理",
+            result.Success
+                ? MicroHarnessDispatchStage.Completed
+                : MicroHarnessDispatchStage.Background,
+            autoHide: !result.Success,
+            onSettingsKey: onSettingsKey,
+            detail: result.Message);
+        SetStatus(result.Message);
+        _deepSeekManagedRuntimeChecked = result.Success;
+        return result.Success;
     }
 
     private void ShowVoiceSurfaceStatus(

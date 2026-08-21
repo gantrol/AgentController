@@ -20,7 +20,9 @@ simulating keyboard or pointer input.
 The plugin does **not** capture audio, request microphone permission, run speech
 recognition, connect to an ASR service, store voice settings, or store voice
 credentials. Those responsibilities belong exclusively to the Codex Micro
-keypad process. DeepSeek receives final text only.
+keypad process. The **voice path** sends final text only. Harness image
+attachments remain a separate native path and work only when the selected
+provider model advertises image input.
 
 ## Installation modes
 
@@ -32,6 +34,19 @@ named `CodexMicro-DeepSeek` and invoke
 Node, pnpm, and `@deepseek-ai/dsh` versions and installs this bridge. Runtime
 files live below the dedicated Linux user's
 `~/.local/share/codex-micro/deepseek`.
+
+The managed rc.8 installer adds `deepseek-v4-flash-vision-exp` to Harness's
+DeepSeek model catalog with `text` and `image` input modalities. It preserves
+the user's other model and locale settings and does not make the experimental
+model the default. Availability still depends on the official API account and
+the model returned by that provider.
+
+When an older managed DSH version is detected, Micro offers an explicit,
+rollback-safe upgrade. The old runtime is retained as a full backup; only the
+credential store, settings, and anonymous installation id are copied into a
+fresh rc.8 home. rc.8's incompatible session/storage data is never imported.
+The swap is committed only after both the Web page and this Bridge pass their
+health checks. User-managed Harness installations are never upgraded by Micro.
 
 `scripts/start-dsh-wsl.sh` accepts `--port`; the official default is 3080.
 
@@ -92,3 +107,5 @@ builds both Host and browser bundles.
   [Micro keypad](../../virtual-micro/README.md), not in this plugin.
 - Model changes use Harness's shared model directory and never proxy LLM
   provider requests.
+- Harness accepting an image does not add vision to a text-only backend; the
+  selected provider model must actually accept the native image request.

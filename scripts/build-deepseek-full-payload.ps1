@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.7",
+    [string]$Version = "0.2.8",
     [string]$DistributionSource = "Ubuntu-24.04",
-    [string]$BuildDistributionName = "CodexMicro-DeepSeek-Build-v027",
-    [string]$VerifyDistributionName = "CodexMicro-DeepSeek-Verify-v027",
+    [string]$BuildDistributionName = "",
+    [string]$VerifyDistributionName = "",
     [string]$OutputPath,
     [switch]$KeepBuildDistributions,
     [switch]$SkipRuntimeProbe
@@ -11,6 +11,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+# Temporary WSL names are implementation details. Generate per-process names
+# instead of baking a product version into the build surface.
+$buildRunId = [System.Diagnostics.Process]::GetCurrentProcess().Id
+if ([string]::IsNullOrWhiteSpace($BuildDistributionName)) {
+    $BuildDistributionName = "CodexMicro-DeepSeek-Build-$buildRunId"
+}
+if ([string]::IsNullOrWhiteSpace($VerifyDistributionName)) {
+    $VerifyDistributionName = "CodexMicro-DeepSeek-Verify-$buildRunId"
+}
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $workRoot = [System.IO.Path]::GetFullPath(

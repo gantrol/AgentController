@@ -21,6 +21,29 @@ internal sealed record DeepSeekSetupProgress(
     string Title,
     string Message);
 
+internal enum DeepSeekManagedRuntimeState
+{
+    NotManaged,
+    Current,
+    UpgradeRequired,
+    UpgradePending,
+    Unavailable,
+}
+
+internal sealed record DeepSeekManagedRuntimeStatus(
+    DeepSeekManagedRuntimeState State,
+    string? ExpectedVersion,
+    string? ActualVersion,
+    bool HasBundledPayload,
+    string? BackupPath,
+    string Message)
+{
+    internal bool NeedsAttention =>
+        State is DeepSeekManagedRuntimeState.UpgradeRequired or
+            DeepSeekManagedRuntimeState.UpgradePending or
+            DeepSeekManagedRuntimeState.Unavailable;
+}
+
 internal enum DeepSeekSetupDisposition
 {
     ManagedReady,
@@ -163,6 +186,7 @@ internal sealed class DeepSeekSetupCoordinator
     private readonly IDeepSeekProcessRunner _processRunner;
     private readonly string _localAppData;
     private readonly string? _pluginRootOverride;
+    private readonly string? _wslExecutableOverride;
     private readonly Func<int?> _portSelector;
     private readonly Uri _officialControlUri;
 
@@ -172,13 +196,15 @@ internal sealed class DeepSeekSetupCoordinator
         string? localAppData = null,
         string? pluginRoot = null,
         Func<int?>? portSelector = null,
-        Uri? officialControlUri = null)
+        Uri? officialControlUri = null,
+        string? wslExecutable = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _processRunner = processRunner ?? new DeepSeekProcessRunner();
         _localAppData = localAppData ?? Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData);
         _pluginRootOverride = pluginRoot;
+        _wslExecutableOverride = wslExecutable;
         _portSelector = portSelector ?? (() =>
             FindAvailablePort(OfficialDefaultPort));
         _officialControlUri = officialControlUri ??
@@ -234,6 +260,359 @@ internal sealed class DeepSeekSetupCoordinator
             WebReachable: false,
             BridgeReachable: false,
             $"No DeepSeek Harness was found at {ToBaseUri(configuredControlUri)}.");
+    }
+
+    internal async Task<DeepSeekManagedRuntimeStatus> InspectManagedRuntimeAsync(
+        MicroHarnessDefinition harness,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsManagedConnection(harness))
+        {
+            return new(
+                DeepSeekManagedRuntimeState.NotManaged,
+                null,
+                null,
+                HasBundledPayload: false,
+                BackupPath: null,
+                "The configured DeepSeek Harness is user-managed.");
+        }
+
+        var pluginRoot = ResolvePluginRoot();
+        if (pluginRoot is null)
+        {
+            return UnavailableRuntime(
+                null,
+                "The installed app does not contain the DeepSeek bridge payload.");
+        }
+        var expectedVersion = ReadExpectedDshVersion(pluginRoot);
+        if (expectedVersion is null)
+        {
+            return UnavailableRuntime(
+                null,
+                "The managed DeepSeek version manifest is missing or invalid.");
+        }
+
+        var wslExecutable = ResolveWslExecutable();
+        if (wslExecutable is null)
+        {
+            return UnavailableRuntime(
+                expectedVersion,
+                "Windows Subsystem for Linux is unavailable.");
+        }
+        var listed = await _processRunner.RunAsync(
+            wslExecutable,
+            ["--list", "--quiet"],
+            elevated: false,
+            cancellationToken);
+        if (listed.ExitCode != 0 ||
+            !ParseDistributionNames(listed.StandardOutput).Contains(
+                ManagedDistributionName,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return UnavailableRuntime(
+                expectedVersion,
+                "The app-managed DeepSeek WSL distribution is not registered.");
+        }
+
+        var installerPath = Path.Combine(
+            pluginRoot,
+            "scripts",
+            "install-dsh-wsl-runtime.sh");
+        if (!File.Exists(installerPath))
+        {
+            return UnavailableRuntime(
+                expectedVersion,
+                $"The managed DeepSeek installer is missing: {installerPath}");
+        }
+        var installerWslPath = await ConvertToWslPathAsync(
+            wslExecutable,
+            installerPath,
+            cancellationToken);
+        if (installerWslPath is null)
+        {
+            return UnavailableRuntime(
+                expectedVersion,
+                "WSL cannot access the managed DeepSeek installer.");
+        }
+
+        var inspected = await RunInstallerAsync(
+            wslExecutable,
+            installerWslPath,
+            action: "--runtime-status",
+            payloadWslPath: null,
+            cancellationToken);
+        if (inspected.ExitCode != 0)
+        {
+            return UnavailableRuntime(
+                expectedVersion,
+                FirstUsefulMessage(
+                    inspected.StandardError,
+                    inspected.StandardOutput,
+                    "The managed DeepSeek runtime could not be inspected."));
+        }
+
+        var markers = ParseInstallerMarkers(inspected.StandardOutput);
+        if (!markers.TryGetValue("expected-dsh", out var reportedExpected) ||
+            !string.Equals(
+                expectedVersion,
+                reportedExpected,
+                StringComparison.Ordinal))
+        {
+            return UnavailableRuntime(
+                expectedVersion,
+                "The Windows and WSL DeepSeek version manifests do not agree.");
+        }
+        markers.TryGetValue("actual-dsh", out var reportedActual);
+        var actualVersion = string.Equals(
+                reportedActual,
+                "missing",
+                StringComparison.OrdinalIgnoreCase)
+            ? null
+            : reportedActual;
+        var pending = markers.TryGetValue("upgrade-pending", out var pendingValue) &&
+            string.Equals(pendingValue, "1", StringComparison.Ordinal);
+        markers.TryGetValue("upgrade-backup", out var backupPath);
+        var hasBundledPayload = ResolveBundledDistribution(pluginRoot) is not null;
+
+        if (pending)
+        {
+            return new(
+                DeepSeekManagedRuntimeState.UpgradePending,
+                expectedVersion,
+                actualVersion,
+                hasBundledPayload,
+                backupPath,
+                "A managed DeepSeek upgrade is waiting for its health check.");
+        }
+        if (string.Equals(
+                actualVersion,
+                expectedVersion,
+                StringComparison.Ordinal))
+        {
+            return new(
+                DeepSeekManagedRuntimeState.Current,
+                expectedVersion,
+                actualVersion,
+                hasBundledPayload,
+                BackupPath: null,
+                $"Managed DeepSeek Harness {expectedVersion} is current.");
+        }
+        return new(
+            DeepSeekManagedRuntimeState.UpgradeRequired,
+            expectedVersion,
+            actualVersion,
+            hasBundledPayload,
+            BackupPath: null,
+            $"Managed DeepSeek Harness {actualVersion ?? "missing"} must be upgraded to {expectedVersion}.");
+    }
+
+    internal async Task<DeepSeekSetupResult> UpgradeManagedRuntimeAsync(
+        IProgress<DeepSeekSetupProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        void Report(int step, string title, string message) =>
+            progress?.Report(new(step, TotalSetupSteps, title, message));
+
+        var harness = _registry.Resolve("deepseek-harness");
+        var status = await InspectManagedRuntimeAsync(
+            harness,
+            cancellationToken);
+        if (status.State == DeepSeekManagedRuntimeState.NotManaged)
+        {
+            return Failed(4, "用户自行管理的 DeepSeek Harness 不会被程序升级。");
+        }
+        if (status.State == DeepSeekManagedRuntimeState.Current)
+        {
+            return new(
+                DeepSeekSetupDisposition.ManagedReady,
+                $"DeepSeek Harness {status.ExpectedVersion} 已是当前版本。",
+                8);
+        }
+        if (status.State == DeepSeekManagedRuntimeState.Unavailable ||
+            status.ExpectedVersion is null)
+        {
+            return Failed(4, status.Message);
+        }
+
+        var pluginRoot = ResolvePluginRoot();
+        var wslExecutable = ResolveWslExecutable();
+        if (pluginRoot is null || wslExecutable is null)
+        {
+            return Failed(4, "无法定位 DeepSeek 托管升级组件。");
+        }
+        var installerPath = Path.Combine(
+            pluginRoot,
+            "scripts",
+            "install-dsh-wsl-runtime.sh");
+        var installerWslPath = await ConvertToWslPathAsync(
+            wslExecutable,
+            installerPath,
+            cancellationToken);
+        if (installerWslPath is null)
+        {
+            return Failed(4, "WSL 无法访问 DeepSeek 托管升级脚本。");
+        }
+
+        var bundledDistribution = ResolveBundledDistribution(pluginRoot);
+        string? payloadWslPath = null;
+        if (bundledDistribution is not null)
+        {
+            payloadWslPath = await ConvertToWslPathAsync(
+                wslExecutable,
+                bundledDistribution,
+                cancellationToken);
+            if (payloadWslPath is null)
+            {
+                return Failed(4, "WSL 无法访问 Full 安装包中的 DeepSeek 运行时载荷。");
+            }
+        }
+
+        var resumePendingTarget =
+            status.State == DeepSeekManagedRuntimeState.UpgradePending &&
+            string.Equals(
+                status.ActualVersion,
+                status.ExpectedVersion,
+                StringComparison.Ordinal);
+        string? backupPath = status.BackupPath;
+        if (!resumePendingTarget)
+        {
+            Report(5, "备份旧运行时", "正在停止专用 WSL，并保留旧会话与运行时以便回滚。");
+            var terminated = await TerminateManagedDistributionAsync(
+                wslExecutable,
+                cancellationToken);
+            if (terminated.ExitCode != 0)
+            {
+                return Failed(
+                    5,
+                    FirstUsefulMessage(
+                        terminated.StandardError,
+                        terminated.StandardOutput,
+                        "无法停止 DeepSeek 专用 WSL 发行版。"));
+            }
+
+            if (status.State == DeepSeekManagedRuntimeState.UpgradePending)
+            {
+                var rollback = await RunInstallerAsync(
+                    wslExecutable,
+                    installerWslPath,
+                    action: "--rollback-upgrade",
+                    payloadWslPath: null,
+                    cancellationToken);
+                if (rollback.ExitCode != 0)
+                {
+                    return Failed(
+                        5,
+                        FirstUsefulMessage(
+                            rollback.StandardError,
+                            rollback.StandardOutput,
+                            "无法恢复上一次 DeepSeek 升级。"));
+                }
+            }
+
+            Report(
+                6,
+                "安装 rc.8 与桥接",
+                payloadWslPath is null
+                    ? "正在从官方 npm 安装固定版本，并创建全新的兼容数据目录。"
+                    : "正在从 Full 载荷离线安装固定版本，并创建全新的兼容数据目录。");
+            var install = await RunInstallerAsync(
+                wslExecutable,
+                installerWslPath,
+                action: null,
+                payloadWslPath,
+                cancellationToken);
+            if (install.ExitCode != 0 ||
+                !install.StandardOutput.Contains(
+                    "managed-ready=1",
+                    StringComparison.Ordinal))
+            {
+                await RollbackManagedUpgradeAsync(
+                    wslExecutable,
+                    installerWslPath,
+                    cancellationToken);
+                return Failed(
+                    6,
+                    FirstUsefulMessage(
+                        install.StandardError,
+                        install.StandardOutput,
+                        $"DeepSeek 升级安装器退出代码 {install.ExitCode}。"));
+            }
+            var installMarkers = ParseInstallerMarkers(install.StandardOutput);
+            installMarkers.TryGetValue("upgrade-backup", out backupPath);
+        }
+
+        Report(7, "启动升级版本", "正在使用原端口启动升级后的托管 Harness。");
+        harness = _registry.Resolve("deepseek-harness");
+        var port = ResolveManagedPort(harness);
+        var canonicalConnection = harness.Connection with
+        {
+            Executable = wslExecutable,
+            Arguments = BuildManagedLaunchArguments(port),
+            WorkingDirectory = Path.GetDirectoryName(wslExecutable),
+            AutoStart = true,
+            ReadyTimeoutMilliseconds =
+                MicroHarnessRegistry.DeepSeekReadyTimeoutMilliseconds,
+            ControlUri = BuildControlUri(port),
+        };
+        if (!_registry.UpdateConnectionSettings(
+                "deepseek-harness",
+                canonicalConnection))
+        {
+            await RollbackManagedUpgradeAsync(
+                wslExecutable,
+                installerWslPath,
+                cancellationToken);
+            return Failed(7, "升级已准备，但托管启动配置无法保存到本机。");
+        }
+
+        var activation = await _registry.ActivateUntilSurfaceReadyAsync(
+            "deepseek-harness",
+            cancellationToken: cancellationToken);
+        Report(8, "健康检查", "正在验证 rc.8 Web 服务与 Micro 桥接端点。");
+        if (!activation.Success ||
+            activation.Stage == MicroHarnessDispatchStage.Opening)
+        {
+            await TerminateManagedDistributionAsync(
+                wslExecutable,
+                cancellationToken);
+            var rollback = await RollbackManagedUpgradeAsync(
+                wslExecutable,
+                installerWslPath,
+                cancellationToken);
+            return Failed(
+                8,
+                $"{activation.Message} " +
+                (rollback
+                    ? "健康检查失败，已恢复旧版运行时。"
+                    : "健康检查失败，自动恢复旧版运行时也未完成。"));
+        }
+
+        var committed = await RunInstallerAsync(
+            wslExecutable,
+            installerWslPath,
+            action: "--commit-upgrade",
+            payloadWslPath: null,
+            cancellationToken);
+        if (committed.ExitCode != 0)
+        {
+            return Failed(
+                8,
+                "rc.8 已通过健康检查，但升级状态无法提交；下次启动会继续验证。");
+        }
+        var committedMarkers = ParseInstallerMarkers(committed.StandardOutput);
+        if (committedMarkers.TryGetValue(
+                "upgrade-backup",
+                out var committedBackup))
+        {
+            backupPath = committedBackup;
+        }
+
+        return new(
+            DeepSeekSetupDisposition.ManagedReady,
+            backupPath is null
+                ? $"DeepSeek Harness 已升级到 {status.ExpectedVersion}。"
+                : $"DeepSeek Harness 已升级到 {status.ExpectedVersion}；旧会话保留在 {backupPath}。",
+            8);
     }
 
     internal async Task<DeepSeekSetupResult> ConfigureManagedAsync(
@@ -310,21 +689,26 @@ internal sealed class DeepSeekSetupCoordinator
             return Failed(4, "WSL 无法访问安装包中的 DeepSeek 桥接脚本。");
         }
 
+        var bundledDistribution = ResolveBundledDistribution(pluginRoot);
+        string? payloadWslPath = null;
+        if (bundledDistribution is not null)
+        {
+            payloadWslPath = await ConvertToWslPathAsync(
+                wslExecutable,
+                bundledDistribution,
+                cancellationToken);
+            if (payloadWslPath is null)
+            {
+                return Failed(4, "WSL 无法访问 Full 安装包中的 DeepSeek 运行时载荷。");
+            }
+        }
+
         Report(5, "准备运行环境", "正在安装固定版本的 Node 与官方 DeepSeek Harness。");
-        var install = await _processRunner.RunAsync(
+        var install = await RunInstallerAsync(
             wslExecutable,
-            [
-                "--distribution",
-                ManagedDistributionName,
-                "--user",
-                "root",
-                "--exec",
-                "env",
-                $"CODEX_MICRO_DSH_USER={ManagedLinuxUser}",
-                "bash",
-                installerWslPath,
-            ],
-            elevated: false,
+            installerWslPath,
+            action: null,
+            payloadWslPath,
             cancellationToken);
         if (install.ExitCode != 0)
         {
@@ -355,6 +739,10 @@ internal sealed class DeepSeekSetupCoordinator
             ControlUri: BuildControlUri(port.Value));
         if (!_registry.UpdateConnectionSettings("deepseek-harness", connection))
         {
+            await RollbackManagedUpgradeAsync(
+                wslExecutable,
+                installerWslPath,
+                CancellationToken.None);
             return Failed(7, "托管环境已准备，但启动配置无法保存到本机。");
         }
 
@@ -365,6 +753,13 @@ internal sealed class DeepSeekSetupCoordinator
         if (!activation.Success ||
             activation.Stage == MicroHarnessDispatchStage.Opening)
         {
+            await TerminateManagedDistributionAsync(
+                wslExecutable,
+                CancellationToken.None);
+            await RollbackManagedUpgradeAsync(
+                wslExecutable,
+                installerWslPath,
+                CancellationToken.None);
             return Failed(
                 8,
                 activation.Success
@@ -374,7 +769,25 @@ internal sealed class DeepSeekSetupCoordinator
 
         if (!_registry.MarkSetupCompleted("deepseek-harness"))
         {
+            await TerminateManagedDistributionAsync(
+                wslExecutable,
+                CancellationToken.None);
+            await RollbackManagedUpgradeAsync(
+                wslExecutable,
+                installerWslPath,
+                CancellationToken.None);
             return Failed(8, "DeepSeek 已可用，但首次配置状态无法保存到本机。");
+        }
+
+        var committed = await RunInstallerAsync(
+            wslExecutable,
+            installerWslPath,
+            action: "--commit-upgrade",
+            payloadWslPath: null,
+            CancellationToken.None);
+        if (committed.ExitCode != 0)
+        {
+            return Failed(8, "DeepSeek 已通过健康检查，但升级状态无法提交；下次启动会继续验证。");
         }
 
         return new(
@@ -418,6 +831,70 @@ internal sealed class DeepSeekSetupCoordinator
                 StringSplitOptions.TrimEntries)
             .Where(value => value.Length != 0)
             .ToArray();
+
+    internal static bool IsManagedConnection(MicroHarnessDefinition harness)
+    {
+        var executableName = string.IsNullOrWhiteSpace(
+                harness.Connection.Executable)
+            ? null
+            : Path.GetFileName(harness.Connection.Executable);
+        var arguments = harness.Connection.Arguments ?? string.Empty;
+        return string.Equals(
+                executableName,
+                "wsl.exe",
+                StringComparison.OrdinalIgnoreCase) &&
+            arguments.Contains(
+                $"--distribution {ManagedDistributionName}",
+                StringComparison.OrdinalIgnoreCase) &&
+            arguments.Contains(
+                $"--user {ManagedLinuxUser}",
+                StringComparison.OrdinalIgnoreCase) &&
+            arguments.Contains(
+                ManagedStartPath,
+                StringComparison.Ordinal);
+    }
+
+    internal static IReadOnlyDictionary<string, string> ParseInstallerMarkers(
+        string output)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in DeepSeekProcessRunner.NormalizeProcessText(output)
+                     .Split(
+                         ['\r', '\n'],
+                         StringSplitOptions.RemoveEmptyEntries |
+                             StringSplitOptions.TrimEntries))
+        {
+            var separator = line.IndexOf('=');
+            if (separator <= 0 || separator == line.Length - 1)
+            {
+                continue;
+            }
+            values[line[..separator]] = line[(separator + 1)..];
+        }
+        return values;
+    }
+
+    internal static string? ParseExpectedDshVersion(string manifest)
+    {
+        const string prefix = "CODEX_MICRO_DSH_VERSION=";
+        var value = manifest
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => line.StartsWith(
+                prefix,
+                StringComparison.Ordinal));
+        if (value is null)
+        {
+            return null;
+        }
+        var version = value[prefix.Length..].Trim();
+        return version.Length is > 0 and <= 64 &&
+            version.All(character =>
+                char.IsAsciiLetterOrDigit(character) ||
+                character is '.' or '-')
+                    ? version
+                    : null;
+    }
 
     private async Task<bool> ProbeWebAsync(
         Uri baseUri,
@@ -630,6 +1107,115 @@ internal sealed class DeepSeekSetupCoordinator
                 : null;
     }
 
+    private Task<DeepSeekProcessResult> RunInstallerAsync(
+        string wslExecutable,
+        string installerWslPath,
+        string? action,
+        string? payloadWslPath,
+        CancellationToken cancellationToken)
+    {
+        var arguments = new List<string>
+        {
+            "--distribution",
+            ManagedDistributionName,
+            "--user",
+            "root",
+            "--exec",
+            "env",
+            $"CODEX_MICRO_DSH_USER={ManagedLinuxUser}",
+        };
+        if (action is null)
+        {
+            arguments.Add(
+                $"CODEX_MICRO_DSH_OFFLINE={(payloadWslPath is null ? 0 : 1)}");
+            if (payloadWslPath is not null)
+            {
+                arguments.Add($"CODEX_MICRO_DSH_PAYLOAD={payloadWslPath}");
+            }
+        }
+        arguments.Add("bash");
+        arguments.Add(installerWslPath);
+        if (action is not null)
+        {
+            arguments.Add(action);
+        }
+        return _processRunner.RunAsync(
+            wslExecutable,
+            arguments,
+            elevated: false,
+            cancellationToken);
+    }
+
+    private Task<DeepSeekProcessResult> TerminateManagedDistributionAsync(
+        string wslExecutable,
+        CancellationToken cancellationToken) =>
+        _processRunner.RunAsync(
+            wslExecutable,
+            ["--terminate", ManagedDistributionName],
+            elevated: false,
+            cancellationToken);
+
+    private async Task<bool> RollbackManagedUpgradeAsync(
+        string wslExecutable,
+        string installerWslPath,
+        CancellationToken cancellationToken)
+    {
+        var rollback = await RunInstallerAsync(
+            wslExecutable,
+            installerWslPath,
+            action: "--rollback-upgrade",
+            payloadWslPath: null,
+            cancellationToken);
+        return rollback.ExitCode == 0;
+    }
+
+    private static int ResolveManagedPort(MicroHarnessDefinition harness)
+    {
+        if (Uri.TryCreate(
+                harness.ControlUri,
+                UriKind.Absolute,
+                out var controlUri) &&
+            controlUri.IsLoopback &&
+            controlUri.Port is > 0 and <= 65535)
+        {
+            return controlUri.Port;
+        }
+        return OfficialDefaultPort;
+    }
+
+    private static DeepSeekManagedRuntimeStatus UnavailableRuntime(
+        string? expectedVersion,
+        string message) =>
+        new(
+            DeepSeekManagedRuntimeState.Unavailable,
+            expectedVersion,
+            ActualVersion: null,
+            HasBundledPayload: false,
+            BackupPath: null,
+            message);
+
+    private static string? ReadExpectedDshVersion(string pluginRoot)
+    {
+        var manifestPath = Path.Combine(
+            pluginRoot,
+            "scripts",
+            "runtime-versions.env");
+        try
+        {
+            return File.Exists(manifestPath)
+                ? ParseExpectedDshVersion(File.ReadAllText(manifestPath))
+                : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     private string? ResolvePluginRoot()
     {
         if (!string.IsNullOrWhiteSpace(_pluginRootOverride))
@@ -672,8 +1258,12 @@ internal sealed class DeepSeekSetupCoordinator
         return File.Exists(candidate) ? candidate : null;
     }
 
-    private static string? ResolveWslExecutable()
+    private string? ResolveWslExecutable()
     {
+        if (!string.IsNullOrWhiteSpace(_wslExecutableOverride))
+        {
+            return Path.GetFullPath(_wslExecutableOverride);
+        }
         var windowsDirectory = Environment.GetFolderPath(
             Environment.SpecialFolder.Windows);
         var candidate = Path.Combine(windowsDirectory, "System32", "wsl.exe");

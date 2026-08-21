@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.7",
+    [string]$Version = "0.2.8",
     [string]$Runtime = "win-x64",
     [string]$BundledWslPayload,
     [double]$MaximumPackageMiB = 1024,
@@ -26,10 +26,10 @@ else {
 $payloadZip = Join-Path $distRoot "$packageName.zip"
 $payloadChecksum = "$payloadZip.sha256"
 $outputName = if ($NoDotNet) {
-    "Deepseek-Harness-Keypad-Full-v$Version-oneclick-no-dotnet.exe"
+    "DeepSeek-Keypad-Internal-NoDotNet-$Version.exe"
 }
 else {
-    "Deepseek-Harness-Keypad-Full-v$Version-oneclick.exe"
+    "DeepSeek-Keypad-Setup-$Version.exe"
 }
 $outputPath = Join-Path $distRoot $outputName
 $checksumPath = "$outputPath.sha256"

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.7",
+    [string]$Version = "0.2.8",
     [string]$Runtime = "win-x64",
     [double]$MaximumPackageMiB = 15,
     [ValidateSet("standard", "deepseek", "deepseek-full")]
@@ -199,6 +199,7 @@ if ($isDeepSeek) {
     $pluginScriptsTarget = Join-Path $pluginPackageRoot "scripts"
     New-Item -ItemType Directory -Path $pluginScriptsTarget -Force | Out-Null
     foreach ($file in @(
+            "configure-managed-settings.mjs",
             "install-dsh-wsl-runtime.sh",
             "install-windows.bat",
             "migrate-dsh-home-wsl.mjs",

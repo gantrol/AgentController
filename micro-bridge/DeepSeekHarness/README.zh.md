@@ -17,7 +17,8 @@ Harness 源码，也不模拟键盘或鼠标。
 
 插件**不**采集音频、不申请麦克风权限、不执行语音识别、不连接 ASR 服务、不保存
 语音设置，也不保存语音密钥。这些职责全部属于 Codex Micro 小键盘进程；DeepSeek
-只接收最终文字。
+的**语音通路**只接收最终文字。Harness 图片附件是另一条原生通路，只有当前后端
+模型声明并实际支持图片输入时才有效。
 
 ## 安装方式
 
@@ -27,6 +28,16 @@ DeepSeek 特调版 Micro 可以创建名为 `CodexMicro-DeepSeek` 的专用 WSL 
 `scripts/install-dsh-wsl-runtime.sh`。安装器使用固定兼容版本的 Node、pnpm 和
 `@deepseek-ai/dsh`，并安装此桥接。运行文件位于专用 Linux 用户的
 `~/.local/share/codex-micro/deepseek`。
+
+托管 rc.8 安装器会把 `deepseek-v4-flash-vision-exp` 加入 Harness 的 DeepSeek
+模型目录，并声明 `text`、`image` 两种输入；其他模型和语言设置保持不变，也不会
+强制把实验模型改成默认模型。实际可用性仍取决于官方 API 账号以及服务端返回的
+模型。
+
+检测到旧版托管 DSH 后，Micro 会明确询问是否执行可回滚升级。旧运行时会完整保留
+为备份，只把凭据、设置和匿名安装标识复制到全新的 rc.8 home；不会导入 rc.8
+不兼容的旧会话和存储。Web 与本 Bridge 都通过健康检查后才提交切换。用户自己管理
+的 Harness 永远不会被 Micro 自动升级。
 
 `scripts/start-dsh-wsl.sh` 接受 `--port`；官方默认端口为 3080。
 
@@ -84,3 +95,5 @@ pnpm run test:e2e
 - 语音提供商配置与排错属于 [Micro 小键盘](../../virtual-micro/README.zh-CN.md)，
   不属于此插件。
 - 模型切换只使用 Harness 的共享模型目录，不代理 LLM provider 请求。
+- Harness 能接收图片不等于纯文本后端自动获得视觉能力；当前 provider 模型必须
+  真正接受原生图片请求。

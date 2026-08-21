@@ -1,6 +1,8 @@
 # Windows 首次使用 DeepSeek Harness
 
-本文适用于 Deepseek Harness Keypad 的便携包与 Full oneclick 包。程序不假定自身位于某个盘符，也不
+本文适用于 `DeepSeek-Keypad-Setup-<版本>.exe`。这是普通用户唯一需要下载的安装包；
+便携包、无 .NET 包与独立 Bridge 仅作为维护者构建产物，不列为常规 Release 选项。
+程序不假定自身位于某个盘符，也不
 要求 DeepSeek Harness 源码位于固定目录。第一次点击 DeepSeek 键时，程序先探测
 已有服务，再让用户明确选择：
 
@@ -95,6 +97,24 @@ Micro 使用的控制路径为：
 [DeepSeek 官方 Web UI 指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/index.zh.md)
 和 [DeepSeek API 密钥页面](https://platform.deepseek.com/api_keys)。
 
+### rc.8 图片输入
+
+0.2.8 的程序托管安装会使用 DeepSeek Harness `v0.1.0-rc.8`，并在模型目录登记：
+
+```text
+deepseek-v4-flash-vision-exp
+inputModalities: [text, image]
+```
+
+它不会强制替换用户的默认模型。在 Harness 里选择该模型后，可把 PNG/JPEG/WebP/GIF
+图片直接拖入输入框或粘贴图片，再与文字一同发送。小键盘的麦克风通路仍只写入
+最终识别文字，不会把音频或图片送进 Bridge。
+
+这里要区分两层能力：rc.8 打通了 Harness 的原生图片请求；真正识图仍要求 provider
+后端接受图片。给纯文本模型添加 `image` 声明不会使它自动获得视觉能力。0.2.8 的
+发布验收使用官方 `/models` 返回的 `deepseek-v4-flash-vision-exp` 实际上传图片，模型
+成功读出了图片中的模型名与版本号。
+
 ## 方案二：使用已有 DSH
 
 程序先尝试已保存地址和官方默认端口。若发现 Web 服务但没有桥接，会显示“已发现
@@ -115,10 +135,10 @@ npx @deepseek-ai/dsh web --port 3090
 这些命令来自 DeepSeek 官方 README 和 CLI 参考。Node 的安装方式以
 [Node.js 官方下载页](https://nodejs.org/en/download)为准。
 
-桥接插件必须安装到实际使用的 `web` profile。正式发布资产中它独立分装为
-`Deepseek-Harness-Keypad-Bridge-v<版本>.zip`；DeepSeek 主包也保留同一份精简运行
-载荷，供专用 WSL 安装流程使用。请在 **Harness 所在的同一个运行环境**中解压独立
-插件包，再按 DeepSeek 官方插件命令安装：
+桥接插件必须安装到实际使用的 `web` profile。推荐安装包已经在安装目录的
+`plugins/DeepSeekHarness` 中包含同一份精简运行载荷，无需再下载另一个 Release
+资产。请在 **Harness 所在的同一个运行环境**中使用该目录，再按 DeepSeek 官方
+插件命令安装：
 
 ```text
 dsh plugin --profile web add <DeepSeekHarness 插件的绝对路径>
@@ -154,24 +174,43 @@ Codex Micro 的协议适配参考上游
 示例路径只用于说明，程序配置仍使用 `{AppDir}`、`{LocalAppData}`、环境变量或相对
 路径，不写死本机盘符和用户目录。
 
-## Full oneclick 包
+## 推荐安装包
 
-`Deepseek-Harness-Keypad-Full-v0.2.7-oneclick.exe` 使用与在线配置相同的 8 步状态机，
+`DeepSeek-Keypad-Setup-0.2.8.exe` 使用与在线配置相同的 8 步状态机，
 但从安装目录的 `payload/deepseek-runtime.wsl` 导入干净载荷，不再下载 Linux 用户态、
 Node、pnpm 或 Harness。载荷预装的是 DeepSeek 官方 npm 包 `@deepseek-ai/dsh`，版本
 和 Node / pnpm 一起记录在 Bridge 的 `scripts/runtime-versions.env`；Bridge 没有修改
 DSH 源码，后续替换官方版本只需更新该清单并重建。
 
-另有 `Deepseek-Harness-Keypad-Full-v0.2.7-oneclick-no-dotnet.exe`，DSH 载荷完全相同，
-但不包含 Windows .NET 运行时。它和便携 ZIP 需要安装
-[Microsoft .NET 10 Desktop Runtime x64 官方安装程序](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-10.0.10-windows-x64-installer)；
-推荐 oneclick 已自带 .NET。两种 oneclick 都按当前用户安装到 Windows API 返回的
-LocalAppData 目录，注册后台自启动、开始菜单和卸载入口，不写死盘符。
+推荐安装包已包含 Windows .NET 运行时，并按当前用户安装到 Windows API 返回的
+LocalAppData 目录，注册后台自启动、开始菜单和卸载入口，不写死盘符。维护者仍可
+构建 framework-dependent、便携或独立 Bridge 产物用于诊断，但默认发布流程不会
+把它们上传给普通用户选择。
 
-Full 包仍需要 Windows 的 WSL 系统功能；WSL 内核和虚拟化功能不能安全地藏进普通
+推荐安装包仍需要 Windows 的 WSL 系统功能；WSL 内核和虚拟化功能不能安全地藏进普通
 EXE。`.wsl` 导入格式需要 WSL 2.4.4 或更新版本，说明与更新方式以
 [Microsoft 自定义 WSL 发行版指南](https://learn.microsoft.com/en-us/windows/wsl/build-custom-distro)
 和 [WSL 官方安装指南](https://learn.microsoft.com/en-us/windows/wsl/install)为准。
+
+## 托管版本升级与回滚
+
+即使首次配置已经完成，0.2.8 每次进程首次使用 DeepSeek 时仍会读取专用发行版中
+实际安装的 `@deepseek-ai/dsh` 版本，并与包内 `runtime-versions.env` 比较。这个检查
+只适用于注册名、用户、启动脚本和控制地址都符合程序托管合同的
+`CodexMicro-DeepSeek`；“使用我已有的 DSH”不会被检查、停止或升级。
+
+发现 rc.6 等旧版时，界面先说明 rc.8 存储格式不兼容，再由用户确认。升级事务会：
+
+1. 停止专用 WSL，完整移动旧运行时为带版本与时间戳的备份；
+2. 从安装包的 `.wsl` 载荷离线准备 rc.8，或由维护者构建从官方 npm 安装固定版本；
+3. 只复制 `.credentials.yaml`、`settings.yaml` 和 `.anonymous-user-id`；
+4. 创建全新的 `sessions`、`storages` 与 `profiles`，不导入旧会话数据库；
+5. 用原端口启动，分别检查官方 Web 根地址和 Micro Bridge；
+6. 两项都通过才提交；失败则自动恢复旧运行时。
+
+如果程序在交换后、提交前被关闭，状态文件与完整旧版备份会保留；下次启动继续健康
+检查，而不是猜测升级成功。提交后备份也不会自动删除，旧会话仍可从备份中人工恢复
+或导出。不要把 rc.6 的 SQLite / session 目录直接复制进 rc.8。
 
 ## 状态与恢复
 

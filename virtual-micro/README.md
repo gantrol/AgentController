@@ -23,6 +23,14 @@ runs `git clone`. The bundled
 [Windows setup guide](./DEEPSEEK-WINDOWS-SETUP.zh-CN.md) is currently in Chinese
 and links to upstream official instructions.
 
+Version 0.2.8 pins program-managed installations to DeepSeek Harness
+`v0.1.0-rc.8`, checks the actual installed package even after first-run setup,
+and offers a health-checked, rollback-safe upgrade from older managed builds.
+It also registers `deepseek-v4-flash-vision-exp` with native text/image input.
+Images are pasted or dropped in Harness itself; this is independent of the
+keypad's text-only voice relay and still requires a backend model that really
+accepts images.
+
 The release is a framework-dependent single-file app. The measured
 `CodexMicro.exe` is about `24.9 MiB` and the zip is about `6.4 MiB`; packaging
 enforces a `15 MiB` zip ceiling. This retains the exact WPF visuals without the
@@ -193,24 +201,30 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.7
+.\scripts\package-micro.ps1 -Version 0.2.8
 # Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
-.\scripts\package-micro.ps1 -Version 0.2.7 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.8 -Preset deepseek
 ```
 
-Outputs:
+The user-facing Release contains one recommended download:
 
-- single-file executable: `.artifacts/micro-release/0.2.7/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-0.2.7-win-x64.zip`;
+- `dist/DeepSeek-Keypad-Setup-0.2.8.exe`, including .NET, the DSH WSL
+  payload, and the Bridge.
+
+The following are maintainer build and diagnostic outputs, not ordinary user
+download choices:
+
+- single-file executable: `.artifacts/micro-release/0.2.8/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.2.8-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
-- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.7-win-x64.zip`;
+- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`;
 - standalone existing-DSH plugin:
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.7.zip`, with its own checksum.
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.8.zip`, with its own checksum.
 
-The packaging script includes `CodexMicro.exe`, the READMEs, the first-run
+The recommended installer includes `CodexMicro.exe`, the READMEs, the first-run
 setup guide, the license, and the keypad-side `voice` launcher/adapter. It does
 not include a model or Python environment. The `deepseek` preset builds a
-runtime-only Bridge archive separately and embeds the same payload for managed
+runtime-only Bridge archive for maintainers and embeds the same payload for managed
 WSL setup; neither copy contains source, tests, or development dependencies.
 It also includes the path-independent installer and explicit first-run choices. It
 defaults to DeepSeek and system speech recognition; local Qwen, remote

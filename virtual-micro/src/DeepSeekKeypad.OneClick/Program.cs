@@ -69,7 +69,7 @@ internal sealed record InstallerOptions(
 internal sealed class InstallerForm : Form
 {
     private const string ProductId = "deepseek-harness-keypad";
-    private const string ReleaseVersion = "0.2.7";
+    private const string ReleaseVersion = "0.2.8";
     private const string InstallDirectoryName = "Deepseek Harness Keypad";
     private const string ExecutableName = "CodexMicro.exe";
     private const string MarkerName = ".deepseek-harness-keypad.install.json";
@@ -87,7 +87,7 @@ internal sealed class InstallerForm : Form
     internal InstallerForm(InstallerOptions options)
     {
         _options = options;
-        Text = $"Deepseek Harness Keypad v{ReleaseVersion} 一键安装";
+        Text = $"DeepSeek 键盘 {ReleaseVersion} 安装";
         ClientSize = new(560, 178);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -100,7 +100,7 @@ internal sealed class InstallerForm : Form
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
             Location = new Point(24, 22),
-            Text = $"Deepseek Harness Keypad v{ReleaseVersion}",
+            Text = $"DeepSeek 键盘 {ReleaseVersion}",
         };
         _status = new Label
         {
@@ -470,7 +470,7 @@ internal sealed class InstallerForm : Form
             "powershell.exe");
         uninstallKey.SetValue(
             "DisplayName",
-            $"Deepseek Harness Keypad {ReleaseVersion}");
+            "DeepSeek 键盘");
         uninstallKey.SetValue("DisplayVersion", ReleaseVersion);
         uninstallKey.SetValue("Publisher", "AgentController");
         uninstallKey.SetValue("InstallLocation", installRoot);
