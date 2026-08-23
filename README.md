@@ -61,12 +61,11 @@ The [Codex Micro keypad](virtual-micro/README.md) now runs independently of
 and animations for pixel-accurate transparency and styling. Its
 framework-dependent single-file zip is about 6.4 MiB and requires the
 [official Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
-The `MICRO` title-bar command shows or launches the external
-`CodexMicro.exe`; its context menu and the Agent Controller tray can also
-request a verified graceful restart. Keypad and controller input keep separate logical
-Broker leases while sharing one current-user Broker. The fixed-size window uses
-app-owned movement, so it cannot trigger Windows Snap or automatic resizing;
-its notification-area icon provides Show/Hide, Restart, and Exit commands.
+The keypad is an optional companion with its own executable and notification-area
+commands. Agent Controller no longer launches, restarts, or depends on the keypad
+process. The fixed-size keypad window uses app-owned movement, so it cannot trigger
+Windows Snap or automatic resizing; its own notification-area icon provides Show/Hide,
+Restart, and Exit commands.
 
 Unfortunately, it also depends on an **unsigned developer driver package**. The package saves the C/C++ compilation step, but it is not a production installer: [sign it locally and install it](virtual-micro/UNSIGNED-DRIVER.md), or build the driver from source.
 
@@ -117,7 +116,8 @@ The v1.2.0 release provides both a self-contained Windows package and a much sma
 
 | Input | Action |
 | --- | --- |
-| Menu | Wake and foreground Codex when needed. If Codex is already in front, controller input arms after the connected pad returns to neutral. |
+| View | Switch the controlled Agent between Codex and DeepSeek Harness. This works even when the current Agent is offline; return the pad to neutral or press Menu to unlock the new target. |
+| Menu | Wake and foreground the selected Agent when needed. If it is already in front, controller input arms after the connected pad returns to neutral. |
 | Left stick ↑ / ↓ | Move through Agent Controller's stable sidebar directory without opening an item. |
 | Left stick or D-pad ← / → | Leave / enter a project directory. |
 | L3 | Cycle roots: pinned tasks → pinned projects → projects → projectless tasks. |
@@ -126,8 +126,8 @@ The v1.2.0 release provides both a self-contained Windows package and a much sma
 | B | In a Micro menu session opened through R3, send Agent key 1 (`AG00`) so the official bridge performs its contextual Back action; otherwise hold for three seconds to cancel the active turn. Releasing early stops the countdown. |
 | Y | Open the action panel. |
 | D-pad ↑ / ↓ | Previous / next Q&A turn; hold ↑ for four seconds to jump to the top or ↓ for three seconds to jump to the bottom. |
-| Right stick | Up or left emits `ENC_CW` (previous); down or right emits `ENC_CC` (next). All four directions become Micro encoder detents, with no gamepad-only UI state machine. |
-| R3 tap / hold | Tap to press the Micro encoder and open, enter, or confirm the current item. Hold for 500 ms to open Agent Controller settings. |
+| Right stick | Navigate the selected Agent's composer controls: Codex uses Micro encoder detents; DeepSeek Harness uses its loopback control API directly. |
+| R3 tap / hold | Tap to open, enter, or confirm the current composer item through the selected Agent's adapter. Hold for 500 ms to open Agent Controller settings. |
 | LB / RB tap | Open the previous / next available task. |
 | LT hold | Start push-to-talk dictation; release to finish. |
 
@@ -167,11 +167,11 @@ For implementation status and edge cases, see the [v1 control reference](public/
 - macOS currently provides only the unsigned, read-only Foundation Preview; App Server actions, voice, native Micro, signing/notarization, and physical Mac acceptance remain open.
 - v1 does not yet provide a commercially signed driver installer, configurable Agent/Command slots, or complete Plan-mode controller routing.
 
-### Beyond Codex
+### Codex and DeepSeek Harness
 
-Only Codex is supported today, but the controller, capability, and Agent-target layers are intended to leave room for additional adapters. If there is enough demand, Agent Controller could expand to command-line workflows and other coding agents such as Claude Code.
+Codex and DeepSeek Harness are built-in targets. Press the base-layer **View** button to switch between them; the selected target is remembered. DeepSeek control uses the Harness loopback bridge directly for session discovery, activation, composer navigation, model/reasoning selection, submit, stop, fork, approval, rejection, and layout actions. It does not route those inputs through the standalone keypad.
 
-That work would require a dedicated adapter with its own task discovery, command execution, state detection, and safety checks. Current Codex compatibility should not be taken as compatibility with those tools today.
+Target selection is a hard input boundary: Codex-only keyboard, accessibility, and Micro paths cannot execute while DeepSeek is selected. Other coding agents still require their own adapters for task discovery, command execution, state detection, and safety checks.
 
 ### Build from source
 

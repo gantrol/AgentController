@@ -2,13 +2,15 @@
 
 English | [中文](README.zh.md)
 
-This external DeepSeek Harness bundle connects AgentController Micro to
-DeepSeek Harness without modifying the Harness source tree and without
-simulating keyboard or pointer input.
+This external bundle connects Agent Controller and the optional Codex Micro
+keypad to DeepSeek Harness without modifying the Harness source tree and
+without simulating keyboard or pointer input.
 
 ## Responsibilities
 
 - Opens or focuses one guarded Harness app window.
+- Accepts direct gamepad control from Agent Controller when DeepSeek Harness is
+  selected with the base-layer View button.
 - Lists recent sessions, activates an exact session, and executes native
   Harness actions through its services.
 - Navigates live composer controls, toggles Conversation / Trajectory, changes
@@ -58,18 +60,20 @@ Install this built bundle from the environment that runs Harness:
 dsh plugin --profile web add <absolute path to this bundle>
 ```
 
-Run `dsh web` normally and save its loopback control address in Micro. The
+Run `dsh web` normally. Agent Controller uses the default loopback control
+address below directly; the optional keypad can save a different address. The
 default is `http://127.0.0.1:3080/__agentcontroller/micro/request`.
 
 ## Local protocol
 
 WSL mode uses bounded UTF-8 JSON over loopback HTTP. Native Windows mode can
 use one JSON line on `\\.\pipe\deepseek-harness-micro-v1`. Protocol version is
-`1` and source is `codex-micro`.
+`1`; accepted sources are `agent-controller` for direct gamepad control and
+`codex-micro` for the optional keypad.
 
-Normal DSH tabs can report state, but they never receive physical-key focus,
+Normal DSH tabs can report state, but they never receive physical-control focus,
 session, action, or dictation frames. If no confirmed dedicated surface is
-connected, the bridge returns `opening` so the Windows keypad host can open an
+connected, the bridge returns `opening` so the Windows client can open an
 Edge-first app-mode window without depending on WSL executable interop.
 
 General actions:

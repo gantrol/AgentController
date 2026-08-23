@@ -64,11 +64,9 @@ Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想�
 独立出来，同时直接复用原 WPF XAML、控件模板和动画，透明与样式不再近似重画。
 framework-dependent 单文件 zip 约 6.4 MiB，需要安装
 [微软官方 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)；
-标题栏的 `MICRO` 按钮负责显示或启动外部 `CodexMicro.exe`；按钮右键菜单和
-Agent Controller 托盘还可以请求经过就绪验证的安全重启。小键盘与手柄输入
-保留各自的 Broker 逻辑租约，并共享当前用户唯一的 Broker。窗口固定大小并采用
-应用内移动，不会触发 Windows Snap 自动改窗口大小；通知区域图标提供显示/收起、
-重启和退出。
+小键盘是可选的独立配套程序，拥有自己的可执行文件和通知区域命令。Agent Controller
+不再启动、重启或依赖小键盘进程。小键盘窗口固定大小并采用应用内移动，不会触发
+Windows Snap 自动改窗口大小；它自己的通知区域图标提供显示/收起、重启和退出。
 
 可惜的是，也需要依赖驱动，**未签名开发者驱动包**。该驱动包可以省掉 C/C++ 编译步骤，但不是正式安装包；请先[在本机二次签名并安装](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)，或从源码自行构建驱动。
 
@@ -118,7 +116,8 @@ v1.2.0 同时提供 Windows 自包含包和体积更小的 `-compact` 精简包�
 
 | 输入 | 行为 |
 | --- | --- |
-| 菜单键☰ | 在需要时唤醒并置前 Codex。Codex 已在前台时，连接的手柄回中后会自动启用输入。 |
+| 视图键⧉ | 在 Codex 与 DeepSeek Harness 之间切换当前受控 Agent。即使当前 Agent 离线也能切换；手柄回中或按 Menu 后解锁新目标。 |
+| 菜单键☰ | 在需要时唤醒并置前当前 Agent。当前 Agent 已在前台时，连接的手柄回中后会自动启用输入。 |
 | 左摇杆上/下 | 在 Agent Controller 的稳定侧边栏目录中移动焦点，不立即打开条目。 |
 | 左摇杆或十字键左/右 | 退出/进入项目目录。 |
 | L3 | 循环根目录：置顶任务 → 置顶项目 → 项目 → 未归项目任务。 |
@@ -127,8 +126,8 @@ v1.2.0 同时提供 Windows 自包含包和体积更小的 `-compact` 精简包�
 | B | 在 R3 建立的 Micro 菜单会话中发送 Agent 键 1（`AG00`），由官方 bridge 执行上下文返回；其他基础场景按住三秒取消当前运行，提前松开会中止倒计时。 |
 | Y | 打开动作面板。 |
 | 十字键上/下 | 上一轮/下一轮问答；按住上四秒置顶，按住下三秒置底。 |
-| 右摇杆 | 上或左发送 `ENC_CW`（上一项）；下或右发送 `ENC_CC`（下一项）。四个方向都映射为 Micro 旋钮档位，不另造摇杆专用的界面状态机。 |
-| R3 短按/长按 | 短按映射为 Micro 旋钮按压，用于打开、进入或确认当前项；长按 500 毫秒打开 Agent Controller 设置。 |
+| 右摇杆 | 导航当前 Agent 的输入区控件：Codex 使用 Micro 旋钮档位，DeepSeek Harness 直接调用其回环控制 API。 |
+| R3 短按/长按 | 短按通过当前 Agent 的适配器打开、进入或确认输入区项目；长按 500 毫秒打开 Agent Controller 设置。 |
 | LB/RB 短按 | 打开上一个/下一个可用任务。 |
 | LT 按住 | 开始按住说话，松开结束。 |
 
@@ -168,11 +167,11 @@ v1.2.0 同时提供 Windows 自包含包和体积更小的 `-compact` 精简包�
 - macOS 当前仅提供未签名、只读的 Foundation Preview；App Server 动作、语音、原生 Micro、签名公证和 Mac 真机验收仍未完成。
 - v1 尚未提供商业签名驱动安装器、可配置的 Agent/Command 槽位和完整 Plan 模式手柄路由。
 
-### 可以不止 Codex
+### Codex 与 DeepSeek Harness
 
-目前只适配了 Codex，但项目中的手柄、能力和 Agent 目标层已经为增加其他适配器留出了空间。如果确实有需求，Agent Controller 将来可以扩展到命令行工作流，以及 Claude Code 等其他编程 Agent。
+Codex 与 DeepSeek Harness 现在都是内置目标。在基础层按 **View** 即可切换，程序会记住当前选择。DeepSeek 控制直接使用 Harness 回环桥接，支持会话发现与激活、输入区导航、模型/推理选项、发送、停止、Fork、批准、拒绝和布局动作；这些输入不会经过独立小键盘。
 
-这类扩展需要为目标工具单独实现任务发现、命令执行、状态检测和安全检查。当前对 Codex 的兼容，不代表现在已经兼容这些工具。
+目标选择是硬隔离边界：选择 DeepSeek 后，Codex 专用的键盘、辅助功能和 Micro 通路都不能执行。其他编程 Agent 仍需单独实现任务发现、命令执行、状态检测和安全检查。
 
 ### 从源码构建
 
