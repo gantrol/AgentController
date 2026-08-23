@@ -262,7 +262,8 @@ function parseRequest(line: Buffer): MicroRequest | undefined {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const request = value as Record<string, unknown>
-  if (request.version !== MICRO_PROTOCOL_VERSION || request.source !== 'codex-micro') return undefined
+  if (request.version !== MICRO_PROTOCOL_VERSION
+      || (request.source !== 'codex-micro' && request.source !== 'agent-controller')) return undefined
   switch (request.action) {
     case 'activate':
     case 'state/read':

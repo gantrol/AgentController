@@ -257,7 +257,11 @@ describe('external DeepSeek Harness host bundle', () => {
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...baseRequest, action: 'state/read' }),
+        body: JSON.stringify({
+          ...baseRequest,
+          source: 'agent-controller',
+          action: 'state/read',
+        }),
       },
     )
 

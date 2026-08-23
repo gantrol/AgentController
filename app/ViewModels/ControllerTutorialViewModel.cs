@@ -569,7 +569,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             LeftStickPressGuide),
         new(
             RightStickPressGlyph,
-            Text("Micro 确认 / 设置", "Micro confirm / settings"),
+            Text("确认 / 控制设置", "Confirm / control settings"),
             RightStickPressGuide),
         new(
             "↑↓",
@@ -587,14 +587,14 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             string.Empty),
         new(
             ViewGlyph,
-            Text("View：保留键", "View: reserved"),
+            Text("View：切换 Agent", "View: switch Agent"),
             Text(
-                "当前不执行操作；后续可能用于切换控制不同 Agent",
-                "No action yet; it may switch the controlled Agent in a future version")),
+                "在 Codex 与 DeepSeek Harness 间切换当前控制目标",
+                "Switch the current control target between Codex and DeepSeek Harness")),
         new(
             MenuGlyph,
-            Text("Menu：唤醒 Codex", "Menu: wake Codex"),
-            Text("需要时将 Codex 置于前台", "Bring Codex to the foreground when needed")),
+            Text("Menu：唤醒当前 Agent", "Menu: wake current Agent"),
+            Text("需要时将当前 Agent 置于前台", "Bring the current Agent to the foreground when needed")),
     ];
 
     private IReadOnlyList<ControllerTutorialItem> AgentItems()

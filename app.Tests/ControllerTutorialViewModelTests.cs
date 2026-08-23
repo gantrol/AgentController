@@ -32,9 +32,9 @@ public sealed class ControllerTutorialViewModelTests
             viewModel.Items,
             item =>
                 item.Glyph == "⧉" &&
-                item.Title == "View: reserved" &&
+                item.Title == "View: switch Agent" &&
                 item.Description.Contains(
-                    "switch the controlled Agent",
+                    "DeepSeek Harness",
                     StringComparison.Ordinal));
         var chinese = Create(
             AppLanguage.ZhCn,
@@ -42,9 +42,9 @@ public sealed class ControllerTutorialViewModelTests
         Assert.Contains(
             chinese.Items,
             item =>
-                item.Title == "View：保留键" &&
+                item.Title == "View：切换 Agent" &&
                 item.Description.Contains(
-                    "后续可能用于切换控制不同 Agent",
+                    "DeepSeek Harness",
                     StringComparison.Ordinal));
 
         viewModel.SelectStickPressCommand.Execute(null);

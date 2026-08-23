@@ -77,6 +77,20 @@ public sealed class MicroDriverOwnershipRulesTests
             value => value.Contains(
                 "MicroSurface.Wpf",
                 StringComparison.OrdinalIgnoreCase));
+        var mainWindowSource = File.ReadAllText(Resolve(
+            "app/MainWindow.xaml.cs"));
+        var mainWindowXaml = File.ReadAllText(Resolve(
+            "app/MainWindow.xaml"));
+        Assert.DoesNotContain(
+            "MicroKeypadLauncher",
+            mainWindowSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "MicroKeypadButton",
+            mainWindowXaml,
+            StringComparison.Ordinal);
+        Assert.False(File.Exists(Resolve(
+            "app/Services/Micro/MicroKeypadLauncher.cs")));
 
         var xaml = XDocument.Load(Resolve(
             "virtual-micro/src/CodexMicro.Desktop/MainWindow.xaml"));
@@ -135,7 +149,7 @@ public sealed class MicroDriverOwnershipRulesTests
     }
 
     [Fact]
-    public void PhysicalRightStickIsMicroOnlyAndCannotFallBackToUia()
+    public void PhysicalRightStickKeepsCodexHidAndDeepSeekRoutesIsolated()
     {
         var mainWindow = File.ReadAllText(Resolve(
             "app/MainWindow.xaml.cs"));
@@ -148,16 +162,57 @@ public sealed class MicroDriverOwnershipRulesTests
             "_microInput.SendEncoderPress()",
             mainWindow,
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "_composerAutomation.DialStep(",
+        Assert.Contains(
+            "? _composerAutomation.DialStep(",
             mainWindow,
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "_composerAutomation.DialPress(",
+        Assert.Contains(
+            "? _composerAutomation.DialPress(",
             mainWindow,
+            StringComparison.Ordinal);
+
+        var selection = File.ReadAllText(Resolve(
+            "app/Agents/AgentTargetSelection.cs"));
+        Assert.Contains(
+            "_selection.Active.Id == _targetId",
+            selection,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "agent.not-selected",
+            selection,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "_composerAutomation.DialSelect(",
+            mainWindow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BaseViewSwitchesAgentBeforeBridgeAndForegroundGates()
+    {
+        var mainWindow = File.ReadAllText(Resolve(
+            "app/MainWindow.xaml.cs"));
+        var viewEdge = mainWindow.IndexOf(
+            ".HasFlag(ControllerButtons.Back)",
+            StringComparison.Ordinal);
+        var switchCall = mainWindow.IndexOf(
+            "SwitchActiveAgent();",
+            viewEdge,
+            StringComparison.Ordinal);
+        var bridgeGate = mainWindow.IndexOf(
+            "if (!_settings.BridgeEnabled)",
+            switchCall,
+            StringComparison.Ordinal);
+
+        Assert.True(viewEdge >= 0, "The base View edge is missing.");
+        Assert.True(
+            switchCall > viewEdge,
+            "The base View edge must switch the selected Agent.");
+        Assert.True(
+            bridgeGate > switchCall,
+            "Agent switching must remain available before the bridge gate.");
+        Assert.Contains(
+            "_settings.ActiveAgentId = _activeAgent.Id.Value",
             mainWindow,
             StringComparison.Ordinal);
     }

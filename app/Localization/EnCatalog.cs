@@ -261,10 +261,6 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Full reset ×{0} · next expires {1} · +{2} more",
             [StringKeys.TrayOpenApplication] =
                 "Open Agent Controller",
-            [StringKeys.TrayOpenMicroSurface] =
-                "Launch standalone Micro keypad",
-            [StringKeys.TrayRestartMicroSurface] =
-                "Restart Codex Micro",
             [StringKeys.TrayOpenAgent] = "Open {0}",
             [StringKeys.TrayExit] = "Exit",
 
@@ -474,18 +470,6 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Opened {0} shortcut settings",
             [StringKeys.MessageControllerSoftwareOpenFailed] =
                 "Could not open controller software",
-            [StringKeys.MessageMicroKeypadShown] =
-                "Codex Micro is now visible.",
-            [StringKeys.MessageMicroKeypadStarted] =
-                "Codex Micro was not running and has been started.",
-            [StringKeys.MessageMicroKeypadRestarted] =
-                "Codex Micro restarted and is ready.",
-            [StringKeys.MessageMicroKeypadBusy] =
-                "Codex Micro is already starting, stopping, or restarting.",
-            [StringKeys.MessageMicroKeypadDownloadOpened] =
-                "Codex Micro is not installed; the download page was opened.",
-            [StringKeys.MessageMicroKeypadFailed] =
-                "Could not control Codex Micro.",
             [StringKeys.MessageWindowHiddenBackground] =
                 "Window hidden; the bridge continues running in the background",
 

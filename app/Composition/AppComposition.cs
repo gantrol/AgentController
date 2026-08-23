@@ -2,6 +2,7 @@ using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
 using CodexController.Agents;
 using CodexController.Agents.Codex;
+using CodexController.Agents.DeepSeek;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
@@ -44,13 +45,17 @@ internal sealed class AppComposition : IDisposable
             codexSidebar,
             codexComposer,
             codexKeybindings);
+        var deepSeekAgent = new DeepSeekAgentTarget(
+            new DeepSeekHarnessClient());
         var agentTargets = new AgentTargetRegistry(
-            [codexAgent],
+            [codexAgent, deepSeekAgent],
             CodexAgentTarget.CodexId);
-        var activeAgent = agentTargets.Resolve(
+        var agentSelection = new AgentTargetSelection(
+            agentTargets,
             currentSettings.ActiveAgentId);
         var foregroundApplication =
-            new AgentForegroundApplication(activeAgent.Presence);
+            new AgentForegroundApplication(
+                () => agentSelection.Active.Presence);
 
         Func<string?> codexActionBlockReason = () =>
             !currentSettings.BridgeEnabled
@@ -59,7 +64,14 @@ internal sealed class AppComposition : IDisposable
                   !codexCommand.IsCodexForeground
                     ? AgentAutomationErrorCodes.AgentNotForeground
                     : null;
-        var actionRouter = new ActionRouter(
+        Func<string?> deepSeekActionBlockReason = () =>
+            !currentSettings.BridgeEnabled
+                ? AgentAutomationErrorCodes.BridgeSafePreview
+                : currentSettings.OnlyWhenCodexForeground &&
+                  !deepSeekAgent.Presence.IsForeground
+                    ? AgentAutomationErrorCodes.AgentNotForeground
+                    : null;
+        IActionExecutor[] codexExecutors =
         [
             new CodexForkThreadActionExecutor(
                 codexActionBlockReason,
@@ -134,14 +146,23 @@ internal sealed class AppComposition : IDisposable
                     currentSettings)),
             new CodexOpenThreadActionExecutor(
                 CodexCommandService.OpenThread),
-        ]);
+        ];
+        var actionRouter = new ActionRouter(
+            codexExecutors
+                .Select(executor => new AgentScopedActionExecutor(
+                    executor,
+                    agentSelection,
+                    CodexAgentTarget.CodexId))
+                .Append(new AgentScopedActionExecutor(
+                    new DeepSeekHarnessActionExecutor(
+                        deepSeekAgent,
+                        deepSeekActionBlockReason),
+                    agentSelection,
+                    DeepSeekAgentTarget.DeepSeekId)));
         var actionDispatcher = new ActionDispatcher(actionRouter);
-        var workspace = activeAgent.WorkspaceOrEmpty();
-        var sidebar = activeAgent.SidebarOrUnavailable();
         var navigationContext = new AgentThreadNavigationContext(
             currentSettings,
-            workspace,
-            sidebar);
+            () => agentSelection.Active);
         var threadNavigation = new ThreadNavigationCoordinator(
             actionDispatcher,
             navigationContext,
@@ -156,12 +177,11 @@ internal sealed class AppComposition : IDisposable
             new BridgeEventHub(),
             localization,
             controllerProfiles,
-            activeAgent,
+            agentSelection,
             foregroundApplication,
             settings,
             currentSettings,
             microInput,
-            new MicroKeypadLauncher(),
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
             new ControllerHoldCoordinator(),

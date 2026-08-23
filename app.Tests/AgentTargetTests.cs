@@ -1,3 +1,5 @@
+using AgentController.Application.Actions;
+using AgentController.Domain.Actions;
 using CodexController.Agents;
 using CodexController.Agents.Codex;
 using CodexController.Models;
@@ -112,6 +114,64 @@ public sealed class AgentTargetTests
         Assert.Same(studio, registry.Resolve("studio-agent"));
         Assert.Same(codex, registry.Resolve("missing-agent"));
         Assert.Same(codex, registry.Resolve("Invalid ID"));
+    }
+
+    [Fact]
+    public void SelectionCyclesRegisteredTargetsInStableOrder()
+    {
+        var codex = new TestAgentTarget("codex", "Codex");
+        var deepSeek = new TestAgentTarget(
+            "deepseek-harness",
+            "DeepSeek Harness");
+        var selection = new AgentTargetSelection(
+            new AgentTargetRegistry([codex, deepSeek], codex.Id),
+            "codex");
+        AgentTargetChangedEventArgs? changed = null;
+        selection.Changed += (_, value) => changed = value;
+
+        Assert.True(selection.SelectNext());
+        Assert.Same(deepSeek, selection.Active);
+        Assert.Same(codex, changed?.Previous);
+        Assert.Same(deepSeek, changed?.Current);
+
+        Assert.True(selection.SelectNext());
+        Assert.Same(codex, selection.Active);
+    }
+
+    [Fact]
+    public async Task ScopedExecutorCannotLeakIntoUnselectedAgent()
+    {
+        var codex = new TestAgentTarget("codex", "Codex");
+        var deepSeek = new TestAgentTarget(
+            "deepseek-harness",
+            "DeepSeek Harness");
+        var selection = new AgentTargetSelection(
+            new AgentTargetRegistry([codex, deepSeek], codex.Id),
+            "deepseek-harness");
+        var inner = new TestActionExecutor();
+        var scoped = new AgentScopedActionExecutor(
+            inner,
+            selection,
+            codex.Id);
+        var request = new ActionRequest(
+            Guid.NewGuid(),
+            ComposerActionContract.SubmitId,
+            new ActionSource(
+                "controller",
+                AgentController.Domain.Inputs.ControlId.Parse("face.west")),
+            AgentController.Domain.Inputs.InputContext.Parse("composer.input"),
+            "test:submit",
+            ActionSafetyLevel.Routine,
+            DateTimeOffset.UtcNow);
+
+        var capability = await scoped.ProbeAsync(request);
+        var result = await scoped.ExecuteAsync(request);
+
+        Assert.Equal(
+            ExecutorCapabilityStatus.Unsupported,
+            capability.Status);
+        Assert.Equal(ActionOutcome.Unsupported, result.Outcome);
+        Assert.Equal(0, inner.ExecutionCount);
     }
 
     [Fact]
@@ -244,5 +304,33 @@ public sealed class AgentTargetTests
             AppSettings settings,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
+    }
+
+    private sealed class TestActionExecutor : IActionExecutor
+    {
+        public string Id => "test.executor";
+        public int ExecutionCount { get; private set; }
+
+        public ValueTask<ExecutorCapability> ProbeAsync(
+            ActionRequest request,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ExecutorCapability(
+                Id,
+                request.ActionId,
+                ExecutorCapabilityStatus.Available,
+                Priority: 100));
+
+        public ValueTask<ActionResult> ExecuteAsync(
+            ActionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ExecutionCount++;
+            return ValueTask.FromResult(new ActionResult(
+                request.RequestId,
+                request.ActionId,
+                ActionOutcome.Succeeded,
+                Id,
+                DateTimeOffset.UtcNow));
+        }
     }
 }

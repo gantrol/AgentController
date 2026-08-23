@@ -18,7 +18,7 @@ export const MICRO_PROTOCOL_VERSION = 1 as const
 
 interface MicroRequestBase {
   version: typeof MICRO_PROTOCOL_VERSION
-  source: 'codex-micro'
+  source: 'codex-micro' | 'agent-controller'
 }
 
 /** Focus or open the Harness browser surface. */

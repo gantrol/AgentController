@@ -14,20 +14,28 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 {
     private readonly LocalizedStrings _strings;
     private readonly string _productName;
-    private readonly string _agentName;
+    private readonly Func<string> _agentName;
 
     public LocalizedBridgeFeedbackFormatter(
         LocalizedStrings strings,
         string productName = "Agent Controller",
         string agentName = "Codex")
+        : this(strings, productName, () => agentName)
+    {
+    }
+
+    public LocalizedBridgeFeedbackFormatter(
+        LocalizedStrings strings,
+        string productName,
+        Func<string> agentName)
     {
         ArgumentNullException.ThrowIfNull(strings);
         ArgumentException.ThrowIfNullOrWhiteSpace(productName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(agentName);
+        ArgumentNullException.ThrowIfNull(agentName);
 
         _strings = strings;
         _productName = productName.Trim();
-        _agentName = agentName.Trim();
+        _agentName = agentName;
     }
 
     public BridgeFeedbackContent Format(BridgeEvent bridgeEvent)
@@ -65,12 +73,12 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 
             "codex.wake.started" or
             "codex.wake.requested" => Content(
-                _strings.FeedbackWakeStarted(_agentName),
-                _agentName),
+                _strings.FeedbackWakeStarted(AgentName),
+                AgentName),
 
             "codex.wake.succeeded" => Content(
-                _strings.FeedbackWakeSucceeded(_agentName),
-                _agentName),
+                _strings.FeedbackWakeSucceeded(AgentName),
+                AgentName),
 
             "codex.wake.failed" => FormatWakeFailure(bridgeEvent),
 
@@ -87,7 +95,7 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 
             "sidebar.navigation.undone" => Content(
                 _strings.FeedbackNavigationUndone,
-                _strings.SidebarAgent(_agentName)),
+                _strings.SidebarAgent(AgentName)),
 
             "model.selection.changed" => FormatValueChange(
                 bridgeEvent,
@@ -116,11 +124,11 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 
             "composer.prompt.sent" => Content(
                 _strings.FeedbackPromptSent,
-                _agentName),
+                AgentName),
 
             "composer.action.cancelled" => Content(
                 _strings.FeedbackSelectionCanceled,
-                _agentName),
+                AgentName),
 
             "automation.action.failed" =>
                 FormatAutomationFailure(bridgeEvent),
@@ -178,7 +186,7 @@ public sealed class LocalizedBridgeFeedbackFormatter :
     private BridgeFeedbackContent FormatWakeFailure(
         BridgeEvent bridgeEvent)
     {
-        var failure = _strings.FeedbackWakeFailed(_agentName);
+        var failure = _strings.FeedbackWakeFailed(AgentName);
         var reasonCode = FirstParameter(
             bridgeEvent,
             "reasonCode",
@@ -200,7 +208,7 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 
         return Content(
             logText,
-            _agentName,
+            AgentName,
             reason ?? failure);
     }
 
@@ -225,7 +233,7 @@ public sealed class LocalizedBridgeFeedbackFormatter :
             Join(
                 _strings.FeedbackScopeChanged(scope),
                 projectTitle)!,
-            projectTitle ?? _strings.SidebarAgent(_agentName),
+            projectTitle ?? _strings.SidebarAgent(AgentName),
             scope);
     }
 
@@ -242,7 +250,7 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 
         return Content(
             _strings.FeedbackFocusChanged(label),
-            _strings.SidebarAgent(_agentName),
+            _strings.SidebarAgent(AgentName),
             label);
     }
 
@@ -259,7 +267,7 @@ public sealed class LocalizedBridgeFeedbackFormatter :
 
         return Content(
             _strings.FeedbackEntryOpened(label),
-            _strings.SidebarAgent(_agentName),
+            _strings.SidebarAgent(AgentName),
             label);
     }
 
@@ -337,6 +345,17 @@ public sealed class LocalizedBridgeFeedbackFormatter :
         return _strings.FeedbackSelectionApplied(
             _productName,
             $"{_strings.FeedbackStatusUpdated} ({key})");
+    }
+
+    private string AgentName
+    {
+        get
+        {
+            var value = _agentName();
+            return string.IsNullOrWhiteSpace(value)
+                ? "Agent"
+                : value.Trim();
+        }
     }
 
     private string LabelValue(string label, string? value)

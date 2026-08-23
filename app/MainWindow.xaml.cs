@@ -10,6 +10,7 @@ using AgentController.Application.Navigation;
 using AgentController.Domain.Actions;
 using AgentController.Platform.Windowing;
 using CodexController.Agents;
+using CodexController.Agents.DeepSeek;
 using CodexController.Composition;
 using CodexController.Controllers;
 using CodexController.Core.Bridge;
@@ -51,11 +52,11 @@ public partial class MainWindow : Window
         );
 
     private readonly SettingsService _settingsService;
-    private readonly IWorkspaceReader _workspaceReader;
-    private readonly ISidebarAutomation _sidebarAutomation;
-    private readonly IComposerAutomation _composerAutomation;
-    private readonly IAgentShortcuts _agentShortcuts;
-    private readonly IKeybindingProvisioner? _keybindingProvisioner;
+    private IWorkspaceReader _workspaceReader;
+    private ISidebarAutomation _sidebarAutomation;
+    private IComposerAutomation _composerAutomation;
+    private IAgentShortcuts _agentShortcuts;
+    private IKeybindingProvisioner? _keybindingProvisioner;
     private readonly XInputService _xInputService;
     private readonly ControllerInteractionCoordinator _controllerInteraction;
     private readonly ControllerHoldCoordinator _controllerHolds;
@@ -65,10 +66,10 @@ public partial class MainWindow : Window
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
     private readonly MicroInputService _microInput;
-    private readonly MicroKeypadLauncher _microKeypad;
     private readonly CodexCurrentControlExecutor _currentControlExecutor;
     private readonly ControllerProfileRegistry _controllerProfiles;
-    private readonly IAgentTarget _activeAgent;
+    private readonly AgentTargetSelection _agentSelection;
+    private IAgentTarget _activeAgent;
     private readonly IForegroundApplication _foregroundApplication;
     private readonly CodexRateLimitResetService _rateLimitResetService;
     private readonly DevicePageViewModel _devicePageViewModel;
@@ -77,8 +78,6 @@ public partial class MainWindow : Window
     private readonly BridgeFeedbackPresenter _feedbackPresenter;
     private readonly SemaphoreSlim _dataRefreshGate = new(1, 1);
     private readonly SemaphoreSlim _dialAutomationGate = new(1, 1);
-    private readonly CancellationTokenSource _microKeypadCancellation =
-        new();
     private readonly ObservableCollection<SidebarEntry> _sidebarEntries = [];
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _dataTimer;
@@ -170,10 +169,10 @@ public partial class MainWindow : Window
     internal MainWindow(MainWindowDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
-        _microKeypad = dependencies.MicroKeypad;
         _settingsService = dependencies.Settings;
         _settings = dependencies.CurrentSettings;
-        _activeAgent = dependencies.ActiveAgent;
+        _agentSelection = dependencies.AgentSelection;
+        _activeAgent = _agentSelection.Active;
         _foregroundApplication = dependencies.ForegroundApplication;
         _rateLimitResetService = dependencies.RateLimitResets;
         _workspaceReader = _activeAgent.WorkspaceOrEmpty();
@@ -181,6 +180,10 @@ public partial class MainWindow : Window
         _composerAutomation = _activeAgent.ComposerOrUnavailable();
         _agentShortcuts = _activeAgent.Shortcuts;
         _keybindingProvisioner = _activeAgent.Keybindings;
+        if (_activeAgent.Id == DeepSeekAgentTarget.DeepSeekId)
+        {
+            _scope = SidebarScope.ProjectlessTasks;
+        }
         _xInputService = dependencies.Controller;
         _controllerInteraction = dependencies.ControllerInteraction;
         _controllerHolds = dependencies.ControllerHolds;
@@ -223,7 +226,7 @@ public partial class MainWindow : Window
             new LocalizedBridgeFeedbackFormatter(
                 _localization.Strings,
                 _localization.Strings.AppTitle,
-                _activeAgent.DisplayName),
+                () => _activeAgent.DisplayName),
             new DelegateOverlayPresenter(PresentBridgeOverlay),
              SynchronizationContext.Current ??
              new DispatcherSynchronizationContext(Dispatcher));
@@ -425,6 +428,22 @@ public partial class MainWindow : Window
 
         _radialLayers.DrainSuppressedButtons(pressed);
         _pushToTalkSuppressedButtons &= pressed;
+        var agentSwitchBlocked =
+            _radialLayers.Layer is not null ||
+            pressed.HasFlag(ControllerButtons.LeftShoulder) ||
+            pressed.HasFlag(ControllerButtons.RightShoulder) ||
+            state.RightTrigger >= RadialInputMap.TurnCandidateThreshold ||
+            IsVirtualDialContextActive;
+        if (
+            !agentSwitchBlocked &&
+            _controllerInteraction.PhysicalEdges(pressed).Down
+                .HasFlag(ControllerButtons.Back))
+        {
+            SwitchActiveAgent();
+            DrainControllerFrame(pressed);
+            return;
+        }
+
         if (!_settings.BridgeEnabled)
         {
             PresentBridgeDisabledControllerAttempt(state);
@@ -818,8 +837,8 @@ public partial class MainWindow : Window
             ShowFeedback(
                 actionTitle,
                 RadialText(
-                    "已接收，等待 Codex 响应…",
-                    "Received. Waiting for Codex…"));
+                    $"已接收，等待 {_activeAgent.DisplayName} 响应…",
+                    $"Received. Waiting for {_activeAgent.DisplayName}…"));
             Pulse(strength: 0.18);
             _ = ExecuteRadialActionAfterAcknowledgementAsync(update.Action);
         }
@@ -1362,13 +1381,14 @@ public partial class MainWindow : Window
                 isLayerEngaged: true,
                 isLearningCueReady: _radialLayers.IsEngaged,
                 subtitle: RadialText(
-                    "虚拟 Codex Micro 小键盘 · 按对应键切换",
-                    "Virtual Codex Micro keypad · Press a mapped key to switch"),
+                    "最近六个会话 · 按对应键切换",
+                    "Six recent sessions · Press a mapped key to switch"),
                 interactionPhase: _radialLayers.InteractionPhase,
                 agentKeypad: BuildAgentKeypadPresentation()),
             RadialMenuLayerKind.Command => new RadialMenuState(
                 layer,
-                RadialText("Codex 命令", "Codex commands"),
+                $"{_activeAgent.DisplayName} · " +
+                    RadialText("命令", "commands"),
                 Glyph(LogicalInput.RightShoulder),
                 BuildCommandRadialItems(),
                 mode,
@@ -1557,8 +1577,8 @@ public partial class MainWindow : Window
     {
         return new AgentKeypadPresentation(
             RadialText(
-                "虚拟 Codex Micro 小键盘 · 按对应键切换",
-                "Virtual Codex Micro keypad · Press a mapped key to switch"),
+                "最近六个会话 · 按对应键切换",
+                "Six recent sessions · Press a mapped key to switch"),
             Glyph(LogicalInput.FaceEast),
             RadialText("取消", "Cancel"),
             RadialText(
@@ -2855,11 +2875,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private ComposerDialResult SendMicroEncoderSteps(int steps) =>
-        MicroEncoderResult(_microInput.SendEncoderSteps(steps));
+    private ComposerDialResult SendActiveEncoderSteps(int steps) =>
+        IsDeepSeekActive
+            ? _composerAutomation.DialStep(steps, _settings)
+            : MicroEncoderResult(_microInput.SendEncoderSteps(steps));
 
-    private ComposerDialResult SendMicroEncoderPress() =>
-        MicroEncoderResult(_microInput.SendEncoderPress());
+    private ComposerDialResult SendActiveEncoderPress() =>
+        IsDeepSeekActive
+            ? _composerAutomation.DialPress(_settings)
+            : MicroEncoderResult(_microInput.SendEncoderPress());
 
     private ComposerDialResult MicroEncoderResult(
         MicroReportSendResult delivery)
@@ -2908,12 +2932,11 @@ public partial class MainWindow : Window
                 var generation =
                     Volatile.Read(ref _virtualDialGeneration);
                 var sendStarted = Stopwatch.GetTimestamp();
-                // The physical right stick is the Codex Micro encoder. Keep
-                // this route HID-only: an unavailable Broker must be visible
-                // as a failure instead of silently reviving the legacy UIA
-                // dial path after a Codex update or during Broker startup.
+                // Codex remains HID-only. DeepSeek uses its declared Harness
+                // composer actions; neither route can fall through to the
+                // other Agent's keyboard or UI automation channel.
                 var result = await RunVirtualDialAutomationAsync(
-                        () => SendMicroEncoderSteps(
+                        () => SendActiveEncoderSteps(
                             intent.Value.Direction))
                     .ConfigureAwait(true);
                 if (
@@ -2929,7 +2952,7 @@ public partial class MainWindow : Window
                     !_virtualDialCancelRequested)
                 {
                     PresentVirtualDialResult(result);
-                    if (result.Succeeded)
+                    if (result.Succeeded && !IsDeepSeekActive)
                     {
                         QueueMicroReadback();
                     }
@@ -3085,7 +3108,7 @@ public partial class MainWindow : Window
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
-                SendMicroEncoderPress)
+                SendActiveEncoderPress)
             .ConfigureAwait(true);
         if (
             generation !=
@@ -3125,13 +3148,26 @@ public partial class MainWindow : Window
         PresentVirtualDialResult(result);
         if (result.Succeeded)
         {
-            _virtualDialSessionActive = true;
-            QueueMicroReadback();
+            _virtualDialSessionActive =
+                !IsDeepSeekActive || result.IsMenuOpen;
+            if (!IsDeepSeekActive)
+            {
+                QueueMicroReadback();
+            }
+            else if (!result.IsMenuOpen)
+            {
+                BeginVirtualDialReleaseDrain();
+            }
         }
     }
 
     private void QueueMicroReadback()
     {
+        if (IsDeepSeekActive)
+        {
+            return;
+        }
+
         if (_microReadbackRequests.Request())
         {
             StartMicroReadbackPump();
@@ -3253,7 +3289,7 @@ public partial class MainWindow : Window
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
         var result = await RunVirtualDialAutomationAsync(
-                SendMicroEncoderPress)
+                SendActiveEncoderPress)
             .ConfigureAwait(true);
         if (
             generation !=
@@ -4285,8 +4321,10 @@ public partial class MainWindow : Window
             bool closeDialBeforeFallback)
     {
         var microSession =
+            !IsDeepSeekActive &&
             requiredChannel == ComposerAutomationChannel.MicroHid;
         var mayStartMicroSession =
+            !IsDeepSeekActive &&
             requiredChannel == ComposerAutomationChannel.Unknown &&
             _settings.BridgeEnabled &&
             (
@@ -4813,6 +4851,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        var refreshAgentId = _activeAgent.Id;
+        var workspaceReader = _workspaceReader;
+        var sidebarAutomation = _sidebarAutomation;
+        var retryForAgentSwitch = false;
         try
         {
             var selectedId =
@@ -4820,12 +4862,18 @@ public partial class MainWindow : Window
                 DevicePage.SelectedEntry is { } selected
                     ? selected.Id
                     : null;
-            var snapshotTask = Task.Run(_workspaceReader.LoadSnapshot);
+            var snapshotTask = Task.Run(workspaceReader.LoadSnapshot);
             var currentTitleTask = selectedId is null
-                ? Task.Run(_sidebarAutomation.TryGetCurrentThreadTitle)
+                ? Task.Run(sidebarAutomation.TryGetCurrentThreadTitle)
                 : Task.FromResult<string?>(null);
             await Task.WhenAll(snapshotTask, currentTitleTask)
                 .ConfigureAwait(true);
+            if (_activeAgent.Id != refreshAgentId)
+            {
+                retryForAgentSwitch = true;
+                return;
+            }
+
             var snapshot = snapshotTask.Result;
             var currentThread = SidebarNavigationState.FindCurrentThread(
                 snapshot,
@@ -4881,6 +4929,13 @@ public partial class MainWindow : Window
         finally
         {
             _dataRefreshGate.Release();
+            if (retryForAgentSwitch)
+            {
+                _ = Dispatcher.BeginInvoke(new Action(() =>
+                    RefreshCodexData(
+                        preserveSelection: false,
+                        forceNavigationRebuild: true)));
+            }
         }
     }
 
@@ -5477,14 +5532,6 @@ public partial class MainWindow : Window
             null,
             (_, _) => RestoreWindow());
         menu.Items.Add(
-            strings.TrayOpenMicroSurface,
-            null,
-            (_, _) => _ = RunMicroKeypadActionAsync(restart: false));
-        menu.Items.Add(
-            strings.TrayRestartMicroSurface,
-            null,
-            (_, _) => _ = RunMicroKeypadActionAsync(restart: true));
-        menu.Items.Add(
             strings.TrayOpenAgent(_activeAgent.DisplayName),
             null,
             (_, _) => WakeCodex());
@@ -5550,74 +5597,6 @@ public partial class MainWindow : Window
     {
         ShowPage(SettingsPage);
         SetSelectedNav(SettingsNavButton);
-    }
-
-    private async void MicroKeypadButton_Click(
-        object sender,
-        RoutedEventArgs e) =>
-        await RunMicroKeypadActionAsync(restart: false);
-
-    private async void MicroKeypadShowMenuItem_Click(
-        object sender,
-        RoutedEventArgs e) =>
-        await RunMicroKeypadActionAsync(restart: false);
-
-    private async void MicroKeypadRestartMenuItem_Click(
-        object sender,
-        RoutedEventArgs e) =>
-        await RunMicroKeypadActionAsync(restart: true);
-
-    private async Task RunMicroKeypadActionAsync(bool restart)
-    {
-        MicroKeypadButton.IsEnabled = false;
-        try
-        {
-            var result = restart
-                ? await _microKeypad.RestartAsync(
-                    _microKeypadCancellation.Token)
-                : await _microKeypad.ShowAsync(
-                    _microKeypadCancellation.Token);
-            var strings = _localization.Strings;
-            var message = strings.Get(result.Outcome switch
-            {
-                MicroKeypadActionOutcome.Shown =>
-                    StringKeys.MessageMicroKeypadShown,
-                MicroKeypadActionOutcome.Started =>
-                    StringKeys.MessageMicroKeypadStarted,
-                MicroKeypadActionOutcome.Restarted =>
-                    StringKeys.MessageMicroKeypadRestarted,
-                MicroKeypadActionOutcome.Busy =>
-                    StringKeys.MessageMicroKeypadBusy,
-                MicroKeypadActionOutcome.DownloadOpened =>
-                    StringKeys.MessageMicroKeypadDownloadOpened,
-                _ => StringKeys.MessageMicroKeypadFailed,
-            });
-            if (result.Outcome == MicroKeypadActionOutcome.Failed &&
-                !string.IsNullOrWhiteSpace(result.Detail))
-            {
-                message = $"{message} {result.Detail}";
-            }
-
-            AddEvent(message);
-            FooterStatusText.Text = message;
-            ShowFeedback(
-                restart
-                    ? strings.TrayRestartMicroSurface
-                    : strings.TrayOpenMicroSurface,
-                message);
-        }
-        catch (OperationCanceledException)
-        {
-            // Application shutdown cancels readiness polling.
-        }
-        finally
-        {
-            if (!Dispatcher.HasShutdownStarted &&
-                !Dispatcher.HasShutdownFinished)
-            {
-                MicroKeypadButton.IsEnabled = true;
-            }
-        }
     }
 
     private void TitleBar_MouseLeftButtonDown(
@@ -5861,10 +5840,86 @@ public partial class MainWindow : Window
         _ = RefreshFullResetCreditsAsync();
     }
 
+    private bool IsDeepSeekActive =>
+        _activeAgent.Id == DeepSeekAgentTarget.DeepSeekId;
+
+    private void SwitchActiveAgent()
+    {
+        CancelBaseCancelHold(showFeedback: false);
+        CancelConversationBoundaryHold();
+        ResetRadialLayer(clearSuppression: true);
+        ResetPushToTalk(stopDictation: true);
+        ResetVirtualDialInput(closeMenu: true);
+        _threadNavigation.ClearUndo();
+        if (!_agentSelection.SelectNext())
+        {
+            ShowFeedback(
+                RadialText("切换 Agent", "Switch Agent"),
+                RadialText(
+                    "没有其他可控制的 Agent。",
+                    "No other controllable Agent is registered."));
+            return;
+        }
+
+        _activeAgent = _agentSelection.Active;
+        _workspaceReader = _activeAgent.WorkspaceOrEmpty();
+        _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
+        _composerAutomation = _activeAgent.ComposerOrUnavailable();
+        _agentShortcuts = _activeAgent.Shortcuts;
+        _keybindingProvisioner = _activeAgent.Keybindings;
+        _settings.ActiveAgentId = _activeAgent.Id.Value;
+        _settingsService.Save(_settings);
+
+        _controllerSession.Lock();
+        _controllerInteraction.RequireNeutralRouting();
+        _foregroundContinuityGate.Reset();
+        _snapshot = new();
+        _sidebarEntries.Clear();
+        _sidebarNavigationDirectory.Root.Clear();
+        _rootCursorIds.Clear();
+        _projectTaskCursorIds.Clear();
+        _selectedProjectPath = null;
+        _projectTasksPinnedOnly = false;
+        _sidebarReturnFrame = null;
+        _projectDisclosureLease = null;
+        _scope = IsDeepSeekActive
+            ? SidebarScope.ProjectlessTasks
+            : SidebarScope.Projects;
+
+        ConfigureCodexKeybindings();
+        InitializeComposerControls();
+        UpdateLocalizedUi();
+        RebuildTrayMenu();
+        _feedbackPresenter.Refresh();
+        RefreshCodexData(
+            preserveSelection: false,
+            forceNavigationRebuild: true);
+        _ = RefreshFullResetCreditsAsync();
+        UpdateCodexStatus();
+
+        var title = RadialText("控制目标已切换", "Control target switched");
+        var message = RadialText(
+            $"当前控制：{_activeAgent.DisplayName}。按 {Glyph(LogicalInput.Menu)} 调起并解锁。",
+            $"Now controlling {_activeAgent.DisplayName}. Press {Glyph(LogicalInput.Menu)} to open and unlock it.");
+        AddEvent($"{title} · {_activeAgent.DisplayName}");
+        FooterStatusText.Text = message;
+        ShowFeedback(title, message);
+        Pulse(strength: 0.24);
+    }
+
     private async Task RefreshFullResetCreditsAsync()
     {
         _rateLimitResetCancellation?.Cancel();
         _rateLimitResetCancellation?.Dispose();
+        if (IsDeepSeekActive)
+        {
+            _rateLimitResetCancellation = null;
+            _devicePageViewModel.UpdateFullResetExpiration(
+                string.Empty,
+                string.Empty);
+            return;
+        }
+
         _rateLimitResetCancellation = new CancellationTokenSource();
         var cancellation = _rateLimitResetCancellation;
         var credits = await _rateLimitResetService
@@ -5942,7 +5997,6 @@ public partial class MainWindow : Window
         _rateLimitResetCancellation?.Cancel();
         _rateLimitResetCancellation?.Dispose();
         _rateLimitResetCancellation = null;
-        _microKeypadCancellation.Cancel();
         if (_configSaveTimer.IsEnabled)
         {
             PersistConfigSettings();

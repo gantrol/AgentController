@@ -483,7 +483,8 @@ export function apply(ctx: ClientContext): void {
         currentSessionId: state.current ?? null,
         visible: document.visibilityState === 'visible',
         focused: document.hasFocus(),
-        surface: new URL(window.location.href).searchParams.get('codexMicroSurface') === '1'
+        surface: new URL(window.location.href).searchParams.get('agentControllerSurface') === '1'
+          || new URL(window.location.href).searchParams.get('codexMicroSurface') === '1'
           ? 'dedicated'
           : 'tab',
         navigationDepth: composerNavigator.navigationDepth,

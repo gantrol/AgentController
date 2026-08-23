@@ -279,10 +279,6 @@ public static class StringKeys
 
     public const string TrayOpenApplication =
         "tray.open-application";
-    public const string TrayOpenMicroSurface =
-        "tray.open-micro-surface";
-    public const string TrayRestartMicroSurface =
-        "tray.restart-micro-surface";
     public const string TrayOpenAgent = "tray.open-agent";
     public const string TrayExit = "tray.exit";
 
@@ -514,18 +510,6 @@ public static class StringKeys
         "message.agent-shortcuts-opened";
     public const string MessageControllerSoftwareOpenFailed =
         "message.controller-software-open-failed";
-    public const string MessageMicroKeypadShown =
-        "message.micro-keypad-shown";
-    public const string MessageMicroKeypadStarted =
-        "message.micro-keypad-started";
-    public const string MessageMicroKeypadRestarted =
-        "message.micro-keypad-restarted";
-    public const string MessageMicroKeypadBusy =
-        "message.micro-keypad-busy";
-    public const string MessageMicroKeypadDownloadOpened =
-        "message.micro-keypad-download-opened";
-    public const string MessageMicroKeypadFailed =
-        "message.micro-keypad-failed";
     public const string MessageWindowHiddenBackground =
         "message.window-hidden-background";
 
@@ -713,8 +697,6 @@ public static class StringKeys
         StatusFullResetSummaryOne,
         StatusFullResetSummaryMany,
         TrayOpenApplication,
-        TrayOpenMicroSurface,
-        TrayRestartMicroSurface,
         TrayOpenAgent,
         TrayExit,
         FeedbackStatusUpdated,
@@ -830,12 +812,6 @@ public static class StringKeys
         MessageAgentDataRefreshed,
         MessageAgentShortcutsOpened,
         MessageControllerSoftwareOpenFailed,
-        MessageMicroKeypadShown,
-        MessageMicroKeypadStarted,
-        MessageMicroKeypadRestarted,
-        MessageMicroKeypadBusy,
-        MessageMicroKeypadDownloadOpened,
-        MessageMicroKeypadFailed,
         MessageWindowHiddenBackground,
         ValueScopePinnedTasks,
         ValueScopePinnedProjects,

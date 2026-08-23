@@ -11,7 +11,7 @@
     <RootNamespace>CodexController</RootNamespace>
     <AssemblyTitle>Agent Controller</AssemblyTitle>
     <Product>Agent Controller</Product>
-    <Description>Windows desktop gamepad controller for AI agents; the current integration targets Codex.</Description>
+    <Description>Windows desktop gamepad controller for Codex and DeepSeek Harness.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\AgentController.ico</ApplicationIcon>
     <Version>1.2.0</Version>
