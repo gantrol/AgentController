@@ -88,6 +88,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="CodexMicro.Desktop.Tests" />
+    <InternalsVisibleTo Include="CodexMicro.AssetExporter" />
   </ItemGroup>
 
 </Project>

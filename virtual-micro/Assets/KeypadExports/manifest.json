@@ -1,0 +1,96 @@
+{
+  "generatedFrom": "virtual-micro/src/CodexMicro.Desktop/MainWindow.xaml",
+  "background": "transparent",
+  "width": 590,
+  "height": 610,
+  "format": "png",
+  "composition": {
+    "id": "six-color",
+    "displayName": "\u516D\u8272\u540C\u5C4F",
+    "file": "codex-micro-keypad-six-color.png",
+    "agentKeys": [
+      {
+        "slotId": 0,
+        "Id": "thinking",
+        "DisplayName": "\u8FD0\u884C\u4E2D",
+        "color": "#304FFE"
+      },
+      {
+        "slotId": 1,
+        "Id": "completed",
+        "DisplayName": "\u5DF2\u5B8C\u6210",
+        "color": "#00FF4C"
+      },
+      {
+        "slotId": 2,
+        "Id": "idle",
+        "DisplayName": "\u7A7A\u95F2",
+        "color": "#FFFFFF"
+      },
+      {
+        "slotId": 3,
+        "Id": "waiting",
+        "DisplayName": "\u7B49\u5F85\u8F93\u5165",
+        "color": "#FF6D00"
+      },
+      {
+        "slotId": 4,
+        "Id": "error",
+        "DisplayName": "\u9519\u8BEF",
+        "color": "#FF0033"
+      },
+      {
+        "slotId": 5,
+        "Id": "off",
+        "DisplayName": "\u672A\u5206\u914D",
+        "color": "off"
+      }
+    ],
+    "quota": "100%",
+    "model": "SOL"
+  },
+  "palettes": [
+    {
+      "id": "pearl",
+      "displayName": "\u539F\u767D",
+      "accent": "#304FFE",
+      "secondary": "#00FF4C",
+      "file": "codex-micro-keypad-pearl.png"
+    },
+    {
+      "id": "mint",
+      "displayName": "\u6C34\u7EFF\u8272",
+      "accent": "#28B986",
+      "secondary": "#75E5BA",
+      "file": "codex-micro-keypad-mint.png"
+    },
+    {
+      "id": "blue",
+      "displayName": "\u84DD\u8272",
+      "accent": "#4D6FE8",
+      "secondary": "#87A4FF",
+      "file": "codex-micro-keypad-blue.png"
+    },
+    {
+      "id": "violet",
+      "displayName": "\u7D2B\u8272",
+      "accent": "#7B5DCC",
+      "secondary": "#AF91F0",
+      "file": "codex-micro-keypad-violet.png"
+    },
+    {
+      "id": "amber",
+      "displayName": "\u7425\u73C0\u8272",
+      "accent": "#D0822E",
+      "secondary": "#F2BC68",
+      "file": "codex-micro-keypad-amber.png"
+    },
+    {
+      "id": "rose",
+      "displayName": "\u73AB\u7EA2\u8272",
+      "accent": "#C85878",
+      "secondary": "#EC93AC",
+      "file": "codex-micro-keypad-rose.png"
+    }
+  ]
+}
