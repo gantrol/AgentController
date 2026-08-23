@@ -1,0 +1,25 @@
+[package]
+name = "deepseek-keypad-gpui"
+version = "0.1.0"
+edition = "2024"
+description = "DeepSeek-only native control surface built with GPUI"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+gpui = "=0.2.2"
+raw-window-handle = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ureq = { version = "3.4", default-features = false, features = ["json"] }
+url = "2.5"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+lto = "thin"
+strip = true
