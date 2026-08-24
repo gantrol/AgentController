@@ -87,9 +87,17 @@ public sealed class SidebarNavigationState
                 SelectionChanged: previousIndex != -1);
         }
 
-        var selectedIndex = previousKey is not null
-            ? FindByKey(_frozenEntries, previousKey.Value)
-            : -1;
+        // An explicit rebuild is also an explicit re-anchor operation. This
+        // is used after a Harness-native new/fork navigation so the confirmed
+        // current session wins over the controller's formerly frozen cursor.
+        var selectedIndex =
+            forceRebuild && !string.IsNullOrWhiteSpace(preferredId)
+                ? FindById(_frozenEntries, preferredId)
+                : -1;
+        if (selectedIndex < 0 && previousKey is not null)
+        {
+            selectedIndex = FindByKey(_frozenEntries, previousKey.Value);
+        }
         if (selectedIndex < 0 && !string.IsNullOrWhiteSpace(preferredId))
         {
             selectedIndex = FindById(_frozenEntries, preferredId);
@@ -223,9 +231,28 @@ public sealed class SidebarNavigationState
 
     public static CodexThread? FindCurrentThread(
         CodexSnapshot snapshot,
+        string? currentTitle) =>
+        FindCurrentThread(snapshot, currentThreadId: null, currentTitle);
+
+    public static CodexThread? FindCurrentThread(
+        CodexSnapshot snapshot,
+        string? currentThreadId,
         string? currentTitle)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        if (!string.IsNullOrWhiteSpace(currentThreadId))
+        {
+            var idMatch = snapshot.Threads.FirstOrDefault(thread =>
+                string.Equals(
+                    thread.Id,
+                    currentThreadId,
+                    StringComparison.Ordinal));
+            if (idMatch is not null)
+            {
+                return idMatch;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(currentTitle))
         {
             return null;

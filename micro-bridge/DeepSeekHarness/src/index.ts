@@ -82,6 +82,10 @@ const MAX_REQUEST_BYTES = 64 * 1_024
 const REQUEST_TIMEOUT_MS = 35_000
 const FOCUS_ACK_TIMEOUT_MS = 650
 const ACTION_ACK_TIMEOUT_MS = 2_500
+// The controller's loopback request is bounded at 5s. A slow session create
+// may consume 3.5s in the browser plus 50ms focus settle and one 300ms report
+// timeout, leaving 550ms here and another 600ms for the host response.
+const NEW_SESSION_ACTION_ACK_TIMEOUT_MS = 4_400
 const VOICE_REQUEST_POLL_MS = 20_000
 const VOICE_BUTTON_RESULT_MS = 35_000
 const VOICE_CONNECTED_BUTTON_RESULT_MS = 240_000
@@ -159,7 +163,7 @@ function defaultPipeEndpoint(platform: NodeJS.Platform, webPort: number): string
   return join(tmpdir(), `${pipeName}-${String(process.pid)}.sock`)
 }
 
-/** Mutable process/OS seams used only by deterministic adapter tests. */
+/** Mutable process/OS seams and timing policy used by deterministic adapter tests. */
 export const internals: {
   pipeEndpoint: (webPort: number) => string
   platform: NodeJS.Platform
@@ -169,6 +173,7 @@ export const internals: {
   windowsAppBrowser: () => string | undefined
   launchWindowsAppBrowser: (executable: string, url: string) => Promise<number>
   openWebUi: (url: string, signal: AbortSignal) => Promise<number | undefined>
+  actionAckTimeoutMs: (actionId: MicroActionId) => number
 } = {
   pipeEndpoint: webPort => defaultPipeEndpoint(process.platform, webPort),
   platform: process.platform,
@@ -176,6 +181,9 @@ export const internals: {
   now: Date.now,
   isWsl: () => process.env.WSL_INTEROP !== undefined
     || process.env.WSL_DISTRO_NAME !== undefined,
+  actionAckTimeoutMs: actionId => actionId === 'session/new'
+    ? NEW_SESSION_ACTION_ACK_TIMEOUT_MS
+    : ACTION_ACK_TIMEOUT_MS,
   windowsAppBrowser() {
     const roots = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles]
       .filter((value): value is string => value !== undefined && value.trim() !== '')
@@ -924,7 +932,11 @@ class MicroBridge {
           actionId: request.actionId,
           ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         }
-        const delivery = await this.deliver(frame, ACTION_ACK_TIMEOUT_MS, 'dedicated')
+        const delivery = await this.deliver(
+          frame,
+          internals.actionAckTimeoutMs(frame.actionId),
+          'dedicated',
+        )
         if (!delivery.delivered) {
           this.pendingDedicatedFrames.push(frame)
           const processId = await this.scheduleOpenOnce()
@@ -1045,8 +1057,13 @@ class MicroBridge {
     )
     const sessions: MicroSessionSummary[] = listed.result.value.items
       .filter(row => (!row.blank || row.sessionId === currentSessionId)
-        && row.parentSessionId === undefined)
-      .sort((left, right) => right.updatedAt - left.updatedAt)
+        && (row.parentSessionId === undefined || row.sessionId === currentSessionId))
+      .sort((left, right) => {
+        const leftCurrent = left.sessionId === currentSessionId
+        const rightCurrent = right.sessionId === currentSessionId
+        if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1
+        return right.updatedAt - left.updatedAt
+      })
       .slice(0, MAX_VISIBLE_SESSIONS)
       .map(row => {
         const status = resolveSessionStatus(row, browserSessionStates.get(row.sessionId))

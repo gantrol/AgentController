@@ -322,12 +322,17 @@ public sealed class DeepSeekHarnessClient
             currentModel = ReadString(components, "currentModel");
         }
 
+        var currentSessionId = ReadString(state, "currentSessionId");
         return new(
             sessions
-                .OrderByDescending(item => item.UpdatedAt)
+                .OrderByDescending(item => string.Equals(
+                    item.Id,
+                    currentSessionId,
+                    StringComparison.Ordinal))
+                .ThenByDescending(item => item.UpdatedAt)
                 .Take(6)
                 .ToArray(),
-            ReadString(state, "currentSessionId"),
+            currentSessionId,
             actions,
             state.TryGetProperty("navigationDepth", out var depth) &&
             depth.TryGetInt32(out var navigationDepth)

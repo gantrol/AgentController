@@ -16,6 +16,10 @@ public sealed class DeepSeekAgentTarget : IAgentTarget
     private readonly object _stateGate = new();
     private DeepSeekHarnessState? _lastState;
     private string? _previousSessionId;
+    private long _nextStateReadSequence;
+    private long _lastAppliedStateReadSequence;
+    private long _stateBarrierVersion;
+    private long _activationOperationVersion;
 
     public DeepSeekAgentTarget(DeepSeekHarnessClient client)
     {
@@ -70,21 +74,50 @@ public sealed class DeepSeekAgentTarget : IAgentTarget
     internal async Task<DeepSeekHarnessResponse> RefreshStateAsync(
         CancellationToken cancellationToken = default)
     {
-        var response = await Client.ReadStateAsync(cancellationToken)
-            .ConfigureAwait(false);
-        if (response.State is not null)
+        long readSequence;
+        long barrierVersion;
+        lock (_stateGate)
         {
-            RememberState(response.State);
+            readSequence = ++_nextStateReadSequence;
+            barrierVersion = _stateBarrierVersion;
         }
 
-        return response;
+        var response = await Client.ReadStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (response.State is null)
+        {
+            return response;
+        }
+
+        lock (_stateGate)
+        {
+            if (barrierVersion == _stateBarrierVersion &&
+                readSequence > _lastAppliedStateReadSequence)
+            {
+                _lastAppliedStateReadSequence = readSequence;
+                _lastState = response.State;
+            }
+
+            // A superseded caller must not consume its stale response even if
+            // it arrived after the newer read, activation, or invalidation.
+            return response with { State = _lastState };
+        }
     }
 
     internal async Task<DeepSeekHarnessResponse> ActivateSessionAsync(
         string sessionId,
         CancellationToken cancellationToken = default)
     {
-        var before = LastState?.CurrentSessionId;
+        string? before;
+        long activationVersion;
+        lock (_stateGate)
+        {
+            before = _lastState?.CurrentSessionId;
+            activationVersion = ++_activationOperationVersion;
+            // Block reads that began before this navigation request.
+            _stateBarrierVersion++;
+        }
+
         var response = await Client
             .ActivateSessionAsync(sessionId, cancellationToken)
             .ConfigureAwait(false);
@@ -92,6 +125,13 @@ public sealed class DeepSeekAgentTarget : IAgentTarget
         {
             lock (_stateGate)
             {
+                if (activationVersion != _activationOperationVersion)
+                {
+                    return response;
+                }
+
+                // Also block reads that began while activation was in flight.
+                _stateBarrierVersion++;
                 if (!string.IsNullOrWhiteSpace(before) &&
                     !string.Equals(
                         before,
@@ -137,11 +177,19 @@ public sealed class DeepSeekAgentTarget : IAgentTarget
 
     internal string? CurrentSessionId => LastState?.CurrentSessionId;
 
-    private void RememberState(DeepSeekHarnessState state)
+    internal void InvalidateCurrentSessionCache()
     {
         lock (_stateGate)
         {
-            _lastState = state;
+            _stateBarrierVersion++;
+            _activationOperationVersion++;
+            if (_lastState is not null)
+            {
+                _lastState = _lastState with
+                {
+                    CurrentSessionId = null,
+                };
+            }
         }
     }
 
@@ -504,7 +552,10 @@ public sealed class DeepSeekAgentTarget : IAgentTarget
         public ComposerDialResult DialStep(
             int delta,
             AppSettings settings) =>
-            DialAction(delta < 0
+            // DialStep receives raw Micro encoder steps. Positive is the
+            // clockwise/previous detent (physical up or left); negative is
+            // counter-clockwise/next (physical down or right).
+            DialAction(delta > 0
                 ? "composer/select-previous"
                 : "composer/select-next");
 
@@ -514,8 +565,8 @@ public sealed class DeepSeekAgentTarget : IAgentTarget
             DialStep(
                 navigation is ComposerDialNavigation.Left or
                     ComposerDialNavigation.Up
-                    ? -1
-                    : 1,
+                    ? 1
+                    : -1,
                 settings);
 
         public ComposerDialResult DialPress(AppSettings settings) =>

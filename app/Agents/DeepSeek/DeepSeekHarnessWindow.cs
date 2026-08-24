@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using CodexController.Native;
 
 namespace CodexController.Agents.DeepSeek;
 
@@ -12,14 +13,13 @@ namespace CodexController.Agents.DeepSeek;
 /// </summary>
 internal static class DeepSeekHarnessWindow
 {
-    private const int SwRestore = 9;
-
     internal static bool IsForeground()
     {
         var foreground = GetForegroundWindow();
-        return foreground != nint.Zero &&
-            FindCandidates().Any(candidate =>
-                candidate.Handle == foreground);
+        return TryGetCandidate(
+            foreground,
+            readArea: false,
+            out _);
     }
 
     internal static bool TryActivate(int? preferredProcessId = null)
@@ -37,28 +37,9 @@ internal static class DeepSeekHarnessWindow
             return false;
         }
 
-        if (GetForegroundWindow() == candidate.Handle &&
-            !IsIconic(candidate.Handle))
-        {
-            return true;
-        }
-
-        _ = AllowSetForegroundWindow((uint)candidate.ProcessId);
-        if (IsIconic(candidate.Handle))
-        {
-            _ = ShowWindow(candidate.Handle, SwRestore);
-        }
-
-        _ = BringWindowToTop(candidate.Handle);
-        _ = SetForegroundWindow(candidate.Handle);
-        if (GetForegroundWindow() != candidate.Handle)
-        {
-            SwitchToThisWindow(candidate.Handle, false);
-        }
-
-        return GetForegroundWindow() == candidate.Handle &&
-            IsWindowVisible(candidate.Handle) &&
-            !IsIconic(candidate.Handle);
+        return ForegroundWindowActivator.TryActivate(
+            candidate.Handle,
+            checked((uint)candidate.ProcessId));
     }
 
     internal static int? TryLaunch(Uri controlEndpoint)
@@ -110,38 +91,60 @@ internal static class DeepSeekHarnessWindow
         _ = EnumWindows((handle, state) =>
         {
             _ = state;
-            if (!IsWindowVisible(handle))
+            if (TryGetCandidate(
+                    handle,
+                    readArea: true,
+                    out var candidate))
             {
-                return true;
+                candidates.Add(candidate);
             }
 
-            _ = GetWindowThreadProcessId(handle, out var processId);
-            if (!IsSupportedBrowser(processId))
-            {
-                return true;
-            }
+            return true;
+        }, nint.Zero);
+        return candidates;
+    }
 
-            var title = new StringBuilder(
-                Math.Max(GetWindowTextLength(handle) + 1, 2));
-            _ = GetWindowText(handle, title, title.Capacity);
-            var text = title.ToString();
-            if (!IsDedicatedTitle(text) ||
-                !text.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+    private static bool TryGetCandidate(
+        nint handle,
+        bool readArea,
+        out WindowCandidate candidate)
+    {
+        candidate = default;
+        if (handle == nint.Zero || !IsWindowVisible(handle))
+        {
+            return false;
+        }
 
+        _ = GetWindowThreadProcessId(handle, out var processId);
+        if (!IsSupportedBrowser(processId))
+        {
+            return false;
+        }
+
+        var title = new StringBuilder(
+            Math.Max(GetWindowTextLength(handle) + 1, 2));
+        _ = GetWindowText(handle, title, title.Capacity);
+        var text = title.ToString();
+        if (!IsDedicatedTitle(text) ||
+            !text.Contains("DeepSeek", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var area = 0L;
+        if (readArea)
+        {
             _ = GetWindowRect(handle, out var rectangle);
-            var area = Math.Max(
+            area = Math.Max(
                     0L,
                     (long)rectangle.Right - rectangle.Left) *
                 Math.Max(
                     0L,
                     (long)rectangle.Bottom - rectangle.Top);
-            candidates.Add(new(handle, checked((int)processId), area));
-            return true;
-        }, nint.Zero);
-        return candidates;
+        }
+
+        candidate = new(handle, checked((int)processId), area);
+        return true;
     }
 
     internal static bool IsDedicatedTitle(string title) =>
@@ -244,30 +247,5 @@ internal static class DeepSeekHarnessWindow
         out WindowRectangle rectangle);
 
     [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsIconic(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindow(nint windowHandle, int command);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool BringWindowToTop(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(nint windowHandle);
-
-    [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern void SwitchToThisWindow(
-        nint windowHandle,
-        [MarshalAs(UnmanagedType.Bool)] bool altTab);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AllowSetForegroundWindow(uint processId);
 }

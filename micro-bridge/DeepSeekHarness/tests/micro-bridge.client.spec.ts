@@ -41,6 +41,7 @@ interface FakeSessionSummary {
   parentSessionId?: string
   pendingInteraction?: 'approval' | 'plan-review' | 'question'
   completed: boolean
+  blank?: boolean
 }
 
 class FakeSessionList {
@@ -197,6 +198,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   context?.dispose()
   context = undefined
   window.sessionStorage.clear()
@@ -485,6 +487,19 @@ describe('external DeepSeek Harness browser bundle', () => {
   it('uses domain actions without DOM simulation', async () => {
     vi.spyOn(window, 'focus').mockImplementation(() => {})
     const source = mount()
+    startSession.mockImplementation(() => {
+      sessionList.current = 'new-session'
+      sessionList.items = [
+        {
+          sessionId: 'new-session',
+          running: false,
+          completed: false,
+          blank: true,
+        },
+        ...sessionList.items,
+      ]
+      sessionList.publish()
+    })
     const bridge = context?.entries.find(entry =>
       entry.id === 'agentcontroller-micro-view-bridge')
     const bindings = bridge?.inject?.().bindings as Map<string, {
@@ -569,6 +584,272 @@ describe('external DeepSeek Harness browser bundle', () => {
         message: 'Restarting the keypad-owned voice service.',
       })
     })
+  })
+
+  it('coalesces repeated hung presence reports without starving a later action acknowledgement', async () => {
+    vi.useFakeTimers()
+    const requestOrder: Array<string | undefined> = []
+    const stalledSignals: Array<AbortSignal | null | undefined> = []
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe(MICRO_REPORT_ENDPOINT)
+      if (typeof init?.body !== 'string') throw new TypeError('expected JSON report body')
+      const body = JSON.parse(init.body) as Record<string, unknown>
+      const requestId = typeof body.requestId === 'string' ? body.requestId : undefined
+      requestOrder.push(requestId)
+      if (requestId === undefined) {
+        stalledSignals.push(init.signal)
+        // Deliberately ignore abort like a broken fetch implementation. The
+        // report timeout must release reportTail independently.
+        return new Promise<Response>(() => {})
+      }
+      reports.push(body)
+      return Promise.resolve(new Response(null, { status: 204 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const source = mount()
+    await Promise.resolve()
+    expect(fetchMock).toHaveBeenCalledOnce()
+
+    sessionList.publish()
+    sessionList.publish()
+    sessionList.publish()
+    await Promise.resolve()
+    expect(requestOrder).toEqual([undefined])
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'ack-after-hung-presence',
+      actionId: 'layout/toggle-sidebar',
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(requestOrder).toEqual([
+      undefined,
+      'ack-after-hung-presence',
+      undefined,
+    ])
+    expect(stalledSignals).toHaveLength(2)
+    expect(stalledSignals.every(signal => signal?.aborted === true)).toBe(true)
+    expect(reports).toContainEqual(expect.objectContaining({
+      requestId: 'ack-after-hung-presence',
+      success: true,
+    }))
+  })
+
+  it('reports the fork child as current in the fork acknowledgement', async () => {
+    const source = mount()
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'fork-current',
+      actionId: 'session/fork',
+      sessionId: 'session-1',
+    })
+
+    await vi.waitFor(() => {
+      expect(forkSession).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        increaseTitle: true,
+      })
+      expect(openSession).toHaveBeenCalledWith('fork-child')
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'fork-current',
+        currentSessionId: 'fork-child',
+        success: true,
+      }))
+    })
+  })
+
+  it('acknowledges a new session only after its async selection reaches the sessions store', async () => {
+    const source = mount()
+    startSession.mockImplementation(() => {
+      window.setTimeout(() => {
+        // Session creation can publish membership before startSession's
+        // internal continuation opens it. That intermediate snapshot must
+        // not satisfy the physical-key acknowledgement.
+        sessionList.items = [
+          ...sessionList.items,
+          {
+            sessionId: 'new-blank',
+            running: false,
+            completed: false,
+            blank: true,
+          },
+        ]
+        sessionList.publish()
+      }, 10)
+      window.setTimeout(() => {
+        sessionList.current = 'new-blank'
+        sessionList.publish()
+      }, 60)
+    })
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'new-session',
+      actionId: 'session/new',
+    })
+
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 35) })
+    expect(reports).not.toContainEqual(expect.objectContaining({
+      requestId: 'new-session',
+    }))
+
+    await vi.waitFor(() => {
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'new-session',
+        currentSessionId: 'new-blank',
+        success: true,
+      }))
+    })
+  })
+
+  it('allows a confirmed blank selection that arrives after the former 1.8s deadline', async () => {
+    vi.useFakeTimers()
+    startSession.mockImplementation(() => {
+      window.setTimeout(() => {
+        sessionList.current = 'slow-blank'
+        sessionList.items = [{
+          sessionId: 'slow-blank',
+          running: false,
+          completed: false,
+          blank: true,
+        }]
+        sessionList.publish()
+      }, 2_200)
+    })
+    const source = mount()
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'slow-new-session',
+      actionId: 'session/new',
+    })
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(reports).not.toContainEqual(expect.objectContaining({
+      requestId: 'slow-new-session',
+    }))
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(reports).toContainEqual(expect.objectContaining({
+      requestId: 'slow-new-session',
+      currentSessionId: 'slow-blank',
+      success: true,
+    }))
+  })
+
+  it('accepts session/new when the current session is already the reusable blank', async () => {
+    sessionList.current = 'existing-blank'
+    sessionList.items = [{
+      sessionId: 'existing-blank',
+      running: false,
+      completed: false,
+      blank: true,
+    }]
+    const source = mount()
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'reuse-blank',
+      actionId: 'session/new',
+    })
+
+    await vi.waitFor(() => {
+      expect(startSession).toHaveBeenCalledOnce()
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'reuse-blank',
+        currentSessionId: 'existing-blank',
+        success: true,
+      }))
+    })
+  })
+
+  it('accepts session/new when no workspace synchronously clears an empty selection', async () => {
+    sessionList.current = undefined
+    sessionList.items = []
+    startSession.mockImplementation(() => { sessionList.publish() })
+    const source = mount()
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'empty-workspace',
+      actionId: 'session/new',
+    })
+
+    await vi.waitFor(() => {
+      expect(startSession).toHaveBeenCalledOnce()
+      expect(reports).toContainEqual(expect.objectContaining({
+        requestId: 'empty-workspace',
+        currentSessionId: null,
+        success: true,
+      }))
+    })
+  })
+
+  it('does not accept session/new for an unrelated non-blank current-session change', async () => {
+    vi.useFakeTimers()
+    startSession.mockImplementation(() => {
+      window.setTimeout(() => {
+        sessionList.current = 'unrelated-session'
+        sessionList.items = [{
+          sessionId: 'unrelated-session',
+          running: false,
+          completed: false,
+          blank: false,
+        }]
+        sessionList.publish()
+      }, 10)
+    })
+    const source = mount()
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'unrelated-current',
+      actionId: 'session/new',
+    })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(reports).not.toContainEqual(expect.objectContaining({
+      requestId: 'unrelated-current',
+    }))
+
+    await vi.advanceTimersByTimeAsync(3_600)
+    expect(reports).toContainEqual(expect.objectContaining({
+      requestId: 'unrelated-current',
+      currentSessionId: 'unrelated-session',
+      success: false,
+      message: 'The new DeepSeek Harness session did not become active.',
+    }))
+    expect(reports).not.toContainEqual(expect.objectContaining({
+      requestId: 'unrelated-current',
+      success: true,
+    }))
+  })
+
+  it('rejects a new-session action when the sessions store never confirms selection', async () => {
+    vi.useFakeTimers()
+    const source = mount()
+
+    source.emit({
+      version: 1,
+      type: 'action/execute',
+      requestId: 'new-session-timeout',
+      actionId: 'session/new',
+    })
+    await vi.advanceTimersByTimeAsync(3_700)
+
+    expect(reports).toContainEqual(expect.objectContaining({
+      requestId: 'new-session-timeout',
+      currentSessionId: 'session-1',
+      success: false,
+      message: 'The new DeepSeek Harness session did not become active.',
+    }))
   })
 
   it('sends the DeepSeek voice button only to the keypad bridge endpoint', async () => {

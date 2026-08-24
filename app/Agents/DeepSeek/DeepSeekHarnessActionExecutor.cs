@@ -146,6 +146,23 @@ public sealed class DeepSeekHarnessActionExecutor : IActionExecutor
                 response.ErrorCode ?? "deepseek.harness.rejected");
         }
 
+        if (request.ActionId == CreateThreadActionContract.Id ||
+            request.ActionId == ForkThreadActionContract.Id)
+        {
+            // These Harness actions navigate only after their browser-side
+            // async session work settles. Refresh the target cache before a
+            // following controller action can reuse the previous session id.
+            var refresh = await _target.RefreshStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (refresh.State is null)
+            {
+                // The topology change already completed, so the old explicit
+                // id is now less safe than no id. Let the browser resolve its
+                // authoritative current session on the next action.
+                _target.InvalidateCurrentSessionCache();
+            }
+        }
+
         var completedAt = _clock();
         var verified = response.Status == "completed";
         return new ActionResult(

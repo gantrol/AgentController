@@ -130,6 +130,33 @@ public sealed class SidebarNavigationStateTests
     }
 
     [Fact]
+    public void Synchronize_ExplicitRebuildReanchorsToPreferredCurrentEntry()
+    {
+        var state = new SidebarNavigationState();
+        state.Synchronize(
+        [
+            Entry("old", SidebarScope.ProjectlessTasks, SidebarLayer.Tasks),
+            Entry("other", SidebarScope.ProjectlessTasks, SidebarLayer.Tasks),
+        ],
+        preferredId: "old");
+
+        state.Synchronize(
+        [
+            Entry("new-current", SidebarScope.ProjectlessTasks, SidebarLayer.Tasks),
+            Entry("old", SidebarScope.ProjectlessTasks, SidebarLayer.Tasks),
+            Entry("other", SidebarScope.ProjectlessTasks, SidebarLayer.Tasks),
+        ],
+        preferredId: "new-current",
+        forceRebuild: true);
+
+        Assert.Equal(
+            new[] { "new-current", "old", "other" },
+            state.FrozenEntries.Select(entry => entry.Id));
+        Assert.Equal("new-current", state.SelectedEntry(state.FrozenEntries)?.Id);
+        Assert.Equal(0, state.SelectedIndex);
+    }
+
+    [Fact]
     public void Synchronize_RemovedSelectionKeepsNearestStablePosition()
     {
         var state = new SidebarNavigationState();
@@ -218,6 +245,24 @@ public sealed class SidebarNavigationStateTests
         Assert.Null(SidebarNavigationState.FindCurrentThread(
             snapshot,
             "current task"));
+    }
+
+    [Fact]
+    public void FindCurrentThread_PrefersExactIdWhenTitlesAreDuplicated()
+    {
+        var duplicateOne = Thread("duplicate-one", "Repeated task");
+        var duplicateTwo = Thread("duplicate-two", "Repeated task");
+        var snapshot = new CodexSnapshot
+        {
+            Threads = [duplicateOne, duplicateTwo],
+        };
+
+        var current = SidebarNavigationState.FindCurrentThread(
+            snapshot,
+            currentThreadId: "duplicate-two",
+            currentTitle: "Repeated task");
+
+        Assert.Same(duplicateTwo, current);
     }
 
     private static IReadOnlyList<SidebarEntry> RootEntries() =>

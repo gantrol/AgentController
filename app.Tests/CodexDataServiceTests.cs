@@ -471,6 +471,72 @@ public sealed class CodexDataServiceTests
     }
 
     [Fact]
+    public void IsThreadAvailableUsesExactSqliteRowAndBlankPreviewRules()
+    {
+        var codexHome = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-controller-availability-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(codexHome);
+        try
+        {
+            var availableId = Guid.NewGuid().ToString();
+            var blankId = Guid.NewGuid().ToString();
+            var rolloutPath = Path.Combine(
+                codexHome,
+                $"rollout-{availableId}.jsonl");
+            File.WriteAllText(rolloutPath, string.Empty);
+            var databasePath = Path.Combine(codexHome, "state_1.sqlite");
+            var connectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = databasePath,
+                Pooling = false,
+            }.ToString();
+            using (var connection = new SqliteConnection(connectionString))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    CREATE TABLE threads (
+                        id TEXT PRIMARY KEY,
+                        archived INTEGER NOT NULL,
+                        preview TEXT NOT NULL,
+                        thread_source TEXT NOT NULL,
+                        cwd TEXT NOT NULL,
+                        rollout_path TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                    INSERT INTO threads VALUES (
+                        $availableId, 0, 'preview', 'cli', '',
+                        $rolloutPath, 1);
+                    INSERT INTO threads VALUES (
+                        $blankId, 0, char(9) || char(10) || '  ', 'cli', '',
+                        $rolloutPath, 1);
+                    """;
+                command.Parameters.AddWithValue(
+                    "$availableId",
+                    availableId);
+                command.Parameters.AddWithValue("$blankId", blankId);
+                command.Parameters.AddWithValue(
+                    "$rolloutPath",
+                    rolloutPath);
+                command.ExecuteNonQuery();
+            }
+
+            var service = CreateServiceForCodexHome(codexHome);
+
+            Assert.True(service.IsThreadAvailable(availableId));
+            Assert.False(service.IsThreadAvailable(blankId));
+            Assert.False(service.IsThreadAvailable(
+                Guid.NewGuid().ToString()));
+        }
+        finally
+        {
+            Directory.Delete(codexHome, recursive: true);
+        }
+    }
+
+    [Fact]
     public void LoadSnapshot_ProjectlessTasksPreferPersistedSidebarOrder()
     {
         var codexHome = Path.Combine(

@@ -1,5 +1,5 @@
+using System.Buffers;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using CodexController.Models;
 
@@ -14,8 +14,10 @@ namespace CodexController.Services;
 public sealed class CodexRolloutStatusReader
 {
     private const int ReadBufferSize = 32 * 1024;
+    private const int MaximumRetainedLineBytes = 256 * 1024;
 
     private readonly object _sync = new();
+    private readonly byte[] _readBuffer = new byte[ReadBufferSize];
     private readonly Dictionary<string, RolloutCursor> _cursors =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -53,31 +55,19 @@ public sealed class CodexRolloutStatusReader
                 }
 
                 stream.Position = cursor.Offset;
-                var bytes = new byte[ReadBufferSize];
-                var characters = new char[
-                    Encoding.UTF8.GetMaxCharCount(ReadBufferSize)];
                 while (cursor.Offset < endOffset)
                 {
                     var requested = (int)Math.Min(
-                        bytes.Length,
+                        _readBuffer.Length,
                         endOffset - cursor.Offset);
-                    var read = stream.Read(bytes, 0, requested);
+                    var read = stream.Read(_readBuffer, 0, requested);
                     if (read == 0)
                     {
                         break;
                     }
 
                     cursor.Offset += read;
-                    var characterCount = cursor.Decoder.GetChars(
-                        bytes.AsSpan(0, read),
-                        characters,
-                        flush: false);
-                    if (characterCount > 0)
-                    {
-                        Consume(
-                            cursor,
-                            new string(characters, 0, characterCount));
-                    }
+                    Consume(cursor, _readBuffer.AsMemory(0, read));
                 }
             }
             catch (IOException)
@@ -94,50 +84,69 @@ public sealed class CodexRolloutStatusReader
         }
     }
 
-    private static void Consume(RolloutCursor cursor, string appended)
+    private static void Consume(
+        RolloutCursor cursor,
+        ReadOnlyMemory<byte> appended)
     {
-        var text = cursor.PartialLine + appended;
-        var start = 0;
-        while (true)
+        while (!appended.IsEmpty)
         {
-            var newline = text.IndexOf('\n', start);
+            var newline = appended.Span.IndexOf((byte)'\n');
             if (newline < 0)
             {
-                cursor.PartialLine = text[start..];
+                cursor.PartialLine.Append(appended.Span);
                 return;
             }
 
-            var line = text.AsSpan(start, newline - start).TrimEnd('\r');
-            if (!line.IsEmpty)
+            var segment = appended[..newline];
+            if (cursor.PartialLine.IsEmpty)
             {
-                ConsumeLine(cursor, line);
+                ConsumeLine(cursor, segment);
+            }
+            else
+            {
+                cursor.PartialLine.Append(segment.Span);
+                ConsumeLine(cursor, cursor.PartialLine.WrittenMemory);
             }
 
-            start = newline + 1;
+            cursor.PartialLine.Clear();
+            appended = appended[(newline + 1)..];
         }
     }
 
     private static void ConsumeLine(
         RolloutCursor cursor,
-        ReadOnlySpan<char> line)
+        ReadOnlyMemory<byte> line)
     {
-        line = line.TrimStart('\uFEFF');
+        while (!line.IsEmpty && line.Span[^1] == (byte)'\r')
+        {
+            line = line[..^1];
+        }
+
+        while (line.Span.StartsWith("\uFEFF"u8))
+        {
+            line = line[3..];
+        }
+
+        if (line.IsEmpty)
+        {
+            return;
+        }
 
         // Avoid parsing the large prompt/message records. Lifecycle names are
         // ASCII and stable in the observed 26.707.12708.0 rollout protocol.
         if (
-            !line.Contains("task_started", StringComparison.Ordinal) &&
-            !line.Contains("task_complete", StringComparison.Ordinal) &&
-            !line.Contains("turn_aborted", StringComparison.Ordinal) &&
-            !line.Contains("stream_error", StringComparison.Ordinal) &&
-            !line.Contains("\"type\":\"error\"", StringComparison.Ordinal))
+            line.Span.IndexOf("task_started"u8) < 0 &&
+            line.Span.IndexOf("task_complete"u8) < 0 &&
+            line.Span.IndexOf("turn_aborted"u8) < 0 &&
+            line.Span.IndexOf("stream_error"u8) < 0 &&
+            line.Span.IndexOf("\"type\":\"error\""u8) < 0)
         {
             return;
         }
 
         try
         {
-            using var document = JsonDocument.Parse(line.ToString());
+            using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
             if (
                 !root.TryGetProperty("type", out var outerType) ||
@@ -175,16 +184,83 @@ public sealed class CodexRolloutStatusReader
     private sealed class RolloutCursor
     {
         public long Offset { get; set; }
-        public string PartialLine { get; set; } = string.Empty;
+        public PooledLineBuffer PartialLine { get; } = new();
         public ThreadStatus Status { get; set; } = ThreadStatus.Unknown;
-        public Decoder Decoder { get; } = Encoding.UTF8.GetDecoder();
 
         public void Reset()
         {
             Offset = 0;
-            PartialLine = string.Empty;
+            PartialLine.Clear();
             Status = ThreadStatus.Unknown;
-            Decoder.Reset();
+        }
+    }
+
+    /// <summary>
+    /// Keeps only a line that crosses read boundaries. Most JSONL records are
+    /// inspected directly in the shared read buffer; unusually large prompt
+    /// records grow this buffer linearly instead of repeatedly copying the
+    /// full prefix for every 32 KB chunk.
+    /// </summary>
+    private sealed class PooledLineBuffer
+    {
+        private byte[] _buffer =
+            ArrayPool<byte>.Shared.Rent(ReadBufferSize);
+        private int _length;
+
+        public bool IsEmpty => _length == 0;
+
+        public ReadOnlyMemory<byte> WrittenMemory =>
+            _buffer.AsMemory(0, _length);
+
+        public void Append(ReadOnlySpan<byte> value)
+        {
+            if (value.IsEmpty)
+            {
+                return;
+            }
+
+            EnsureCapacity(checked(_length + value.Length));
+            value.CopyTo(_buffer.AsSpan(_length));
+            _length += value.Length;
+        }
+
+        public void Clear()
+        {
+            if (_buffer.Length > MaximumRetainedLineBytes)
+            {
+                var oversized = _buffer;
+                _buffer = ArrayPool<byte>.Shared.Rent(ReadBufferSize);
+                _length = 0;
+                ArrayPool<byte>.Shared.Return(
+                    oversized,
+                    clearArray: true);
+                return;
+            }
+
+            if (_length > 0)
+            {
+                _buffer.AsSpan(0, _length).Clear();
+                _length = 0;
+            }
+        }
+
+        private void EnsureCapacity(int required)
+        {
+            if (required <= _buffer.Length)
+            {
+                return;
+            }
+
+            var doubled = _buffer.Length <= int.MaxValue / 2
+                ? _buffer.Length * 2
+                : int.MaxValue;
+            var replacement = ArrayPool<byte>.Shared.Rent(
+                Math.Max(required, doubled));
+            _buffer.AsSpan(0, _length).CopyTo(replacement);
+            ArrayPool<byte>.Shared.Return(
+                _buffer,
+                clearArray: true);
+            _buffer = replacement;
         }
     }
 }

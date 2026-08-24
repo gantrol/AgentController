@@ -89,11 +89,13 @@ interface SessionStatusSummary {
 interface SessionListEntry extends SessionStatusSummary {
   sessionId: string
   parentSessionId?: string
+  blank?: boolean
 }
 
 interface LegacySessionListSummary extends SessionStatusSummary {
   id: string
   parentId?: string
+  blank?: boolean
 }
 
 interface SessionListSnapshot {
@@ -240,6 +242,11 @@ const ACTION_IDS = new Set<MicroActionId>([
 ])
 
 const MAX_REPORTED_SESSION_STATES = 24
+const NEW_SESSION_SELECTION_SETTLE_MS = 3_500
+// The host reserves 4.4s for session/new. After the longest selection wait
+// and 50ms focus settle, a stalled report still leaves about 550ms for the
+// action ACK to traverse the loopback bridge before that host deadline.
+const REPORT_FETCH_TIMEOUT_MS = 300
 
 function projectSessionStatus(
   summary: SessionStatusSummary,
@@ -389,6 +396,68 @@ export function appendDictation(draft: string, text: string, language = ''): str
   return `${draft}${cjk ? '' : ' '}${next}`
 }
 
+function currentSessionIsBlank(snapshot: SessionListSnapshot): boolean {
+  const current = snapshot.current
+  if (current === undefined) return false
+  if (snapshot.items !== undefined) {
+    return snapshot.items.find(item => item.sessionId === current)?.blank === true
+  }
+  return snapshot.byId?.[current]?.blank === true
+}
+
+/**
+ * `workspaces.startSession()` deliberately returns void while it connects or
+ * creates the workspace's blank session in the background. Keep the hardware
+ * acknowledgement behind the sessions store transition so its report cannot
+ * echo the previously selected session back to the desktop sidebar.
+ */
+async function startSessionAndWaitForSelection(
+  sessions: SessionsFace,
+  workspaces: WorkspacesFace,
+): Promise<void> {
+  const before = sessions.list.getSnapshot().current
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+    let invokingStart = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let unsubscribe: (() => void) | undefined
+    const finish = (error?: unknown): void => {
+      if (settled) return
+      settled = true
+      if (timer !== undefined) clearTimeout(timer)
+      unsubscribe?.()
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    const check = (): void => {
+      const snapshot = sessions.list.getSnapshot()
+      if (currentSessionIsBlank(snapshot)
+          // With no Workspace, startSession synchronously clears an already
+          // empty selection into the New Session landing view.
+          || (invokingStart && before === undefined && snapshot.current === undefined)) {
+        finish()
+      }
+    }
+    unsubscribe = sessions.list.subscribe(check)
+    try {
+      workspaces.startSession()
+    } catch (error) {
+      finish(error)
+      return
+    } finally {
+      invokingStart = false
+    }
+    check()
+    if (!settled) {
+      // The service swallows an asynchronous connection failure by contract,
+      // so lack of a selection transition is the only observable rejection.
+      timer = setTimeout(() => {
+        finish(new Error('The new DeepSeek Harness session did not become active.'))
+      }, NEW_SESSION_SELECTION_SETTLE_MS)
+    }
+  })
+}
+
 /** Return only speech added after the last transcript, never a rewritten prefix. */
 function incrementalDictationSuffix(previous: string, next: string): string {
   const before = previous.trim()
@@ -468,47 +537,90 @@ export function apply(ctx: ClientContext): void {
     const source = new EventSource(
       `${MICRO_EVENTS_ENDPOINT}?browserId=${encodeURIComponent(browserId)}`,
     )
+    let reportTail = Promise.resolve()
+    let presencePending: Promise<void> | undefined
+    let presenceDirty = false
 
-    const report = async (
+    const report = (
       requestId?: string,
       success?: boolean,
       message?: string,
     ): Promise<void> => {
-      const state = sessions.list.getSnapshot()
-      const modelState = modelController.getSnapshot()
-      const sessionStates = projectSessionStates(sessions, state, sessionProjectionMemory)
-      const body: MicroBrowserReport = {
-        version: MICRO_PROTOCOL_VERSION,
-        browserId,
-        currentSessionId: state.current ?? null,
-        visible: document.visibilityState === 'visible',
-        focused: document.hasFocus(),
-        surface: new URL(window.location.href).searchParams.get('agentControllerSurface') === '1'
-          || new URL(window.location.href).searchParams.get('codexMicroSurface') === '1'
-          ? 'dedicated'
-          : 'tab',
-        navigationDepth: composerNavigator.navigationDepth,
-        ...(modelState.currentLabel === undefined
-          ? modelState.current?.model === undefined
-            ? {}
-            : { currentModel: modelState.current.model }
-          : { currentModel: modelState.currentLabel }),
-        ...(sessionStates.length === 0 ? {} : { sessionStates }),
-        ...(requestId === undefined ? {} : { requestId }),
-        ...(success === undefined ? {} : { success }),
-        ...(message === undefined ? {} : { message }),
+      const send = async (): Promise<void> => {
+        const state = sessions.list.getSnapshot()
+        const modelState = modelController.getSnapshot()
+        const sessionStates = projectSessionStates(sessions, state, sessionProjectionMemory)
+        const body: MicroBrowserReport = {
+          version: MICRO_PROTOCOL_VERSION,
+          browserId,
+          currentSessionId: state.current ?? null,
+          visible: document.visibilityState === 'visible',
+          focused: document.hasFocus(),
+          surface: new URL(window.location.href).searchParams.get('agentControllerSurface') === '1'
+            || new URL(window.location.href).searchParams.get('codexMicroSurface') === '1'
+            ? 'dedicated'
+            : 'tab',
+          navigationDepth: composerNavigator.navigationDepth,
+          ...(modelState.currentLabel === undefined
+            ? modelState.current?.model === undefined
+              ? {}
+              : { currentModel: modelState.current.model }
+            : { currentModel: modelState.currentLabel }),
+          ...(sessionStates.length === 0 ? {} : { sessionStates }),
+          ...(requestId === undefined ? {} : { requestId }),
+          ...(success === undefined ? {} : { success }),
+          ...(message === undefined ? {} : { message }),
+        }
+        try {
+          const controller = new AbortController()
+          let timeout: number | undefined
+          try {
+            await Promise.race([
+              fetch(MICRO_REPORT_ENDPOINT, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+                keepalive: true,
+                signal: controller.signal,
+              }),
+              new Promise<never>((_resolve, reject) => {
+                timeout = window.setTimeout(() => {
+                  controller.abort()
+                  reject(new Error('DeepSeek Harness browser report timed out.'))
+                }, REPORT_FETCH_TIMEOUT_MS)
+              }),
+            ])
+          } finally {
+            if (timeout !== undefined) window.clearTimeout(timeout)
+          }
+        } catch (error) {
+          ctx.logger.warn('client-micro-bridge: browser report failed')
+          ctx.logger.warn(error)
+        }
       }
-      try {
-        await fetch(MICRO_REPORT_ENDPOINT, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-          keepalive: true,
-        })
-      } catch (error) {
-        ctx.logger.warn('client-micro-bridge: browser report failed')
-        ctx.logger.warn(error)
+      if (requestId === undefined && presencePending !== undefined) {
+        // Presence has no acknowledgement identity. Collapse any number of
+        // state notifications while one snapshot is queued or in flight, then
+        // send one fresh snapshot after request-bearing ACKs already queued on
+        // reportTail. This bounds an ACK to at most one stalled presence.
+        presenceDirty = true
+        return presencePending
       }
+
+      const pending = reportTail.then(send, send)
+      reportTail = pending
+      if (requestId === undefined) {
+        presencePending = pending
+        const presenceSettled = (): void => {
+          if (presencePending !== pending) return
+          presencePending = undefined
+          if (!presenceDirty) return
+          presenceDirty = false
+          void report()
+        }
+        void pending.then(presenceSettled, presenceSettled)
+      }
+      return pending
     }
 
     const focusAndReport = async (
@@ -584,7 +696,7 @@ export function apply(ctx: ClientContext): void {
     ): Promise<string> => {
       switch (actionId) {
         case 'session/new':
-          workspaces.startSession()
+          await startSessionAndWaitForSelection(sessions, workspaces)
           return 'New DeepSeek Harness session requested.'
         case 'session/fork': {
           const sourceId = currentSession(sessionId)

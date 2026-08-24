@@ -87,6 +87,8 @@ public partial class MainWindow : Window
     private readonly ControllerSession _controllerSession = new();
     private readonly ForegroundContinuityGate _foregroundContinuityGate =
         new();
+    private readonly DeepSeekCurrentSessionTracker
+        _deepSeekCurrentSessionTracker = new();
     private readonly SidebarNavigationDirectory _sidebarNavigationDirectory =
         new();
     private readonly PushToTalkAutomationState _pushToTalkAutomation =
@@ -1282,6 +1284,12 @@ public partial class MainWindow : Window
         if (succeeded)
         {
             _threadNavigation.ClearUndo();
+            if (_activeAgent.Id == DeepSeekAgentTarget.DeepSeekId)
+            {
+                RefreshCodexData(
+                    preserveSelection: false,
+                    forceNavigationRebuild: true);
+            }
         }
 
         var evidenceCode = result?.Evidence.FirstOrDefault()?.Code;
@@ -1335,6 +1343,12 @@ public partial class MainWindow : Window
         if (succeeded)
         {
             _threadNavigation.ClearUndo();
+            if (_activeAgent.Id == DeepSeekAgentTarget.DeepSeekId)
+            {
+                RefreshCodexData(
+                    preserveSelection: false,
+                    forceNavigationRebuild: true);
+            }
         }
 
         AddEvent(
@@ -4846,7 +4860,13 @@ public partial class MainWindow : Window
         bool preserveSelection,
         bool forceNavigationRebuild = false)
     {
-        if (!await _dataRefreshGate.WaitAsync(0).ConfigureAwait(true))
+        if (forceNavigationRebuild)
+        {
+            // Explicit topology changes (notably DeepSeek new/fork) must not
+            // lose their current-session re-anchor behind a periodic refresh.
+            await _dataRefreshGate.WaitAsync().ConfigureAwait(true);
+        }
+        else if (!await _dataRefreshGate.WaitAsync(0).ConfigureAwait(true))
         {
             return;
         }
@@ -4875,8 +4895,30 @@ public partial class MainWindow : Window
             }
 
             var snapshot = snapshotTask.Result;
+            var currentThreadId = _activeAgent is DeepSeekAgentTarget deepSeek
+                ? deepSeek.CurrentSessionId
+                : null;
+            var currentThreadMaterialized = currentThreadId is not null &&
+                snapshot.Threads.Any(thread => string.Equals(
+                    thread.Id,
+                    currentThreadId,
+                    StringComparison.Ordinal));
+            var effectiveForceNavigationRebuild = forceNavigationRebuild;
+            if (_activeAgent is DeepSeekAgentTarget &&
+                _deepSeekCurrentSessionTracker.Observe(
+                    currentThreadId,
+                    currentThreadMaterialized))
+            {
+                // Harness, its plugin, or a keypad selected a different
+                // session. Re-anchor once; unchanged polls keep the user's
+                // local browsing cursor independent until A confirms it.
+                selectedId = currentThreadId;
+                effectiveForceNavigationRebuild = true;
+            }
+
             var currentThread = SidebarNavigationState.FindCurrentThread(
                 snapshot,
+                currentThreadId,
                 currentTitleTask.Result);
 
             _snapshot = snapshot;
@@ -4892,7 +4934,7 @@ public partial class MainWindow : Window
             }
 
             RebuildSidebarEntries(
-                forceNavigationRebuild,
+                effectiveForceNavigationRebuild,
                 preferredId: selectedId);
 
             var activeEntry =
@@ -5862,6 +5904,7 @@ public partial class MainWindow : Window
         }
 
         _activeAgent = _agentSelection.Active;
+        _deepSeekCurrentSessionTracker.Reset();
         _workspaceReader = _activeAgent.WorkspaceOrEmpty();
         _sidebarAutomation = _activeAgent.SidebarOrUnavailable();
         _composerAutomation = _activeAgent.ComposerOrUnavailable();

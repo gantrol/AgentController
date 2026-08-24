@@ -139,6 +139,40 @@ public sealed class CodexRolloutStatusReaderTests
         }
     }
 
+    [Fact]
+    public void MultiMegabyteRecordUsesLinearMemoryAndPreservesNextEvent()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            const int payloadBytes = 2 * 1024 * 1024;
+            File.WriteAllText(
+                path,
+                "{\"type\":\"event_msg\",\"payload\":{" +
+                "\"type\":\"user_message\",\"text\":\"" +
+                new string('x', payloadBytes) +
+                "\"}}\n");
+            AppendEvent(path, "task_started");
+            var reader = new CodexRolloutStatusReader();
+            var allocatedBefore =
+                GC.GetAllocatedBytesForCurrentThread();
+
+            var status = reader.Read(path);
+
+            var allocated =
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            Assert.Equal(ThreadStatus.Thinking, status);
+            // A regression to prefix + chunk concatenation allocates more
+            // than 100 MB for this 2 MB line. Keep enough headroom for a cold
+            // ArrayPool while enforcing linear rather than quadratic growth.
+            Assert.InRange(allocated, 0, 32L * 1024 * 1024);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static void AppendEvent(string path, string type)
     {
         File.AppendAllText(

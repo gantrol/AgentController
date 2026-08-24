@@ -204,6 +204,16 @@ async function disconnectTestBrowser(browser: ConnectedTestBrowser): Promise<voi
 }
 
 describe('external DeepSeek Harness host bundle', () => {
+  it('reserves a bounded acknowledgement budget for slow new-session selection', () => {
+    const sessionNew = Bridge.internals.actionAckTimeoutMs('session/new')
+    const ordinaryAction = Bridge.internals.actionAckTimeoutMs('composer/submit')
+
+    expect(sessionNew).toBe(4_400)
+    expect(sessionNew).toBeGreaterThan(3_500 + 50 + 300)
+    expect(sessionNew).toBeLessThan(5_000)
+    expect(ordinaryAction).toBe(2_500)
+  })
+
   it('defers a WSL app surface to the Windows keypad host', async () => {
     const runNativeCommand = vi.fn(async () => {})
     const launchWindowsAppBrowser = vi.fn(async () => 27_001)
@@ -601,6 +611,113 @@ describe('external DeepSeek Harness host bundle', () => {
       adapter: 'ready',
       browser: 'disconnected',
     })
+  })
+
+  it('keeps the current blank session first and inside the six-key projection', async () => {
+    const rows = [
+      ...Array.from({ length: 7 }, (_value, index) => ({
+        sessionId: `recent-${String(index)}`,
+        updatedAt: 100 - index,
+        running: false,
+        blank: false,
+      })),
+      {
+        sessionId: 'current-blank',
+        updatedAt: 1,
+        running: false,
+        blank: true,
+      },
+    ]
+    const { endpoint, reportHandler } = await mount(rows)
+    httpServer = createHttpServer((req, res) => { void reportHandler(req, res) })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
+    const reported = await fetch(
+      `http://127.0.0.1:${String(address.port)}${Bridge.MICRO_REPORT_ENDPOINT}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: Bridge.MICRO_PROTOCOL_VERSION,
+          browserId: 'current-order-browser',
+          currentSessionId: 'current-blank',
+          visible: true,
+          focused: true,
+          surface: 'dedicated',
+          navigationDepth: 0,
+        }),
+      },
+    )
+    expect(reported.status).toBe(204)
+
+    const result = await request(endpoint, { ...baseRequest, action: 'state/read' })
+
+    expect(result.state?.currentSessionId).toBe('current-blank')
+    expect(result.state?.sessions).toHaveLength(6)
+    expect(result.state?.sessions.map(row => row.id)).toEqual([
+      'current-blank',
+      'recent-0',
+      'recent-1',
+      'recent-2',
+      'recent-3',
+      'recent-4',
+    ])
+    expect(result.state?.sessions[0]?.displayTitle).toBe('New Session')
+  })
+
+  it('keeps the current fork child even though other child sessions stay hidden', async () => {
+    const { endpoint, reportHandler } = await mount([
+      { sessionId: 'root', updatedAt: 100, running: false, blank: false },
+      {
+        sessionId: 'current-child',
+        parentSessionId: 'root',
+        updatedAt: 10,
+        running: false,
+        blank: false,
+      },
+      {
+        sessionId: 'other-child',
+        parentSessionId: 'root',
+        updatedAt: 200,
+        running: true,
+        blank: false,
+      },
+    ])
+    httpServer = createHttpServer((req, res) => { void reportHandler(req, res) })
+    await new Promise<void>((resolve, reject) => {
+      httpServer?.once('error', reject)
+      httpServer?.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = httpServer.address()
+    if (address === null || typeof address === 'string') throw new Error('missing test port')
+    const reported = await fetch(
+      `http://127.0.0.1:${String(address.port)}${Bridge.MICRO_REPORT_ENDPOINT}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: Bridge.MICRO_PROTOCOL_VERSION,
+          browserId: 'fork-child-browser',
+          currentSessionId: 'current-child',
+          visible: true,
+          focused: true,
+          surface: 'dedicated',
+          navigationDepth: 0,
+        }),
+      },
+    )
+    expect(reported.status).toBe(204)
+
+    const result = await request(endpoint, { ...baseRequest, action: 'state/read' })
+
+    expect(result.state?.sessions.map(row => row.id)).toEqual([
+      'current-child',
+      'root',
+    ])
   })
 
   it('merges browser-owned completion, waiting, and error states into state reads', async () => {

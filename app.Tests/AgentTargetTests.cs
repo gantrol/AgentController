@@ -175,6 +175,45 @@ public sealed class AgentTargetTests
     }
 
     [Fact]
+    public async Task ActionRouterExecutesOnlyTheCurrentlySelectedAgent()
+    {
+        var codex = new TestAgentTarget("codex", "Codex");
+        var deepSeek = new TestAgentTarget(
+            "deepseek-harness",
+            "DeepSeek Harness");
+        var selection = new AgentTargetSelection(
+            new AgentTargetRegistry([codex, deepSeek], codex.Id),
+            "deepseek-harness");
+        var codexInner = new TestActionExecutor("codex.executor");
+        var deepSeekInner = new TestActionExecutor("deepseek.executor");
+        var router = new ActionRouter(
+        [
+            new AgentScopedActionExecutor(
+                codexInner,
+                selection,
+                codex.Id),
+            new AgentScopedActionExecutor(
+                deepSeekInner,
+                selection,
+                deepSeek.Id),
+        ]);
+        var request = CreateSubmitRequest();
+
+        var deepSeekResult = await router.ExecuteAsync(request);
+
+        Assert.Equal("deepseek.executor", deepSeekResult.ExecutorId);
+        Assert.Equal(0, codexInner.ExecutionCount);
+        Assert.Equal(1, deepSeekInner.ExecutionCount);
+
+        Assert.True(selection.SelectNext());
+        var codexResult = await router.ExecuteAsync(CreateSubmitRequest());
+
+        Assert.Equal("codex.executor", codexResult.ExecutorId);
+        Assert.Equal(1, codexInner.ExecutionCount);
+        Assert.Equal(1, deepSeekInner.ExecutionCount);
+    }
+
+    [Fact]
     public async Task MissingOptionalCapabilitiesDegradeWithoutThrowing()
     {
         var target = new TestAgentTarget("shortcut-agent", "Shortcut");
@@ -306,9 +345,29 @@ public sealed class AgentTargetTests
             Task.FromResult(false);
     }
 
+    private static ActionRequest CreateSubmitRequest()
+    {
+        var requestId = Guid.NewGuid();
+        return new ActionRequest(
+            requestId,
+            ComposerActionContract.SubmitId,
+            new ActionSource(
+                "controller",
+                AgentController.Domain.Inputs.ControlId.Parse("face.west")),
+            AgentController.Domain.Inputs.InputContext.Parse("composer.input"),
+            $"test:submit:{requestId:N}",
+            ActionSafetyLevel.Routine,
+            DateTimeOffset.UtcNow);
+    }
+
     private sealed class TestActionExecutor : IActionExecutor
     {
-        public string Id => "test.executor";
+        public TestActionExecutor(string id = "test.executor")
+        {
+            Id = id;
+        }
+
+        public string Id { get; }
         public int ExecutionCount { get; private set; }
 
         public ValueTask<ExecutorCapability> ProbeAsync(

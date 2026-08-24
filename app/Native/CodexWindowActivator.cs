@@ -20,7 +20,6 @@ internal readonly record struct CodexWindowCandidate(
 /// </summary>
 internal static class CodexWindowActivator
 {
-    private const int SwRestore = 9;
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
     private const uint GwOwner = 4;
@@ -64,7 +63,7 @@ internal static class CodexWindowActivator
             candidates,
             foreground,
             advanceCurrentWindow);
-        return ActivateCandidate(candidate, foreground);
+        return ActivateCandidate(candidate);
     }
 
     internal static CodexWindowCandidate SelectCandidate(
@@ -107,75 +106,10 @@ internal static class CodexWindowActivator
             .OrderByDescending(ScoreCandidate)
             .ToArray();
 
-    private static bool ActivateCandidate(
-        CodexWindowCandidate candidate,
-        nint foreground)
-    {
-        if (foreground == candidate.Handle)
-        {
-            return true;
-        }
-
-        // Ported from the proven virtual-micro activator. The call can arrive
-        // on a worker thread, so ensure that thread owns a Win32 message queue
-        // before attaching input queues.
-        _ = PeekMessage(
-            out _,
-            nint.Zero,
-            0,
-            0,
-            0);
-        _ = AllowSetForegroundWindow(candidate.ProcessId);
-        if (IsIconic(candidate.Handle))
-        {
-            _ = ShowWindow(candidate.Handle, SwRestore);
-        }
-
-        var currentThread = GetCurrentThreadId();
-        foreground = GetForegroundWindow();
-        var foregroundThread = foreground == nint.Zero
-            ? 0
-            : GetWindowThreadProcessId(foreground, out _);
-        var targetThread = GetWindowThreadProcessId(
+    private static bool ActivateCandidate(CodexWindowCandidate candidate) =>
+        ForegroundWindowActivator.TryActivate(
             candidate.Handle,
-            out _);
-        if (targetThread == 0)
-        {
-            return false;
-        }
-
-        var attachedForeground = AttachIfNeeded(
-            currentThread,
-            foregroundThread);
-        var attachedTarget = targetThread != foregroundThread &&
-            AttachIfNeeded(currentThread, targetThread);
-        try
-        {
-            _ = BringWindowToTop(candidate.Handle);
-            _ = SetForegroundWindow(candidate.Handle);
-            _ = SetActiveWindow(candidate.Handle);
-            _ = SetFocus(candidate.Handle);
-        }
-        finally
-        {
-            DetachIfNeeded(currentThread, targetThread, attachedTarget);
-            DetachIfNeeded(
-                currentThread,
-                foregroundThread,
-                attachedForeground);
-        }
-
-        if (GetForegroundWindow() != candidate.Handle)
-        {
-            // Keep Electron's maximize/fullscreen state intact. FALSE raises
-            // the existing window without emulating Alt+Tab.
-            SwitchToThisWindow(candidate.Handle, false);
-        }
-
-        return IsWindowVisible(candidate.Handle) &&
-            !IsIconic(candidate.Handle) &&
-            GetForegroundWindow() == candidate.Handle;
-    }
+            candidate.ProcessId);
 
     internal static long ScoreCandidate(CodexWindowCandidate candidate)
     {
@@ -299,24 +233,6 @@ internal static class CodexWindowActivator
         }
     }
 
-    private static bool AttachIfNeeded(
-        uint currentThread,
-        uint otherThread) =>
-        otherThread != 0 &&
-        otherThread != currentThread &&
-        AttachThreadInput(currentThread, otherThread, true);
-
-    private static void DetachIfNeeded(
-        uint currentThread,
-        uint otherThread,
-        bool attached)
-    {
-        if (attached)
-        {
-            _ = AttachThreadInput(currentThread, otherThread, false);
-        }
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     private struct WindowRect
     {
@@ -324,25 +240,6 @@ internal static class CodexWindowActivator
         public int Top;
         public int Right;
         public int Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
-    {
-        public int X;
-        public int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeMessage
-    {
-        public nint Window;
-        public uint Message;
-        public nuint WordParameter;
-        public nint LongParameter;
-        public uint Time;
-        public NativePoint Point;
-        public uint Private;
     }
 
     private delegate bool EnumWindowsCallback(nint handle, nint state);
@@ -394,55 +291,5 @@ internal static class CodexWindowActivator
         uint command);
 
     [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsIconic(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindow(nint windowHandle, int command);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool BringWindowToTop(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    private static extern nint SetActiveWindow(nint windowHandle);
-
-    [DllImport("user32.dll")]
-    private static extern nint SetFocus(nint windowHandle);
-
-    [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AttachThreadInput(
-        uint attachThread,
-        uint attachToThread,
-        [MarshalAs(UnmanagedType.Bool)] bool attach);
-
-    [DllImport("user32.dll")]
-    private static extern void SwitchToThisWindow(
-        nint windowHandle,
-        [MarshalAs(UnmanagedType.Bool)] bool altTab);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AllowSetForegroundWindow(uint processId);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool PeekMessage(
-        out NativeMessage message,
-        nint windowHandle,
-        uint minimumMessage,
-        uint maximumMessage,
-        uint removeMessage);
 }

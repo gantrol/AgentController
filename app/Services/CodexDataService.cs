@@ -279,7 +279,10 @@ public sealed class CodexDataService
             return false;
         }
 
-        var catalog = ReadThreadCatalog();
+        // Thread navigation asks about one exact id. Keep that hot path on an
+        // indexed single-row query instead of materializing the entire Codex
+        // history catalog for every controller confirmation.
+        var catalog = ReadThreadCatalog(threadId);
         return
             catalog.TryGetValue(threadId, out var metadata) &&
             metadata.IsDeepLinkCandidate;
@@ -474,7 +477,8 @@ public sealed class CodexDataService
         return result;
     }
 
-    private Dictionary<string, ThreadMetadata> ReadThreadCatalog()
+    private Dictionary<string, ThreadMetadata> ReadThreadCatalog(
+        string? threadId = null)
     {
         var databasePath = FindStateDatabasePath();
         if (databasePath is not null)
@@ -505,33 +509,59 @@ public sealed class CodexDataService
                     : columns.Contains("recency_at")
                         ? "NULLIF(recency_at, 0)"
                         : "NULL";
+                // Preview text can contain megabytes of prompt history. The
+                // catalog only needs to know whether it is non-blank, so let
+                // SQLite project that bit instead of copying every preview
+                // through the native/managed boundary on each refresh.
+                const string hasPreview =
+                    "CASE WHEN length(trim(COALESCE(preview, ''), " +
+                    "char(9) || char(10) || char(11) || char(12) || " +
+                    "char(13) || char(32))) > 0 THEN 1 ELSE 0 END";
                 using var command = connection.CreateCommand();
+                var filter = threadId is null
+                    ? string.Empty
+                    : "WHERE id = $threadId";
                 command.CommandText =
                     $"""
                     SELECT
                         id,
                         archived,
-                        preview,
+                        {hasPreview},
                         {threadSource},
                         cwd,
                         rollout_path,
                         {updatedAt},
                         {recencyAt}
-                    FROM threads;
+                    FROM threads
+                    {filter};
                     """;
+                if (threadId is not null)
+                {
+                    command.Parameters.AddWithValue(
+                        "$threadId",
+                        threadId);
+                }
+
                 using var reader = command.ExecuteReader();
                 var result = new Dictionary<string, ThreadMetadata>(
                     StringComparer.OrdinalIgnoreCase);
                 while (reader.Read())
                 {
                     var id = reader.GetString(0);
+                    var isArchived = reader.GetInt64(1) != 0;
+                    var previewAvailable = reader.GetInt64(2) != 0;
+                    var isUserFacing = IsUserFacingSource(
+                        reader.GetString(3));
                     var rolloutPath = NormalizePath(reader.GetString(5));
                     result[id] = new ThreadMetadata(
-                        reader.GetInt64(1) != 0,
-                        !string.IsNullOrWhiteSpace(reader.GetString(2)),
-                        IsUserFacingSource(reader.GetString(3)),
+                        isArchived,
+                        previewAvailable,
+                        isUserFacing,
                         NormalizePath(reader.GetString(4)),
                         rolloutPath,
+                        !isArchived &&
+                        previewAvailable &&
+                        isUserFacing &&
                         File.Exists(rolloutPath),
                         ReadDatabaseTimestamp(reader, 6),
                         ReadDatabaseTimestamp(reader, 7));

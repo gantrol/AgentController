@@ -204,12 +204,12 @@ export function ensureComposerNavigationStyles(): void {
 export class ComposerNavigator {
   private selected: HTMLElement | undefined
   private selectedBoundary: HTMLElement | undefined
-  private highlightTimer: number | undefined
   private mutationTimer: number | undefined
   private observedDepth = 0
   private rootSelection: SavedSelection | undefined
   private readonly listeners = new Set<() => void>()
   private readonly observer: MutationObserver
+  private readonly handleFocusIn = (): void => { this.scheduleDepthCheck() }
 
   constructor() {
     this.observer = new MutationObserver(() => { this.scheduleDepthCheck() })
@@ -217,12 +217,22 @@ export class ComposerNavigator {
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ['aria-expanded', 'aria-hidden', 'hidden', 'style'],
+      attributeFilter: [
+        'aria-disabled',
+        'aria-expanded',
+        'aria-hidden',
+        'class',
+        'disabled',
+        'hidden',
+        'style',
+      ],
     })
+    document.addEventListener('focusin', this.handleFocusIn)
     this.observedDepth = this.computeDepth()
   }
 
   get navigationDepth(): number {
+    this.reconcileSelection()
     const depth = this.computeDepth()
     this.observedDepth = depth
     return depth
@@ -330,6 +340,7 @@ export class ComposerNavigator {
 
   dispose(): void {
     this.observer.disconnect()
+    document.removeEventListener('focusin', this.handleFocusIn)
     if (this.mutationTimer !== undefined) window.clearTimeout(this.mutationTimer)
     this.mutationTimer = undefined
     this.listeners.clear()
@@ -356,6 +367,7 @@ export class ComposerNavigator {
   }
 
   private checkDepth(): void {
+    this.reconcileSelection()
     const next = this.computeDepth()
     if (next === this.observedDepth) return
     this.observedDepth = next
@@ -383,11 +395,6 @@ export class ComposerNavigator {
     this.selectedBoundary = boundary
     target.setAttribute(HIGHLIGHT_ATTRIBUTE, 'true')
     target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-    if (this.highlightTimer !== undefined) window.clearTimeout(this.highlightTimer)
-    this.highlightTimer = window.setTimeout(() => {
-      this.highlightTimer = undefined
-      this.hideHighlight()
-    }, 1_800)
   }
 
   private hideHighlight(): void {
@@ -395,10 +402,22 @@ export class ComposerNavigator {
   }
 
   private clearSelection(): void {
-    if (this.highlightTimer !== undefined) window.clearTimeout(this.highlightTimer)
-    this.highlightTimer = undefined
     this.hideHighlight()
     this.selected = undefined
     this.selectedBoundary = undefined
+  }
+
+  private reconcileSelection(): void {
+    if (this.selected === undefined) return
+    const composer = activeComposer()
+    if (composer === undefined) {
+      this.clearSelection()
+      return
+    }
+    const boundary = topInteractionLayer(composer) ?? composer
+    const controls = candidates(boundary)
+    if (this.selectedBoundary !== boundary || !controls.includes(this.selected)) {
+      this.clearSelection()
+    }
   }
 }
