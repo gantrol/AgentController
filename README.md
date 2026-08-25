@@ -3,7 +3,7 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-1.2.0-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
+![version](https://img.shields.io/badge/version-1.2.1-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
 
 Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex, and perhaps you wanted one. But consider the evidence:
 
@@ -108,7 +108,7 @@ instructions are in the [macOS Foundation Preview guide](docs/macos-foundation-p
 5. Some features may require restarting the Codex desktop app (**ChatGPT**), especially after Agent Controller first provisions or updates Codex keybindings.
 6. For the complete Micro-first HID path, separately install the repository's only supported device component: `CodexMicroVhfUm` (UMDF2/VHF). The current release provides an unsigned developer workflow only; read the [local installation guide](docs/CodexMicroSimulator-installation.md) and [unsigned-driver guide](virtual-micro/UNSIGNED-DRIVER.md) first.
 
-The v1.2.0 release provides both a self-contained Windows package and a much smaller `-compact` package. The compact package requires the [official Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0); the self-contained package does not. Agent Controller still launches without the driver, but its limited `NotSent` fallbacks are not full Micro compatibility.
+The v1.2.1 release provides both a self-contained Windows package and a much smaller `-compact` package. The compact package requires the [official Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0); the self-contained package does not. Agent Controller still launches without the driver, but its limited `NotSent` fallbacks are not full Micro compatibility.
 
 ### Control reference
 
@@ -154,7 +154,7 @@ Holding a right-stick direction builds momentum over about two seconds. The firs
 
 The interface supports Simplified Chinese, English, or the Windows display language.
 
-For implementation status and edge cases, see the [v1 control reference](public/docs/controller-operations.md), [architecture and input flow](public/docs/architecture-and-input-flow.md), [Micro command reference](public/docs/codex-micro-command-reference.md), and [v1.2.0 release notes](public/docs/release-v1.2.0.md).
+For implementation status and edge cases, see the [v1 control reference](public/docs/controller-operations.md), [architecture and input flow](public/docs/architecture-and-input-flow.md), [Micro command reference](public/docs/codex-micro-command-reference.md), and [v1.2.1 release notes](public/docs/release-v1.2.1.md).
 
 ### Known limitations
 
@@ -180,8 +180,8 @@ Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 1
 ```powershell
 dotnet build AgentController.sln -c Release
 dotnet test AgentController.sln -c Release
-./scripts/package-release.ps1 -Version 1.2.0
-./scripts/package-release.ps1 -Version 1.2.0 -Compact
+./scripts/package-release.ps1 -Version 1.2.1
+./scripts/package-release.ps1 -Version 1.2.1 -Compact
 ```
 
 Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The first packaging command creates a self-contained Windows x64 zip; `-Compact` creates the framework-dependent variant. Each archive and SHA-256 checksum is written under `dist/`.
@@ -199,7 +199,7 @@ See the
 To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
 
 ```powershell
-./scripts/publish-release.ps1 -Version 1.2.0 -IncludeCompact
+./scripts/publish-release.ps1 -Version 1.2.1 -IncludeCompact
 ```
 
 The command rebuilds both packages, verifies their SHA-256 checksums, checks the remote tag, and idempotently creates or updates the Release. Pass `-SkipBuild` to upload already-built artifacts.

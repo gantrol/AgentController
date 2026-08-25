@@ -1,10 +1,10 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.2.0",
+    [string]$Version = "1.2.1",
     [string]$Runtime = "win-x64",
     [string]$Repository = "",
     [string]$Tag = "",
-    [string]$NotesFile = "public\docs\release-v1.2.0.md",
+    [string]$NotesFile = "public\docs\release-v1.2.1.md",
     [switch]$IncludeCompact,
     [switch]$SkipBuild,
     [switch]$Draft,
