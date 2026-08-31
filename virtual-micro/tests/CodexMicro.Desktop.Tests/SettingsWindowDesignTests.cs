@@ -100,12 +100,13 @@ public sealed class SettingsWindowDesignTests
                 {
                     ShutdownMode = ShutdownMode.OnExplicitShutdown,
                 };
-                var profile = MicroProfileSettings.CreateTransient();
-                var localization = new MicroLocalization(MicroLanguage.ZhCn);
                 var settingsRoot = Path.Combine(
                     Path.GetTempPath(),
                     "codex-micro-settings-window-tests",
                     Guid.NewGuid().ToString("N"));
+                var profile = MicroProfileSettings.CreateTransient(
+                    modelsCachePath: WriteModelsCache(settingsRoot));
+                var localization = new MicroLocalization(MicroLanguage.ZhCn);
                 var configPath = Path.Combine(settingsRoot, "config.toml");
                 var observer = new CodexMicroLayoutObserver(configPath);
                 var harnessRegistry = new MicroHarnessRegistry(
@@ -151,6 +152,20 @@ public sealed class SettingsWindowDesignTests
                 Assert.Equal(3, window.QuickModelACombo.Items.Count);
                 Assert.Equal("Sol", window.QuickModelACombo.SelectedItem?.ToString());
                 Assert.Equal("Luna", window.QuickModelBCombo.SelectedItem?.ToString());
+                Assert.Equal(7, window.QuickModelAEffortCombo.Items.Count);
+                Assert.Equal(6, window.QuickModelBEffortCombo.Items.Count);
+                Assert.Contains(
+                    window.QuickModelAEffortCombo.Items.Cast<object>(),
+                    item => item.ToString() == "Ultra");
+                Assert.DoesNotContain(
+                    window.QuickModelBEffortCombo.Items.Cast<object>(),
+                    item => item.ToString() == "Ultra");
+                Assert.Equal(
+                    "记忆上次",
+                    window.QuickModelAEffortCombo.SelectedItem?.ToString());
+                Assert.Equal(
+                    "记忆上次",
+                    window.QuickModelBEffortCombo.SelectedItem?.ToString());
                 Assert.Equal(
                     Visibility.Visible,
                     window.QuickModelARow.Visibility);
@@ -313,6 +328,24 @@ public sealed class SettingsWindowDesignTests
                     CodexQuickModel.Terra,
                     profile.Current.QuickModelB);
                 Assert.Equal("Terra", window.QuickModelBCombo.SelectedItem?.ToString());
+                Assert.Equal(7, window.QuickModelBEffortCombo.Items.Count);
+                window.QuickModelBEffortCombo.SelectedItem =
+                    window.QuickModelBEffortCombo.Items.Cast<object>()
+                        .First(item => item.ToString() == "Ultra");
+                Assert.Equal("ultra", profile.Current.QuickModelBEffort);
+
+                window.QuickModelBCombo.SelectedIndex = 1;
+                Assert.Equal(
+                    CodexQuickModel.Luna,
+                    profile.Current.QuickModelB);
+                Assert.Null(profile.Current.QuickModelBEffort);
+                Assert.Equal(6, window.QuickModelBEffortCombo.Items.Count);
+                Assert.DoesNotContain(
+                    window.QuickModelBEffortCombo.Items.Cast<object>(),
+                    item => item.ToString() == "Ultra");
+                Assert.Equal(
+                    "记忆上次",
+                    window.QuickModelBEffortCombo.SelectedItem?.ToString());
 
                 localization.SetLanguage(MicroLanguage.EnUs);
                 Assert.Equal("Micro software settings", window.WindowTitleText.Text);
@@ -534,5 +567,52 @@ public sealed class SettingsWindowDesignTests
         thread.Join();
 
         Assert.Null(error);
+    }
+
+    private static string WriteModelsCache(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "models_cache.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "models": [
+                {
+                  "slug": "gpt-5.6-sol",
+                  "supported_reasoning_levels": [
+                    { "effort": "low" },
+                    { "effort": "medium" },
+                    { "effort": "high" },
+                    { "effort": "xhigh" },
+                    { "effort": "max" },
+                    { "effort": "ultra" }
+                  ]
+                },
+                {
+                  "slug": "gpt-5.6-terra",
+                  "supported_reasoning_levels": [
+                    { "effort": "low" },
+                    { "effort": "medium" },
+                    { "effort": "high" },
+                    { "effort": "xhigh" },
+                    { "effort": "max" },
+                    { "effort": "ultra" }
+                  ]
+                },
+                {
+                  "slug": "gpt-5.6-luna",
+                  "supported_reasoning_levels": [
+                    { "effort": "low" },
+                    { "effort": "medium" },
+                    { "effort": "high" },
+                    { "effort": "xhigh" },
+                    { "effort": "max" }
+                  ]
+                }
+              ]
+            }
+            """);
+        return path;
     }
 }

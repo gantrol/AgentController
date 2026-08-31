@@ -23,7 +23,7 @@ runs `git clone`. The bundled
 [Windows setup guide](./DEEPSEEK-WINDOWS-SETUP.zh-CN.md) is currently in Chinese
 and links to upstream official instructions.
 
-Version 0.2.8 pins program-managed installations to DeepSeek Harness
+Version 0.2.9 pins program-managed installations to DeepSeek Harness
 `v0.1.0-rc.8`, checks the actual installed package even after first-run setup,
 and offers a health-checked, rollback-safe upgrade from older managed builds.
 It also registers `deepseek-v4-flash-vision-exp` with native text/image input.
@@ -204,26 +204,26 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.8
+.\scripts\package-micro.ps1 -Version 0.2.9
 # Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
-.\scripts\package-micro.ps1 -Version 0.2.8 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.9 -Preset deepseek
 ```
 
 The user-facing Release contains one recommended online package:
 
-- `dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`, including the Bridge and
+- `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`, including the Bridge and
   managed setup entry. First-run setup installs the pinned DSH online instead
   of bundling a full WSL root filesystem.
 
 The following are maintainer build and diagnostic outputs, not ordinary user
 download choices:
 
-- single-file executable: `.artifacts/micro-release/0.2.8/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-0.2.8-win-x64.zip`;
+- single-file executable: `.artifacts/micro-release/0.2.9/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.2.9-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
-- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`;
+- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`;
 - standalone existing-DSH plugin:
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.8.zip`, with its own checksum.
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.9.zip`, with its own checksum.
 
 The recommended online package includes `CodexMicro.exe`, the READMEs, the first-run
 setup guide, the license, and the keypad-side `voice` launcher/adapter. It does

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.8",
+    [string]$Version = "0.2.9",
     [string]$Runtime = "win-x64",
     [string]$BundledWslPayload,
     [double]$MaximumPackageMiB = 1024,

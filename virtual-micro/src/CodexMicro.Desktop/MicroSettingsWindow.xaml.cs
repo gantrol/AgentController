@@ -100,6 +100,19 @@ public partial class MicroSettingsWindow : Window
                 choice.Model == profile.QuickModelB);
 
             SetChoices(
+                QuickModelAEffortCombo,
+                CreateReasoningEffortChoices(
+                    profile.QuickModelA,
+                    english),
+                profile.QuickModelAEffort ?? "remember");
+            SetChoices(
+                QuickModelBEffortCombo,
+                CreateReasoningEffortChoices(
+                    profile.QuickModelB,
+                    english),
+                profile.QuickModelBEffort ?? "remember");
+
+            SetChoices(
                 AgentSourceCombo,
                 isCodex
                     ? [
@@ -252,12 +265,12 @@ public partial class MicroSettingsWindow : Window
         ExtensionsHeadingText.Text = english ? "Extensions" : "扩展";
         QuickModelATitleText.Text = english ? "Quick model A" : "快捷模型 A";
         QuickModelADetailText.Text = english
-            ? "First model in the lower-left quota knob pair"
-            : "左下额度旋钮双模型组合中的第一个模型";
+            ? "First model and its target reasoning effort"
+            : "第一个模型及切换后的目标思考强度";
         QuickModelBTitleText.Text = english ? "Quick model B" : "快捷模型 B";
         QuickModelBDetailText.Text = english
-            ? "Second model in the lower-left quota knob pair"
-            : "左下额度旋钮双模型组合中的第二个模型";
+            ? "Second model and its target reasoning effort"
+            : "第二个模型及切换后的目标思考强度";
         HarnessTitleText.Text = english ? "Codex key target" : "Codex 键目标";
         HarnessDetailText.Text = english
             ? "Select Codex, DeepSeek Harness, or any registered direct adapter"
@@ -441,6 +454,31 @@ public partial class MicroSettingsWindow : Window
         comboBox.ItemsSource = choices;
         comboBox.SelectedItem = choices.FirstOrDefault(choice =>
             choice.Id == selectedId) ?? choices[0];
+    }
+
+    private IReadOnlyList<SettingChoice> CreateReasoningEffortChoices(
+        CodexQuickModel model,
+        bool english)
+    {
+        var choices = new List<SettingChoice>
+        {
+            new("remember", english ? "Remember" : "记忆上次"),
+        };
+        choices.AddRange(
+            _profileSettings.GetSupportedReasoningEfforts(model)
+                .Select(effort => new SettingChoice(
+                    effort,
+                    effort switch
+                    {
+                        "low" => "Low",
+                        "medium" => "Medium",
+                        "high" => "High",
+                        "xhigh" => "XHigh",
+                        "max" => "Max",
+                        "ultra" => "Ultra",
+                        _ => effort,
+                    })));
+        return choices;
     }
 
     private void RefreshHarnessKeyMapChoices(
@@ -698,6 +736,30 @@ public partial class MicroSettingsWindow : Window
         if (!_syncing && QuickModelBCombo.SelectedItem is ModelChoice choice)
         {
             _profileSettings.SetQuickModelB(choice.Model);
+        }
+    }
+
+    private void QuickModelAEffortCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_syncing &&
+            QuickModelAEffortCombo.SelectedItem is SettingChoice choice)
+        {
+            _profileSettings.SetQuickModelAEffort(
+                choice.Id == "remember" ? null : choice.Id);
+        }
+    }
+
+    private void QuickModelBEffortCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_syncing &&
+            QuickModelBEffortCombo.SelectedItem is SettingChoice choice)
+        {
+            _profileSettings.SetQuickModelBEffort(
+                choice.Id == "remember" ? null : choice.Id);
         }
     }
 

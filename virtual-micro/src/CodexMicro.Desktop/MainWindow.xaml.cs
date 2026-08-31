@@ -20,6 +20,10 @@ using CodexMicro.Protocol;
 
 namespace CodexMicro.Desktop;
 
+internal readonly record struct QuickModelPresentationState(
+    string? ThreadId,
+    CodexQuickModel Model);
+
 public partial class MicroSurfaceWindow : Window
 {
     private static readonly TimeSpan EncoderStepInterval =
@@ -212,7 +216,9 @@ public partial class MicroSurfaceWindow : Window
     private string _activeHarnessContextId = "codex";
     private bool _quotaRefreshFailed;
     private CodexQuickModel _quickModel;
+    private string? _quickModelThreadId;
     private bool _quickModelSwitching;
+    private string? _quickModelSwitchingThreadId;
     private bool _harnessModelSwitching;
     private long _settingsPointerDownTimestamp;
     private int _backgroundServicesStarted;
@@ -370,6 +376,8 @@ public partial class MicroSurfaceWindow : Window
         _profileSettings.Changed += ProfileSettings_Changed;
         _harnessRegistry.Changed += HarnessRegistry_Changed;
         _voiceInput.Changed += VoiceInput_Changed;
+        _modelToggleService.CurrentThreadStateChanged +=
+            ModelToggleService_CurrentThreadStateChanged;
         RefreshLocalizedChrome();
         InitializeHoverHelp();
         UpdateQuotaPresentation();
@@ -476,6 +484,8 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _windowClosed = true;
+        _modelToggleService.CurrentThreadStateChanged -=
+            ModelToggleService_CurrentThreadStateChanged;
         try
         {
             _voiceBridgeCancellation?.Cancel();
@@ -4077,6 +4087,118 @@ public partial class MicroSurfaceWindow : Window
         await ToggleQuickModelAsync();
     }
 
+    private void ModelToggleService_CurrentThreadStateChanged(
+        CodexThreadModelState? ignoredState)
+    {
+        if (_windowClosed)
+        {
+            return;
+        }
+
+        if (Dispatcher.CheckAccess())
+        {
+            ApplyAuthoritativeQuickModelState(
+                _modelToggleService.CurrentThreadState);
+            return;
+        }
+
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Send,
+                new Action(() =>
+                {
+                    if (!_windowClosed)
+                    {
+                        // Read at dispatch time so an older queued callback
+                        // cannot overwrite a newer task/state notification.
+                        ApplyAuthoritativeQuickModelState(
+                            _modelToggleService.CurrentThreadState);
+                    }
+                }));
+        }
+        catch (InvalidOperationException) when (
+            _windowClosed ||
+            Dispatcher.HasShutdownStarted ||
+            Dispatcher.HasShutdownFinished)
+        {
+            // A reader notification can race the WPF dispatcher shutdown.
+        }
+    }
+
+    private void ApplyAuthoritativeQuickModelState(
+        CodexThreadModelState? state)
+    {
+        var next = ReduceQuickModelSnapshot(state);
+        var visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+        if (_quickModelSwitching &&
+            !string.IsNullOrWhiteSpace(_quickModelSwitchingThreadId) &&
+            !string.IsNullOrWhiteSpace(visibleThreadId) &&
+            !QuickModelThreadIdsEqual(
+                _quickModelSwitchingThreadId,
+                visibleThreadId))
+        {
+            // A toggle belongs to the task that was visible when it started.
+            // Stop waiting as soon as the service reports a task transition.
+            _modelActionCancellation?.Cancel();
+        }
+
+        ApplyQuickModelPresentationState(next);
+    }
+
+    internal static QuickModelPresentationState ReduceQuickModelSnapshot(
+        CodexThreadModelState? state) =>
+        state is null || string.IsNullOrWhiteSpace(state.ThreadId)
+            ? new(null, CodexQuickModel.Unknown)
+            : new(
+                state.ThreadId.Trim(),
+                CodexModelToggleService.ParseModelId(state.ModelId));
+
+    internal static bool QuickModelResultTargetsCurrentThread(
+        QuickModelPresentationState state,
+        CodexModelToggleResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return !string.IsNullOrWhiteSpace(state.ThreadId) &&
+            !string.IsNullOrWhiteSpace(result.ThreadId) &&
+            QuickModelThreadIdsEqual(state.ThreadId, result.ThreadId);
+    }
+
+    internal static bool QuickModelResultCanDescribeCurrentThread(
+        QuickModelPresentationState state,
+        string? operationThreadId,
+        CodexModelToggleResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return string.IsNullOrWhiteSpace(result.ThreadId)
+            ? QuickModelThreadIdsEqual(state.ThreadId, operationThreadId)
+            : QuickModelResultTargetsCurrentThread(state, result);
+    }
+
+    private static bool QuickModelThreadIdsEqual(
+        string? first,
+        string? second) =>
+        string.Equals(
+            first?.Trim(),
+            second?.Trim(),
+            StringComparison.Ordinal);
+
+    private QuickModelPresentationState CurrentQuickModelPresentationState =>
+        new(_quickModelThreadId, _quickModel);
+
+    private void ApplyQuickModelPresentationState(
+        QuickModelPresentationState state)
+    {
+        _quickModelThreadId = state.ThreadId;
+        _quickModel = state.Model;
+        UpdateQuotaPresentation();
+    }
+
     private async Task ToggleQuickModelAsync()
     {
         if (_quickModelSwitching ||
@@ -4086,31 +4208,55 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(_quickModelThreadId))
+        {
+            SetLed(ActivityLed, "#FFD66E", "快捷模型切换未完成");
+            SetStatus("当前任务模型仍在同步；请稍后再试。");
+            return;
+        }
+
         _quickModelSwitching = true;
+        var switchingThreadId = _quickModelThreadId!;
+        _quickModelSwitchingThreadId = switchingThreadId;
         UpdateQuotaPresentation();
         try
         {
             using var action = new CancellationTokenSource(
-                TimeSpan.FromSeconds(12));
+                TimeSpan.FromSeconds(20));
             _modelActionCancellation = action;
             var quickModels = _profileSettings.Current;
             var result = await _modelToggleService.ToggleAsync(
                 quickModels.QuickModelA,
+                quickModels.QuickModelAEffort,
                 quickModels.QuickModelB,
+                quickModels.QuickModelBEffort,
+                switchingThreadId,
                 action.Token);
             if (_windowClosed)
             {
                 return;
             }
 
-            if (result.Previous != CodexQuickModel.Unknown)
+            var currentState = CurrentQuickModelPresentationState;
+            var resultTargetsCurrentThread =
+                QuickModelResultTargetsCurrentThread(currentState, result);
+            if (!QuickModelResultCanDescribeCurrentThread(
+                currentState,
+                switchingThreadId,
+                result))
             {
-                _quickModel = result.Previous;
+                // The service completed an operation for a task that is no
+                // longer visible. Its result must not describe the new task.
+                return;
             }
 
             if (result.Succeeded)
             {
-                _quickModel = result.Current;
+                if (!resultTargetsCurrentThread)
+                {
+                    return;
+                }
+
                 var name = FormatQuickModelName(result.Current);
                 var effort = FormatReasoningEffort(result.CurrentEffort);
                 SetLed(ActivityLed, "#9EBDFF", $"已切换到 {name}");
@@ -4119,13 +4265,22 @@ public partial class MicroSurfaceWindow : Window
             }
             else
             {
-                SetLed(ActivityLed, "#FF7994", "快捷模型切换失败");
+                var transientFailure = IsTransientQuickModelError(result.Error);
+                SetLed(
+                    ActivityLed,
+                    transientFailure ? "#FFD66E" : "#FF7994",
+                    transientFailure
+                        ? "快捷模型切换未完成"
+                        : "快捷模型切换失败");
                 SetStatus(DescribeQuickModelError(result.Error));
             }
         }
         catch (OperationCanceledException)
         {
-            if (!_windowClosed)
+            if (!_windowClosed &&
+                QuickModelThreadIdsEqual(
+                    switchingThreadId,
+                    _quickModelThreadId))
             {
                 SetLed(ActivityLed, "#FFD66E", "快捷模型切换超时");
                 SetStatus("快捷模型切换超时，未收到 Codex 确认；请以当前任务显示的模型为准后再试。");
@@ -4135,12 +4290,24 @@ public partial class MicroSurfaceWindow : Window
         {
             _modelActionCancellation = null;
             _quickModelSwitching = false;
+            _quickModelSwitchingThreadId = null;
             if (!_windowClosed)
             {
                 UpdateQuotaPresentation();
             }
         }
     }
+
+    internal static bool IsTransientQuickModelError(string? error) =>
+        error is
+            "cancelled" or
+            "no-visible-thread" or
+            "multiple-visible-threads" or
+            "thread-owner-unavailable" or
+            "thread-state-unavailable" or
+            "ipc-timeout" or
+            "ipc-disconnected" or
+            "visible-thread-changed";
 
     private static string DescribeQuickModelError(string? error) =>
         error switch
@@ -4156,8 +4323,12 @@ public partial class MicroSurfaceWindow : Window
                 "Codex 未确认模型设置；模型保持不变。",
             "ipc-timeout" =>
                 "Codex 任务设置通道超时，未收到结果确认；请以当前任务显示的模型为准。",
+            "ipc-disconnected" =>
+                "Codex 任务设置通道刚刚断开；模型未确认，请稍后再试。",
             "visible-thread-changed" =>
                 "切换过程中当前 Codex 任务发生变化；已停止提交模型设置。",
+            "cancelled" =>
+                "快捷模型切换已取消；请以当前任务显示的模型为准。",
             "ipc-unavailable" =>
                 "当前 Codex 版本的任务设置通道不可用；模型保持不变。",
             _ => "快捷模型切换失败；模型保持不变，请再试一次。",
@@ -6248,11 +6419,16 @@ public partial class MicroSurfaceWindow : Window
             });
     }
 
-    internal void ApplyQuickModel(CodexQuickModel model)
+    internal void ApplyQuickModel(
+        string threadId,
+        CodexQuickModel model)
     {
-        _quickModel = model;
-        UpdateQuotaPresentation();
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        ApplyQuickModelPresentationState(new(threadId.Trim(), model));
     }
+
+    internal void ApplyQuickModel(CodexQuickModel model) =>
+        ApplyQuickModel("visual-test-thread", model);
 
     private void UpdateQuotaPresentation()
     {
@@ -6364,7 +6540,11 @@ public partial class MicroSurfaceWindow : Window
         QuotaCaptionText.Visibility = Visibility.Visible;
         var quickModels = _profileSettings.Current;
         var quickModelPair = FormatQuickModelPair(quickModels);
-        QuotaCaptionText.Text = _quickModelSwitching
+        var quickModelSwitching = _quickModelSwitching &&
+            QuickModelThreadIdsEqual(
+                _quickModelSwitchingThreadId,
+                _quickModelThreadId);
+        QuotaCaptionText.Text = quickModelSwitching
             ? "···"
             : _quickModel switch
             {
@@ -6381,7 +6561,7 @@ public partial class MicroSurfaceWindow : Window
             : english
                 ? $"current model {modelName}"
                 : $"当前模型 {modelName}";
-        if (_quickModelSwitching)
+        if (quickModelSwitching)
         {
             modelStatus = english
                 ? $"switching between {quickModelPair}"

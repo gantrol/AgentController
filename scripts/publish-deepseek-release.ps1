@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "High")]
 param(
-    [string]$Version = "0.2.8",
+    [string]$Version = "0.2.9",
     [string]$Repository = "gantrol/AgentController",
     [string]$Tag = "",
     [string]$NotesFile = "",
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $releaseVersion = $Version.TrimStart("v")
 if ($releaseVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
-    throw "Version must be a semantic version such as 0.2.8."
+    throw "Version must be a semantic version such as 0.2.9."
 }
 if ([string]::IsNullOrWhiteSpace($Tag)) {
     $Tag = "codex-micro-v$releaseVersion"

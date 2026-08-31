@@ -711,11 +711,21 @@
                                                    Style="{StaticResource OptionDetail}"
                                                    Text="First model in the lower-left quota knob pair" />
                                     </StackPanel>
-                                    <ComboBox x:Name="QuickModelACombo"
-                                              Grid.Column="1"
-                                              VerticalAlignment="Center"
-                                              Style="{StaticResource PillComboBox}"
-                                              SelectionChanged="QuickModelACombo_SelectionChanged" />
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <ComboBox x:Name="QuickModelACombo"
+                                                  Width="150"
+                                                  MinWidth="150"
+                                                  Style="{StaticResource PillComboBox}"
+                                                  SelectionChanged="QuickModelACombo_SelectionChanged" />
+                                        <ComboBox x:Name="QuickModelAEffortCombo"
+                                                  Width="128"
+                                                  MinWidth="128"
+                                                  Margin="8,0,0,0"
+                                                  Style="{StaticResource PillComboBox}"
+                                                  SelectionChanged="QuickModelAEffortCombo_SelectionChanged" />
+                                    </StackPanel>
                                 </Grid>
                                 <Border Height="1" Background="{StaticResource SettingsLine}" />
                                 <Grid x:Name="QuickModelBRow" MinHeight="78">
@@ -731,11 +741,21 @@
                                                    Style="{StaticResource OptionDetail}"
                                                    Text="Second model in the lower-left quota knob pair" />
                                     </StackPanel>
-                                    <ComboBox x:Name="QuickModelBCombo"
-                                              Grid.Column="1"
-                                              VerticalAlignment="Center"
-                                              Style="{StaticResource PillComboBox}"
-                                              SelectionChanged="QuickModelBCombo_SelectionChanged" />
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <ComboBox x:Name="QuickModelBCombo"
+                                                  Width="150"
+                                                  MinWidth="150"
+                                                  Style="{StaticResource PillComboBox}"
+                                                  SelectionChanged="QuickModelBCombo_SelectionChanged" />
+                                        <ComboBox x:Name="QuickModelBEffortCombo"
+                                                  Width="128"
+                                                  MinWidth="128"
+                                                  Margin="8,0,0,0"
+                                                  Style="{StaticResource PillComboBox}"
+                                                  SelectionChanged="QuickModelBEffortCombo_SelectionChanged" />
+                                    </StackPanel>
                                 </Grid>
                                 <Border Height="1" Background="{StaticResource SettingsLine}" />
                                 <Grid x:Name="HarnessOptionRow" MinHeight="88">

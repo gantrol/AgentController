@@ -176,7 +176,7 @@ Codex Micro 的协议适配参考上游
 
 ## 推荐在线包
 
-解压 `Deepseek-Harness-Keypad-v0.2.8-win-x64.zip` 后运行 `CodexMicro.exe`。程序使用
+解压 `Deepseek-Harness-Keypad-v0.2.9-win-x64.zip` 后运行 `CodexMicro.exe`。程序使用
 8 步状态机在线准备 Linux 用户态、Node、pnpm 与固定版本的官方 `@deepseek-ai/dsh`。
 版本与 Node / pnpm 一起记录在 Bridge 的 `scripts/runtime-versions.env`；Bridge 没有
 修改 DSH 源码，后续替换官方版本只需更新该清单并重建。

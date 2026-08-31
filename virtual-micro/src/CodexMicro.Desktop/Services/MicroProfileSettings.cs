@@ -56,7 +56,9 @@ internal sealed record MicroProfileSnapshot(
     bool WindowTopmost = true,
     bool TapToToggleVoice = false,
     bool InvertDialDirection = false,
-    MicroVoiceProfile? Voice = null)
+    MicroVoiceProfile? Voice = null,
+    string? QuickModelAEffort = null,
+    string? QuickModelBEffort = null)
 {
     internal MicroVoiceProfile VoiceSettings =>
         Voice ?? MicroVoiceProfile.Default;
@@ -69,6 +71,19 @@ internal sealed record MicroProfileSnapshot(
 /// </summary>
 internal sealed class MicroProfileSettings
 {
+    private sealed record ModelReasoningProfile(
+        IReadOnlyList<string> SupportedEfforts);
+
+    private static readonly string[] KnownReasoningEfforts =
+    [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra",
+    ];
+
     private static readonly MicroProfileSnapshot DefaultSnapshot =
         new(
             CodexQuickModel.Sol,
@@ -77,13 +92,20 @@ internal sealed class MicroProfileSettings
 
     private readonly string? _settingsPath;
     private readonly MicroProfileSnapshot _defaultSnapshot;
+    private readonly IReadOnlyDictionary<CodexQuickModel, ModelReasoningProfile>
+        _modelReasoningProfiles;
 
-    internal MicroProfileSettings(string? settingsPath = null)
+    internal MicroProfileSettings(
+        string? settingsPath = null,
+        string? modelsCachePath = null)
     {
-        _defaultSnapshot = settingsPath is null
+        _modelReasoningProfiles = ReadModelReasoningProfiles(
+            modelsCachePath ?? GetDefaultModelsCachePath());
+        var fallback = settingsPath is null
             ? MicroDistributionPreset.TryLoad()?.Apply(DefaultSnapshot) ??
                 DefaultSnapshot
             : DefaultSnapshot;
+        _defaultSnapshot = Normalize(fallback);
         _settingsPath = settingsPath ?? GetDefaultPath();
         Current = Read(_settingsPath) ?? _defaultSnapshot;
     }
@@ -93,6 +115,8 @@ internal sealed class MicroProfileSettings
         MicroProfileSnapshot fallback,
         string persistentKeypadId)
     {
+        _modelReasoningProfiles = ReadModelReasoningProfiles(
+            GetDefaultModelsCachePath());
         _settingsPath = settingsPath;
         PersistentKeypadId = persistentKeypadId;
         _defaultSnapshot = Normalize(fallback);
@@ -101,8 +125,12 @@ internal sealed class MicroProfileSettings
         LastSaveSucceeded = existing is not null || Persist(Current);
     }
 
-    private MicroProfileSettings(MicroProfileSnapshot snapshot)
+    private MicroProfileSettings(
+        MicroProfileSnapshot snapshot,
+        string? modelsCachePath)
     {
+        _modelReasoningProfiles = ReadModelReasoningProfiles(
+            modelsCachePath ?? GetDefaultModelsCachePath());
         _defaultSnapshot = Normalize(snapshot);
         Current = _defaultSnapshot;
         LastSaveSucceeded = true;
@@ -120,8 +148,18 @@ internal sealed class MicroProfileSettings
     internal bool LastSaveSucceeded { get; private set; } = true;
 
     internal static MicroProfileSettings CreateTransient(
-        MicroProfileSnapshot? snapshot = null) =>
-        new(snapshot ?? DefaultSnapshot);
+        MicroProfileSnapshot? snapshot = null,
+        string? modelsCachePath = null) =>
+        new(snapshot ?? DefaultSnapshot, modelsCachePath);
+
+    internal IReadOnlyList<string> GetSupportedReasoningEfforts(
+        CodexQuickModel model)
+    {
+        ValidateKnown(model);
+        return _modelReasoningProfiles.TryGetValue(model, out var profile)
+            ? profile.SupportedEfforts
+            : KnownReasoningEfforts;
+    }
 
     internal static MicroProfileSettings CreateForKeypad(
         string keypadId,
@@ -170,8 +208,16 @@ internal sealed class MicroProfileSettings
             {
                 QuickModelA = model,
                 QuickModelB = current.QuickModelA,
+                QuickModelAEffort = current.QuickModelBEffort,
+                QuickModelBEffort = current.QuickModelAEffort,
             }
-            : current with { QuickModelA = model });
+            : current with
+            {
+                QuickModelA = model,
+                QuickModelAEffort = NormalizeReasoningEffortForModel(
+                    model,
+                    current.QuickModelAEffort),
+            });
     }
 
     internal void SetQuickModelB(CodexQuickModel model)
@@ -183,9 +229,33 @@ internal sealed class MicroProfileSettings
             {
                 QuickModelA = current.QuickModelB,
                 QuickModelB = model,
+                QuickModelAEffort = current.QuickModelBEffort,
+                QuickModelBEffort = current.QuickModelAEffort,
             }
-            : current with { QuickModelB = model });
+            : current with
+            {
+                QuickModelB = model,
+                QuickModelBEffort = NormalizeReasoningEffortForModel(
+                    model,
+                    current.QuickModelBEffort),
+            });
     }
+
+    internal void SetQuickModelAEffort(string? effort) =>
+        Update(Current with
+        {
+            QuickModelAEffort = ValidateReasoningEffort(
+                Current.QuickModelA,
+                effort),
+        });
+
+    internal void SetQuickModelBEffort(string? effort) =>
+        Update(Current with
+        {
+            QuickModelBEffort = ValidateReasoningEffort(
+                Current.QuickModelB,
+                effort),
+        });
 
     internal void SetActiveHarness(string harnessId)
     {
@@ -307,6 +377,8 @@ internal sealed class MicroProfileSettings
                 {
                     QuickModelA = ToSettingValue(snapshot.QuickModelA),
                     QuickModelB = ToSettingValue(snapshot.QuickModelB),
+                    QuickModelAEffort = snapshot.QuickModelAEffort,
+                    QuickModelBEffort = snapshot.QuickModelBEffort,
                     ActiveHarnessId = snapshot.ActiveHarnessId,
                     AgentSource = snapshot.AgentSource,
                     SingleTapAgentKeys = snapshot.SingleTapAgentKeys,
@@ -330,7 +402,7 @@ internal sealed class MicroProfileSettings
         }
     }
 
-    private static MicroProfileSnapshot? Read(string path)
+    private MicroProfileSnapshot? Read(string path)
     {
         try
         {
@@ -362,7 +434,9 @@ internal sealed class MicroProfileSettings
                 stored.WindowTopmost,
                 stored.TapToToggleVoice,
                 stored.InvertDialDirection,
-                stored.Voice?.ToProfile()));
+                stored.Voice?.ToProfile(),
+                stored.QuickModelAEffort,
+                stored.QuickModelBEffort));
         }
         catch
         {
@@ -370,7 +444,7 @@ internal sealed class MicroProfileSettings
         }
     }
 
-    private static MicroProfileSnapshot Normalize(
+    private MicroProfileSnapshot Normalize(
         MicroProfileSnapshot snapshot)
     {
         var first = IsKnown(snapshot.QuickModelA)
@@ -414,7 +488,13 @@ internal sealed class MicroProfileSettings
             snapshot.WindowTopmost,
             snapshot.TapToToggleVoice,
             snapshot.InvertDialDirection,
-            NormalizeVoice(snapshot.VoiceSettings));
+            NormalizeVoice(snapshot.VoiceSettings),
+            NormalizeReasoningEffortForModel(
+                first,
+                snapshot.QuickModelAEffort),
+            NormalizeReasoningEffortForModel(
+                second,
+                snapshot.QuickModelBEffort));
     }
 
     private static MicroVoiceProfile NormalizeVoice(MicroVoiceProfile value)
@@ -480,6 +560,122 @@ internal sealed class MicroProfileSettings
     private static string ToSettingValue(CodexQuickModel model) =>
         model.ToString().ToLowerInvariant();
 
+    private static string? NormalizeReasoningEffort(string? effort) =>
+        effort?.Trim().ToLowerInvariant() switch
+        {
+            "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
+            "xhigh" => "xhigh",
+            "max" => "max",
+            "ultra" => "ultra",
+            _ => null,
+        };
+
+    private string? NormalizeReasoningEffortForModel(
+        CodexQuickModel model,
+        string? effort)
+    {
+        var normalized = NormalizeReasoningEffort(effort);
+        return normalized is null || IsReasoningEffortSupported(model, normalized)
+            ? normalized
+            : null;
+    }
+
+    private string? ValidateReasoningEffort(
+        CodexQuickModel model,
+        string? effort)
+    {
+        if (string.IsNullOrWhiteSpace(effort))
+        {
+            return null;
+        }
+
+        var normalized = NormalizeReasoningEffort(effort) ??
+            throw new ArgumentOutOfRangeException(nameof(effort));
+        return IsReasoningEffortSupported(model, normalized)
+            ? normalized
+            : throw new ArgumentOutOfRangeException(nameof(effort));
+    }
+
+    private bool IsReasoningEffortSupported(
+        CodexQuickModel model,
+        string effort) =>
+        !_modelReasoningProfiles.TryGetValue(model, out var profile) ||
+        profile.SupportedEfforts.Contains(
+            effort,
+            StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<CodexQuickModel, ModelReasoningProfile>
+        ReadModelReasoningProfiles(string path)
+    {
+        var profiles = new Dictionary<CodexQuickModel, ModelReasoningProfile>();
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return profiles;
+            }
+
+            using var cache = JsonDocument.Parse(File.ReadAllText(path));
+            if (!cache.RootElement.TryGetProperty("models", out var models) ||
+                models.ValueKind != JsonValueKind.Array)
+            {
+                return profiles;
+            }
+
+            foreach (var model in models.EnumerateArray())
+            {
+                if (!model.TryGetProperty("slug", out var slugElement) ||
+                    slugElement.ValueKind != JsonValueKind.String ||
+                    ParseCachedModel(slugElement.GetString()) is not { } quickModel ||
+                    !model.TryGetProperty(
+                        "supported_reasoning_levels",
+                        out var levels) ||
+                    levels.ValueKind != JsonValueKind.Array)
+                {
+                    continue;
+                }
+
+                var supported = levels.EnumerateArray()
+                    .Select(level =>
+                        level.ValueKind == JsonValueKind.Object &&
+                        level.TryGetProperty("effort", out var effortElement) &&
+                        effortElement.ValueKind == JsonValueKind.String
+                            ? NormalizeReasoningEffort(effortElement.GetString())
+                            : null)
+                    .Where(effort => effort is not null)
+                    .Select(effort => effort!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                // An explicitly empty list is still authoritative: it means
+                // the model exposes no known selectable effort. Only a missing
+                // or unreadable model record falls back to the conservative
+                // all-known list used for offline settings.
+                profiles[quickModel] = new(supported);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                UnauthorizedAccessException or
+                JsonException)
+        {
+            // Missing, stale, or partially-written model metadata must not
+            // invalidate an otherwise legal persisted profile.
+        }
+
+        return profiles;
+    }
+
+    private static CodexQuickModel? ParseCachedModel(string? modelId) =>
+        modelId?.Trim().ToLowerInvariant() switch
+        {
+            "gpt-5.6-sol" => CodexQuickModel.Sol,
+            "gpt-5.6-terra" => CodexQuickModel.Terra,
+            "gpt-5.6-luna" => CodexQuickModel.Luna,
+            _ => null,
+        };
+
     private static bool IsKnown(CodexQuickModel model) =>
         model is CodexQuickModel.Sol or
             CodexQuickModel.Terra or
@@ -502,6 +698,10 @@ internal sealed class MicroProfileSettings
             Environment.SpecialFolder.LocalApplicationData);
         return Path.Combine(localAppData, "CodexMicro", "micro-profile.json");
     }
+
+    private static string GetDefaultModelsCachePath()
+        => CodexModelToggleService.ResolveModelsCachePath(
+            Environment.GetEnvironmentVariable("CODEX_HOME"));
 
     private static string GetKeypadDirectory()
     {
@@ -530,6 +730,10 @@ internal sealed class MicroProfileSettings
         public string QuickModelA { get; set; } = "sol";
 
         public string QuickModelB { get; set; } = "luna";
+
+        public string? QuickModelAEffort { get; set; }
+
+        public string? QuickModelBEffort { get; set; }
 
         public string ActiveHarnessId { get; set; } = "codex";
 

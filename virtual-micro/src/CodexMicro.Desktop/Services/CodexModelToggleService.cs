@@ -1,5 +1,8 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+#if DEBUG
+using System.Diagnostics;
+#endif
 using System.IO;
 using System.IO.Pipes;
 using System.Text.Json;
@@ -13,12 +16,421 @@ internal sealed record CodexModelToggleResult(
     string? ThreadId = null,
     string? PreviousEffort = null,
     string? CurrentEffort = null,
-    string? Error = null);
+    string? Error = null,
+    string? Detail = null);
 
 internal sealed record CodexThreadModelState(
     string ThreadId,
     string ModelId,
     string? Effort);
+
+internal readonly record struct CodexThreadStateApplyResult(
+    bool Applied,
+    bool RequiresSnapshot,
+    CodexThreadModelState? State);
+
+/// <summary>
+/// Accumulates the small, authoritative portion of a streamed conversation
+/// state that Codex Micro needs. The IPC stream uses Immer-style patches, but
+/// newer senders may serialize paths as JSON Pointers, so both forms are
+/// accepted. Unrelated patches are deliberately ignored while their revision
+/// still advances.
+/// </summary>
+internal sealed class CodexThreadModelStateAccumulator
+{
+    private string? _latestModel;
+    private string? _latestReasoningEffort;
+    private string? _settingsModel;
+    private string? _settingsEffort;
+    private bool _hasSettingsEffort;
+    private bool _hasSnapshot;
+    private bool _hasUnrevisionedConfirmation;
+    private string? _unrevisionedConfirmedModel;
+    private string? _unrevisionedConfirmedEffort;
+
+    internal CodexThreadModelStateAccumulator(
+        string threadId,
+        string ownerClientId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerClientId);
+        ThreadId = threadId;
+        OwnerClientId = ownerClientId;
+    }
+
+    internal string ThreadId { get; }
+
+    internal string OwnerClientId { get; }
+
+    internal long? Revision { get; private set; }
+
+    internal CodexThreadStateApplyResult ApplyChange(JsonElement change)
+    {
+        if (!TryReadString(change, "type", out var changeType))
+        {
+            return default;
+        }
+
+        if (changeType == "snapshot")
+        {
+            if (!TryReadRevision(change, "revision", out var revision) ||
+                !change.TryGetProperty(
+                    "conversationState",
+                    out var conversationState) ||
+                conversationState.ValueKind != JsonValueKind.Object)
+            {
+                return default;
+            }
+
+            if (_hasSnapshot &&
+                Revision is long currentRevision &&
+                revision <= currentRevision)
+            {
+                // Duplicate or delayed snapshots must not roll back patches
+                // or a settings update that was already confirmed locally.
+                return default;
+            }
+
+            ReadConversationState(conversationState);
+            if (_hasUnrevisionedConfirmation &&
+                !StateMatches(
+                    BuildState(),
+                    _unrevisionedConfirmedModel,
+                    _unrevisionedConfirmedEffort))
+            {
+                // The owner can emit one pre-update snapshot after already
+                // acknowledging the update. Keep the confirmed settings but
+                // adopt this revision as the patch baseline; otherwise every
+                // subsequent patch would be ignored forever.
+                RestoreUnrevisionedConfirmation();
+                ClearUnrevisionedConfirmation();
+                Revision = revision;
+                _hasSnapshot = true;
+                return new(true, false, BuildState());
+            }
+
+            ClearUnrevisionedConfirmation();
+            Revision = revision;
+            _hasSnapshot = true;
+            return new(true, false, BuildState());
+        }
+
+        if (changeType != "patches")
+        {
+            return default;
+        }
+
+        if (!_hasSnapshot || Revision is null)
+        {
+            return default;
+        }
+
+        if (!TryReadRevision(change, "baseRevision", out var baseRevision) ||
+            !TryReadRevision(change, "revision", out var revisionValue) ||
+            !change.TryGetProperty("patches", out var patches) ||
+            patches.ValueKind != JsonValueKind.Array)
+        {
+            return default;
+        }
+
+        if (baseRevision != Revision.Value ||
+            baseRevision == long.MaxValue ||
+            revisionValue != baseRevision + 1)
+        {
+            Reset();
+            return new(false, true, null);
+        }
+
+        foreach (var patch in patches.EnumerateArray())
+        {
+            ApplyPatch(patch);
+        }
+
+        Revision = revisionValue;
+        return new(true, false, BuildState());
+    }
+
+    internal CodexThreadModelState ConfirmSettings(
+        string modelId,
+        string? effort)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+        _latestModel = modelId;
+        _settingsModel = modelId;
+        _latestReasoningEffort = effort;
+        _settingsEffort = effort;
+        _hasSettingsEffort = true;
+        _hasUnrevisionedConfirmation = !_hasSnapshot || Revision is null;
+        _unrevisionedConfirmedModel = _hasUnrevisionedConfirmation
+            ? modelId
+            : null;
+        _unrevisionedConfirmedEffort = _hasUnrevisionedConfirmation
+            ? effort
+            : null;
+        return new(ThreadId, modelId, effort);
+    }
+
+    private void ReadConversationState(JsonElement state)
+    {
+        _latestModel = ReadOptionalString(state, "latestModel");
+        _latestReasoningEffort = ReadOptionalString(
+            state,
+            "latestReasoningEffort");
+        _settingsModel = null;
+        _settingsEffort = null;
+        _hasSettingsEffort = false;
+        if (state.TryGetProperty("latestThreadSettings", out var settings) &&
+            settings.ValueKind == JsonValueKind.Object)
+        {
+            _settingsModel = ReadOptionalString(settings, "model");
+            _hasSettingsEffort = settings.TryGetProperty(
+                "effort",
+                out var effort);
+            _settingsEffort = _hasSettingsEffort
+                ? ReadOptionalString(effort)
+                : null;
+        }
+    }
+
+    private void ApplyPatch(JsonElement patch)
+    {
+        if (!TryReadString(patch, "op", out var operation) ||
+            operation is not ("add" or "replace" or "remove") ||
+            !TryReadPatchPath(patch, out var path))
+        {
+            return;
+        }
+
+        var removesValue = operation == "remove";
+        var value = default(JsonElement);
+        var hasValue = !removesValue &&
+            patch.TryGetProperty("value", out value);
+        if (!removesValue && !hasValue)
+        {
+            return;
+        }
+
+        if (path.Length == 0)
+        {
+            if (removesValue || value.ValueKind != JsonValueKind.Object)
+            {
+                ClearStateFields();
+            }
+            else
+            {
+                ReadConversationState(value);
+            }
+
+            return;
+        }
+
+        if (path.Length == 1)
+        {
+            switch (path[0])
+            {
+                case "latestModel":
+                    _latestModel = removesValue
+                        ? null
+                        : ReadOptionalString(value);
+                    return;
+                case "latestReasoningEffort":
+                    _latestReasoningEffort = removesValue
+                        ? null
+                        : ReadOptionalString(value);
+                    return;
+                case "latestThreadSettings":
+                    _settingsModel = null;
+                    _settingsEffort = null;
+                    _hasSettingsEffort = false;
+                    if (!removesValue && value.ValueKind == JsonValueKind.Object)
+                    {
+                        _settingsModel = ReadOptionalString(value, "model");
+                        _hasSettingsEffort = value.TryGetProperty(
+                            "effort",
+                            out var effort);
+                        _settingsEffort = _hasSettingsEffort
+                            ? ReadOptionalString(effort)
+                            : null;
+                    }
+
+                    return;
+            }
+        }
+
+        if (path.Length == 2 && path[0] == "latestThreadSettings")
+        {
+            switch (path[1])
+            {
+                case "model":
+                    _settingsModel = removesValue
+                        ? null
+                        : ReadOptionalString(value);
+                    return;
+                case "effort":
+                    _hasSettingsEffort = !removesValue;
+                    _settingsEffort = removesValue
+                        ? null
+                        : ReadOptionalString(value);
+                    return;
+            }
+        }
+    }
+
+    private CodexThreadModelState? BuildState()
+    {
+        var modelId = !string.IsNullOrWhiteSpace(_settingsModel)
+            ? _settingsModel
+            : _latestModel;
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            return null;
+        }
+
+        var effort = _hasSettingsEffort
+            ? _settingsEffort
+            : _latestReasoningEffort;
+        return new(ThreadId, modelId, effort);
+    }
+
+    private static bool StateMatches(
+        CodexThreadModelState? state,
+        string? modelId,
+        string? effort) =>
+        state is not null &&
+        !string.IsNullOrWhiteSpace(modelId) &&
+        state.ModelId.Equals(modelId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(state.Effort, effort, StringComparison.OrdinalIgnoreCase);
+
+    private void RestoreUnrevisionedConfirmation()
+    {
+        _latestModel = _unrevisionedConfirmedModel;
+        _settingsModel = _unrevisionedConfirmedModel;
+        _latestReasoningEffort = _unrevisionedConfirmedEffort;
+        _settingsEffort = _unrevisionedConfirmedEffort;
+        _hasSettingsEffort = true;
+    }
+
+    private void ClearUnrevisionedConfirmation()
+    {
+        _hasUnrevisionedConfirmation = false;
+        _unrevisionedConfirmedModel = null;
+        _unrevisionedConfirmedEffort = null;
+    }
+
+    private void Reset()
+    {
+        ClearStateFields();
+        Revision = null;
+        _hasSnapshot = false;
+        ClearUnrevisionedConfirmation();
+    }
+
+    private void ClearStateFields()
+    {
+        _latestModel = null;
+        _latestReasoningEffort = null;
+        _settingsModel = null;
+        _settingsEffort = null;
+        _hasSettingsEffort = false;
+    }
+
+    private static bool TryReadPatchPath(
+        JsonElement patch,
+        out string[] path)
+    {
+        path = [];
+        if (!patch.TryGetProperty("path", out var pathElement))
+        {
+            return false;
+        }
+
+        if (pathElement.ValueKind == JsonValueKind.Array)
+        {
+            var segments = new List<string>();
+            foreach (var segment in pathElement.EnumerateArray())
+            {
+                if (segment.ValueKind == JsonValueKind.String)
+                {
+                    segments.Add(segment.GetString() ?? string.Empty);
+                }
+                else if (segment.ValueKind == JsonValueKind.Number)
+                {
+                    segments.Add(segment.GetRawText());
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            path = [.. segments];
+            return true;
+        }
+
+        if (pathElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var pointer = pathElement.GetString() ?? string.Empty;
+        if (pointer.Length == 0)
+        {
+            return true;
+        }
+
+        if (pointer[0] != '/')
+        {
+            return false;
+        }
+
+        path = pointer[1..]
+            .Split('/')
+            .Select(segment => segment
+                .Replace("~1", "/", StringComparison.Ordinal)
+                .Replace("~0", "~", StringComparison.Ordinal))
+            .ToArray();
+        return true;
+    }
+
+    private static bool TryReadRevision(
+        JsonElement element,
+        string propertyName,
+        out long revision)
+    {
+        revision = default;
+        return element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.Number &&
+            property.TryGetInt64(out revision) &&
+            revision >= 0;
+    }
+
+    private static string? ReadOptionalString(
+        JsonElement element,
+        string propertyName) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(propertyName, out var property)
+            ? ReadOptionalString(property)
+            : null;
+
+    private static string? ReadOptionalString(JsonElement element) =>
+        element.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(element.GetString())
+            ? element.GetString()
+            : null;
+
+    private static bool TryReadString(
+        JsonElement element,
+        string propertyName,
+        out string value)
+    {
+        value = string.Empty;
+        return element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(value = property.GetString() ?? string.Empty);
+    }
+}
 
 /// <summary>
 /// Changes the next-turn settings on the App Server already owned by Codex
@@ -27,9 +439,43 @@ internal sealed record CodexThreadModelState(
 /// </summary>
 internal sealed class CodexModelToggleService : IAsyncDisposable
 {
-    private sealed record SnapshotWaiter(
-        string OwnerClientId,
-        TaskCompletionSource<CodexThreadModelState> Completion);
+    internal enum FollowerSignalIntent
+    {
+        TrackedTrue,
+        WaiterTrue,
+        Release,
+    }
+
+    private readonly record struct ToggleThreadContext(
+        string? OwnerClientId,
+        CodexThreadModelState? State,
+        string? Error,
+        string? Detail = null);
+
+    private readonly record struct SettingsUpdateResult(
+        bool Succeeded,
+        string? OwnerClientId,
+        string? Error,
+        string? Detail = null);
+
+    private sealed class SnapshotWaiter
+    {
+        internal SnapshotWaiter(
+            string threadId,
+            string ownerClientId,
+            TaskCompletionSource<CodexThreadModelState> completion)
+        {
+            OwnerClientId = ownerClientId;
+            Completion = completion;
+            Accumulator = new(threadId, ownerClientId);
+        }
+
+        internal string OwnerClientId { get; }
+
+        internal TaskCompletionSource<CodexThreadModelState> Completion { get; }
+
+        internal CodexThreadModelStateAccumulator Accumulator { get; }
+    }
 
     private const string PipeName = "codex-ipc";
     private const string LocalHostId = "local";
@@ -38,11 +484,15 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private static readonly TimeSpan ConnectTimeout =
         TimeSpan.FromMilliseconds(900);
     private static readonly TimeSpan RequestTimeout =
-        TimeSpan.FromSeconds(3);
+        TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CurrentThreadTimeout =
-        TimeSpan.FromMilliseconds(900);
+        TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan VisibleThreadStabilityWindow =
+        TimeSpan.FromMilliseconds(140);
     private static readonly TimeSpan SnapshotTimeout =
-        TimeSpan.FromSeconds(2);
+        TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan MaximumTrackingRetryDelay =
+        TimeSpan.FromSeconds(10);
 
     private readonly object _stateSync = new();
     private readonly SemaphoreSlim _connectGate = new(1, 1);
@@ -60,6 +510,11 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private NamedPipeClientStream? _pipe;
     private Task? _readerTask;
     private string? _clientId;
+    private string? _trackedThreadId;
+    private string? _trackedOwnerClientId;
+    private CodexThreadModelStateAccumulator? _trackedStateAccumulator;
+    private CodexThreadModelState? _currentThreadState;
+    private int _trackingGeneration;
     private int _disposed;
 
     internal CodexModelToggleService(
@@ -67,6 +522,44 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     {
         _effortStore = effortStore ?? new CodexThreadModelEffortStore();
     }
+
+    /// <summary>
+    /// The authoritative model state for the one locally-visible task, or
+    /// <see langword="null"/> while no task is uniquely visible or its stream
+    /// is being synchronized.
+    /// </summary>
+    internal CodexThreadModelState? CurrentThreadState
+    {
+        get
+        {
+            lock (_stateSync)
+            {
+                return _currentThreadState;
+            }
+        }
+    }
+
+    internal string? CurrentVisibleThreadId
+    {
+        get
+        {
+            lock (_stateSync)
+            {
+                var threadIds = _visibleThreadByClient.Values
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                return threadIds.Length == 1
+                    ? threadIds[0]
+                    : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raised outside service locks. IPC updates can arrive on a background
+    /// reader thread, so WPF subscribers should marshal through Dispatcher.
+    /// </summary>
+    internal event Action<CodexThreadModelState?>? CurrentThreadStateChanged;
 
     internal async Task<bool> StartAsync(CancellationToken cancellationToken = default)
     {
@@ -79,7 +572,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             exception is IOException or
                 TimeoutException or
                 OperationCanceledException or
-                InvalidDataException)
+                InvalidDataException or
+                ObjectDisposedException)
         {
             return false;
         }
@@ -88,48 +582,124 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     internal async Task<CodexModelToggleResult> ToggleAsync(
         CodexQuickModel first,
         CodexQuickModel second,
+        CancellationToken cancellationToken) =>
+        await ToggleAsync(
+            first,
+            firstEffort: null,
+            second,
+            secondEffort: null,
+            cancellationToken);
+
+    internal async Task<CodexModelToggleResult> ToggleAsync(
+        CodexQuickModel first,
+        string? firstEffort,
+        CodexQuickModel second,
+        string? secondEffort,
+        CancellationToken cancellationToken) =>
+        await ToggleCoreAsync(
+            first,
+            firstEffort,
+            second,
+            secondEffort,
+            expectedThreadId: null,
+            cancellationToken);
+
+    internal async Task<CodexModelToggleResult> ToggleAsync(
+        CodexQuickModel first,
+        string? firstEffort,
+        CodexQuickModel second,
+        string? secondEffort,
+        string expectedThreadId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedThreadId);
+        return await ToggleCoreAsync(
+            first,
+            firstEffort,
+            second,
+            secondEffort,
+            expectedThreadId.Trim(),
+            cancellationToken);
+    }
+
+    private async Task<CodexModelToggleResult> ToggleCoreAsync(
+        CodexQuickModel first,
+        string? firstEffort,
+        CodexQuickModel second,
+        string? secondEffort,
+        string? expectedThreadId,
         CancellationToken cancellationToken)
     {
         ValidatePair(first, second);
-        await _toggleGate.WaitAsync(cancellationToken);
+#if DEBUG
+        var started = Stopwatch.GetTimestamp();
+#endif
+        var gateEntered = false;
+        string? attemptedThreadId = null;
+        var attemptedPrevious = CodexQuickModel.Unknown;
+        string? attemptedPreviousEffort = null;
+
+        CodexModelToggleResult Complete(CodexModelToggleResult result)
+        {
+#if DEBUG
+            CodexModelToggleDiagnostics.Record(
+                result,
+                Stopwatch.GetElapsedTime(started));
+#endif
+            return result;
+        }
+
         try
         {
+            await _toggleGate.WaitAsync(cancellationToken);
+            gateEntered = true;
             await EnsureConnectedAsync(cancellationToken);
             var currentThread = await WaitForSingleVisibleThreadAsync(
                 cancellationToken);
             if (currentThread.Error is not null)
             {
-                return Failure(currentThread.Error);
+                return Complete(Failure(currentThread.Error));
             }
 
             var threadId = currentThread.ThreadId!;
-            var owner = await DiscoverOwnerAsync(threadId, cancellationToken);
-            if (owner is null)
+            if (!string.IsNullOrWhiteSpace(expectedThreadId) &&
+                !threadId.Equals(
+                    expectedThreadId,
+                    StringComparison.Ordinal))
             {
-                return Failure("thread-owner-unavailable", threadId);
+                return Complete(Failure(
+                    "visible-thread-changed",
+                    expectedThreadId));
             }
 
-            var state = await ReadThreadStateAsync(
+            attemptedThreadId = threadId;
+            var context = await ResolveToggleThreadContextAsync(
                 threadId,
-                owner,
                 cancellationToken);
-            if (state is null)
+            if (context.Error is not null ||
+                context.OwnerClientId is null ||
+                context.State is null)
             {
-                return Failure("thread-state-unavailable", threadId);
+                return Complete(Failure(
+                    context.Error ?? "thread-state-unavailable",
+                    threadId,
+                    detail: context.Detail));
             }
 
+            var owner = context.OwnerClientId;
+            var state = context.State;
             var previous = ParseModelId(state.ModelId);
-            var previousEffort = ResolveTargetEffort(
-                state.ModelId,
-                state.Effort);
+            var previousEffort = state.Effort;
+            attemptedPrevious = previous;
+            attemptedPreviousEffort = previousEffort;
             var visibilityError = ValidateSelectedThreadIsStillVisible(threadId);
             if (visibilityError is not null)
             {
-                return Failure(
+                return Complete(Failure(
                     visibilityError,
                     threadId,
                     previous,
-                    previousEffort);
+                    previousEffort));
             }
 
             var target = ResolveToggleTarget(previous, first, second);
@@ -137,65 +707,471 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             RememberEffort(
                 state.ThreadId,
                 state.ModelId,
-                previousEffort);
+                state.Effort);
+            var configuredEffort = target == first
+                ? firstEffort
+                : secondEffort;
             var targetEffort = ResolveTargetEffort(
                 targetModelId,
-                RecallEffort(state.ThreadId, targetModelId));
+                string.IsNullOrWhiteSpace(configuredEffort)
+                    ? RecallEffort(state.ThreadId, targetModelId)
+                    : configuredEffort);
 
-            var response = await SendRequestAsync(
-                "thread-follower-update-thread-settings",
-                version: 1,
-                new
-                {
-                    conversationId = threadId,
-                    threadSettings = new
-                    {
-                        model = targetModelId,
-                        effort = targetEffort,
-                    },
-                },
+            var update = await UpdateThreadSettingsWithRetryAsync(
+                threadId,
                 owner,
-                RequestTimeout,
+                targetModelId,
+                targetEffort,
                 cancellationToken);
-            if (!IsSuccessfulUpdate(response))
+            if (!update.Succeeded)
             {
-                return Failure(
-                    "thread-settings-rejected",
+                return Complete(Failure(
+                    update.Error ?? "thread-settings-rejected",
                     threadId,
                     previous,
-                    previousEffort);
+                    previousEffort,
+                    detail: update.Detail));
             }
 
             RememberEffort(threadId, targetModelId, targetEffort);
-            return new(
+            ConfirmSuccessfulToggleState(
+                threadId,
+                update.OwnerClientId ?? owner,
+                targetModelId,
+                targetEffort);
+            return Complete(new(
                 true,
                 previous,
                 target,
                 threadId,
                 previousEffort,
-                targetEffort);
+                targetEffort));
         }
         catch (OperationCanceledException)
         {
+            Complete(Failure(
+                "cancelled",
+                attemptedThreadId,
+                attemptedPrevious,
+                attemptedPreviousEffort));
             throw;
         }
         catch (TimeoutException)
         {
-            return Failure("ipc-timeout");
+            return Complete(Failure(
+                "ipc-timeout",
+                attemptedThreadId,
+                attemptedPrevious,
+                attemptedPreviousEffort));
         }
         catch (Exception exception) when (
             exception is IOException or
-                InvalidDataException or
                 InvalidOperationException or
-                JsonException or
                 ObjectDisposedException)
         {
-            return Failure("ipc-unavailable");
+            return Complete(Failure(
+                "ipc-disconnected",
+                attemptedThreadId,
+                attemptedPrevious,
+                attemptedPreviousEffort,
+                detail: exception.GetType().Name));
+        }
+        catch (Exception exception) when (
+            exception is InvalidDataException or JsonException)
+        {
+            return Complete(Failure(
+                "ipc-unavailable",
+                attemptedThreadId,
+                attemptedPrevious,
+                attemptedPreviousEffort,
+                detail: exception.GetType().Name));
         }
         finally
         {
-            _toggleGate.Release();
+            if (gateEntered)
+            {
+                _toggleGate.Release();
+            }
         }
+    }
+
+    private async Task<ToggleThreadContext> ResolveToggleThreadContextAsync(
+        string threadId,
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 2;
+        string? lastOwnerClientId = null;
+        var lastError = "thread-owner-unavailable";
+        string? lastDetail = null;
+
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            var visibilityError = ValidateSelectedThreadIsStillVisible(threadId);
+            if (visibilityError == "visible-thread-changed")
+            {
+                return new(null, null, visibilityError);
+            }
+
+            if (visibilityError is not null)
+            {
+                lastError = visibilityError;
+                if (attempt + 1 < maximumAttempts)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(180), cancellationToken);
+                    continue;
+                }
+
+                return new(null, null, lastError);
+            }
+
+            var tracked = ReadTrackedThreadContext(threadId);
+            if (tracked.OwnerClientId is not null && tracked.State is not null)
+            {
+                return new(tracked.OwnerClientId, tracked.State, null);
+            }
+
+            var ownerClientId = tracked.OwnerClientId;
+            if (ownerClientId is null || attempt > 0)
+            {
+                try
+                {
+                    ownerClientId = await DiscoverOwnerAsync(
+                        threadId,
+                        cancellationToken);
+                }
+                catch (TimeoutException exception)
+                {
+                    lastError = "ipc-timeout";
+                    lastDetail = exception.GetType().Name;
+                    if (attempt + 1 < maximumAttempts)
+                    {
+                        await Task.Delay(
+                            TimeSpan.FromMilliseconds(180),
+                            cancellationToken);
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(ownerClientId))
+            {
+                lastError = "thread-owner-unavailable";
+            }
+            else
+            {
+                lastOwnerClientId = ownerClientId;
+                var state = ReadTrackedThreadContext(
+                    threadId,
+                    ownerClientId).State;
+                state ??= await ReadThreadStateAsync(
+                    threadId,
+                    ownerClientId,
+                    cancellationToken);
+                state ??= ReadTrackedThreadContext(
+                    threadId,
+                    ownerClientId).State;
+                if (state is not null)
+                {
+                    return new(ownerClientId, state, null);
+                }
+
+                lastError = "thread-state-unavailable";
+            }
+
+            if (attempt + 1 < maximumAttempts)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(180), cancellationToken);
+            }
+        }
+
+        return new(lastOwnerClientId, null, lastError, lastDetail);
+    }
+
+    private (string? OwnerClientId, CodexThreadModelState? State)
+        ReadTrackedThreadContext(
+            string threadId,
+            string? requiredOwnerClientId = null)
+    {
+        lock (_stateSync)
+        {
+            if (_trackedThreadId != threadId ||
+                _trackedOwnerClientId is null ||
+                requiredOwnerClientId is not null &&
+                _trackedOwnerClientId != requiredOwnerClientId)
+            {
+                return default;
+            }
+
+            var state = _currentThreadState?.ThreadId == threadId
+                ? _currentThreadState
+                : null;
+            return (_trackedOwnerClientId, state);
+        }
+    }
+
+    private async Task<SettingsUpdateResult>
+        UpdateThreadSettingsWithRetryAsync(
+            string threadId,
+            string initialOwnerClientId,
+            string targetModelId,
+            string targetEffort,
+            CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 2;
+        var ownerClientId = initialOwnerClientId;
+        var lastError = "thread-settings-rejected";
+        string? lastDetail = null;
+
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            if (attempt > 0)
+            {
+                var reconciledOwner = ReadTrackedTargetOwner(
+                    threadId,
+                    targetModelId,
+                    targetEffort);
+                if (reconciledOwner is not null)
+                {
+                    return new(true, reconciledOwner, null);
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(220), cancellationToken);
+                try
+                {
+                    await EnsureConnectedAsync(cancellationToken);
+                }
+                catch (TimeoutException exception)
+                {
+                    lastError = "ipc-timeout";
+                    lastDetail = exception.GetType().Name;
+                    continue;
+                }
+                catch (Exception exception) when (
+                    exception is IOException or
+                        InvalidOperationException or
+                        ObjectDisposedException)
+                {
+                    lastError = "ipc-disconnected";
+                    lastDetail = exception.GetType().Name;
+                    continue;
+                }
+
+                var visibleThread = await WaitForSingleVisibleThreadAsync(
+                    cancellationToken);
+                if (visibleThread.Error is not null)
+                {
+                    return new(
+                        false,
+                        ownerClientId,
+                        visibleThread.Error);
+                }
+
+                if (!threadId.Equals(
+                    visibleThread.ThreadId,
+                    StringComparison.Ordinal))
+                {
+                    return new(
+                        false,
+                        ownerClientId,
+                        "visible-thread-changed");
+                }
+
+                try
+                {
+                    ownerClientId = await DiscoverOwnerAsync(
+                        threadId,
+                        cancellationToken);
+                }
+                catch (TimeoutException exception)
+                {
+                    lastError = "ipc-timeout";
+                    lastDetail = exception.GetType().Name;
+                    continue;
+                }
+                catch (Exception exception) when (
+                    exception is IOException or
+                        InvalidOperationException or
+                        ObjectDisposedException)
+                {
+                    lastError = "ipc-disconnected";
+                    lastDetail = exception.GetType().Name;
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(ownerClientId))
+                {
+                    lastError = "thread-owner-unavailable";
+                    continue;
+                }
+            }
+
+            var visibility = ValidateSelectedThreadIsStillVisible(threadId);
+            if (visibility is not null)
+            {
+                return new(false, ownerClientId, visibility);
+            }
+
+            JsonElement response;
+            try
+            {
+                response = await SendRequestAsync(
+                    "thread-follower-update-thread-settings",
+                    version: 1,
+                    new
+                    {
+                        conversationId = threadId,
+                        threadSettings = new
+                        {
+                            model = targetModelId,
+                            effort = targetEffort,
+                        },
+                    },
+                    ownerClientId,
+                    RequestTimeout,
+                    cancellationToken);
+            }
+            catch (TimeoutException exception)
+            {
+                lastError = "ipc-timeout";
+                lastDetail = exception.GetType().Name;
+                continue;
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    InvalidOperationException or
+                    ObjectDisposedException)
+            {
+                lastError = "ipc-disconnected";
+                lastDetail = exception.GetType().Name;
+                continue;
+            }
+
+            if (IsSuccessfulUpdate(response))
+            {
+                return new(true, ownerClientId, null);
+            }
+
+            lastDetail = ReadResponseError(response);
+            if (!IsTransientSettingsUpdateFailure(lastDetail))
+            {
+                return new(
+                    false,
+                    ownerClientId,
+                    "thread-settings-rejected",
+                    lastDetail);
+            }
+
+            lastError = lastDetail?.Contains(
+                "no-client-found",
+                StringComparison.OrdinalIgnoreCase) == true ||
+                lastDetail?.Contains(
+                    "client-disconnected",
+                    StringComparison.OrdinalIgnoreCase) == true
+                    ? "thread-owner-unavailable"
+                    : "ipc-timeout";
+        }
+
+        var finalOwner = await WaitForTrackedTargetAsync(
+            threadId,
+            targetModelId,
+            targetEffort,
+            TimeSpan.FromMilliseconds(650),
+            cancellationToken);
+        return finalOwner is not null
+            ? new(true, finalOwner, null)
+            : new(false, ownerClientId, lastError, lastDetail);
+    }
+
+    private async Task<string?> WaitForTrackedTargetAsync(
+        string threadId,
+        string targetModelId,
+        string targetEffort,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (true)
+        {
+            var ownerClientId = ReadTrackedTargetOwner(
+                threadId,
+                targetModelId,
+                targetEffort);
+            if (ownerClientId is not null)
+            {
+                return ownerClientId;
+            }
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return null;
+            }
+
+            await Task.Delay(
+                remaining < TimeSpan.FromMilliseconds(50)
+                    ? remaining
+                    : TimeSpan.FromMilliseconds(50),
+                cancellationToken);
+        }
+    }
+
+    private string? ReadTrackedTargetOwner(
+        string threadId,
+        string targetModelId,
+        string targetEffort)
+    {
+        var tracked = ReadTrackedThreadContext(threadId);
+        return tracked.OwnerClientId is not null &&
+            tracked.State is not null &&
+            ThreadStateMatchesTarget(
+                tracked.State,
+                targetModelId,
+                targetEffort)
+                ? tracked.OwnerClientId
+                : null;
+    }
+
+    internal static bool ThreadStateMatchesTarget(
+        CodexThreadModelState state,
+        string targetModelId,
+        string? targetEffort)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.ModelId.Equals(
+                targetModelId,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                state.Effort,
+                targetEffort,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsTransientSettingsUpdateFailure(string? error) =>
+        !string.IsNullOrWhiteSpace(error) &&
+        (error.Contains("no-client-found", StringComparison.OrdinalIgnoreCase) ||
+         error.Contains("client-disconnected", StringComparison.OrdinalIgnoreCase) ||
+         error.Contains("request-timeout", StringComparison.OrdinalIgnoreCase) ||
+         error.Contains(
+             "thread-follower-update-thread-settings-timeout",
+             StringComparison.OrdinalIgnoreCase));
+
+    private static string? ReadResponseError(JsonElement response)
+    {
+        if (!response.TryGetProperty("error", out var error))
+        {
+            return null;
+        }
+
+        var value = error.ValueKind == JsonValueKind.String
+            ? error.GetString()
+            : error.GetRawText();
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Length <= 500
+                ? value
+                : value[..500];
     }
 
     internal static CodexQuickModel ParseModelId(string? value)
@@ -248,23 +1224,23 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             StringComparison.OrdinalIgnoreCase)
                 ? "low"
                 : "medium";
+        var knownRememberedEffort = IsKnownReasoningEffort(rememberedEffort)
+            ? rememberedEffort!.Trim().ToLowerInvariant()
+            : null;
         try
         {
-            var path = modelsCachePath ?? Path.Combine(
-                Environment.GetFolderPath(
-                    Environment.SpecialFolder.UserProfile),
-                ".codex",
-                "models_cache.json");
+            var path = modelsCachePath ?? ResolveModelsCachePath(
+                Environment.GetEnvironmentVariable("CODEX_HOME"));
             if (!File.Exists(path))
             {
-                return fallback;
+                return knownRememberedEffort ?? fallback;
             }
 
             using var cache = JsonDocument.Parse(File.ReadAllText(path));
             if (!cache.RootElement.TryGetProperty("models", out var models) ||
                 models.ValueKind != JsonValueKind.Array)
             {
-                return fallback;
+                return knownRememberedEffort ?? fallback;
             }
 
             foreach (var model in models.EnumerateArray())
@@ -288,10 +1264,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                             .Select(effort => effort!)
                             .ToHashSet(StringComparer.OrdinalIgnoreCase)
                         : [];
-                if (!string.IsNullOrWhiteSpace(rememberedEffort) &&
-                    supported.Contains(rememberedEffort))
+                if (knownRememberedEffort is not null &&
+                    supported.Contains(knownRememberedEffort))
                 {
-                    return rememberedEffort;
+                    return knownRememberedEffort;
                 }
 
                 if (TryReadString(
@@ -311,10 +1287,55 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 UnauthorizedAccessException or
                 JsonException)
         {
-            // A stale or partially-written cache falls back to known defaults.
+            // A stale or partially-written cache is handled by the offline
+            // policy below.
         }
 
-        return fallback;
+        // When model metadata is unavailable, retain an explicit/remembered
+        // effort that is part of Codex's known vocabulary. Silently replacing
+        // a user-selected Ultra with Low would make the settings UI lie.
+        return knownRememberedEffort ?? fallback;
+    }
+
+    private static bool IsKnownReasoningEffort(string? effort) =>
+        effort?.Trim().ToLowerInvariant() is
+            "low" or "medium" or "high" or "xhigh" or "max" or "ultra";
+
+    internal static string ResolveModelsCachePath(string? codexHome)
+    {
+        var userProfile = Environment.GetFolderPath(
+            Environment.SpecialFolder.UserProfile);
+        var root = string.IsNullOrWhiteSpace(codexHome)
+            ? Path.Combine(userProfile, ".codex")
+            : Environment.ExpandEnvironmentVariables(codexHome.Trim());
+        if (root == "~")
+        {
+            root = userProfile;
+        }
+        else if (root.StartsWith("~/", StringComparison.Ordinal) ||
+                 root.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            root = Path.Combine(userProfile, root[2..]);
+        }
+
+        return Path.Combine(root, "models_cache.json");
+    }
+
+    internal static string? ReadSnapshotEffort(JsonElement state)
+    {
+        if (state.TryGetProperty("latestThreadSettings", out var settings) &&
+            settings.ValueKind == JsonValueKind.Object &&
+            TryReadString(settings, "effort", out var configuredEffort))
+        {
+            return configuredEffort;
+        }
+
+        return TryReadString(
+            state,
+            "latestReasoningEffort",
+            out var legacyEffort)
+                ? legacyEffort
+                : null;
     }
 
     internal static byte[] EncodeFrame<T>(T message)
@@ -366,6 +1387,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         await _connectGate.WaitAsync(cancellationToken);
         try
         {
+            ThrowIfDisposed();
             lock (_stateSync)
             {
                 if (_pipe is { IsConnected: true } &&
@@ -393,13 +1415,28 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 throw;
             }
 
+            SnapshotWaiter[] resetWaiters;
             lock (_stateSync)
             {
                 _pipe?.Dispose();
                 _pipe = pipe;
                 _clientId = null;
                 _visibleThreadByClient.Clear();
+                _trackingGeneration++;
+                _trackedThreadId = null;
+                _trackedOwnerClientId = null;
+                _trackedStateAccumulator = null;
+                _currentThreadState = null;
+                resetWaiters = [.. _snapshotWaiters.Values];
+                _snapshotWaiters.Clear();
                 PulseVisibleThreadChangedLocked();
+            }
+
+            RaiseCurrentThreadStateChanged(null);
+            foreach (var waiter in resetWaiters)
+            {
+                waiter.Completion.TrySetException(
+                    new IOException("Codex IPC connection was replaced."));
             }
 
             _readerTask = Task.Run(
@@ -424,8 +1461,15 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 if (ReferenceEquals(_pipe, pipe))
                 {
                     _clientId = clientId;
+                    _trackingGeneration++;
+                    _trackedThreadId = null;
+                    _trackedOwnerClientId = null;
+                    _trackedStateAccumulator = null;
+                    _currentThreadState = null;
                 }
             }
+
+            RefreshCurrentThreadTracking();
         }
         finally
         {
@@ -446,7 +1490,18 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 using var message = await ReadFrameAsync(
                     pipe,
                     cancellationToken);
-                ProcessMessage(message.RootElement);
+                lock (_stateSync)
+                {
+                    if (!ReferenceEquals(_pipe, pipe))
+                    {
+                        break;
+                    }
+
+                    // Keep connection replacement from interleaving between
+                    // validation and broadcast state mutation. Monitor locks
+                    // are re-entrant for the handlers below.
+                    ProcessMessage(message.RootElement);
+                }
             }
         }
         catch (OperationCanceledException) when (
@@ -514,11 +1569,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 ProcessClientStatusChanged(message);
                 break;
             case "ipc-connection-reset":
-                lock (_stateSync)
-                {
-                    _visibleThreadByClient.Clear();
-                    PulseVisibleThreadChangedLocked();
-                }
+                ProcessConnectionReset();
                 break;
         }
     }
@@ -557,21 +1608,43 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         }
 
         var following = followingValue.GetBoolean();
+        var changed = false;
         lock (_stateSync)
         {
+            if (sourceClientId == _clientId)
+            {
+                return;
+            }
+
             if (following)
             {
-                _visibleThreadByClient[sourceClientId] = threadId;
+                if (!_visibleThreadByClient.TryGetValue(
+                        sourceClientId,
+                        out var currentFollowedThread) ||
+                    currentFollowedThread != threadId)
+                {
+                    _visibleThreadByClient[sourceClientId] = threadId;
+                    changed = true;
+                }
             }
             else if (_visibleThreadByClient.TryGetValue(
                          sourceClientId,
-                         out var current) &&
-                     current == threadId)
+                         out var previouslyFollowedThread) &&
+                     previouslyFollowedThread == threadId)
             {
                 _visibleThreadByClient.Remove(sourceClientId);
+                changed = true;
             }
 
-            PulseVisibleThreadChangedLocked();
+            if (changed)
+            {
+                PulseVisibleThreadChangedLocked();
+            }
+        }
+
+        if (changed)
+        {
+            RefreshCurrentThreadTracking();
         }
     }
 
@@ -582,34 +1655,81 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             !TryReadString(parameters, "hostId", out var hostId) ||
             hostId != LocalHostId ||
             !TryReadString(parameters, "conversationId", out var threadId) ||
-            !parameters.TryGetProperty("change", out var change) ||
-            !TryReadString(change, "type", out var changeType) ||
-            changeType != "snapshot" ||
-            !change.TryGetProperty("conversationState", out var state) ||
-            !TryReadString(state, "latestModel", out var modelId))
+            !parameters.TryGetProperty("change", out var change))
         {
             return;
         }
 
-        var effort = TryReadString(
-            state,
-            "latestReasoningEffort",
-            out var effortValue)
-                ? effortValue
-                : null;
-        SnapshotWaiter? waiter;
+        CodexThreadModelState? stateToPublish = null;
+        var publishState = false;
+        TaskCompletionSource<CodexThreadModelState>? completion = null;
+        CodexThreadModelState? completedState = null;
+        var requestTrackedSnapshot = false;
+        var trackedGeneration = 0;
+        SnapshotWaiter? waiterNeedingSnapshot = null;
         lock (_stateSync)
         {
-            if (!_snapshotWaiters.TryGetValue(threadId, out waiter) ||
-                waiter.OwnerClientId != sourceClientId)
+            if (_trackedThreadId == threadId &&
+                _trackedOwnerClientId == sourceClientId &&
+                _trackedStateAccumulator is not null)
             {
-                return;
+                var result = _trackedStateAccumulator.ApplyChange(change);
+                if (result.RequiresSnapshot)
+                {
+                    _currentThreadState = null;
+                    stateToPublish = null;
+                    publishState = true;
+                    requestTrackedSnapshot = true;
+                    trackedGeneration = _trackingGeneration;
+                }
+                else if (result.Applied &&
+                         !Equals(_currentThreadState, result.State))
+                {
+                    _currentThreadState = result.State;
+                    stateToPublish = result.State;
+                    publishState = true;
+                }
             }
 
-            _snapshotWaiters.Remove(threadId);
+            if (_snapshotWaiters.TryGetValue(threadId, out var waiter) &&
+                waiter.OwnerClientId == sourceClientId)
+            {
+                var result = waiter.Accumulator.ApplyChange(change);
+                if (result.RequiresSnapshot)
+                {
+                    waiterNeedingSnapshot = waiter;
+                }
+                else if (result.State is not null)
+                {
+                    _snapshotWaiters.Remove(threadId);
+                    completion = waiter.Completion;
+                    completedState = result.State;
+                }
+            }
         }
 
-        waiter.Completion.TrySetResult(new(threadId, modelId, effort));
+        if (publishState)
+        {
+            RaiseCurrentThreadStateChanged(stateToPublish);
+        }
+
+        if (completion is not null && completedState is not null)
+        {
+            completion.TrySetResult(completedState);
+        }
+
+        if (requestTrackedSnapshot)
+        {
+            _ = RequestTrackedSnapshotAsync(
+                threadId,
+                sourceClientId,
+                trackedGeneration);
+        }
+
+        if (waiterNeedingSnapshot is not null)
+        {
+            _ = RequestWaiterSnapshotAsync(threadId, waiterNeedingSnapshot);
+        }
     }
 
     private void ProcessClientStatusChanged(JsonElement message)
@@ -622,12 +1742,341 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             return;
         }
 
+        var changed = false;
+        var ownerDisconnected = false;
+        SnapshotWaiter[] disconnectedWaiters;
         lock (_stateSync)
         {
             if (_visibleThreadByClient.Remove(clientId))
             {
                 PulseVisibleThreadChangedLocked();
+                changed = true;
             }
+
+            if (_trackedOwnerClientId == clientId)
+            {
+                _trackingGeneration++;
+                _trackedThreadId = null;
+                _trackedOwnerClientId = null;
+                _trackedStateAccumulator = null;
+                _currentThreadState = null;
+                ownerDisconnected = true;
+            }
+
+            disconnectedWaiters = _snapshotWaiters
+                .Where(pair => pair.Value.OwnerClientId == clientId)
+                .Select(pair => pair.Value)
+                .ToArray();
+            foreach (var waiter in disconnectedWaiters)
+            {
+                _snapshotWaiters.Remove(waiter.Accumulator.ThreadId);
+            }
+        }
+
+        if (ownerDisconnected)
+        {
+            RaiseCurrentThreadStateChanged(null);
+        }
+
+        foreach (var waiter in disconnectedWaiters)
+        {
+            waiter.Completion.TrySetException(
+                new IOException("Codex thread owner disconnected."));
+        }
+
+        if (changed || ownerDisconnected)
+        {
+            RefreshCurrentThreadTracking();
+        }
+    }
+
+    private void ProcessConnectionReset()
+    {
+        SnapshotWaiter[] resetWaiters;
+        lock (_stateSync)
+        {
+            _visibleThreadByClient.Clear();
+            _trackingGeneration++;
+            _trackedThreadId = null;
+            _trackedOwnerClientId = null;
+            _trackedStateAccumulator = null;
+            _currentThreadState = null;
+            resetWaiters = [.. _snapshotWaiters.Values];
+            _snapshotWaiters.Clear();
+            PulseVisibleThreadChangedLocked();
+        }
+
+        RaiseCurrentThreadStateChanged(null);
+        foreach (var waiter in resetWaiters)
+        {
+            waiter.Completion.TrySetException(
+                new IOException("Codex IPC connection was reset."));
+        }
+    }
+
+    private void RefreshCurrentThreadTracking()
+    {
+        string? nextThreadId;
+        string? previousThreadId;
+        string? previousOwnerClientId;
+        int generation;
+        lock (_stateSync)
+        {
+            var threadIds = _visibleThreadByClient.Values
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            nextThreadId = threadIds.Length == 1 ? threadIds[0] : null;
+            if (nextThreadId == _trackedThreadId)
+            {
+                return;
+            }
+
+            previousThreadId = _trackedThreadId;
+            previousOwnerClientId = _trackedOwnerClientId;
+            generation = ++_trackingGeneration;
+            _trackedThreadId = nextThreadId;
+            _trackedOwnerClientId = null;
+            _trackedStateAccumulator = null;
+            _currentThreadState = null;
+        }
+
+        RaiseCurrentThreadStateChanged(null);
+        if (!string.IsNullOrWhiteSpace(previousThreadId) &&
+            !string.IsNullOrWhiteSpace(previousOwnerClientId))
+        {
+            _ = ReleaseFollowerLeaseAsync(
+                previousThreadId,
+                previousOwnerClientId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(nextThreadId))
+        {
+            _ = SynchronizeCurrentThreadAsync(nextThreadId, generation);
+        }
+    }
+
+    private async Task SynchronizeCurrentThreadAsync(
+        string threadId,
+        int generation)
+    {
+        var lifetimeToken = _lifetime.Token;
+        var retryDelay = TimeSpan.Zero;
+        while (!lifetimeToken.IsCancellationRequested)
+        {
+            lock (_stateSync)
+            {
+                if (_trackingGeneration != generation ||
+                    _trackedThreadId != threadId)
+                {
+                    return;
+                }
+            }
+
+            if (retryDelay > TimeSpan.Zero)
+            {
+                try
+                {
+                    await Task.Delay(retryDelay, lifetimeToken);
+                }
+                catch (OperationCanceledException) when (
+                    lifetimeToken.IsCancellationRequested)
+                {
+                    return;
+                }
+            }
+
+            lock (_stateSync)
+            {
+                if (_trackingGeneration != generation ||
+                    _trackedThreadId != threadId)
+                {
+                    return;
+                }
+            }
+
+            string? ownerClientId = null;
+            try
+            {
+                ownerClientId = await DiscoverOwnerAsync(
+                    threadId,
+                    lifetimeToken);
+                if (string.IsNullOrWhiteSpace(ownerClientId))
+                {
+                    retryDelay = NextTrackingRetryDelay(retryDelay);
+                    continue;
+                }
+
+                lock (_stateSync)
+                {
+                    if (_trackingGeneration != generation ||
+                        _trackedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    _trackedOwnerClientId = ownerClientId;
+                    _trackedStateAccumulator = new(threadId, ownerClientId);
+                }
+
+                await SendTrackedFollowingAsync(
+                    threadId,
+                    ownerClientId,
+                    generation,
+                    lifetimeToken);
+
+                var leaseIsCurrent = false;
+                lock (_stateSync)
+                {
+                    leaseIsCurrent = _trackingGeneration == generation &&
+                        _trackedThreadId == threadId &&
+                        _trackedOwnerClientId == ownerClientId;
+                }
+
+                if (!leaseIsCurrent)
+                {
+                    await ReleaseFollowerLeaseAsync(threadId, ownerClientId);
+                }
+
+                return;
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    TimeoutException or
+                    OperationCanceledException or
+                    InvalidDataException or
+                    InvalidOperationException or
+                    JsonException or
+                    ObjectDisposedException)
+            {
+                if (lifetimeToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(ownerClientId))
+                {
+                    lock (_stateSync)
+                    {
+                        if (_trackingGeneration == generation &&
+                            _trackedThreadId == threadId &&
+                            _trackedOwnerClientId == ownerClientId)
+                        {
+                            _trackedOwnerClientId = null;
+                            _trackedStateAccumulator = null;
+                        }
+                    }
+
+                    await ReleaseFollowerLeaseAsync(threadId, ownerClientId);
+                }
+
+                retryDelay = NextTrackingRetryDelay(retryDelay);
+            }
+        }
+    }
+
+    private static TimeSpan NextTrackingRetryDelay(TimeSpan current)
+    {
+        if (current <= TimeSpan.Zero)
+        {
+            return TimeSpan.FromMilliseconds(250);
+        }
+
+        return TimeSpan.FromMilliseconds(Math.Min(
+            MaximumTrackingRetryDelay.TotalMilliseconds,
+            current.TotalMilliseconds * 2));
+    }
+
+    private async Task RequestTrackedSnapshotAsync(
+        string threadId,
+        string ownerClientId,
+        int generation)
+    {
+        try
+        {
+            lock (_stateSync)
+            {
+                if (_trackingGeneration != generation ||
+                    _trackedThreadId != threadId ||
+                    _trackedOwnerClientId != ownerClientId)
+                {
+                    return;
+                }
+            }
+
+            await SendTrackedFollowingAsync(
+                threadId,
+                ownerClientId,
+                generation,
+                _lifetime.Token);
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                OperationCanceledException or
+                InvalidOperationException or
+                ObjectDisposedException)
+        {
+            // The next visibility or connection event will resynchronize.
+        }
+    }
+
+    private async Task RequestWaiterSnapshotAsync(
+        string threadId,
+        SnapshotWaiter waiter)
+    {
+        try
+        {
+            lock (_stateSync)
+            {
+                if (!_snapshotWaiters.TryGetValue(threadId, out var current) ||
+                    !ReferenceEquals(current, waiter))
+                {
+                    return;
+                }
+            }
+
+            await SendWaiterFollowingAsync(
+                threadId,
+                waiter,
+                _lifetime.Token);
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                OperationCanceledException or
+                InvalidOperationException or
+                ObjectDisposedException)
+        {
+            // The original snapshot timeout remains authoritative.
+        }
+    }
+
+    private async Task ReleaseFollowerLeaseAsync(
+        string threadId,
+        string ownerClientId)
+    {
+        try
+        {
+            await SendFollowingConditionallyAsync(
+                threadId,
+                ownerClientId,
+                following: false,
+                () => ShouldWriteFollowerSignal(
+                    FollowerSignalIntent.Release,
+                    expectedGeneration: 0,
+                    currentGeneration: 0,
+                    trackedKeyMatches:
+                        _trackedThreadId == threadId &&
+                        _trackedOwnerClientId == ownerClientId,
+                    expectedWaiterIsCurrent: false,
+                    matchingWaiterExists:
+                        _snapshotWaiters.TryGetValue(
+                            threadId,
+                            out var waiter) &&
+                        waiter.OwnerClientId == ownerClientId),
+                CancellationToken.None);
+        }
+        catch
+        {
+            // Releasing a follower lease is best-effort during transitions.
         }
     }
 
@@ -635,9 +2084,13 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         WaitForSingleVisibleThreadAsync(CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + CurrentThreadTimeout;
+        string? stableCandidate = null;
+        var stableSince = DateTimeOffset.MinValue;
+        var lastError = "no-visible-thread";
         while (true)
         {
             Task signal;
+            TimeSpan nextWake;
             lock (_stateSync)
             {
                 var threadIds = _visibleThreadByClient.Values
@@ -645,12 +2098,32 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                     .ToArray();
                 if (threadIds.Length == 1)
                 {
-                    return (threadIds[0], null);
-                }
+                    var now = DateTimeOffset.UtcNow;
+                    if (!string.Equals(
+                        stableCandidate,
+                        threadIds[0],
+                        StringComparison.Ordinal))
+                    {
+                        stableCandidate = threadIds[0];
+                        stableSince = now;
+                    }
 
-                if (threadIds.Length > 1)
+                    var stableFor = now - stableSince;
+                    if (stableFor >= VisibleThreadStabilityWindow)
+                    {
+                        return (threadIds[0], null);
+                    }
+
+                    nextWake = VisibleThreadStabilityWindow - stableFor;
+                }
+                else
                 {
-                    return (null, "multiple-visible-threads");
+                    stableCandidate = null;
+                    stableSince = DateTimeOffset.MinValue;
+                    lastError = threadIds.Length > 1
+                        ? "multiple-visible-threads"
+                        : "no-visible-thread";
+                    nextWake = deadline - DateTimeOffset.UtcNow;
                 }
 
                 signal = _visibleThreadChanged.Task;
@@ -659,16 +2132,19 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero)
             {
-                return (null, "no-visible-thread");
+                return (null, lastError);
             }
 
             try
             {
-                await signal.WaitAsync(remaining, cancellationToken);
+                await signal.WaitAsync(
+                    nextWake < remaining ? nextWake : remaining,
+                    cancellationToken);
             }
             catch (TimeoutException)
             {
-                return (null, "no-visible-thread");
+                // Re-evaluate: this may be the stability timer rather than
+                // the overall selection deadline.
             }
         }
     }
@@ -735,8 +2211,12 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         string ownerClientId,
         CancellationToken cancellationToken)
     {
-        var waiter = new TaskCompletionSource<CodexThreadModelState>(
+        var completion = new TaskCompletionSource<CodexThreadModelState>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiter = new SnapshotWaiter(
+            threadId,
+            ownerClientId,
+            completion);
         lock (_stateSync)
         {
             if (_snapshotWaiters.Remove(threadId, out var replaced))
@@ -744,19 +2224,18 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 replaced.Completion.TrySetCanceled();
             }
 
-            _snapshotWaiters[threadId] = new(ownerClientId, waiter);
+            _snapshotWaiters[threadId] = waiter;
         }
 
         try
         {
-            await SendFollowingAsync(
+            await SendWaiterFollowingAsync(
                 threadId,
-                ownerClientId,
-                following: true,
+                waiter,
                 cancellationToken);
             try
             {
-                return await waiter.Task.WaitAsync(
+                return await completion.Task.WaitAsync(
                     SnapshotTimeout,
                     cancellationToken);
             }
@@ -770,43 +2249,130 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             lock (_stateSync)
             {
                 if (_snapshotWaiters.TryGetValue(threadId, out var pending) &&
-                    ReferenceEquals(pending.Completion, waiter))
+                    ReferenceEquals(pending, waiter))
                 {
                     _snapshotWaiters.Remove(threadId);
                 }
             }
 
-            try
-            {
-                await SendFollowingAsync(
-                    threadId,
-                    ownerClientId,
-                    following: false,
-                    CancellationToken.None);
-            }
-            catch
-            {
-                // Closing the follower lease is best-effort on disconnect.
-            }
+            // The release is guarded again only after it owns _writeGate. A
+            // newer persistent tracker or replacement waiter for this key
+            // therefore cannot be closed by this older waiter.
+            await ReleaseFollowerLeaseAsync(threadId, ownerClientId);
         }
     }
 
-    private Task SendFollowingAsync(
+    private Task<bool> SendTrackedFollowingAsync(
+        string threadId,
+        string ownerClientId,
+        int generation,
+        CancellationToken cancellationToken) =>
+        SendFollowingConditionallyAsync(
+            threadId,
+            ownerClientId,
+            following: true,
+            () => ShouldWriteFollowerSignal(
+                FollowerSignalIntent.TrackedTrue,
+                generation,
+                _trackingGeneration,
+                trackedKeyMatches:
+                    _trackedThreadId == threadId &&
+                    _trackedOwnerClientId == ownerClientId,
+                expectedWaiterIsCurrent: false,
+                matchingWaiterExists: false),
+            cancellationToken);
+
+    private Task<bool> SendWaiterFollowingAsync(
+        string threadId,
+        SnapshotWaiter waiter,
+        CancellationToken cancellationToken) =>
+        SendFollowingConditionallyAsync(
+            threadId,
+            waiter.OwnerClientId,
+            following: true,
+            () => ShouldWriteFollowerSignal(
+                FollowerSignalIntent.WaiterTrue,
+                expectedGeneration: 0,
+                currentGeneration: 0,
+                trackedKeyMatches: false,
+                expectedWaiterIsCurrent:
+                    _snapshotWaiters.TryGetValue(
+                        threadId,
+                        out var current) &&
+                    ReferenceEquals(current, waiter),
+                matchingWaiterExists: false),
+            cancellationToken);
+
+    internal static bool ShouldWriteFollowerSignal(
+        FollowerSignalIntent intent,
+        int expectedGeneration,
+        int currentGeneration,
+        bool trackedKeyMatches,
+        bool expectedWaiterIsCurrent,
+        bool matchingWaiterExists) =>
+        intent switch
+        {
+            FollowerSignalIntent.TrackedTrue =>
+                expectedGeneration == currentGeneration &&
+                trackedKeyMatches,
+            FollowerSignalIntent.WaiterTrue => expectedWaiterIsCurrent,
+            FollowerSignalIntent.Release =>
+                !trackedKeyMatches &&
+                !matchingWaiterExists,
+            _ => false,
+        };
+
+    private async Task<bool> SendFollowingConditionallyAsync(
         string threadId,
         string ownerClientId,
         bool following,
-        CancellationToken cancellationToken) =>
-        SendBroadcastAsync(
-            "thread-stream-following-changed",
-            version: 1,
-            new
+        Func<bool> shouldSendLocked,
+        CancellationToken cancellationToken)
+    {
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            NamedPipeClientStream pipe;
+            string sourceClientId;
+            lock (_stateSync)
             {
-                conversationId = threadId,
-                hostId = LocalHostId,
-                following,
-            },
-            [ownerClientId],
-            cancellationToken);
+                if (!shouldSendLocked())
+                {
+                    return false;
+                }
+
+                pipe = _pipe is { IsConnected: true } connected
+                    ? connected
+                    : throw new IOException("Codex IPC is not connected.");
+                sourceClientId = !string.IsNullOrWhiteSpace(_clientId)
+                    ? _clientId
+                    : throw new InvalidOperationException(
+                        "Codex IPC is not initialized.");
+            }
+
+            var frame = EncodeFrame(new
+            {
+                type = "broadcast",
+                method = "thread-stream-following-changed",
+                sourceClientId,
+                targetClientIds = new[] { ownerClientId },
+                @params = new
+                {
+                    conversationId = threadId,
+                    hostId = LocalHostId,
+                    following,
+                },
+                version = 1,
+            });
+            await pipe.WriteAsync(frame, cancellationToken);
+            await pipe.FlushAsync(cancellationToken);
+            return true;
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
 
     private async Task<JsonElement> SendRequestAsync<T>(
         string method,
@@ -906,6 +2472,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         NamedPipeClientStream pipe,
         Exception? failure)
     {
+        SnapshotWaiter[] snapshotWaiters;
         lock (_stateSync)
         {
             if (!ReferenceEquals(_pipe, pipe))
@@ -916,18 +2483,24 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _pipe = null;
             _clientId = null;
             _visibleThreadByClient.Clear();
+            _trackingGeneration++;
+            _trackedThreadId = null;
+            _trackedOwnerClientId = null;
+            _trackedStateAccumulator = null;
+            _currentThreadState = null;
             PulseVisibleThreadChangedLocked();
-            foreach (var waiter in _snapshotWaiters.Values)
-            {
-                waiter.Completion.TrySetException(
-                    failure ?? new IOException("Codex IPC disconnected."));
-            }
-
+            snapshotWaiters = [.. _snapshotWaiters.Values];
             _snapshotWaiters.Clear();
         }
 
         pipe.Dispose();
         var disconnected = failure ?? new IOException("Codex IPC disconnected.");
+        RaiseCurrentThreadStateChanged(null);
+        foreach (var waiter in snapshotWaiters)
+        {
+            waiter.Completion.TrySetException(disconnected);
+        }
+
         foreach (var request in _pendingRequests.ToArray())
         {
             if (_pendingRequests.TryRemove(request.Key, out var pending))
@@ -953,6 +2526,73 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private string? RecallEffort(string threadId, string modelId)
     {
         return _effortStore.Recall(threadId, modelId);
+    }
+
+    private void ConfirmSuccessfulToggleState(
+        string threadId,
+        string ownerClientId,
+        string modelId,
+        string? effort)
+    {
+        CodexThreadModelState? state = null;
+        var requestSnapshot = false;
+        var generation = 0;
+        lock (_stateSync)
+        {
+            var visibleThreadIds = _visibleThreadByClient.Values
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (visibleThreadIds.Length != 1 ||
+                visibleThreadIds[0] != threadId ||
+                _trackedThreadId != threadId)
+            {
+                return;
+            }
+
+            if (_trackedStateAccumulator is null ||
+                _trackedOwnerClientId != ownerClientId)
+            {
+                _trackedOwnerClientId = ownerClientId;
+                _trackedStateAccumulator = new(threadId, ownerClientId);
+                requestSnapshot = true;
+                generation = _trackingGeneration;
+            }
+
+            state = _trackedStateAccumulator.ConfirmSettings(modelId, effort);
+            _currentThreadState = state;
+        }
+
+        RaiseCurrentThreadStateChanged(state);
+        if (requestSnapshot)
+        {
+            _ = RequestTrackedSnapshotAsync(
+                threadId,
+                ownerClientId,
+                generation);
+        }
+    }
+
+    private void RaiseCurrentThreadStateChanged(
+        CodexThreadModelState? state)
+    {
+        var handlers = CurrentThreadStateChanged;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (Action<CodexThreadModelState?> handler in
+                 handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(state);
+            }
+            catch
+            {
+                // A UI subscriber must not tear down the IPC reader loop.
+            }
+        }
     }
 
     private static bool IsSuccessfulUpdate(JsonElement response) =>
@@ -995,7 +2635,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         string error,
         string? threadId = null,
         CodexQuickModel previous = CodexQuickModel.Unknown,
-        string? previousEffort = null) =>
+        string? previousEffort = null,
+        string? detail = null) =>
         new(
             false,
             previous,
@@ -1003,7 +2644,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             threadId,
             previousEffort,
             previousEffort,
-            error);
+            error,
+            detail);
 
     private static void ValidatePair(
         CodexQuickModel first,
@@ -1045,6 +2687,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         _lifetime.Cancel();
         NamedPipeClientStream? pipe;
         Task? reader;
+        SnapshotWaiter[] snapshotWaiters;
         lock (_stateSync)
         {
             pipe = _pipe;
@@ -1053,7 +2696,20 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _readerTask = null;
             _clientId = null;
             _visibleThreadByClient.Clear();
+            _trackingGeneration++;
+            _trackedThreadId = null;
+            _trackedOwnerClientId = null;
+            _trackedStateAccumulator = null;
+            _currentThreadState = null;
+            snapshotWaiters = [.. _snapshotWaiters.Values];
+            _snapshotWaiters.Clear();
             PulseVisibleThreadChangedLocked();
+        }
+
+        RaiseCurrentThreadStateChanged(null);
+        foreach (var waiter in snapshotWaiters)
+        {
+            waiter.Completion.TrySetCanceled();
         }
 
         pipe?.Dispose();
@@ -1070,8 +2726,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         }
 
         _lifetime.Dispose();
-        _connectGate.Dispose();
-        _writeGate.Dispose();
-        _toggleGate.Dispose();
+        // Start/toggle/tracking continuations can still be unwinding after the
+        // pipe and lifetime token are cancelled. SemaphoreSlim owns no native
+        // resource unless its WaitHandle is requested (it is not here), so
+        // leaving these managed gates for GC avoids Release-after-Dispose
+        // races during window shutdown.
     }
 }

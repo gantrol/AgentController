@@ -12,17 +12,23 @@ public sealed class MicroProfileSettingsTests
 
         Assert.Equal(CodexQuickModel.Sol, settings.Current.QuickModelA);
         Assert.Equal(CodexQuickModel.Luna, settings.Current.QuickModelB);
+        Assert.Null(settings.Current.QuickModelAEffort);
+        Assert.Null(settings.Current.QuickModelBEffort);
     }
 
     [Fact]
     public void SelectingTheOtherSlotSwapsInsteadOfDuplicating()
     {
         var settings = MicroProfileSettings.CreateTransient();
+        settings.SetQuickModelAEffort("ultra");
+        settings.SetQuickModelBEffort("max");
 
         settings.SetQuickModelA(CodexQuickModel.Luna);
 
         Assert.Equal(CodexQuickModel.Luna, settings.Current.QuickModelA);
         Assert.Equal(CodexQuickModel.Sol, settings.Current.QuickModelB);
+        Assert.Equal("max", settings.Current.QuickModelAEffort);
+        Assert.Equal("ultra", settings.Current.QuickModelBEffort);
     }
 
     [Fact]
@@ -35,8 +41,11 @@ public sealed class MicroProfileSettingsTests
         var path = Path.Combine(directory, "profile.json");
         try
         {
-            var settings = new MicroProfileSettings(path);
+            var modelsCachePath = WriteModelsCache(directory);
+            var settings = new MicroProfileSettings(path, modelsCachePath);
             settings.SetQuickModelB(CodexQuickModel.Terra);
+            settings.SetQuickModelAEffort(" ULTRA ");
+            settings.SetQuickModelBEffort("max");
             settings.SetInvertDialDirection(true);
             settings.SetActiveHarness("deepseek-harness");
             settings.SetAgentSource("pinned");
@@ -60,11 +69,13 @@ public sealed class MicroProfileSettingsTests
             settings.SetKeypadName("DeepSeek 工作区");
             settings.SetWindowPlacement(123.5, 456.25, topmost: false);
 
-            var reloaded = new MicroProfileSettings(path);
+            var reloaded = new MicroProfileSettings(path, modelsCachePath);
 
             Assert.True(settings.LastSaveSucceeded);
             Assert.Equal(CodexQuickModel.Sol, reloaded.Current.QuickModelA);
             Assert.Equal(CodexQuickModel.Terra, reloaded.Current.QuickModelB);
+            Assert.Equal("ultra", reloaded.Current.QuickModelAEffort);
+            Assert.Equal("max", reloaded.Current.QuickModelBEffort);
             Assert.Equal("deepseek-harness", reloaded.Current.ActiveHarnessId);
             Assert.Equal("pinned", reloaded.Current.AgentSource);
             Assert.True(reloaded.Current.SingleTapAgentKeys);
@@ -117,6 +128,92 @@ public sealed class MicroProfileSettingsTests
     }
 
     [Fact]
+    public void ModelCacheLimitsReasoningEffortsForEachModel()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-profile-tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = MicroProfileSettings.CreateTransient(
+                modelsCachePath: WriteModelsCache(directory));
+
+            Assert.Contains(
+                "ultra",
+                settings.GetSupportedReasoningEfforts(CodexQuickModel.Sol));
+            Assert.Contains(
+                "ultra",
+                settings.GetSupportedReasoningEfforts(CodexQuickModel.Terra));
+            Assert.DoesNotContain(
+                "ultra",
+                settings.GetSupportedReasoningEfforts(CodexQuickModel.Luna));
+
+            settings.SetQuickModelBEffort("max");
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                settings.SetQuickModelBEffort("ultra"));
+            Assert.Equal("max", settings.Current.QuickModelBEffort);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ChangingModelClearsAnUnsupportedExplicitEffort()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-profile-tests",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = MicroProfileSettings.CreateTransient(
+                new(
+                    CodexQuickModel.Sol,
+                    CodexQuickModel.Terra,
+                    QuickModelAEffort: "ultra"),
+                WriteModelsCache(directory));
+
+            settings.SetQuickModelA(CodexQuickModel.Luna);
+
+            Assert.Equal(CodexQuickModel.Luna, settings.Current.QuickModelA);
+            Assert.Null(settings.Current.QuickModelAEffort);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void MissingModelCacheDoesNotDiscardARecognizedEffort()
+    {
+        var missingCachePath = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-profile-tests",
+            Guid.NewGuid().ToString("N"),
+            "missing-models-cache.json");
+        var settings = MicroProfileSettings.CreateTransient(
+            new(
+                CodexQuickModel.Sol,
+                CodexQuickModel.Luna,
+                QuickModelAEffort: "ultra"),
+            missingCachePath);
+
+        Assert.Equal("ultra", settings.Current.QuickModelAEffort);
+        settings.SetQuickModelAEffort("ultra");
+        Assert.Equal("ultra", settings.Current.QuickModelAEffort);
+    }
+
+    [Fact]
     public void ExternalHarnessCannotChangeCodexDialDirection()
     {
         var settings = MicroProfileSettings.CreateTransient();
@@ -125,5 +222,55 @@ public sealed class MicroProfileSettingsTests
         settings.SetInvertDialDirection(true);
 
         Assert.False(settings.Current.InvertDialDirection);
+    }
+
+    private static string WriteModelsCache(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "models_cache.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "models": [
+                {
+                  "slug": "gpt-5.6-sol",
+                  "default_reasoning_level": "low",
+                  "supported_reasoning_levels": [
+                    { "effort": "low" },
+                    { "effort": "medium" },
+                    { "effort": "high" },
+                    { "effort": "xhigh" },
+                    { "effort": "max" },
+                    { "effort": "ultra" }
+                  ]
+                },
+                {
+                  "slug": "gpt-5.6-terra",
+                  "default_reasoning_level": "medium",
+                  "supported_reasoning_levels": [
+                    { "effort": "low" },
+                    { "effort": "medium" },
+                    { "effort": "high" },
+                    { "effort": "xhigh" },
+                    { "effort": "max" },
+                    { "effort": "ultra" }
+                  ]
+                },
+                {
+                  "slug": "gpt-5.6-luna",
+                  "default_reasoning_level": "medium",
+                  "supported_reasoning_levels": [
+                    { "effort": "low" },
+                    { "effort": "medium" },
+                    { "effort": "high" },
+                    { "effort": "xhigh" },
+                    { "effort": "max" }
+                  ]
+                }
+              ]
+            }
+            """);
+        return path;
     }
 }

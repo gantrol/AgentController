@@ -18,6 +18,97 @@ public sealed class WindowDesignTests
 {
     private const int IsolatedAgentRenderSize = 166;
 
+    [Fact]
+    public void QuickModelSnapshotResetsBeforeBindingTheNextTask()
+    {
+        var firstTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(
+            new CodexThreadModelState(
+                "thread-a",
+                "gpt-5.6-luna",
+                "max"));
+
+        Assert.Equal("thread-a", firstTask.ThreadId);
+        Assert.Equal(CodexQuickModel.Luna, firstTask.Model);
+
+        var changingTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(null);
+
+        Assert.Null(changingTask.ThreadId);
+        Assert.Equal(CodexQuickModel.Unknown, changingTask.Model);
+
+        var secondTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(
+            new CodexThreadModelState(
+                "thread-b",
+                "gpt-5.6-sol",
+                "ultra"));
+
+        Assert.Equal("thread-b", secondTask.ThreadId);
+        Assert.Equal(CodexQuickModel.Sol, secondTask.Model);
+    }
+
+    [Fact]
+    public void DelayedOrFailedToggleCannotOverwriteAnotherTaskSnapshot()
+    {
+        var secondTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(
+            new CodexThreadModelState(
+                "thread-b",
+                "gpt-5.6-sol",
+                "ultra"));
+        var delayedSuccessForFirstTask = new CodexModelToggleResult(
+            Succeeded: true,
+            Previous: CodexQuickModel.Sol,
+            Current: CodexQuickModel.Luna,
+            ThreadId: "thread-a");
+        var failedResultForFirstTask = new CodexModelToggleResult(
+            Succeeded: false,
+            Previous: CodexQuickModel.Luna,
+            Current: CodexQuickModel.Luna,
+            ThreadId: "thread-a",
+            Error: "thread-settings-rejected");
+        var resultForCurrentTask = new CodexModelToggleResult(
+            Succeeded: true,
+            Previous: CodexQuickModel.Luna,
+            Current: CodexQuickModel.Sol,
+            ThreadId: "thread-b");
+        var unscopedFailureAfterTaskChange = new CodexModelToggleResult(
+            Succeeded: false,
+            Previous: CodexQuickModel.Unknown,
+            Current: CodexQuickModel.Unknown,
+            Error: "ipc-timeout");
+
+        Assert.False(MicroSurfaceWindow.QuickModelResultTargetsCurrentThread(
+            secondTask,
+            delayedSuccessForFirstTask));
+        Assert.False(MicroSurfaceWindow.QuickModelResultTargetsCurrentThread(
+            secondTask,
+            failedResultForFirstTask));
+        Assert.True(MicroSurfaceWindow.QuickModelResultTargetsCurrentThread(
+            secondTask,
+            resultForCurrentTask));
+        Assert.False(MicroSurfaceWindow.QuickModelResultCanDescribeCurrentThread(
+            secondTask,
+            "thread-a",
+            unscopedFailureAfterTaskChange));
+    }
+
+    [Theory]
+    [InlineData("no-visible-thread", true)]
+    [InlineData("multiple-visible-threads", true)]
+    [InlineData("thread-owner-unavailable", true)]
+    [InlineData("thread-state-unavailable", true)]
+    [InlineData("ipc-timeout", true)]
+    [InlineData("ipc-disconnected", true)]
+    [InlineData("visible-thread-changed", true)]
+    [InlineData("cancelled", true)]
+    [InlineData("thread-settings-rejected", false)]
+    [InlineData("ipc-unavailable", false)]
+    [InlineData(null, false)]
+    public void QuickModelErrorsUseTransientSeverityOnlyWhenRetryIsSafe(
+        string? error,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            MicroSurfaceWindow.IsTransientQuickModelError(error));
+
     [Theory]
     [InlineData(true, false, "reasoning", false)]
     [InlineData(true, false, "command", true)]
@@ -798,7 +889,7 @@ public sealed class WindowDesignTests
                     "37%",
                     AutomationProperties.GetItemStatus(window.SettingsKey));
 
-                window.ApplyQuickModel(CodexQuickModel.Luna);
+                window.ApplyQuickModel("visual-thread", CodexQuickModel.Luna);
                 Assert.Equal("LUNA", window.QuotaCaptionText.Text);
                 Assert.Contains(
                     "Luna",

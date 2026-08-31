@@ -15,7 +15,7 @@ DeepSeek 特调包首次点击会先复用已有 Harness；未发现可用桥接
 用户已有发行版名称，也不执行 `git clone`。完整的官方来源、端口说明和逐步排错见
 [Windows 首次使用 DeepSeek：默认配置准备](./DEEPSEEK-WINDOWS-SETUP.zh-CN.md)。
 
-0.2.8 把程序托管环境锁定到 DeepSeek Harness `v0.1.0-rc.8`；首次配置完成后仍会
+0.2.9 把程序托管环境锁定到 DeepSeek Harness `v0.1.0-rc.8`；首次配置完成后仍会
 读取实际安装包版本，发现旧版时提供带健康检查和回滚的升级。安装器还会登记
 `deepseek-v4-flash-vision-exp` 的原生文字/图片输入。图片由 Harness 自己通过粘贴或
 拖放接收，与小键盘只传最终文字的语音通路互不混用；后端模型仍必须真正支持图片。
@@ -165,24 +165,24 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.8
+.\scripts\package-micro.ps1 -Version 0.2.9
 # 准备带桥接插件和在线自动配置入口的 DeepSeek 特调包
-.\scripts\package-micro.ps1 -Version 0.2.8 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.2.9 -Preset deepseek
 ```
 
 面向用户的 Release 只发布一个推荐在线包：
 
-- `dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`，包含 Bridge 与自动配置入口；
+- `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`，包含 Bridge 与自动配置入口；
   首次配置时在线安装固定的 DSH，不内置完整 WSL 根文件系统。
 
 以下是维护者构建与诊断产物，不作为普通用户的下载选项：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.8/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.8-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.2.9/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.2.9-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
-- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.8-win-x64.zip`；
+- DeepSeek 特调包：`dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`；
 - 可单独安装到已有 DSH 的 Bridge：
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.8.zip`（也带独立 SHA-256）。
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.9.zip`（也带独立 SHA-256）。
 
 推荐在线包收录 `CodexMicro.exe`、README、首次配置文档、许可证和小键盘端 `voice`
 启动适配器，不复制模型、Python 环境、Desktop Runtime、调试符号或驱动。
