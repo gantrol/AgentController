@@ -18,6 +18,23 @@ public sealed class WindowDesignTests
 {
     private const int IsolatedAgentRenderSize = 166;
 
+    [Theory]
+    [InlineData(true, false, "reasoning", false)]
+    [InlineData(true, false, "command", true)]
+    [InlineData(true, true, "command", false)]
+    [InlineData(false, false, "command", false)]
+    public void ReasoningPressDoesNotDependOnTheHidBroker(
+        bool isCodexHarness,
+        bool brokerReady,
+        string encoderMode,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            MicroSurfaceWindow.RequiresBrokerForDialPress(
+                isCodexHarness,
+                brokerReady,
+                encoderMode));
+
     [Fact]
     public void ApplicationCloseTaskWaitsForWindowCleanup()
     {

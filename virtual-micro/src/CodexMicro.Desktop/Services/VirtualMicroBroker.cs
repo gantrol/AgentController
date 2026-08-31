@@ -14,7 +14,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         new("Codex Micro Keypad");
     private readonly object _heldSync = new();
     private readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
-    private bool _supportsDialogKeyboard;
     private bool _disposed;
 
     public VirtualMicroBroker()
@@ -37,16 +36,16 @@ internal sealed class VirtualMicroBroker : IDisposable
     public bool CodexLinkObserved =>
         !_disposed && _driver.CodexLinkObserved;
 
-    public bool SupportsDialogKeyboard =>
-        IsReady && _supportsDialogKeyboard;
+    public void StartConnecting()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _driver.StartConnecting();
+    }
 
     public BrokerDriverInfo Connect()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var info = _driver.Connect();
-        _supportsDialogKeyboard =
-            (info.Flags &
-             MicroBrokerProtocol.DriverInfoFlagDialogKeyboard) != 0;
         PublishState(_driver.State);
         Log?.Invoke(
             this,
@@ -63,9 +62,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         {
             Log?.Invoke(this, "Rebuilding the Codex Micro HID transport...");
             var info = _driver.RecoverCodexLink();
-            _supportsDialogKeyboard =
-                (info.Flags &
-                 MicroBrokerProtocol.DriverInfoFlagDialogKeyboard) != 0;
             PublishState(_driver.State);
             Log?.Invoke(
                 this,
@@ -123,27 +119,6 @@ internal sealed class VirtualMicroBroker : IDisposable
             clockwise
                 ? "encoder clockwise"
                 : "encoder counter-clockwise");
-
-    public Task<MicroSendResult> TapDialogKeyAsync(
-        BrokerKeyboardKey key,
-        bool shift = false)
-    {
-        if (!SupportsDialogKeyboard)
-        {
-            return Task.FromResult(MicroSendResult.NotSent(
-                "The installed VHF driver does not expose the restricted " +
-                "dialog keyboard collection."));
-        }
-
-        return Task.Run(() =>
-        {
-            var result = _driver.TapKeyboard(key, shift);
-            Log?.Invoke(
-                this,
-                $"VHF dialog key · {(shift ? "Shift+" : string.Empty)}{key} · {result.Disposition}");
-            return result;
-        });
-    }
 
     public async Task<MicroSendResult> OpenCodexMicroSettingsAsync(
         CancellationToken cancellationToken = default)
@@ -234,7 +209,6 @@ internal sealed class VirtualMicroBroker : IDisposable
         _driver.CodexLinkObservedChanged -=
             Driver_CodexLinkObservedChanged;
         _driver.Dispose();
-        _supportsDialogKeyboard = false;
     }
 
     private Task<MicroSendResult> SubmitAsync(

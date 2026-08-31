@@ -30,7 +30,7 @@ public sealed class CodexMenuSelectionObserverTests
     }
 
     [Fact]
-    public void FormatShowsFocusedPermissionDialogButton()
+    public void FormatMarksPermissionDialogAsUnsupported()
     {
         var selection = new CodexMenuSelection(
             "Full access confirmation",
@@ -39,7 +39,24 @@ public sealed class CodexMenuSelectionObserverTests
             3,
             CodexSelectionSurface.Dialog);
 
-        Assert.Equal("3 / 3  ·  Confirm", selection.DisplayText);
+        Assert.Equal(
+            "确认框暂不支持旋钮 · 请在 Codex 操作",
+            selection.DisplayText);
+    }
+
+    [Fact]
+    public void FormatMarksUnfocusedPermissionDialogAsUnsupported()
+    {
+        var selection = new CodexMenuSelection(
+            "Full access confirmation",
+            string.Empty,
+            0,
+            3,
+            CodexSelectionSurface.Dialog);
+
+        Assert.Equal(
+            "确认框暂不支持旋钮 · 请在 Codex 操作",
+            selection.DisplayText);
     }
 
     [Theory]

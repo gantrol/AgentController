@@ -151,6 +151,12 @@ public sealed class SettingsWindowDesignTests
                 Assert.Equal(3, window.QuickModelACombo.Items.Count);
                 Assert.Equal("Sol", window.QuickModelACombo.SelectedItem?.ToString());
                 Assert.Equal("Luna", window.QuickModelBCombo.SelectedItem?.ToString());
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.QuickModelARow.Visibility);
+                Assert.Equal(
+                    Visibility.Visible,
+                    window.QuickModelBRow.Visibility);
                 Assert.Contains(
                     window.HarnessCombo.Items.Cast<MicroHarnessDefinition>(),
                     item => item.Id == "codex");
@@ -307,6 +313,7 @@ public sealed class SettingsWindowDesignTests
                     CodexQuickModel.Terra,
                     profile.Current.QuickModelB);
                 Assert.Equal("Terra", window.QuickModelBCombo.SelectedItem?.ToString());
+
                 localization.SetLanguage(MicroLanguage.EnUs);
                 Assert.Equal("Micro software settings", window.WindowTitleText.Text);
                 Assert.Contains("connected", window.ConnectionStatusText.Text);

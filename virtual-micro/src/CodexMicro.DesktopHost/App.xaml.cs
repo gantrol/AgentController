@@ -72,6 +72,7 @@ public partial class App : System.Windows.Application
         _startupRegistration = new MicroStartupRegistration();
         _surface = new MicroSurfaceController(
             _localization);
+        _surface.StartBackgroundServices();
         _trayIcon = new MicroTrayIcon(
             _surface,
             _localization,

@@ -58,6 +58,11 @@ internal sealed class CodexMenuSelectionObserver
 
     internal static string Format(CodexMenuSelection selection)
     {
+        if (selection.Surface == CodexSelectionSurface.Dialog)
+        {
+            return "确认框暂不支持旋钮 · 请在 Codex 操作";
+        }
+
         var item = NormalizeLabel(selection.ItemName);
         if (selection.Position > 0 && selection.Count > 0)
         {
@@ -65,11 +70,6 @@ internal sealed class CodexMenuSelectionObserver
         }
 
         var menu = NormalizeLabel(selection.MenuName);
-        if (selection.Surface == CodexSelectionSurface.Dialog)
-        {
-            return "确认权限  ·  转动选择";
-        }
-
         if (selection.Surface == CodexSelectionSurface.Approval)
         {
             return "权限模式  ·  转动选择";

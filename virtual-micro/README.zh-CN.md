@@ -128,15 +128,16 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 - Codex 模式下，语音键按下发送 `ACT10 down`，松开后发送 `ACT10 up`；外部 Harness
   模式下，该键直接控制小键盘自己的语音采集与识别；
 - Codex 模式下，白色旋钮可设为常规输入区导航或“仅推理强度”；后者旋转时只改变
-  思考强度，短按在快捷模型 A / B 间切换；
+  思考强度，短按通过当前任务的语义设置通道在快捷模型 A / B 间切换；
 - Codex 软件设置中的“反转旋钮方向”只作用于当前 Codex 小键盘；外部 Harness 忽略该设置；
 - 外部 Harness 独立保存白色旋钮模式。默认只动态发现当前输入框内可见、可用的
   控件（包括其他插件后来加入的按钮），用蓝色轮廓高亮，短按执行；也可改为
   “仅推理强度”或“最近会话”；
 - 摇杆支持连续拖动并在松开时回中；外部 Harness 默认上/下切换侧边栏会话，
   左侧折叠/展开左栏，右侧打开详情抽屉；
-- 左下旋钮左键切换当前 Agent 配置的快捷模型，右键直达该 Agent 的独立设置；
-  Codex 模式长按仍打开官方 Micro 设置。
+- 左下旋钮短按切换当前 Agent 配置的快捷模型；Codex 模式直接定位唯一当前任务并
+  复用其现有 App Server，不打开菜单也不抢焦点。长按打开官方 Micro 设置，右键
+  直达当前 Agent 的独立设置。
 
 ## 虚拟 HID
 
@@ -145,6 +146,8 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 - 主设备：`VID 303A / PID 8360 / UsagePage FF00 / Usage 01 / ReportId 06`；
 - 受限确认键盘：`VID 303A / PID 8361`，只允许 Tab、Shift+Tab 与 Enter。
+  小键盘不再将 Codex 旋钮输入路由到这个遗留 child；Codex 旋钮始终发送原生
+  Micro `ENC_*` 报告。
 
 小键盘本身不直接调用私有驱动 IOCTL。当前用户唯一的 Broker 子进程拥有驱动句柄、
 输入 sequence、held-input 租约和输出流；如果 Agent Controller 已启动，小键盘会连接

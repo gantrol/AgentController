@@ -53,6 +53,12 @@ public sealed class MicroSurfaceController : IDisposable
 
     public int SurfaceCount => _disposed ? 0 : _surfaces.Count;
 
+    public void StartBackgroundServices() => Dispatch(() =>
+    {
+        var primary = _surfaces.Values.Single(entry => entry.IsPrimary);
+        primary.Window.StartBackgroundServices();
+    });
+
     public void Show() => Dispatch(() =>
     {
         foreach (var entry in _surfaces.Values)

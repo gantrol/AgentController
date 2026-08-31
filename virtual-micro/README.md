@@ -159,7 +159,8 @@ service, run this from the extracted package directory:
   capture and recognition.
 - In Codex mode, the white encoder supports normal composer navigation or a
   reasoning-only mode. Reasoning-only rotation changes effort only, while a
-  click toggles the configured quick models A/B.
+  click toggles the configured quick models A/B through the current task's
+  semantic settings channel.
 - Codex software settings can reverse the dial direction for the current
   keypad; the setting is ignored by external Harnesses.
 - In an external Harness, the white encoder is configured independently. Its
@@ -170,9 +171,10 @@ service, run this from the extracted package directory:
 - The joystick sends continuous analog input and neutralizes on release. For
   external Harnesses, its default spatial map is previous/next sidebar session
   on up/down, toggle left sidebar on left, and open details on right.
-- The lower-left knob left-click toggles the active Agent's configured quick
-  models. Right-click opens that Agent's own settings; a Codex long-press still
-  opens the official Micro settings.
+- The lower-left knob short-click toggles the active Agent's configured quick
+  models. In Codex this uses the unique current task and its existing App
+  Server without opening a menu or taking focus. A long-press opens the
+  official Micro settings, and right-click opens the active Agent's settings.
 
 ## Virtual HID
 
@@ -181,7 +183,8 @@ Framework. System `Vhf.sys` enumerates:
 
 - primary device: `VID 303A / PID 8360 / UsagePage FF00 / Usage 01 / ReportId 06`;
 - restricted confirmation keyboard: `VID 303A / PID 8361`, limited to Tab,
-  Shift+Tab, and Enter.
+  Shift+Tab, and Enter. The keypad no longer routes Codex dial input to this
+  legacy child; Codex dial input is always sent as native Micro `ENC_*` reports.
 
 The keypad never calls the private driver IOCTL directly. One current-user
 Broker child owns the driver handle, input sequence, held-input leases, and

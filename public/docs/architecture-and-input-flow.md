@@ -142,8 +142,8 @@ sequenceDiagram
 | Source PnP ID | `Root\CodexMicroHidUm` |
 | 私有接口 GUID | `E2A7CB54-8420-4D51-9DD8-D6575B9251D1` |
 | Broker contract | magic `0x314D4356`（`VCM1`）、version `1` |
-| Broker 使用的 IOCTL | `GET_INFO 0x800`、`SUBMIT_INPUT 0x801`、`READ_OUTPUT 0x802`；模拟器对话框操作还使用 `SUBMIT_KEYBOARD 0x803` |
-| v0.1.0 键盘能力 | `SUBMIT_KEYBOARD 0x803` 只允许 Tab、Shift+Tab、Enter；Agent Controller 的常规 Micro input 不使用它 |
+| Broker 使用的 IOCTL | `GET_INFO 0x800`、`SUBMIT_INPUT 0x801`、`READ_OUTPUT 0x802`；合同仍保留遗留 `SUBMIT_KEYBOARD 0x803`，当前桌面客户端不调用 |
+| v0.1.0 键盘能力 | `SUBMIT_KEYBOARD 0x803` 只允许 Tab、Shift+Tab、Enter；Agent Controller 与虚拟 Micro 的 Codex 输入都不使用它 |
 | Micro wire report | 64 bytes，Report ID `0x06` |
 
 所以，“产品只选择 `CodexMicroVhfUm`”以及“只有 Broker 能直接打开私有接口”已经成立，并由 `MicroDriverOwnershipRulesTests` 防止回退；“运行时能证明打开的一定是该二进制”尚未成立。正式 Device Support 还需校验 Provider、service、PnP identity、驱动版本和签名，再允许 Full Micro mode。

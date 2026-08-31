@@ -107,6 +107,10 @@ public sealed class MicroDriverOwnershipRulesTests
             "MicroBrokerHost.IsBrokerArgument",
             hostSource,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "_surface.StartBackgroundServices()",
+            hostSource,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -184,6 +188,53 @@ public sealed class MicroDriverOwnershipRulesTests
         Assert.DoesNotContain(
             "_composerAutomation.DialSelect(",
             mainWindow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VirtualMicroCodexDialUsesNativeInputAndSemanticModelBridge()
+    {
+        var mainWindow = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/MainWindow.xaml.cs"));
+        var broker = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/Services/" +
+            "VirtualMicroBroker.cs"));
+        var modelBridge = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/Services/" +
+            "CodexModelToggleService.cs"));
+
+        Assert.Contains(
+            "_broker.StepEncoderAsync(reportedClockwise)",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_broker.TapKeyAsync(\"ENC\")",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ToggleQuickModelAsync",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TapDialogKeyAsync",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "_cachedDialSelection",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TapDialogKeyAsync",
+            broker,
+            StringComparison.Ordinal);
+        Assert.Contains("codex-ipc", modelBridge, StringComparison.Ordinal);
+        Assert.Contains(
+            "thread-follower-update-thread-settings",
+            modelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "System.Windows.Automation",
+            modelBridge,
             StringComparison.Ordinal);
     }
 

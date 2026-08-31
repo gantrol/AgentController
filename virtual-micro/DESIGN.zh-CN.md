@@ -77,7 +77,7 @@ UMDF2 HID source driver，在 `EvtDeviceAdd` 中依次调用 `VHF_CONFIG_INIT`�
 | 受限键盘报告 | 独立键盘子设备，Report ID `0x07`，只允许 Tab / Shift+Tab / Enter |
 | Source PnP ID | `Root\CodexMicroHidUm` |
 
-VHF source driver 另暴露只供模拟器进程使用的受限设备接口。桌面端用有界 IOCTL
+VHF source driver 仍保留遗留受限键盘设备接口，但当前小键盘不调用它。桌面端用有界 IOCTL
 批次提交完整的 64 字节 HID report；驱动将 Report ID `0x06` 保留在
 `reportBuffer[0]`，并同时写入 `HID_XFER_PACKET.reportId`。Codex 发来的 RPC
 输出经驱动有界队列回传桌面端，Agent 灯光以六槽位快照原子更新，不经过
@@ -93,9 +93,9 @@ Broker 把任何有效 Codex Output report 视为链路心跳，并在该心跳�
 尝试三次；手动“重新连接”直接调用同一路径。
 
 同一个 UMDF2 source 创建两个独立 VHF HID child，各自拥有报告描述符和句柄：
-vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windows
-专用打开，只补齐 Codex Micro bridge 对原生 Full access 二次确认框不处理旋转的缺口。键盘 IOCTL 严格拒绝
-除 Tab、带左 Shift 的 Tab 和 Enter 之外的组合，因此不能用作通用键盘注入器。
+vendor child 由 Codex 的 `codex-micro-service` 消费；遗留键盘 child 仅允许 Tab、
+带左 Shift 的 Tab 和 Enter。小键盘不再使用该 child，也不会根据 UIA 观察结果
+改变输入通道；Codex 旋钮动作只走 vendor child 的原生 `ENC_*` 报告。
 
 ## 4. 交互定义
 
@@ -107,12 +107,11 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 | 左上旋钮 | 启用“反转旋钮方向”后旋转 | 保持实体旋转动画，交换上报的 `ENC_CW` / `ENC_CC`；顺时针提高推理强度 |
 | 左上旋钮 | 短按 | 发送一次 `ENC` 按下/释放，打开或确认 Codex 当前高亮项 |
 | 左上旋钮 | 外部 Harness 的“输入区控件”模式旋转 / 短按 | 动态遍历当前输入框内可见、可用控件并在网页蓝色高亮 / 执行高亮控件；不发送 Codex HID |
-| 左上旋钮 | “仅推理强度”模式旋转 / 短按 | 只调整当前模型推理强度 / 在快捷模型 A、B 间切换 |
+| 左上旋钮 | Codex“仅推理强度”模式旋转 / 短按 | 只调整当前模型推理强度 / 通过当前任务的语义设置通道在快捷模型 A、B 间切换 |
 | 左上旋钮 | 权限模式选择面中旋转 | 继续通过官方 Micro bridge 发送 `ENC_CW` / `ENC_CC`，遍历 Ask for approval、Approve for me 与 Full access |
-| 左上旋钮 | Full access 确认框中旋转 | 通过受限 VHF 键盘子设备发送 Shift+Tab / Tab，移动确认按钮焦点 |
-| 左上旋钮 | Full access 确认框中短按 | 通过受限 VHF 键盘子设备发送 Enter，确认当前按钮 |
+| 左上旋钮 | Full access 确认框中旋转 / 短按 | 仍只发送 `ENC_CW` / `ENC_CC` / `ENC`；若当前 Codex bridge 不支持，则明确不可用，不改发键盘或 UIA 动作 |
 | 左上旋钮 | 右键 | 不执行操作；设置入口不与选择旋钮复用 |
-| 左下黑色旋钮 | 短按 | 在软件设置中的快捷模型 A / B 之间切换当前任务下一轮；默认 Sol / Luna |
+| 左下黑色旋钮 | Codex 模式短按 | 通过 `codex-ipc` 定位唯一当前任务，在软件设置中的快捷模型 A / B 之间切换下一轮；默认 Sol / Luna |
 | 左下黑色旋钮 | 当前目标为外部 Harness 时左键 / 右键 | 通过直连插件切换该 Harness 配置的快捷模型 / 直达该 Agent 的适配器与独立按键设置 |
 | 左下黑色旋钮 | 长按 | 发送 650 ms `ENC` 长按，由 Codex 内部路由进入官方 Micro 设置 |
 | 左下黑色旋钮 | 右键 | 直接打开右下角当前 Agent 的设置区：Codex 进入快捷模型配置；外部 Harness 进入该 Harness 独立的适配器与按键配置 |
@@ -135,8 +134,7 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 
 模型与权限菜单的动作仍由 Codex 官方 Micro bridge 处理。桌面端只读观察 Codex
 可访问性树中的可见菜单及焦点项，按屏幕顺序计算“序号 / 总数”，并在白色旋钮旁
-显示 2.4 秒的轻量胶囊；观察结果不执行点击。检测到 Full access 原生确认框时，
-旋钮才切换到上述受限 VHF 键盘 collection，确认框关闭后立即恢复 `ENC_*`。
+显示 2.4 秒的轻量胶囊；观察结果只能更新 HUD，不能决定输入通道或改发键盘动作。
 旋钮输入与可访问性反馈完全解耦：滚轮和拖动只保留最多三个待处理净刻度，反向
 输入会抵消尚未发送的历史，按下确认会先清空积压。发送泵以 24 ms 最小间隔逐个
 交付 VHF 步进；超过 180 ms 的输入与一次卡顿发送期间产生的积压直接丢弃，
@@ -157,8 +155,11 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；键盘 child 由 Windo
 分配官方命令或已安装 Skill。Options 支持 Agent 键来源、旋钮模式、麦克风模式、
 双麦克风键和单击聚焦；Extensions 支持快捷模型 A / B 与 Codex 键的 Harness 目标。
 模型槽位只能保存两个不同的已知模型；选择另一槽位当前值时自动交换，避免重复。
-扩展默认值为 Sol / Luna，写入 `%LOCALAPPDATA%\CodexMicro\micro-profile.json`，
-不会更改 Codex 全局默认模型。
+扩展默认值为 Sol / Luna，写入 `%LOCALAPPDATA%\CodexMicro\micro-profile.json`。
+快捷切换通过 Codex 的版本化跨窗口管道找到唯一当前任务，再由其 owner 复用同一
+App Server 的 `thread/settings/update`；不打开模型菜单、不抢焦点，也不使用 UIA。
+推理强度按 `threadId + modelId` 独立记忆到
+`%LOCALAPPDATA%\CodexMicro\thread-model-efforts.json`，且只在语义确认后提交。
 
 目标切到外部 Harness 后，Codex 专属布局、麦克风和快捷模型字段会停用；同一页面
 显示通用 Harness 适配器卡，可配置管道或 WSL 回环控制地址、启动程序、参数、工作目录、离线自动启动
@@ -249,8 +250,8 @@ recency roster。只有官方默认 `recent` 来源可本地证明时才合并�
 - 单击设置旋钮后，Codex 可见主窗口进入前台并定位到 Codex Micro 设置页。
 - 在 Codex 已打开的选择菜单中，滚轮或拖动白色旋钮能移动选项，短按能确认，
   且模拟器不抢走 Codex 焦点；白色旋钮右键不触发设置或其他动作。
-- 模型菜单滚动时能实时看到当前项；Full access 二次确认框可用旋钮移动到
-  `Confirm` 并短按确认，全程不调用界面点击。
+- 模型菜单滚动时能实时看到当前项；UIA 观察结果只更新 HUD，任何菜单或
+  确认框状态都不能把 `ENC_*` 改路由为 Tab、Enter 或 UIA 点击。
 - 单击 Codex 键后，真实 Codex 主窗口进入普通 Z 序最前方。
 - 窗口固定大小、可移动和置顶，移动到屏幕边缘不触发 Snap；托盘可显示、收起和退出。
 - 自动、简体中文和 English 三种语言选择可持久化，并在运行中即时切换。

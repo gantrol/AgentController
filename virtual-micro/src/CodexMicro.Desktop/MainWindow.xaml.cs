@@ -202,10 +202,8 @@ public partial class MicroSurfaceWindow : Window
     private bool _encoderStepPumpRunning;
     private bool _dialSurfaceMayBeMounting;
     private long _dialSurfaceNotBeforeTimestamp;
-    private CodexMenuSelection? _cachedDialSelection;
     private string? _dialSelectionText;
     private CancellationTokenSource? _quotaRefreshCancellation;
-    private CancellationTokenSource? _modelRefreshCancellation;
     private CancellationTokenSource? _modelActionCancellation;
     private CancellationTokenSource? _harnessStateCancellation;
     private CodexQuotaSnapshot? _quotaSnapshot;
@@ -217,6 +215,7 @@ public partial class MicroSurfaceWindow : Window
     private bool _quickModelSwitching;
     private bool _harnessModelSwitching;
     private long _settingsPointerDownTimestamp;
+    private int _backgroundServicesStarted;
     private long _lastAgentTapTimestamp;
     private string? _lastAgentTapKey;
     private string? _pendingHarnessSetupId;
@@ -399,7 +398,7 @@ public partial class MicroSurfaceWindow : Window
             "按住并向任意方向拖动，松开后自动回中。");
         SetHelp(
             SettingsKey,
-            "快捷模型切换",
+            "Codex 额度与 Micro 设置",
             "短按：切换设置中的两个快捷模型。\n长按：打开官方 Micro 设置。\n右键：直达右下角当前 Agent 的软件设置。");
         SetHelp(RuntimeLed, "Codex 运行时握手", "正在等待 Codex 运行时能力信号。");
         SetHelp(DriverLed, "虚拟 HID", "正在等待驱动连接。");
@@ -439,6 +438,7 @@ public partial class MicroSurfaceWindow : Window
         PromptForHarnessSetupIfNeeded();
         RestartVoiceBridgeMonitor();
         RestartKeypadVoiceWarmUp();
+        StartBackgroundServices();
         await ConnectAsync();
     }
 
@@ -481,6 +481,7 @@ public partial class MicroSurfaceWindow : Window
             _voiceBridgeCancellation?.Cancel();
             _voiceWarmUpCancellation?.Cancel();
             _voiceHealthCancellation?.Cancel();
+            _modelActionCancellation?.Cancel();
             _settingsWindow?.Close();
             _settingsWindow = null;
             _encoderSteps.Clear();
@@ -489,7 +490,6 @@ public partial class MicroSurfaceWindow : Window
             _dialSelectionHideTimer.Tick -= DialSelectionHideTimer_Tick;
             PauseQuotaRefresh();
             PauseHarnessStateRefresh();
-            _modelActionCancellation?.Cancel();
             _quotaRefreshTimer.Tick -= QuotaRefreshTimer_Tick;
             _harnessStateRefreshTimer.Tick -= HarnessStateRefreshTimer_Tick;
             _voiceServiceHealthRefreshTimer.Tick -=
@@ -555,6 +555,16 @@ public partial class MicroSurfaceWindow : Window
             {
                 Debug.WriteLine(
                     $"Codex Micro voice runtime cleanup failed: {exception}");
+            }
+
+            try
+            {
+                await _modelToggleService.DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine(
+                    $"Codex Micro model bridge cleanup failed: {exception}");
             }
 
             try
@@ -662,20 +672,17 @@ public partial class MicroSurfaceWindow : Window
 
         _quotaRefreshTimer.Start();
         _ = RefreshQuotaAsync();
-        _ = RefreshQuickModelAsync();
     }
 
     private void PauseQuotaRefresh()
     {
         _quotaRefreshTimer.Stop();
         _quotaRefreshCancellation?.Cancel();
-        _modelRefreshCancellation?.Cancel();
     }
 
     private void QuotaRefreshTimer_Tick(object? sender, EventArgs e)
     {
         _ = RefreshQuotaAsync();
-        _ = RefreshQuickModelAsync();
     }
 
     private void StartHarnessStateRefresh()
@@ -909,49 +916,6 @@ public partial class MicroSurfaceWindow : Window
             {
                 _ = RefreshQuotaAsync();
             }
-        }
-    }
-
-    private async Task RefreshQuickModelAsync()
-    {
-        if (
-            _windowClosed ||
-            !IsVisible ||
-            !IsCodexHarnessActive() ||
-            _quickModelSwitching ||
-            _modelRefreshCancellation is not null)
-        {
-            return;
-        }
-
-        var refresh = new CancellationTokenSource();
-        _modelRefreshCancellation = refresh;
-        try
-        {
-            var model = await _modelToggleService.ReadCurrentAsync(
-                refresh.Token);
-            if (
-                !refresh.IsCancellationRequested &&
-                !_windowClosed &&
-                !_quickModelSwitching &&
-                model != CodexQuickModel.Unknown)
-            {
-                _quickModel = model;
-                UpdateQuotaPresentation();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Hiding or closing the panel cancels the read-only probe.
-        }
-        finally
-        {
-            if (ReferenceEquals(_modelRefreshCancellation, refresh))
-            {
-                _modelRefreshCancellation = null;
-            }
-
-            refresh.Dispose();
         }
     }
 
@@ -3488,7 +3452,10 @@ public partial class MicroSurfaceWindow : Window
         switch (input.Action)
         {
             case RoutedDialPointerAction.Pressed:
-                if (IsCodexHarnessActive() && !_broker.IsReady)
+                if (RequiresBrokerForDialPress(
+                        IsCodexHarnessActive(),
+                        _broker.IsReady,
+                        _layoutObserver.Current.EncoderMode))
                 {
                     _ = RunDialInputSafelyAsync(
                         EnsureReadyFeedbackAsync,
@@ -3532,7 +3499,10 @@ public partial class MicroSurfaceWindow : Window
 
     private void QueueDialWheelDelta(int delta)
     {
-        if (IsCodexHarnessActive() && !_broker.IsReady)
+        if (RequiresBrokerForDialPress(
+                IsCodexHarnessActive(),
+                _broker.IsReady,
+                _layoutObserver.Current.EncoderMode))
         {
             _ = RunDialInputSafelyAsync(
                 EnsureReadyFeedbackAsync,
@@ -3569,6 +3539,17 @@ public partial class MicroSurfaceWindow : Window
         _dialGesture.Begin(pointer.X, pointer.Y);
         _ = DialButton.CaptureMouse();
     }
+
+    internal static bool RequiresBrokerForDialPress(
+        bool isCodexHarness,
+        bool brokerReady,
+        string? encoderMode) =>
+        isCodexHarness &&
+        !brokerReady &&
+        !string.Equals(
+            encoderMode,
+            "reasoning",
+            StringComparison.OrdinalIgnoreCase);
 
     private void Dial_MouseMove(object sender, MouseEventArgs e)
     {
@@ -3723,10 +3704,6 @@ public partial class MicroSurfaceWindow : Window
             var physicalClockwise = step > 0;
             var reportedClockwise =
                 _dialDirectionSettings.ToReportedClockwise(physicalClockwise);
-            var routesDialog = _cachedDialSelection is
-            {
-                Surface: CodexSelectionSurface.Dialog,
-            };
             Exception? animationError = null;
             try
             {
@@ -3737,19 +3714,11 @@ public partial class MicroSurfaceWindow : Window
                 animationError = exception;
             }
 
-            Func<Task<MicroSendResult>> sendStep = routesDialog
-                ? () => _broker.TapDialogKeyAsync(
-                    BrokerKeyboardKey.Tab,
-                    shift: reportedClockwise)
-                : () => _broker.StepEncoderAsync(reportedClockwise);
-            var stepLabel = routesDialog
-                ? reportedClockwise
-                    ? "确认框向上选择 · VHF Shift+Tab"
-                    : "确认框向下选择 · VHF Tab"
-                : reportedClockwise
+            var result = await RunActionAsync(
+                () => _broker.StepEncoderAsync(reportedClockwise),
+                reportedClockwise
                     ? "向上选择 · ENC_CW"
-                    : "向下选择 · ENC_CC";
-            var result = await RunActionAsync(sendStep, stepLabel);
+                    : "向下选择 · ENC_CC");
             if (result is not null && result.Value.Disposition is
                 MicroSendDisposition.Accepted or
                 MicroSendDisposition.OutcomeUnknown)
@@ -3757,9 +3726,7 @@ public partial class MicroSurfaceWindow : Window
                 var sequence = ++_dialInputSequence;
                 AutomationProperties.SetItemStatus(
                     DialButton,
-                    Localize($"{(routesDialog
-                        ? reportedClockwise ? "VHF Shift+Tab" : "VHF Tab"
-                        : reportedClockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}"));
+                    Localize($"{(reportedClockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}"));
                 QueueDialSelectionFeedback();
             }
             else
@@ -3826,27 +3793,14 @@ public partial class MicroSurfaceWindow : Window
         await _encoderInputGate.WaitAsync();
         try
         {
-            var routesDialog = _cachedDialSelection is
-            {
-                Surface: CodexSelectionSurface.Dialog,
-            };
             var result = await RunActionAsync(
-                routesDialog
-                    ? () => _broker.TapDialogKeyAsync(BrokerKeyboardKey.Enter)
-                    : () => _broker.TapKeyAsync("ENC"),
-                routesDialog
-                    ? "确认当前对话框选项 · VHF Enter"
-                    : "打开或确认当前选项 · ENC");
+                () => _broker.TapKeyAsync("ENC"),
+                "打开或确认当前选项 · ENC");
             if (result is not null && result.Value.Disposition is
                 MicroSendDisposition.Accepted or
                 MicroSendDisposition.OutcomeUnknown)
             {
-                _cachedDialSelection = null;
-                if (!routesDialog)
-                {
-                    MarkDialSurfaceMayBeMounting();
-                }
-
+                MarkDialSurfaceMayBeMounting();
                 QueueDialSelectionFeedback();
             }
         }
@@ -3973,7 +3927,6 @@ public partial class MicroSurfaceWindow : Window
                     return;
                 }
 
-                _cachedDialSelection = selection;
                 if (selection is { } current)
                 {
                     ShowDialSelectionFeedback(current.DisplayText);
@@ -4113,8 +4066,7 @@ public partial class MicroSurfaceWindow : Window
 
         var pressedAt = _settingsPointerDownTimestamp;
         _settingsPointerDownTimestamp = 0;
-        if (
-            pressedAt != 0 &&
+        if (pressedAt != 0 &&
             Stopwatch.GetElapsedTime(pressedAt) >=
                 SettingsLongPressThreshold)
         {
@@ -4135,17 +4087,11 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _quickModelSwitching = true;
-        _modelRefreshCancellation?.Cancel();
         UpdateQuotaPresentation();
         try
         {
-            if (!await ActivateCodexAsync(initialDelayMilliseconds: 0))
-            {
-                return;
-            }
-
-            var action = new CancellationTokenSource(
-                TimeSpan.FromSeconds(8));
+            using var action = new CancellationTokenSource(
+                TimeSpan.FromSeconds(12));
             _modelActionCancellation = action;
             var quickModels = _profileSettings.Current;
             var result = await _modelToggleService.ToggleAsync(
@@ -4166,8 +4112,10 @@ public partial class MicroSurfaceWindow : Window
             {
                 _quickModel = result.Current;
                 var name = FormatQuickModelName(result.Current);
+                var effort = FormatReasoningEffort(result.CurrentEffort);
                 SetLed(ActivityLed, "#9EBDFF", $"已切换到 {name}");
-                SetStatus($"当前任务的下一轮已切换到 {name}；全局默认模型未更改。");
+                SetStatus(
+                    $"当前任务的下一轮已切换到 {name} · {effort}；全局默认模型未更改。");
             }
             else
             {
@@ -4180,12 +4128,11 @@ public partial class MicroSurfaceWindow : Window
             if (!_windowClosed)
             {
                 SetLed(ActivityLed, "#FFD66E", "快捷模型切换超时");
-                SetStatus("快捷模型切换超时；模型保持不变，请再试一次。");
+                SetStatus("快捷模型切换超时，未收到 Codex 确认；请以当前任务显示的模型为准后再试。");
             }
         }
         finally
         {
-            _modelActionCancellation?.Dispose();
             _modelActionCancellation = null;
             _quickModelSwitching = false;
             if (!_windowClosed)
@@ -4198,23 +4145,21 @@ public partial class MicroSurfaceWindow : Window
     private static string DescribeQuickModelError(string? error) =>
         error switch
         {
-            "composer-model-button" or
-            "composer-model-button-expand" =>
-                "没有找到当前任务的模型按钮；请先打开一个可输入的 Codex 任务。",
-            "advanced-view" or
-            "model-category" or
-            "model-category-expand" =>
-                "无法打开 Codex 的 Advanced 模型菜单；模型保持不变。",
-            "model-option-sol" =>
-                "当前账户的模型菜单中没有找到 Sol；模型保持不变。",
-            "model-option-luna" =>
-                "当前账户的模型菜单中没有找到 Luna；模型保持不变。",
-            "model-option-terra" =>
-                "当前账户的模型菜单中没有找到 Terra；模型保持不变。",
-            "model-readback" =>
-                "模型选择已发送，但无法确认结果；请查看 Codex 输入框下方的模型按钮。",
-            "codex-window" =>
-                "没有找到 Codex 主窗口；模型保持不变。",
+            "no-visible-thread" =>
+                "当前 Codex 页面不是任务；请先打开一个本地任务，模型保持不变。",
+            "multiple-visible-threads" =>
+                "检测到多个 Codex 任务窗口，无法唯一确定目标；模型保持不变。",
+            "thread-owner-unavailable" or
+            "thread-state-unavailable" =>
+                "当前任务的语义状态暂不可用；模型保持不变，请稍后重试。",
+            "thread-settings-rejected" =>
+                "Codex 未确认模型设置；模型保持不变。",
+            "ipc-timeout" =>
+                "Codex 任务设置通道超时，未收到结果确认；请以当前任务显示的模型为准。",
+            "visible-thread-changed" =>
+                "切换过程中当前 Codex 任务发生变化；已停止提交模型设置。",
+            "ipc-unavailable" =>
+                "当前 Codex 版本的任务设置通道不可用；模型保持不变。",
             _ => "快捷模型切换失败；模型保持不变，请再试一次。",
         };
 
@@ -4226,6 +4171,11 @@ public partial class MicroSurfaceWindow : Window
             CodexQuickModel.Luna => "Luna",
             _ => "快捷模型",
         };
+
+    private static string FormatReasoningEffort(string? effort) =>
+        string.IsNullOrWhiteSpace(effort)
+            ? "默认强度"
+            : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(effort);
 
     private async Task OpenCodexMicroSettingsAsync(string label)
     {
@@ -5720,7 +5670,6 @@ public partial class MicroSurfaceWindow : Window
             _currentAgentSlotId = null;
             _encoderSteps.Clear();
             _joystickReportQueue.Clear();
-            _cachedDialSelection = null;
             _pendingHarnessSetupId = harness.Id != "codex" &&
                 !_harnessRegistry.IsSetupCompleted(harness.Id)
                     ? harness.Id
@@ -7202,6 +7151,17 @@ public partial class MicroSurfaceWindow : Window
         NonActivatingWindow.ShowWithoutActivation(
             _windowSource?.Handle ?? IntPtr.Zero,
             Topmost);
+    }
+
+    internal void StartBackgroundServices()
+    {
+        if (Interlocked.Exchange(ref _backgroundServicesStarted, 1) != 0)
+        {
+            return;
+        }
+
+        _broker.StartConnecting();
+        _ = _modelToggleService.StartAsync();
     }
 
     internal void CloseForApplicationExit()
