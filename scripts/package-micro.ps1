@@ -3,7 +3,7 @@ param(
     [string]$Version = "0.2.9",
     [string]$Runtime = "win-x64",
     [double]$MaximumPackageMiB = 15,
-    [ValidateSet("standard", "deepseek", "deepseek-full")]
+    [ValidateSet("standard", "monitor", "deepseek", "deepseek-full")]
     [string]$Preset = "standard",
     [string]$BundledWslPayload,
     [switch]$FrameworkDependent
@@ -15,6 +15,7 @@ Set-StrictMode -Version Latest
 $repoRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot ".."))
 $presetId = $Preset.ToLowerInvariant()
+$isMonitor = $presetId -eq "monitor"
 $isDeepSeek = $presetId -in @("deepseek", "deepseek-full")
 $isFull = $presetId -eq "deepseek-full"
 $isSelfContained = $isFull -and -not $FrameworkDependent
@@ -34,11 +35,15 @@ $packageName = if ($isFull -and $FrameworkDependent) {
     "Deepseek-Harness-Keypad-Full-v$Version-$Runtime"
 } elseif ($isDeepSeek) {
     "Deepseek-Harness-Keypad-v$Version-$Runtime"
+} elseif ($isMonitor) {
+    "Codex-Micro-Monitor-v$Version-$Runtime"
 } else {
     "CodexMicro-Keypad-$Version-$Runtime"
 }
 $productName = if ($isDeepSeek) {
     "Deepseek Harness Keypad"
+} elseif ($isMonitor) {
+    "Codex Micro Monitor"
 } else {
     "Codex Micro Keypad"
 }

@@ -205,11 +205,16 @@ Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
 .\scripts\package-micro.ps1 -Version 0.2.9
+# Builds the general Codex Micro Monitor package.
+.\scripts\package-micro.ps1 -Version 0.2.9 -Preset monitor
 # Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
 .\scripts\package-micro.ps1 -Version 0.2.9 -Preset deepseek
 ```
 
-The user-facing Release contains one recommended online package:
+User-facing releases publish one package per product:
+
+- `dist/Codex-Micro-Monitor-v0.2.9-win-x64.zip`, the general Codex package
+  without the DeepSeek Bridge or managed WSL setup;
 
 - `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`, including the Bridge and
   managed setup entry. First-run setup installs the pinned DSH online instead
@@ -221,13 +226,13 @@ download choices:
 - single-file executable: `.artifacts/micro-release/0.2.9/publish/CodexMicro.exe`;
 - standalone archive: `dist/CodexMicro-Keypad-0.2.9-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
-- DeepSeek bundle: `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`;
 - standalone existing-DSH plugin:
   `dist/Deepseek-Harness-Keypad-Bridge-v0.2.9.zip`, with its own checksum.
 
-The recommended online package includes `CodexMicro.exe`, the READMEs, the first-run
-setup guide, the license, and the keypad-side `voice` launcher/adapter. It does
-not include a model or Python environment. The `deepseek` preset builds a
+The release packages include `CodexMicro.exe`, the READMEs, the license, and the
+keypad-side `voice` launcher/adapter. The Monitor package omits the DeepSeek
+Bridge and managed WSL setup. Neither package includes a model or Python
+environment. The `deepseek` preset builds a
 runtime-only Bridge archive for maintainers and embeds the same payload for managed
 WSL setup; neither copy contains source, tests, or development dependencies.
 It also includes the path-independent installer and explicit first-run choices. It
