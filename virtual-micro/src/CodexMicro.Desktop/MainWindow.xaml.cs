@@ -3734,6 +3734,15 @@ public partial class MicroSurfaceWindow : Window
                 animationError = exception;
             }
 
+            var foregroundCodexWindow =
+                CodexWindowActivator.CaptureForegroundWindow();
+            var foregroundDraftLease =
+                _layoutObserver.Current.EncoderMode == "reasoning" &&
+                foregroundCodexWindow != IntPtr.Zero
+                ? _modelToggleService
+                    .TryCaptureForegroundDraftLeaseForReasoningStep(
+                        foregroundCodexWindow)
+                : null;
             var result = await RunActionAsync(
                 () => _broker.StepEncoderAsync(reportedClockwise),
                 reportedClockwise
@@ -3744,6 +3753,15 @@ public partial class MicroSurfaceWindow : Window
                 MicroSendDisposition.OutcomeUnknown)
             {
                 var sequence = ++_dialInputSequence;
+                if (result.Value.Disposition ==
+                        MicroSendDisposition.Accepted &&
+                    foregroundDraftLease is { } draftLease)
+                {
+                    _modelToggleService
+                        .TryPreserveForegroundDraftAfterReasoningStep(
+                            draftLease);
+                }
+
                 AutomationProperties.SetItemStatus(
                     DialButton,
                     Localize($"{(reportedClockwise ? "ENC_CW" : "ENC_CC")} 已交付 · #{sequence}"));
@@ -4168,7 +4186,11 @@ public partial class MicroSurfaceWindow : Window
     private void ApplyAuthoritativeQuickModelState(
         CodexThreadModelState? state)
     {
-        var visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+        var foregroundCodexWindow =
+            CodexWindowActivator.CaptureForegroundWindow();
+        var visibleThreadId =
+            _modelToggleService.CurrentForegroundVisibleThreadId(
+                foregroundCodexWindow);
         var next = ReduceQuickModelSnapshot(state, visibleThreadId);
         if (_quickModelSwitching &&
             !string.IsNullOrWhiteSpace(_quickModelSwitchingThreadId) &&
@@ -4697,7 +4719,9 @@ public partial class MicroSurfaceWindow : Window
                 }
             }
 
+#if DEBUG
             var usedVisibilityRefresh = false;
+#endif
             if (foregroundDraftLease is { } capturedDraftLease)
             {
                 operationThreadId = capturedDraftLease.OperationId;
@@ -4705,22 +4729,13 @@ public partial class MicroSurfaceWindow : Window
             }
             else
             {
-                var currentVisibleThreadId =
-                    _modelToggleService.CurrentVisibleThreadId;
-                var useStableSemanticThread =
-                    !string.IsNullOrWhiteSpace(currentVisibleThreadId) &&
-                    !CodexDraftModelToggleService.IsDraftThreadId(
-                        currentVisibleThreadId) &&
-                    QuickModelThreadIdsEqual(
-                        _quickModelThreadId,
-                        currentVisibleThreadId);
-                var visibility = useStableSemanticThread
-                    ? new CodexModelToggleService.VisibleThreadSelection(
-                        currentVisibleThreadId,
-                        currentVisibleThreadId)
-                    : await _modelToggleService
-                        .RefreshVisibleThreadSelectionAsync(action.Token);
-                usedVisibilityRefresh = !useStableSemanticThread;
+                var visibility = await _modelToggleService
+                    .RefreshForegroundVisibleThreadSelectionAsync(
+                        foregroundCodexWindow,
+                        action.Token);
+#if DEBUG
+                usedVisibilityRefresh = true;
+#endif
                 operationThreadId = visibility.VisibleThreadId;
                 usesDraftFallback =
                     CodexDraftModelToggleService.ShouldUseDraftFallback(
@@ -4754,6 +4769,16 @@ public partial class MicroSurfaceWindow : Window
             if (usesDraftFallback && foregroundDraftLease is null)
             {
                 operationThreadId = null;
+            }
+            else if (!usesDraftFallback && operationThreadId is not null)
+            {
+                ApplyQuickModelPresentationState(new(
+                    operationThreadId,
+                    QuickModelThreadIdsEqual(
+                        _quickModelThreadId,
+                        operationThreadId)
+                            ? _quickModel
+                            : CodexQuickModel.Unknown));
             }
 #if DEBUG
             CodexModelToggleDiagnostics.RecordStage(
@@ -5085,12 +5110,9 @@ public partial class MicroSurfaceWindow : Window
                     return;
                 }
 
-                if (usesDraftFallback)
-                {
-                    ApplyQuickModelPresentationState(new(
-                        result.ThreadId,
-                        result.Current));
-                }
+                ApplyQuickModelPresentationState(new(
+                    result.ThreadId,
+                    result.Current));
 
                 var name = FormatQuickModelName(result.Current);
                 var effort = FormatReasoningEffort(result.CurrentEffort);

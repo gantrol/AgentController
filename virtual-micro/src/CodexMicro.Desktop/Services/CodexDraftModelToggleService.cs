@@ -10,12 +10,8 @@ namespace CodexMicro.Desktop.Services;
 /// <summary>
 /// Switches Codex's renderer-owned blank composer through the official
 /// App Server config writer and Codex Micro HID bridge. A blank composer has
-/// no App Server thread owner, so thread/update cannot address it. A safe
-/// downward reasoning nudge first invokes Codex's renderer setter and clears
-/// each prewarmed draft. The explicit quick profile is then restored through
-/// the official config writer before the foreground blank composer is rebuilt,
-/// so the broken dialog Enter bridge is never used and the existing permission
-/// profile is left intact.
+/// no App Server thread owner, so thread/update cannot address it. The exact
+/// quick profile is written before the foreground blank composer is rebuilt.
 /// </summary>
 internal sealed class CodexDraftModelToggleService
 {
@@ -29,14 +25,8 @@ internal sealed class CodexDraftModelToggleService
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan ProcessExitTimeout =
         TimeSpan.FromMilliseconds(900);
-    private static readonly TimeSpan RendererConfigApplyDelay =
-        TimeSpan.FromMilliseconds(2000);
-    private static readonly TimeSpan NativeSetterSettleDelay =
-        TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan ComposerRebuildMountDelay =
         TimeSpan.FromMilliseconds(1500);
-    private static readonly TimeSpan FinalRendererRefreshDelay =
-        TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ConfigTransitionTimeout =
         TimeSpan.FromSeconds(4);
     private static readonly TimeSpan DraftReplacementGraceTimeout =
@@ -411,10 +401,7 @@ internal sealed class CodexDraftModelToggleService
 
         if (targetIndex > 0)
         {
-            var finalStep = string.Equals(
-                    target,
-                    "ultra",
-                    StringComparison.Ordinal)
+            var finalStep = target is "max" or "ultra"
                 ? (EffortStep?)null
                 : new EffortStep(
                     Clockwise: false,
@@ -500,9 +487,7 @@ internal sealed class CodexDraftModelToggleService
         string? previousEffort = null;
         string? previousEncoderMode = null;
         AppServerSession? session = null;
-        var encoderModeChanged = false;
         var modelConfigChanged = false;
-        var rendererMutationConfirmed = false;
         var composerRebuildDispatched = false;
         var completed = false;
 
@@ -518,35 +503,12 @@ internal sealed class CodexDraftModelToggleService
 
         CodexModelToggleResult Fail(string error, string? detail = null)
         {
-            if (rendererMutationConfirmed &&
-                error is not
-                    "draft-composer-rebuild-outcome-unknown" and not
-                    "draft-renderer-mutation-outcome-unknown")
-            {
-                detail = detail is null
-                    ? error
-                    : $"{error}: {detail}";
-                error = "draft-renderer-mutation-outcome-unknown";
-            }
-
             return Complete(Failure(
                 previous,
                 previousEffort,
                 draftOperationId,
                 error,
                 detail));
-        }
-
-        async Task<bool> SendEncoderStepAsync(
-            bool clockwise,
-            CancellationToken token)
-        {
-            if (!CanContinueFreshDraft(isFreshDraftCurrent))
-            {
-                return false;
-            }
-
-            return await stepEncoder(clockwise, token);
         }
 
         try
@@ -719,28 +681,15 @@ internal sealed class CodexDraftModelToggleService
                 return Fail("draft-target-effort-unavailable");
             }
 
-            TargetEffortProbe targetProbe;
-            try
-            {
-                targetProbe = ResolveTargetEffortProbe(
-                    targetModel.SupportedEfforts,
-                    targetEffort);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return Fail("draft-effort-state-unavailable");
-            }
-
 #if DEBUG
             CodexModelToggleDiagnostics.RecordStage(
-                "draft-native-reasoning-nudge-start",
+                "draft-direct-config-start",
                 new
                 {
                     previous = previous.ToString(),
                     previousEffort,
                     target = target.ToString(),
                     targetEffort,
-                    targetProbe,
                 });
 #endif
 
@@ -755,145 +704,7 @@ internal sealed class CodexDraftModelToggleService
                 return Fail("draft-context-changed");
             }
 
-            // Route the physical dial to reasoning and seed the requested
-            // model in one atomic config write. A single targeted renderer
-            // refresh is enough for both values and avoids a redundant two-
-            // second apply window in which the user can leave the draft.
-            // The safe downward native step below proves that this exact
-            // foreground composer loaded both values. The native setter also
-            // clears every renderer prewarm. This replaces the unconfirmable
-            // blank-to-blank NEW action.
-            encoderModeChanged = true;
             modelConfigChanged = true;
-            var seedWrite = await WriteDraftConfigAndEncoderModeAsync(
-                session,
-                targetModelId,
-                targetProbe.SeedEffort,
-                "reasoning",
-                cancellationToken);
-            if (!TryReadConfigWriteStatus(
-                    seedWrite,
-                    out var seedStatus,
-                    out var seedError) ||
-                seedStatus != "ok")
-            {
-                return Fail(
-                    "draft-target-seed-write-failed",
-                    seedError ?? seedStatus);
-            }
-
-#if DEBUG
-            CodexModelToggleDiagnostics.RecordStage(
-                "draft-atomic-seed-write",
-                new
-                {
-                    targetModelId,
-                    effort = targetProbe.SeedEffort,
-                    encoderMode = "reasoning",
-                });
-#endif
-            await invalidateRendererConfig(cancellationToken);
-            var transition = await WaitForPersistedConfigAsync(
-                target,
-                targetProbe.SeedEffort,
-                userConfigPath,
-                isFreshDraftCurrent,
-                ConfigTransitionTimeout,
-                cancellationToken);
-            if (transition.Result != ConfigTransitionResult.Matched)
-            {
-                return Fail(transition.Result ==
-                    ConfigTransitionResult.ContextChanged
-                        ? "draft-context-changed"
-                        : "draft-target-seed-timeout");
-            }
-
-            await Task.Delay(RendererConfigApplyDelay, cancellationToken);
-            if (!CanContinueFreshDraft(isFreshDraftCurrent))
-            {
-                return Fail("draft-context-changed");
-            }
-
-            if (!await SendEncoderStepAsync(
-                    targetProbe.ProbeStep.Clockwise,
-                    cancellationToken))
-            {
-                return Fail("draft-target-probe-rejected");
-            }
-
-            transition = await WaitForPersistedConfigAsync(
-                target,
-                targetProbe.ProbeStep.ExpectedEffort,
-                userConfigPath,
-                isFreshDraftCurrent,
-                ConfigTransitionTimeout,
-                cancellationToken);
-            if (transition.Result != ConfigTransitionResult.Matched)
-            {
-                return Fail(transition.Result ==
-                    ConfigTransitionResult.ContextChanged
-                        ? "draft-context-changed"
-                        : "draft-target-probe-timeout");
-            }
-            rendererMutationConfirmed = true;
-
-            await Task.Delay(NativeSetterSettleDelay, cancellationToken);
-            if (!CanContinueFreshDraft(isFreshDraftCurrent))
-            {
-                return Fail("draft-context-changed");
-            }
-
-#if DEBUG
-            CodexModelToggleDiagnostics.RecordStage(
-                "draft-target-probe-confirmed",
-                new
-                {
-                    targetModelId,
-                    effort = targetProbe.ProbeStep.ExpectedEffort,
-                    prewarmClearedByNativeSetter = true,
-                });
-#endif
-
-            var nativeFinalConfirmation = false;
-            if (targetProbe.FinalStep is { } finalStep)
-            {
-                if (!await SendEncoderStepAsync(
-                        finalStep.Clockwise,
-                        cancellationToken))
-                {
-                    return Fail("draft-target-final-step-rejected");
-                }
-
-                transition = await WaitForPersistedConfigAsync(
-                    target,
-                    finalStep.ExpectedEffort,
-                    userConfigPath,
-                    isFreshDraftCurrent,
-                    ConfigTransitionTimeout,
-                    cancellationToken);
-                if (transition.Result != ConfigTransitionResult.Matched)
-                {
-                    return Fail(transition.Result ==
-                        ConfigTransitionResult.ContextChanged
-                            ? "draft-context-changed"
-                            : "draft-target-final-step-timeout");
-                }
-
-                await Task.Delay(
-                    NativeSetterSettleDelay,
-                    cancellationToken);
-                if (!CanContinueFreshDraft(isFreshDraftCurrent))
-                {
-                    return Fail("draft-context-changed");
-                }
-
-                nativeFinalConfirmation = true;
-            }
-
-            // Luna/Max arrives here through a confirmed xhigh -> Max native
-            // step. Sol/Ultra cannot: Max -> Ultra opens Codex's ordinary
-            // modal, so Ultra is restored passively after the confirmed
-            // Ultra -> Max probe. Full access is never changed.
             if (!CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
@@ -925,11 +736,9 @@ internal sealed class CodexDraftModelToggleService
                     targetEffort,
                     encoderMode = previousEncoderMode,
                     permissionProfileChanged = false,
-                });
+            });
 #endif
-            encoderModeChanged = false;
-            await invalidateRendererConfig(cancellationToken);
-            transition = await WaitForPersistedConfigAsync(
+            var transition = await WaitForPersistedConfigAsync(
                 target,
                 targetEffort,
                 userConfigPath,
@@ -943,7 +752,6 @@ internal sealed class CodexDraftModelToggleService
                         ? "draft-context-changed"
                         : "draft-final-config-timeout");
             }
-            await Task.Delay(RendererConfigApplyDelay, cancellationToken);
             if (!CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
@@ -955,13 +763,6 @@ internal sealed class CodexDraftModelToggleService
                 new { targetModelId, targetEffort });
 #endif
 
-            // The reasoning setter above clears renderer prewarms, but it does
-            // not prove that the already-mounted blank ComposerScope adopted
-            // the target model. Rebuild that same foreground blank composer
-            // only after the exact final config is durable. Codex Micro HID has
-            // no semantic completion ACK, so the callback confirms transport
-            // only; the foreground/draft guards and persisted config are
-            // rechecked after the renderer's known mount window.
             var rebuildDispatch = await rebuildComposer(cancellationToken);
             if (rebuildDispatch == ComposerRebuildDispatch.NotDispatched)
             {
@@ -998,15 +799,8 @@ internal sealed class CodexDraftModelToggleService
                     "draft-context-changed");
             }
 
-            await invalidateRendererConfig(cancellationToken);
-            await Task.Delay(FinalRendererRefreshDelay, cancellationToken);
-            if (!CanContinueFreshDraft(isFreshDraftCurrent))
-            {
-                return Fail(
-                    "draft-composer-rebuild-outcome-unknown",
-                    "draft-context-changed");
-            }
-
+            // NEW mounted from the exact durable config. A second renderer
+            // invalidation would recreate the same blank-to-old-task race.
             transition = await WaitForPersistedConfigAsync(
                 target,
                 targetEffort,
@@ -1031,7 +825,6 @@ internal sealed class CodexDraftModelToggleService
                 {
                     targetModelId,
                     targetEffort,
-                    nativeFinalConfirmation,
                     semanticAcknowledgement = false,
                     permissionProfileChanged = false,
                 });
@@ -1049,12 +842,6 @@ internal sealed class CodexDraftModelToggleService
             return Fail(
                 "draft-composer-rebuild-outcome-unknown",
                 "cancelled-after-rebuild-dispatch");
-        }
-        catch (OperationCanceledException) when (rendererMutationConfirmed)
-        {
-            return Fail(
-                "draft-renderer-mutation-outcome-unknown",
-                "cancelled-after-native-probe");
         }
         catch (OperationCanceledException)
         {
@@ -1076,14 +863,7 @@ internal sealed class CodexDraftModelToggleService
         }
         finally
         {
-            // Once the native reasoning setter is confirmed—or NEW is
-            // accepted by the HID transport—the mounted composer may already
-            // differ from the previous config. A later local observation
-            // failure cannot safely roll only config.toml back; that would
-            // split disk and composer state. Keep the last durable state and
-            // report an unknown outcome.
             if (!completed &&
-                !rendererMutationConfirmed &&
                 !composerRebuildDispatched &&
                 session is not null &&
                 modelConfigChanged)
@@ -1092,13 +872,6 @@ internal sealed class CodexDraftModelToggleService
                     session,
                     previous,
                     previousEffort);
-            }
-
-            if (session is not null && encoderModeChanged)
-            {
-                _ = await TryRestoreEncoderModeAsync(
-                    session,
-                    previousEncoderMode);
             }
 
             if (!completed && session is not null)
