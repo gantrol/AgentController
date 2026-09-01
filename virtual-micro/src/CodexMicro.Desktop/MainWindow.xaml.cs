@@ -120,6 +120,8 @@ public partial class MicroSurfaceWindow : Window
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
     private readonly CodexQuotaService _quotaService = new();
     private readonly CodexModelToggleService _modelToggleService = new();
+    private readonly CodexDraftModelToggleService
+        _draftModelToggleService = new();
     private readonly DialGestureTracker _dialGesture = new();
     private readonly EncoderStepAccumulator _encoderSteps = new(3);
     private readonly SemaphoreSlim _encoderInputGate = new(1, 1);
@@ -167,6 +169,7 @@ public partial class MicroSurfaceWindow : Window
     private Button[] _agentKeys = [];
     private Border[] _agentWideGlows = [];
     private Border[] _agentNearGlows = [];
+    private readonly HashSet<int> _manualUnreadAgentSlots = [];
     private InactiveDialInputRouter? _inactiveDialInputRouter;
     private MicroSettingsWindow? _settingsWindow;
     private HwndSource? _windowSource;
@@ -219,6 +222,9 @@ public partial class MicroSurfaceWindow : Window
     private string? _quickModelThreadId;
     private bool _quickModelSwitching;
     private string? _quickModelSwitchingThreadId;
+#if DEBUG
+    private CodexModelToggleResult? _lastQuickModelResult;
+#endif
     private bool _harnessModelSwitching;
     private long _settingsPointerDownTimestamp;
     private int _backgroundServicesStarted;
@@ -984,6 +990,10 @@ public partial class MicroSurfaceWindow : Window
         if (sender is Button { Tag: string key })
         {
             var isAgentKey = TryParseAgentSlot(key, out var selectedSlot);
+            if (isAgentKey && _manualUnreadAgentSlots.Remove(selectedSlot))
+            {
+                RefreshAgentSlotPresentation();
+            }
             var harness = ActiveHarness();
             var externalHarness = harness.Id != "codex";
             var focusAgentAfterTap = isAgentKey && ShouldFocusAgentAfterTap(key);
@@ -4131,20 +4141,46 @@ public partial class MicroSurfaceWindow : Window
         }
     }
 
+    private void AgentKey_PreviewMouseRightButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (!IsCodexHarnessActive() ||
+            sender is not Button { Tag: string key } ||
+            !TryParseAgentSlot(key, out var slotId))
+        {
+            return;
+        }
+
+        var lighting = _latestSlotLighting?.Slots.FirstOrDefault(
+            slot => slot.SlotId == slotId);
+        if (AgentLightingAppearance.From(lighting).IsActive)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _manualUnreadAgentSlots.Add(slotId);
+        RefreshAgentSlotPresentation();
+        SetStatus($"Agent 槽位 {slotId + 1} 已标记为未读；左击该键后清除。");
+    }
+
     private void ApplyAuthoritativeQuickModelState(
         CodexThreadModelState? state)
     {
-        var next = ReduceQuickModelSnapshot(state);
         var visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+        var next = ReduceQuickModelSnapshot(state, visibleThreadId);
         if (_quickModelSwitching &&
             !string.IsNullOrWhiteSpace(_quickModelSwitchingThreadId) &&
-            !string.IsNullOrWhiteSpace(visibleThreadId) &&
+            !CodexDraftModelToggleService.IsDraftOperationId(
+                _quickModelSwitchingThreadId) &&
             !QuickModelThreadIdsEqual(
                 _quickModelSwitchingThreadId,
                 visibleThreadId))
         {
             // A toggle belongs to the task that was visible when it started.
-            // Stop waiting as soon as the service reports a task transition.
+            // A draft bootstrap is the exception: its expected result is a
+            // transition from a renderer draft to a newly created real task.
             _modelActionCancellation?.Cancel();
         }
 
@@ -4158,6 +4194,35 @@ public partial class MicroSurfaceWindow : Window
             : new(
                 state.ThreadId.Trim(),
                 CodexModelToggleService.ParseModelId(state.ModelId));
+
+    internal static QuickModelPresentationState ReduceQuickModelSnapshot(
+        CodexThreadModelState? state,
+        string? visibleThreadId)
+    {
+        var normalizedVisibleThreadId = string.IsNullOrWhiteSpace(
+            visibleThreadId)
+                ? null
+                : visibleThreadId.Trim();
+        if (normalizedVisibleThreadId is null)
+        {
+            return new(null, CodexQuickModel.Unknown);
+        }
+
+        if (state is null ||
+            !QuickModelThreadIdsEqual(
+                state.ThreadId,
+                normalizedVisibleThreadId))
+        {
+            // A real tracked task is already a safe semantic command target
+            // before Codex records its first model selection. Renderer-only
+            // drafts are handled by the isolated App Server bootstrap.
+            return new(normalizedVisibleThreadId, CodexQuickModel.Unknown);
+        }
+
+        return new(
+            normalizedVisibleThreadId,
+            CodexModelToggleService.ParseModelId(state.ModelId));
+    }
 
     internal static bool QuickModelResultTargetsCurrentThread(
         QuickModelPresentationState state,
@@ -4180,6 +4245,18 @@ public partial class MicroSurfaceWindow : Window
             : QuickModelResultTargetsCurrentThread(state, result);
     }
 
+    internal static bool DraftConfigResultTargetsCurrentDraft(
+        string? currentVisibleThreadId,
+        CodexModelToggleResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Succeeded &&
+            CodexDraftModelToggleService.IsDraftOperationId(result.ThreadId) &&
+            (string.IsNullOrWhiteSpace(currentVisibleThreadId) ||
+                CodexDraftModelToggleService.IsDraftThreadId(
+                    currentVisibleThreadId));
+    }
+
     private static bool QuickModelThreadIdsEqual(
         string? first,
         string? second) =>
@@ -4199,6 +4276,389 @@ public partial class MicroSurfaceWindow : Window
         UpdateQuotaPresentation();
     }
 
+#if DEBUG
+    internal async Task RunE2eNewTaskAsync()
+    {
+        if (_windowClosed || !IsCodexHarnessActive())
+        {
+            throw new InvalidOperationException(
+                "The primary keypad is not controlling Codex.");
+        }
+
+        var codexWasForeground = CodexWindowActivator.IsForeground();
+        var codexActivated = codexWasForeground ||
+            await ActivateCodexAsync(
+                initialDelayMilliseconds: 0,
+                launchIfMissing: true);
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-new-task-foreground",
+            new { codexWasForeground, codexActivated });
+
+        var initialVisibleThreadId =
+            _modelToggleService.CurrentVisibleThreadId;
+        if (string.IsNullOrWhiteSpace(initialVisibleThreadId) ||
+            CodexDraftModelToggleService.IsDraftThreadId(
+                initialVisibleThreadId))
+        {
+            throw new InvalidOperationException(
+                "E2E NEW must start from a visible real Codex task.");
+        }
+
+        var result = await RunActionAsync(
+            () => _broker.TapKeyAsync("ACT06"),
+            "E2E NEW · ACT06");
+        if (result is not { WasPossiblySent: true })
+        {
+            throw new InvalidOperationException(
+                "The ACT06 NEW report was not delivered.");
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        string? visibleThreadId;
+        do
+        {
+            visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+            if (string.IsNullOrWhiteSpace(visibleThreadId) ||
+                CodexDraftModelToggleService.IsDraftThreadId(visibleThreadId))
+            {
+                CodexModelToggleDiagnostics.RecordStage(
+                    "e2e-new-task-ready",
+                    new { initialVisibleThreadId, visibleThreadId });
+                return;
+            }
+
+            await Task.Delay(80);
+        }
+        while (Stopwatch.GetElapsedTime(started) < TimeSpan.FromSeconds(8));
+
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-new-task-timeout",
+            new { visibleThreadId });
+        throw new InvalidOperationException(
+            "ACT06 did not produce a renderer draft within eight seconds.");
+    }
+
+    internal async Task RunE2eToggleQuickModelAsync()
+    {
+        using var foregroundGuard = new CancellationTokenSource();
+        var foregroundGuardTask = Task.Run(
+            () => KeepCodexForegroundForE2eAsync(foregroundGuard.Token),
+            CancellationToken.None);
+        try
+        {
+            await RunE2eToggleQuickModelCoreAsync();
+        }
+        finally
+        {
+            foregroundGuard.Cancel();
+            try
+            {
+                await foregroundGuardTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation ends the DEBUG-only foreground guard.
+            }
+        }
+    }
+
+    private async Task RunE2eToggleQuickModelCoreAsync()
+    {
+        if (_windowClosed || !IsCodexHarnessActive())
+        {
+            throw new InvalidOperationException(
+                "The primary keypad is not controlling Codex.");
+        }
+
+        if (!CodexWindowActivator.IsForeground() &&
+            !await ActivateCodexAsync(
+                initialDelayMilliseconds: 0,
+                launchIfMissing: true))
+        {
+            throw new InvalidOperationException(
+                "Codex could not be brought to the foreground.");
+        }
+
+        // The fire-and-forget startup connection can lose its first race with
+        // Codex IPC after a keypad restart. E2E must reconnect explicitly;
+        // initialize then replays the renderer's current following state.
+        if (!await _modelToggleService.StartAsync())
+        {
+            throw new InvalidOperationException(
+                "The Codex model bridge could not be initialized.");
+        }
+
+        // Following broadcasts are processed on the reader task after the
+        // initialize response, so do not classify its temporary null as a
+        // renderer draft on the same tick.
+        await Task.Delay(350);
+        var visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-entry-visible-thread",
+            new
+            {
+                visibleThreadId,
+                visibility = _modelToggleService
+                    .CaptureVisibilityDiagnostics(),
+            });
+        if (!IsRendererDraftVisible(visibleThreadId))
+        {
+            await RunE2eNewTaskAsync();
+            visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+        }
+        else
+        {
+            var refresh = await _broker.TapKeyAsync("ACT06");
+            if (!refresh.WasPossiblySent)
+            {
+                throw new InvalidOperationException(
+                    "The E2E blank-task refresh was not delivered.");
+            }
+
+            await Task.Delay(450);
+            visibleThreadId = _modelToggleService.CurrentVisibleThreadId;
+        }
+
+        if (!IsRendererDraftVisible(visibleThreadId))
+        {
+            throw new InvalidOperationException(
+                "The E2E flow did not reach a blank renderer task.");
+        }
+
+        var verified = new List<(
+            CodexModelToggleResult Toggle,
+            CodexThreadModelState Thread)>();
+        for (var leg = 1; leg <= 2; leg++)
+        {
+            if (leg > 1)
+            {
+                await RunE2eNewTaskAsync();
+                if (!IsRendererDraftVisible(
+                        _modelToggleService.CurrentVisibleThreadId))
+                {
+                    throw new InvalidOperationException(
+                        "ACT06 did not create the second blank E2E task.");
+                }
+            }
+
+            if (!await ActivateCodexAsync(
+                    initialDelayMilliseconds: 0,
+                    launchIfMissing: true))
+            {
+                throw new InvalidOperationException(
+                    "Codex could not be reactivated before the E2E toggle.");
+            }
+
+            _lastQuickModelResult = null;
+            await ToggleQuickModelAsync();
+            var toggleResult = _lastQuickModelResult;
+            if (toggleResult is not { Succeeded: true } ||
+                !CodexDraftModelToggleService.IsDraftOperationId(
+                    toggleResult.ThreadId))
+            {
+                throw new InvalidOperationException(
+                    $"Blank-draft toggle leg {leg} did not report success.");
+            }
+
+            var targetModelId = CodexModelToggleService.ToModelId(
+                toggleResult.Current);
+            var targetEffort = toggleResult.CurrentEffort ??
+                throw new InvalidOperationException(
+                    "The blank-draft toggle did not report a reasoning level.");
+            var verifiedState = await RunE2eSubmittedModelProbeAsync(
+                targetModelId,
+                targetEffort);
+            verified.Add((toggleResult, verifiedState));
+            CodexModelToggleDiagnostics.RecordStage(
+                "e2e-toggle-leg-complete",
+                new
+                {
+                    leg,
+                    verifiedState.ThreadId,
+                    verifiedState.ModelId,
+                    verifiedState.Effort,
+                });
+        }
+
+        var expectedModels = new HashSet<CodexQuickModel>
+        {
+            _profileSettings.Current.QuickModelA,
+            _profileSettings.Current.QuickModelB,
+        };
+        if (!expectedModels.SetEquals(
+                verified.Select(item => item.Toggle.Current)))
+        {
+            throw new InvalidOperationException(
+                "The two E2E legs did not verify both quick-model profiles.");
+        }
+
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-toggle-bidirectional-complete",
+            new
+            {
+                first = new
+                {
+                    verified[0].Thread.ThreadId,
+                    verified[0].Thread.ModelId,
+                    verified[0].Thread.Effort,
+                },
+                second = new
+                {
+                    verified[1].Thread.ThreadId,
+                    verified[1].Thread.ModelId,
+                    verified[1].Thread.Effort,
+                },
+            });
+    }
+
+    private static async Task KeepCodexForegroundForE2eAsync(
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (!CodexWindowActivator.IsForeground())
+            {
+                try
+                {
+                    _ = CodexWindowActivator.TryActivate(packageRoot: null);
+                }
+                catch
+                {
+                    // The main E2E path reports a stable activation failure.
+                }
+            }
+
+            await Task.Delay(80, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<CodexThreadModelState>
+        RunE2eSubmittedModelProbeAsync(
+            string targetModelId,
+            string targetEffort)
+    {
+        var layout = _layoutObserver.Current;
+        var probeSlot = new[] { "ACT06", "ACT07", "ACT08", "ACT09" }
+            .FirstOrDefault(slotId =>
+            {
+                var binding = layout.GetSlot(slotId);
+                return binding.Action is null &&
+                    string.IsNullOrWhiteSpace(binding.CommandId) &&
+                    binding.KeycapId is "YOLO" or "YEET";
+            });
+        if (probeSlot is null)
+        {
+            throw new InvalidOperationException(
+                "E2E needs an existing YOLO or YEET composer-text key; " +
+                "the keypad layout was not modified.");
+        }
+
+        if (!string.Equals(
+                layout.GetSlot("ACT12").ResolvedAction,
+                "composer.submit",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "ACT12 is not the current composer.submit key.");
+        }
+
+        if (!CodexWindowActivator.IsForeground() ||
+            !IsRendererDraftVisible(
+                _modelToggleService.CurrentVisibleThreadId))
+        {
+            throw new InvalidOperationException(
+                "The blank Codex task was no longer in the foreground.");
+        }
+
+        // ACT06 reports before the new composer has necessarily mounted its
+        // host-message listener. Sending composer text during that gap is
+        // silently lost and composer.submit then shows "This action isn't
+        // available here". Wait for the renderer mount, then revalidate the
+        // same blank/foreground contract before sending the probe.
+        await Task.Delay(1500);
+        if (!CodexWindowActivator.IsForeground() ||
+            !IsRendererDraftVisible(
+                _modelToggleService.CurrentVisibleThreadId))
+        {
+            throw new InvalidOperationException(
+                "The E2E composer did not remain ready for the probe.");
+        }
+
+        var insert = await _broker.TapKeyAsync(probeSlot);
+        if (!insert.WasPossiblySent)
+        {
+            throw new InvalidOperationException(
+                $"The {probeSlot} composer-text probe was not delivered.");
+        }
+
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-probe-insert-delivered",
+            new { probeSlot });
+        await Task.Delay(1200);
+        var submit = await _broker.TapKeyAsync("ACT12");
+        if (!submit.WasPossiblySent)
+        {
+            throw new InvalidOperationException(
+                "The ACT12 submit report was not delivered.");
+        }
+
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-probe-submit-delivered");
+
+        var started = Stopwatch.GetTimestamp();
+        CodexThreadModelState? latest = null;
+        do
+        {
+            latest = _modelToggleService.CurrentThreadState;
+            if (latest is not null &&
+                !CodexDraftModelToggleService.IsDraftThreadId(
+                    latest.ThreadId) &&
+                string.Equals(
+                    latest.ModelId,
+                    targetModelId,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    latest.Effort,
+                    targetEffort,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                CodexModelToggleDiagnostics.RecordStage(
+                    "e2e-submitted-model-verified",
+                    new
+                    {
+                        latest.ThreadId,
+                        latest.ModelId,
+                        latest.Effort,
+                    });
+                return latest;
+            }
+
+            await Task.Delay(100);
+        }
+        while (Stopwatch.GetElapsedTime(started) <
+            TimeSpan.FromSeconds(12));
+
+        CodexModelToggleDiagnostics.RecordStage(
+            "e2e-submitted-model-mismatch",
+            new
+            {
+                targetModelId,
+                targetEffort,
+                actualThreadId = latest?.ThreadId,
+                actualModelId = latest?.ModelId,
+                actualEffort = latest?.Effort,
+            });
+        throw new InvalidOperationException(
+            $"The submitted task did not use {targetModelId} / " +
+            $"{targetEffort}; actual: {latest?.ModelId ?? "none"} / " +
+            $"{latest?.Effort ?? "none"}.");
+    }
+
+    private static bool IsRendererDraftVisible(string? visibleThreadId) =>
+        string.IsNullOrWhiteSpace(visibleThreadId) ||
+        CodexDraftModelToggleService.IsDraftThreadId(visibleThreadId);
+#endif
+
     private async Task ToggleQuickModelAsync()
     {
         if (_quickModelSwitching ||
@@ -4208,42 +4668,380 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_quickModelThreadId))
-        {
-            SetLed(ActivityLed, "#FFD66E", "快捷模型切换未完成");
-            SetStatus("当前任务模型仍在同步；请稍后再试。");
-            return;
-        }
-
         _quickModelSwitching = true;
-        var switchingThreadId = _quickModelThreadId!;
-        _quickModelSwitchingThreadId = switchingThreadId;
+        _quickModelSwitchingThreadId = null;
         UpdateQuotaPresentation();
+        CodexModelToggleService.ForegroundDraftLease? foregroundDraftLease =
+            null;
+        var foregroundCodexWindow = IntPtr.Zero;
+        string? operationThreadId = null;
+        var usesDraftFallback = true;
         try
         {
             using var action = new CancellationTokenSource(
-                TimeSpan.FromSeconds(20));
+                TimeSpan.FromSeconds(30));
             _modelActionCancellation = action;
+            foregroundCodexWindow =
+                CodexWindowActivator.CaptureForegroundWindow();
+            if (foregroundCodexWindow != IntPtr.Zero)
+            {
+                var draftCandidate = await _modelToggleService
+                    .CaptureForegroundDraftLeaseAsync(
+                        action.Token,
+                        foregroundCodexWindow);
+                if (draftCandidate is { } candidate &&
+                    CodexWindowActivator.IsForegroundWindow(
+                        foregroundCodexWindow))
+                {
+                    foregroundDraftLease = candidate;
+                }
+            }
+
+            var usedVisibilityRefresh = false;
+            if (foregroundDraftLease is { } capturedDraftLease)
+            {
+                operationThreadId = capturedDraftLease.OperationId;
+                usesDraftFallback = true;
+            }
+            else
+            {
+                var currentVisibleThreadId =
+                    _modelToggleService.CurrentVisibleThreadId;
+                var useStableSemanticThread =
+                    !string.IsNullOrWhiteSpace(currentVisibleThreadId) &&
+                    !CodexDraftModelToggleService.IsDraftThreadId(
+                        currentVisibleThreadId) &&
+                    QuickModelThreadIdsEqual(
+                        _quickModelThreadId,
+                        currentVisibleThreadId);
+                var visibility = useStableSemanticThread
+                    ? new CodexModelToggleService.VisibleThreadSelection(
+                        currentVisibleThreadId,
+                        currentVisibleThreadId)
+                    : await _modelToggleService
+                        .RefreshVisibleThreadSelectionAsync(action.Token);
+                usedVisibilityRefresh = !useStableSemanticThread;
+                operationThreadId = visibility.VisibleThreadId;
+                usesDraftFallback =
+                    CodexDraftModelToggleService.ShouldUseDraftFallback(
+                        operationThreadId);
+
+                if ((operationThreadId is null || usesDraftFallback) &&
+                    foregroundCodexWindow != IntPtr.Zero)
+                {
+                    foregroundDraftLease = await _modelToggleService
+                        .CaptureForegroundDraftLeaseAsync(
+                            action.Token,
+                            foregroundCodexWindow);
+                    if (foregroundDraftLease is { } fallbackLease &&
+                        CodexWindowActivator.IsForegroundWindow(
+                            foregroundCodexWindow))
+                    {
+                        operationThreadId = fallbackLease.OperationId;
+                        usesDraftFallback = true;
+                    }
+                    else
+                    {
+                        foregroundDraftLease = null;
+                        if (usesDraftFallback)
+                        {
+                            operationThreadId = null;
+                        }
+                    }
+                }
+            }
+
+            if (usesDraftFallback && foregroundDraftLease is null)
+            {
+                operationThreadId = null;
+            }
+#if DEBUG
+            CodexModelToggleDiagnostics.RecordStage(
+                "visibility-refresh-complete",
+                new
+                {
+                    usedRefresh = usedVisibilityRefresh,
+                    usedRendererDraftEvidence =
+                        foregroundDraftLease?.RendererClientId is not null,
+                    foregroundWindow = foregroundCodexWindow.ToInt64(),
+                    operationThreadId,
+                    snapshot = _modelToggleService
+                        .CaptureVisibilityDiagnostics(),
+                });
+#endif
+            _quickModelSwitchingThreadId = operationThreadId;
+            UpdateQuotaPresentation();
+            if (foregroundDraftLease is { } budgetedDraftLease &&
+                !CodexModelToggleService.HasForegroundDraftOperationBudget(
+                    budgetedDraftLease,
+                    DateTimeOffset.UtcNow))
+            {
+#if DEBUG
+                CodexModelToggleDiagnostics.Record(
+                    new CodexModelToggleResult(
+                        Succeeded: false,
+                        Previous: CodexQuickModel.Unknown,
+                        Current: CodexQuickModel.Unknown,
+                        ThreadId: budgetedDraftLease.OperationId,
+                        Error: "draft-lease-too-old"),
+                    TimeSpan.Zero);
+#endif
+                SetLed(
+                    ActivityLed,
+                    "#FFD66E",
+                    "快捷模型切换未完成");
+                SetStatus("这个空白新会话的前台凭据已过期；为避免切到后台旧任务，模型保持不变。请重新打开空白新会话后再切换。");
+                return;
+            }
+
+            if (operationThreadId is null)
+            {
+#if DEBUG
+                CodexModelToggleDiagnostics.Record(
+                    new CodexModelToggleResult(
+                        Succeeded: false,
+                        Previous: CodexQuickModel.Unknown,
+                        Current: CodexQuickModel.Unknown,
+                        Error: "draft-lease-unavailable"),
+                    TimeSpan.Zero);
+#endif
+                SetLed(
+                    ActivityLed,
+                    "#FFD66E",
+                    "快捷模型切换未完成");
+                SetStatus(
+                    "当前页面尚未确认为空白新会话；模型保持不变，请稍后再试。");
+                return;
+            }
+
             var quickModels = _profileSettings.Current;
-            var result = await _modelToggleService.ToggleAsync(
-                quickModels.QuickModelA,
-                quickModels.QuickModelAEffort,
-                quickModels.QuickModelB,
-                quickModels.QuickModelBEffort,
-                switchingThreadId,
-                action.Token);
+            var draftRendererClientId =
+                foregroundDraftLease?.RendererClientId;
+            bool IsSameForegroundCodexWindow() =>
+                CodexWindowActivator.IsForegroundWindow(
+                    foregroundCodexWindow);
+
+            bool IsOriginalDraftOperationCurrent() =>
+                IsSameForegroundCodexWindow() &&
+                (foregroundDraftLease is { } lease
+                    ? _modelToggleService
+                            .IsForegroundDraftLeaseCurrent(lease) &&
+                        CodexModelToggleService
+                            .HasForegroundDraftOperationBudget(
+                                lease,
+                                DateTimeOffset.UtcNow)
+                    : CodexDraftModelToggleService
+                        .IsExpectedDraftCurrent(
+                            operationThreadId,
+                            _modelToggleService.CurrentVisibleThreadId));
+
+            bool IsFreshDraftCurrent()
+            {
+                if (!IsSameForegroundCodexWindow())
+                {
+                    return false;
+                }
+
+                if (foregroundDraftLease is { } lease)
+                {
+                    return _modelToggleService
+                        .IsForegroundDraftLeaseCurrent(lease);
+                }
+
+                var visibleThreadId =
+                    _modelToggleService.CurrentVisibleThreadId;
+                return string.IsNullOrWhiteSpace(visibleThreadId) ||
+                    CodexDraftModelToggleService.IsDraftThreadId(
+                        visibleThreadId);
+            }
+
+            CodexModelToggleResult result;
+            if (usesDraftFallback)
+            {
+                await _encoderInputGate.WaitAsync(action.Token);
+                try
+                {
+                    result = await _draftModelToggleService.ToggleAsync(
+                    quickModels.QuickModelA,
+                    quickModels.QuickModelAEffort,
+                    quickModels.QuickModelB,
+                    quickModels.QuickModelBEffort,
+                    operationThreadId,
+                    IsOriginalDraftOperationCurrent,
+                    IsFreshDraftCurrent,
+                    cancellation => _modelToggleService
+                        .InvalidateUserSavedConfigAsync(
+                            draftRendererClientId!,
+                            cancellation),
+                    async (clockwise, cancellation) =>
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        if (!IsFreshDraftCurrent())
+                        {
+                            return false;
+                        }
+
+                        var send = await _broker.StepEncoderAsync(clockwise);
+#if DEBUG
+                        CodexModelToggleDiagnostics.RecordStage(
+                            "draft-encoder-step-report",
+                            new
+                            {
+                                clockwise,
+                                disposition = send.Disposition.ToString(),
+                                send.WasPossiblySent,
+                        });
+#endif
+                        cancellation.ThrowIfCancellationRequested();
+                        return send.WasPossiblySent &&
+                            IsFreshDraftCurrent();
+                    },
+                    async cancellation =>
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        var rebuildAction = _layoutObserver.Current
+                            .GetSlot("ACT06")
+                            .ResolvedAction;
+                        if (!CodexDraftModelToggleService
+                                .CanDispatchComposerRebuild(rebuildAction) ||
+                            !IsFreshDraftCurrent())
+                        {
+#if DEBUG
+                            CodexModelToggleDiagnostics.RecordStage(
+                                "draft-composer-rebuild-unavailable",
+                                new { rebuildAction });
+#endif
+                            return CodexDraftModelToggleService
+                                .ComposerRebuildDispatch.NotDispatched;
+                        }
+
+                        cancellation.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var send = await _broker.TapKeyAsync("ACT06");
+#if DEBUG
+                            CodexModelToggleDiagnostics.RecordStage(
+                                "draft-composer-rebuild-report",
+                                new
+                                {
+                                    slot = "ACT06",
+                                    rebuildAction,
+                                    disposition = send.Disposition.ToString(),
+                                    send.WasPossiblySent,
+                                    semanticAcknowledgement = false,
+                                });
+#endif
+                            return send.Disposition switch
+                            {
+                                MicroSendDisposition.Accepted
+                                    when IsFreshDraftCurrent() =>
+                                    CodexDraftModelToggleService
+                                        .ComposerRebuildDispatch.Dispatched,
+                                MicroSendDisposition.Accepted or
+                                    MicroSendDisposition.OutcomeUnknown =>
+                                    CodexDraftModelToggleService
+                                        .ComposerRebuildDispatch.OutcomeUnknown,
+                                _ => CodexDraftModelToggleService
+                                    .ComposerRebuildDispatch.NotDispatched,
+                            };
+                        }
+                        catch (Exception exception) when (
+                            exception is IOException or
+                                InvalidOperationException or
+                                ObjectDisposedException or
+                                OperationCanceledException)
+                        {
+#if DEBUG
+                            CodexModelToggleDiagnostics.RecordStage(
+                                "draft-composer-rebuild-report-failed",
+                                new
+                                {
+                                    exception = exception.GetType().Name,
+                                    outcomeUnknown = true,
+                                });
+#endif
+                            return CodexDraftModelToggleService
+                                .ComposerRebuildDispatch.OutcomeUnknown;
+                        }
+                    },
+                    action.Token);
+                }
+                finally
+                {
+                    _encoderInputGate.Release();
+                }
+            }
+            else
+            {
+                result = await _modelToggleService.ToggleAsync(
+                    quickModels.QuickModelA,
+                    quickModels.QuickModelAEffort,
+                    quickModels.QuickModelB,
+                    quickModels.QuickModelBEffort,
+                    operationThreadId,
+                    action.Token);
+            }
+#if DEBUG
+            _lastQuickModelResult = result;
+#endif
             if (_windowClosed)
             {
                 return;
             }
 
             var currentState = CurrentQuickModelPresentationState;
-            var resultTargetsCurrentThread =
-                QuickModelResultTargetsCurrentThread(currentState, result);
-            if (!QuickModelResultCanDescribeCurrentThread(
-                currentState,
-                switchingThreadId,
-                result))
+            var latestVisibleThreadId =
+                _modelToggleService.CurrentVisibleThreadId;
+            var sameForegroundCodexWindow = !usesDraftFallback ||
+                CodexWindowActivator.IsForegroundWindow(
+                    foregroundCodexWindow);
+            var originalDraftStillCurrent = usesDraftFallback &&
+                sameForegroundCodexWindow &&
+                (foregroundDraftLease is { } currentLease
+                    ? _modelToggleService
+                            .IsForegroundDraftLeaseCurrent(currentLease)
+                    : CodexDraftModelToggleService.IsExpectedDraftCurrent(
+                        operationThreadId,
+                        latestVisibleThreadId));
+            var resultCanDescribeCurrentView = usesDraftFallback
+                ? result.Succeeded
+                    ? foregroundDraftLease is { } resultLease
+                        ? originalDraftStillCurrent &&
+                            QuickModelThreadIdsEqual(
+                                result.ThreadId,
+                                resultLease.OperationId)
+                        : sameForegroundCodexWindow &&
+                            DraftConfigResultTargetsCurrentDraft(
+                                latestVisibleThreadId,
+                                result)
+                    : originalDraftStillCurrent
+                : QuickModelResultCanDescribeCurrentThread(
+                    currentState,
+                    operationThreadId,
+                    result);
+            var resultTargetsCurrentView = usesDraftFallback
+                ? result.Succeeded && resultCanDescribeCurrentView
+                : QuickModelResultTargetsCurrentThread(currentState, result);
+            var draftMutationOutcomeUnknown = usesDraftFallback &&
+                result.Error is
+                    "draft-composer-rebuild-outcome-unknown" or
+                    "draft-renderer-mutation-outcome-unknown";
+            if (!resultCanDescribeCurrentView &&
+                draftMutationOutcomeUnknown)
+            {
+                // NEW may already have rebuilt the composer and invalidated
+                // the old lease. Do not attach the result to the replacement
+                // view, but always report that the committed target config was
+                // retained and the renderer outcome is unknown.
+                SetLed(
+                    ActivityLed,
+                    "#FFD66E",
+                    "新会话模型结果未知");
+                SetStatus(DescribeQuickModelError(result.Error));
+                return;
+            }
+
+            if (!resultCanDescribeCurrentView)
             {
                 // The service completed an operation for a task that is no
                 // longer visible. Its result must not describe the new task.
@@ -4252,16 +5050,68 @@ public partial class MicroSurfaceWindow : Window
 
             if (result.Succeeded)
             {
-                if (!resultTargetsCurrentThread)
+                if (!resultTargetsCurrentView)
                 {
                     return;
                 }
 
+                if (usesDraftFallback &&
+                    foregroundDraftLease is { } guardedDraftLease &&
+                    !_modelToggleService
+                        .TryRenewForegroundDraftEvidenceAfterGuardedRebuild(
+                            guardedDraftLease,
+                            result))
+                {
+#if DEBUG
+                    CodexModelToggleDiagnostics.RecordStage(
+                        "draft-evidence-renewal-rejected",
+                        new
+                        {
+                            result.ThreadId,
+                            result.Detail,
+                            foregroundWindow = foregroundCodexWindow.ToInt64(),
+                        });
+#endif
+                    SetLed(
+                        ActivityLed,
+                        "#FFD66E",
+                        "新会话凭据未续签");
+                    SetStatus(_localization.IsEnglish
+                        ? "The target config was written, but the rebuilt " +
+                            "new-task proof could not be renewed. Open a " +
+                            "blank new task before switching again."
+                        : "目标配置已写入，但重建后的新会话凭据未能续签；" +
+                            "为避免下次命中后台任务，请重新打开空白新会话后再切换。");
+                    return;
+                }
+
+                if (usesDraftFallback)
+                {
+                    ApplyQuickModelPresentationState(new(
+                        result.ThreadId,
+                        result.Current));
+                }
+
                 var name = FormatQuickModelName(result.Current);
                 var effort = FormatReasoningEffort(result.CurrentEffort);
-                SetLed(ActivityLed, "#9EBDFF", $"已切换到 {name}");
-                SetStatus(
-                    $"当前任务的下一轮已切换到 {name} · {effort}；全局默认模型未更改。");
+                SetLed(
+                    ActivityLed,
+                    "#9EBDFF",
+                    usesDraftFallback
+                        ? $"已请求切换到 {name}"
+                        : $"已切换到 {name}");
+                SetStatus(usesDraftFallback
+                    ? _localization.IsEnglish
+                        ? $"Requested a rebuilt new task with {name} · " +
+                            $"{effort}; the exact config was confirmed and " +
+                            "Full access was unchanged."
+                        : $"已请求按 {name} · {effort} 重建新会话；" +
+                            "目标配置已确认，Full access 未更改。"
+                    : _localization.IsEnglish
+                        ? $"This task's next turn now uses {name} · {effort}; " +
+                            "the global default was not changed."
+                        : $"当前任务的下一轮已切换到 {name} · {effort}；" +
+                            "全局默认模型未更改。");
             }
             else
             {
@@ -4277,10 +5127,22 @@ public partial class MicroSurfaceWindow : Window
         }
         catch (OperationCanceledException)
         {
-            if (!_windowClosed &&
-                QuickModelThreadIdsEqual(
-                    switchingThreadId,
-                    _quickModelThreadId))
+            var operationStillTargetsCurrentView =
+                usesDraftFallback
+                    ? CodexWindowActivator.IsForegroundWindow(
+                            foregroundCodexWindow) &&
+                        (foregroundDraftLease is { } lease
+                            ? _modelToggleService
+                                .IsForegroundDraftLeaseCurrent(lease)
+                            : CodexDraftModelToggleService
+                                .IsExpectedDraftCurrent(
+                                    operationThreadId,
+                                    _modelToggleService
+                                        .CurrentVisibleThreadId))
+                    : QuickModelThreadIdsEqual(
+                        operationThreadId,
+                        _quickModelThreadId);
+            if (!_windowClosed && operationStillTargetsCurrentView)
             {
                 SetLed(ActivityLed, "#FFD66E", "快捷模型切换超时");
                 SetStatus("快捷模型切换超时，未收到 Codex 确认；请以当前任务显示的模型为准后再试。");
@@ -4307,7 +5169,10 @@ public partial class MicroSurfaceWindow : Window
             "thread-state-unavailable" or
             "ipc-timeout" or
             "ipc-disconnected" or
-            "visible-thread-changed";
+            "visible-thread-changed" ||
+        error?.StartsWith(
+            "draft-",
+            StringComparison.Ordinal) == true;
 
     private static string DescribeQuickModelError(string? error) =>
         error switch
@@ -4331,6 +5196,38 @@ public partial class MicroSurfaceWindow : Window
                 "快捷模型切换已取消；请以当前任务显示的模型为准。",
             "ipc-unavailable" =>
                 "当前 Codex 版本的任务设置通道不可用；模型保持不变。",
+            "draft-config-read-failed" =>
+                "未能读取 Codex 的当前默认模型；配置未更改，请稍后重试。",
+            "draft-config-write-failed" =>
+                "Codex 未确认默认模型写入；已停止新建会话，请稍后重试。",
+            "draft-config-overridden" =>
+                "当前项目配置覆盖了默认模型；为避免显示与实际不一致，本次未切换。",
+            "draft-new-task-rejected" =>
+                "模型配置已回滚：小键盘的新建会话按键未被驱动接受。",
+            "draft-reasoning-nudge-rejected" =>
+                "模型配置已回滚：小键盘旋钮的预热清理指令未被驱动接受。",
+            "draft-prewarm-clear-timeout" =>
+                "Codex 未确认旧预热会话已清理，模型配置已回滚；请保持空白新会话在前台后重试。",
+            "draft-reasoning-prepare-rejected" =>
+                "模型配置已回滚：小键盘旋钮按键未能打开推理选择器。",
+            "draft-reasoning-nudge-timeout" =>
+                "Codex 未确认相邻推理档位，已回滚模型；请保持空白新会话在前台后重试。",
+            "draft-reasoning-restore-rejected" =>
+                "模型配置已回滚：小键盘旋钮未能恢复目标推理档位。",
+            "draft-reasoning-restore-timeout" =>
+                "Codex 未确认目标推理档位，已回滚模型；本次切换未生效。",
+            "draft-composer-rebuild-rejected" =>
+                "模型配置已回滚：空白新会话的 NEW 重建指令未被驱动接受，或 ACT06 当前并非 NEW。",
+            "draft-composer-rebuild-outcome-unknown" =>
+                "目标配置已保留，但 Codex 未提供新会话重建结果；请以输入框下方的模型显示为准，重新打开空白新会话后再试。",
+            "draft-renderer-mutation-outcome-unknown" =>
+                "Codex 已确认旋钮改变了前台新会话，但最终目标未确认；已保留最后可观察配置，请以输入框下方的模型显示为准。",
+            "draft-encoder-mode-restore-failed" =>
+                "未能恢复小键盘旋钮模式，模型配置已回滚。",
+            string value when value.StartsWith(
+                "draft-",
+                StringComparison.Ordinal) =>
+                "当前新会话未能完成原生模型初始化；请将 Codex 保持在前台后重试。",
             _ => "快捷模型切换失败；模型保持不变，请再试一次。",
         };
 
@@ -4343,9 +5240,9 @@ public partial class MicroSurfaceWindow : Window
             _ => "快捷模型",
         };
 
-    private static string FormatReasoningEffort(string? effort) =>
+    private string FormatReasoningEffort(string? effort) =>
         string.IsNullOrWhiteSpace(effort)
-            ? "默认强度"
+            ? _localization.IsEnglish ? "default effort" : "默认强度"
             : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(effort);
 
     private async Task OpenCodexMicroSettingsAsync(string label)
@@ -5526,9 +6423,18 @@ public partial class MicroSurfaceWindow : Window
         {
             _agentKeys[slotId].IsEnabled = true;
             lightingBySlot.TryGetValue(slotId, out var lighting);
-            var appearance = AgentLightingAppearance.From(
-                lighting,
-                slotId == _currentAgentSlotId);
+            var hasSignal = AgentLightingAppearance.From(lighting).IsActive;
+            if (hasSignal)
+            {
+                _manualUnreadAgentSlots.Remove(slotId);
+            }
+
+            var appearance = !hasSignal && _manualUnreadAgentSlots.Contains(slotId)
+                ? AgentLightingAppearance.ManualUnread(
+                    slotId == _currentAgentSlotId)
+                : AgentLightingAppearance.From(
+                    lighting,
+                    slotId == _currentAgentSlotId);
             ApplyAgentLightingAppearance(slotId, appearance);
 
             var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
@@ -5551,7 +6457,8 @@ public partial class MicroSurfaceWindow : Window
             SetHelp(
                 _agentKeys[slotId],
                 title,
-                $"Agent 槽位 {slotId + 1} · AG{slotId:00} · {state} · 单击切换。" +
+                $"Agent 槽位 {slotId + 1} · AG{slotId:00} · {state} · 单击切换" +
+                (hasSignal ? "。" : "；右击标记为未读。") +
                 localMatch);
         }
     }
@@ -6541,9 +7448,12 @@ public partial class MicroSurfaceWindow : Window
         var quickModels = _profileSettings.Current;
         var quickModelPair = FormatQuickModelPair(quickModels);
         var quickModelSwitching = _quickModelSwitching &&
-            QuickModelThreadIdsEqual(
-                _quickModelSwitchingThreadId,
-                _quickModelThreadId);
+            (CodexModelToggleService.IsForegroundDraftOperationId(
+                _quickModelSwitchingThreadId)
+                ? string.IsNullOrWhiteSpace(_quickModelThreadId)
+                : QuickModelThreadIdsEqual(
+                    _quickModelSwitchingThreadId,
+                    _quickModelThreadId));
         QuotaCaptionText.Text = quickModelSwitching
             ? "···"
             : _quickModel switch

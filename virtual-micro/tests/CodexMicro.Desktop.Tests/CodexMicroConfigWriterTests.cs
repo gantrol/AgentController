@@ -64,6 +64,42 @@ public sealed class CodexMicroConfigWriterTests
     }
 
     [Fact]
+    public void ExactSlotBindingCanBeRestoredAfterAnE2eProbe()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "codex-micro-config-writer-tests",
+            Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "config.toml");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(path, """
+                [desktop.codex-micro-layout.slots.ACT11]
+                keycapId = "EMPT1"
+                commandId = "composer.clear"
+                """);
+            var writer = new CodexMicroConfigWriter(path);
+            var original = CodexMicroLayoutObserver
+                .Parse(File.ReadAllText(path), path)
+                .GetSlot("ACT11");
+
+            Assert.True(writer.SetSlot("ACT11", "YOLO", null));
+            Assert.True(writer.SetSlotBinding("ACT11", original));
+
+            var restored = CodexMicroLayoutObserver
+                .Parse(File.ReadAllText(path), path)
+                .GetSlot("ACT11");
+            Assert.Equal("EMPT1", restored.KeycapId);
+            Assert.Equal("composer.clear", restored.CommandId);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResetRemovesOnlyMicroTablesAndRestoresCanonicalDefaults()
     {
         var directory = Path.Combine(

@@ -1,7 +1,7 @@
 # 架构与输入链路
 
 > Status: Controller-input remediation implemented; hardware acceptance pending
-> Updated: 2026-07-19
+> Updated: 2026-08-31
 
 ## 1. 两条互补控制平面
 
@@ -28,6 +28,22 @@ flowchart LR
 - **设备平面**：Agent/Command key、Dial、Analog、PTT、灯光与设备 RPC 优先使用真实 Micro 类 HID 信号。
 - **语义平面**：任意任务树、Thread、Turn、Steer、Interrupt 和权威运行状态使用 App Server 或对应 Agent 的正式接口。
 - **Limited adapter**：只保留尚无正式表达的操作；必须显示实际通道和验证结果，并设删除期限。
+
+### 当前 App Server 接入边界（2026-08-31）
+
+App Server 的协议能力以 [Codex App Server 官方文档](https://developers.openai.com/codex/app-server) 为准；本项目当前落地范围如下：
+
+| 能力 | 当前接入 | 说明 |
+| --- | --- | --- |
+| 初始化 | ✅ | 只读探针通过 stdio JSONL 完成 initialize / initialized。 |
+| 最近任务 roster | ✅ | thread/list 读取 recency_at 顺序，供六个 Agent 槽位显示标题。 |
+| 额度 | ✅ | account/rateLimits/read 只读查询。 |
+| Thread 创建、恢复、读取、Fork | ❌ | 仍由本地 UI、deeplink、快捷键或语义适配器处理。 |
+| Turn start、Steer、Interrupt | ❌ | 尚未建立直接 request、持续连接和 Turn readback。 |
+| 审批与流式状态 | ❌ | 尚未映射 App Server server request、turn/item 通知和权威状态。 |
+| 模型/effort | ⚠️ | 当前由 codex-ipc 桌面跨窗口协议更新下一轮设置，不属于 App Server stdio 直连。 |
+
+因此，App Server 目前是只读数据源加未来的语义主链，不是当前 Micro 输入的主传输通道。HID 的 transport Accepted 只表示报告进入设备链路，不能代替 Thread/Turn 完成证据。
 
 ## 2. 右摇杆目标链路
 

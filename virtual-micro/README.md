@@ -176,6 +176,16 @@ service, run this from the extracted package directory:
   Server without opening a menu or taking focus. A long-press opens the
   official Micro settings, and right-click opens the active Agent's settings.
 
+A blank Codex new-task draft does not have an App Server thread yet. In that
+one case, Codex Micro 0.3.0 requires a stable initialized IPC state with no
+visible real task, then operates the exact model and effort entries in the
+official foreground composer picker. The operation is bound to the same Codex
+window, editor, trigger, and geometrically-associated popup surfaces. Once the
+first turn creates the task, the lease is invalidated and all later switches
+return to the per-task semantic channel. Codex's official blank-draft picker
+may also update the default model for later new tasks; real-task switches still
+leave the global default unchanged.
+
 ## Virtual HID
 
 `CodexMicroVhfUm.dll` is a UMDF2 source driver built on Microsoft's Virtual HID
@@ -198,36 +208,41 @@ off Windows driver-signing enforcement or install an untrusted certificate.
 See [`UNSIGNED-DRIVER.md`](./UNSIGNED-DRIVER.md) for build, signing, and install
 details.
 
+Version 0.3.0 updates only the Monitor application. It does not replace or
+bundle the virtual HID driver. If the existing driver installation completed
+with `Ready`, it does not need to be reinstalled; otherwise install it
+separately with the guide above.
+
 ## Build and package
 
 Use Windows 10/11 x64 and .NET SDK 10. From the repository root:
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.9
+.\scripts\package-micro.ps1 -Version 0.3.0
 # Builds the general Codex Micro Monitor package.
-.\scripts\package-micro.ps1 -Version 0.2.9 -Preset monitor
+.\scripts\package-micro.ps1 -Version 0.3.0 -Preset monitor
 # Builds the DeepSeek-tailored bundle with its bridge and online setup entry.
-.\scripts\package-micro.ps1 -Version 0.2.9 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.3.0 -Preset deepseek
 ```
 
 User-facing releases publish one package per product:
 
-- `dist/Codex-Micro-Monitor-v0.2.9-win-x64.zip`, the general Codex package
+- `dist/Codex-Micro-Monitor-v0.3.0-win-x64.zip`, the general Codex package
   without the DeepSeek Bridge or managed WSL setup;
 
-- `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`, including the Bridge and
+- `dist/Deepseek-Harness-Keypad-v0.3.0-win-x64.zip`, including the Bridge and
   managed setup entry. First-run setup installs the pinned DSH online instead
   of bundling a full WSL root filesystem.
 
 The following are maintainer build and diagnostic outputs, not ordinary user
 download choices:
 
-- single-file executable: `.artifacts/micro-release/0.2.9/publish/CodexMicro.exe`;
-- standalone archive: `dist/CodexMicro-Keypad-0.2.9-win-x64.zip`;
+- single-file executable: `.artifacts/micro-release/0.3.0/publish/CodexMicro.exe`;
+- standalone archive: `dist/CodexMicro-Keypad-0.3.0-win-x64.zip`;
 - SHA-256: adjacent `.sha256` file.
 - standalone existing-DSH plugin:
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.9.zip`, with its own checksum.
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.3.0.zip`, with its own checksum.
 
 The release packages include `CodexMicro.exe`, the READMEs, the license, and the
 keypad-side `voice` launcher/adapter. The Monitor package omits the DeepSeek

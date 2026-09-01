@@ -64,6 +64,436 @@ public sealed class CodexModelToggleServiceTests
                 "thread-a"));
     }
 
+    [Theory]
+    [InlineData("client-new-thread:abc", false)]
+    [InlineData("019f-real-thread", true)]
+    public void RendererDraftsNeverEnterSemanticOwnerTracking(
+        string threadId,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            CodexModelToggleService.CanTrackSemanticThread(threadId));
+
+    [Fact]
+    public void RendererDraftIdentitySurvivesRealDraftRealTransitions()
+    {
+        const string sourceClientId = "renderer-a";
+        const string firstRealThreadId = "019f-real-thread-a";
+        const string draftThreadId = "client-new-thread:draft-a";
+        const string secondRealThreadId = "019f-real-thread-b";
+        var visibleThreads = new Dictionary<string, string>(
+            StringComparer.Ordinal);
+
+        Assert.True(CodexModelToggleService.ApplyVisibleThreadFollowingChange(
+            visibleThreads,
+            sourceClientId,
+            firstRealThreadId,
+            following: true));
+        Assert.Equal(
+            new CodexModelToggleService.VisibleThreadSelection(
+                firstRealThreadId,
+                firstRealThreadId),
+            CodexModelToggleService.ResolveVisibleThreadSelection(
+                visibleThreads.Values));
+
+        Assert.True(CodexModelToggleService.ApplyVisibleThreadFollowingChange(
+            visibleThreads,
+            sourceClientId,
+            draftThreadId,
+            following: true));
+        Assert.Equal(draftThreadId, visibleThreads[sourceClientId]);
+        Assert.Equal(
+            new CodexModelToggleService.VisibleThreadSelection(
+                draftThreadId,
+                SemanticThreadId: null),
+            CodexModelToggleService.ResolveVisibleThreadSelection(
+                visibleThreads.Values));
+
+        // A delayed release for the old real task must not erase the draft.
+        Assert.False(CodexModelToggleService.ApplyVisibleThreadFollowingChange(
+            visibleThreads,
+            sourceClientId,
+            firstRealThreadId,
+            following: false));
+        Assert.Equal(draftThreadId, visibleThreads[sourceClientId]);
+
+        Assert.True(CodexModelToggleService.ApplyVisibleThreadFollowingChange(
+            visibleThreads,
+            sourceClientId,
+            secondRealThreadId,
+            following: true));
+        Assert.Equal(
+            new CodexModelToggleService.VisibleThreadSelection(
+                secondRealThreadId,
+                secondRealThreadId),
+            CodexModelToggleService.ResolveVisibleThreadSelection(
+                visibleThreads.Values));
+    }
+
+    [Fact]
+    public void MissingOrAmbiguousVisibilityRemainsUnknownNotDraft()
+    {
+        Assert.Equal(
+            default,
+            CodexModelToggleService.ResolveVisibleThreadSelection([]));
+        Assert.Equal(
+            default,
+            CodexModelToggleService.ResolveVisibleThreadSelection(
+                ["thread-a", "client-new-thread:draft-a"]));
+    }
+
+    [Fact]
+    public void DraftEvidenceSelectsOnlyTheRequestedForegroundWindow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var firstWindow = new IntPtr(101);
+        var secondWindow = new IntPtr(202);
+        var visible = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["renderer-background"] = "019f-background-thread",
+        };
+        var evidence = new Dictionary<
+            string,
+            CodexModelToggleService.RendererDraftEvidence>(
+                StringComparer.Ordinal)
+        {
+            ["renderer-first"] = new(4, now, firstWindow),
+            ["renderer-second"] = new(5, now, secondWindow),
+        };
+
+        Assert.Equal(
+            "renderer-first",
+            CodexModelToggleService.SelectRendererDraftEvidenceClient(
+                visible,
+                evidence,
+                now,
+                TimeSpan.FromSeconds(30),
+                firstWindow));
+        Assert.Equal(
+            "renderer-second",
+            CodexModelToggleService.SelectRendererDraftEvidenceClient(
+                visible,
+                evidence,
+                now,
+                TimeSpan.FromSeconds(30),
+                secondWindow));
+        Assert.Null(
+            CodexModelToggleService.SelectRendererDraftEvidenceClient(
+                visible,
+                evidence,
+                now,
+                TimeSpan.FromSeconds(30),
+                new IntPtr(303)));
+    }
+
+    [Fact]
+    public void RealFollowingOrExpiredEvidenceCannotTargetADraft()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var window = new IntPtr(101);
+        var visible = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["renderer-real"] = "019f-real-thread",
+        };
+        var evidence = new Dictionary<
+            string,
+            CodexModelToggleService.RendererDraftEvidence>(
+                StringComparer.Ordinal)
+        {
+            ["renderer-real"] = new(8, now, window),
+            ["renderer-expired"] = new(
+                9,
+                now - TimeSpan.FromMinutes(1),
+                window),
+        };
+
+        Assert.Null(
+            CodexModelToggleService.SelectRendererDraftEvidenceClient(
+                visible,
+                evidence,
+                now,
+                TimeSpan.FromSeconds(30),
+                window));
+        Assert.Null(
+            CodexModelToggleService.SelectRendererDraftEvidenceClient(
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                evidence,
+                now,
+                TimeSpan.FromSeconds(30),
+                IntPtr.Zero));
+    }
+
+    [Fact]
+    public void DraftLeaseAdmissionReservesTimeForTheWholeMutation()
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(20),
+            CodexModelToggleService.ForegroundDraftLeaseAdmissionLifetime);
+
+        var now = DateTimeOffset.UtcNow;
+        var window = new IntPtr(101);
+        var visible = new Dictionary<string, string>(StringComparer.Ordinal);
+        var evidence = new Dictionary<
+            string,
+            CodexModelToggleService.RendererDraftEvidence>(
+                StringComparer.Ordinal)
+        {
+            ["renderer-with-budget"] = new(
+                10,
+                now - CodexModelToggleService
+                    .ForegroundDraftLeaseAdmissionLifetime,
+                window),
+            ["renderer-too-late"] = new(
+                11,
+                now - CodexModelToggleService
+                    .ForegroundDraftLeaseAdmissionLifetime -
+                    TimeSpan.FromTicks(1),
+                window),
+        };
+
+        Assert.Equal(
+            "renderer-too-late",
+            CodexModelToggleService.SelectRendererDraftEvidenceClient(
+                visible,
+                evidence,
+                now,
+                TimeSpan.FromSeconds(30),
+                window));
+
+        var withinBudget = new CodexModelToggleService.ForegroundDraftLease(
+            "micro-client",
+            1,
+            CodexModelToggleService.ForegroundDraftOperationPrefix +
+                "00000000000000000000000000000001",
+            "renderer-with-budget",
+            10,
+            window,
+            now - CodexModelToggleService
+                .ForegroundDraftLeaseAdmissionLifetime);
+        var tooLate = withinBudget with
+        {
+            RendererClientId = "renderer-too-late",
+            RendererDraftGeneration = 11,
+            RendererDraftObservedAt =
+                now - CodexModelToggleService
+                    .ForegroundDraftLeaseAdmissionLifetime -
+                    TimeSpan.FromTicks(1),
+        };
+
+        Assert.True(
+            CodexModelToggleService.HasForegroundDraftOperationBudget(
+                withinBudget,
+                now));
+        Assert.False(
+            CodexModelToggleService.HasForegroundDraftOperationBudget(
+                tooLate,
+                now));
+    }
+
+    [Fact]
+    public void SyntheticOperationIdIsInternalProofNotRendererDraftIdentity()
+    {
+        var operationId =
+            CodexModelToggleService.ForegroundDraftOperationPrefix +
+            "00000000000000000000000000000001";
+
+        Assert.False(CodexDraftModelToggleService.ShouldUseDraftFallback(null));
+        Assert.False(CodexDraftModelToggleService.ShouldUseDraftFallback(
+            operationId));
+        Assert.True(CodexModelToggleService.IsForegroundDraftOperationId(
+            operationId));
+        Assert.False(CodexModelToggleService.IsForegroundDraftOperationId(
+            CodexModelToggleService.ForegroundDraftOperationPrefix + "not-a-guid"));
+        Assert.False(CodexModelToggleService.IsForegroundDraftOperationId(
+            "client-new-thread:renderer-draft"));
+    }
+
+    [Fact]
+    public void OnlyACompletedGuardedRebuildMayRenewDraftEvidence()
+    {
+        var operationId =
+            CodexModelToggleService.ForegroundDraftOperationPrefix +
+            "00000000000000000000000000000001";
+        var lease = new CodexModelToggleService.ForegroundDraftLease(
+            "micro-client",
+            1,
+            operationId,
+            "renderer-a",
+            4,
+            new IntPtr(101),
+            DateTimeOffset.UtcNow);
+        var guardedRebuild = new CodexModelToggleResult(
+            Succeeded: true,
+            Previous: CodexQuickModel.Sol,
+            Current: CodexQuickModel.Luna,
+            ThreadId: operationId,
+            Detail: CodexDraftModelToggleService
+                .ComposerRebuildDispatchReceipt);
+
+        Assert.True(CodexModelToggleService
+            .CanRenewForegroundDraftEvidenceAfterGuardedRebuild(
+                lease,
+                guardedRebuild));
+        Assert.False(CodexModelToggleService
+            .CanRenewForegroundDraftEvidenceAfterGuardedRebuild(
+                lease,
+                guardedRebuild with { Detail = "config-only" }));
+        Assert.False(CodexModelToggleService
+            .CanRenewForegroundDraftEvidenceAfterGuardedRebuild(
+                lease,
+                guardedRebuild with { Succeeded = false }));
+        Assert.False(CodexModelToggleService
+            .CanRenewForegroundDraftEvidenceAfterGuardedRebuild(
+                lease,
+                guardedRebuild with { ThreadId = "another-operation" }));
+    }
+
+    [Fact]
+    public void DraftEvidenceRenewalRequiresTheSameRendererWindowAndGeneration()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var window = new IntPtr(101);
+        var operationId =
+            CodexModelToggleService.ForegroundDraftOperationPrefix +
+            "00000000000000000000000000000001";
+        var lease = new CodexModelToggleService.ForegroundDraftLease(
+            "micro-client",
+            1,
+            operationId,
+            "renderer-a",
+            4,
+            window,
+            now);
+        var visible = new Dictionary<string, string>(StringComparer.Ordinal);
+        var evidence = new Dictionary<
+            string,
+            CodexModelToggleService.RendererDraftEvidence>(
+                StringComparer.Ordinal)
+        {
+            ["renderer-a"] = new(4, now, window),
+        };
+
+        Assert.True(CodexModelToggleService
+            .HasRenewableForegroundDraftEvidence(
+                lease,
+                visible,
+                evidence));
+        Assert.False(CodexModelToggleService
+            .TryCreateRenewedForegroundDraftEvidence(
+                lease,
+                visible,
+                evidence,
+                renewedGeneration: 5,
+                observedAt: now + TimeSpan.FromSeconds(31),
+                out _));
+
+        visible["renderer-a"] = "client-new-thread:replacement";
+        Assert.True(CodexModelToggleService
+            .HasRenewableForegroundDraftEvidence(
+                lease,
+                visible,
+                evidence));
+
+        visible["renderer-a"] = "019f-real-thread";
+        Assert.False(CodexModelToggleService
+            .HasRenewableForegroundDraftEvidence(
+                lease,
+                visible,
+                evidence));
+
+        visible.Clear();
+        evidence["renderer-a"] = new(5, now, window);
+        Assert.False(CodexModelToggleService
+            .HasRenewableForegroundDraftEvidence(
+                lease,
+                visible,
+                evidence));
+
+        evidence["renderer-a"] = new(4, now, new IntPtr(202));
+        Assert.False(CodexModelToggleService
+            .HasRenewableForegroundDraftEvidence(
+                lease,
+                visible,
+                evidence));
+    }
+
+    [Fact]
+    public void ConsecutiveRenewalsKeepTheThirdToggleAdmissible()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var window = new IntPtr(101);
+        var initialObservedAt = now - TimeSpan.FromSeconds(10);
+        var visible = new Dictionary<string, string>(StringComparer.Ordinal);
+        var evidence = new Dictionary<
+            string,
+            CodexModelToggleService.RendererDraftEvidence>(
+                StringComparer.Ordinal)
+        {
+            ["renderer-a"] = new(4, initialObservedAt, window),
+        };
+        var firstLease = new CodexModelToggleService.ForegroundDraftLease(
+            "micro-client",
+            1,
+            CodexModelToggleService.ForegroundDraftOperationPrefix +
+                "00000000000000000000000000000001",
+            "renderer-a",
+            4,
+            window,
+            initialObservedAt);
+
+        Assert.True(CodexModelToggleService
+            .TryCreateRenewedForegroundDraftEvidence(
+                firstLease,
+                visible,
+                evidence,
+                renewedGeneration: 5,
+                observedAt: now,
+                out var firstRenewal));
+        evidence["renderer-a"] = firstRenewal;
+        Assert.False(CodexModelToggleService
+            .HasRenewableForegroundDraftEvidence(
+                firstLease,
+                visible,
+                evidence));
+
+        var secondLease = firstLease with
+        {
+            OperationId =
+                CodexModelToggleService.ForegroundDraftOperationPrefix +
+                "00000000000000000000000000000002",
+            RendererDraftGeneration = 5,
+            RendererDraftObservedAt = now,
+        };
+        var secondObservedAt = now + TimeSpan.FromSeconds(10);
+        Assert.True(CodexModelToggleService
+            .TryCreateRenewedForegroundDraftEvidence(
+                secondLease,
+                visible,
+                evidence,
+                renewedGeneration: 6,
+                observedAt: secondObservedAt,
+                out var secondRenewal));
+        evidence["renderer-a"] = secondRenewal;
+
+        var thirdLease = secondLease with
+        {
+            OperationId =
+                CodexModelToggleService.ForegroundDraftOperationPrefix +
+                "00000000000000000000000000000003",
+            RendererDraftGeneration = 6,
+            RendererDraftObservedAt = secondObservedAt,
+        };
+
+        Assert.True(
+            CodexModelToggleService.HasForegroundDraftOperationBudget(
+                secondLease,
+                now + TimeSpan.FromSeconds(5)));
+        Assert.True(
+            CodexModelToggleService.HasForegroundDraftOperationBudget(
+                thirdLease,
+                now + TimeSpan.FromSeconds(15)));
+    }
+
     [Fact]
     public async Task IpcFrameUsesUInt32LittleEndianUtf8Json()
     {

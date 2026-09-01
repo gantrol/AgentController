@@ -46,6 +46,29 @@ public sealed class WindowDesignTests
     }
 
     [Fact]
+    public void EmptyNewTaskKeepsItsVisibleIdentityForTheFirstToggle()
+    {
+        const string draftThreadId =
+            "client-new-thread:00000000-0000-0000-0000-000000000001";
+        var newTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(
+            state: null,
+            visibleThreadId: draftThreadId);
+
+        Assert.Equal(draftThreadId, newTask.ThreadId);
+        Assert.Equal(CodexQuickModel.Unknown, newTask.Model);
+
+        var stalePreviousTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(
+            new CodexThreadModelState(
+                "thread-old",
+                "gpt-5.6-luna",
+                "max"),
+            draftThreadId);
+
+        Assert.Equal(draftThreadId, stalePreviousTask.ThreadId);
+        Assert.Equal(CodexQuickModel.Unknown, stalePreviousTask.Model);
+    }
+
+    [Fact]
     public void DelayedOrFailedToggleCannotOverwriteAnotherTaskSnapshot()
     {
         var secondTask = MicroSurfaceWindow.ReduceQuickModelSnapshot(
@@ -90,6 +113,43 @@ public sealed class WindowDesignTests
             unscopedFailureAfterTaskChange));
     }
 
+    [Fact]
+    public void DraftConfigResultRequiresABlankComposerToRemainVisible()
+    {
+        var draftOperationId =
+            CodexModelToggleService.ForegroundDraftOperationPrefix +
+            "00000000000000000000000000000001";
+        var result = new CodexModelToggleResult(
+            Succeeded: true,
+            Previous: CodexQuickModel.Sol,
+            Current: CodexQuickModel.Luna,
+            ThreadId: draftOperationId);
+
+        Assert.True(MicroSurfaceWindow
+            .DraftConfigResultTargetsCurrentDraft(
+                currentVisibleThreadId: null,
+                result));
+        Assert.True(MicroSurfaceWindow
+            .DraftConfigResultTargetsCurrentDraft(
+                "client-new-thread:next",
+                result));
+        Assert.False(MicroSurfaceWindow
+            .DraftConfigResultTargetsCurrentDraft(
+                currentVisibleThreadId: null,
+                result with { Succeeded = false }));
+        Assert.False(MicroSurfaceWindow
+            .DraftConfigResultTargetsCurrentDraft(
+                "01a05840-3173-7e40-a541-5c430833992d",
+                result));
+        Assert.False(MicroSurfaceWindow
+            .DraftConfigResultTargetsCurrentDraft(
+                currentVisibleThreadId: null,
+                result with
+                {
+                    ThreadId = "01a05840-3173-7e40-a541-5c430833992d",
+                }));
+    }
+
     [Theory]
     [InlineData("no-visible-thread", true)]
     [InlineData("multiple-visible-threads", true)]
@@ -98,6 +158,8 @@ public sealed class WindowDesignTests
     [InlineData("ipc-timeout", true)]
     [InlineData("ipc-disconnected", true)]
     [InlineData("visible-thread-changed", true)]
+    [InlineData("draft-composer-unavailable", true)]
+    [InlineData("draft-model-readback", true)]
     [InlineData("cancelled", true)]
     [InlineData("thread-settings-rejected", false)]
     [InlineData("ipc-unavailable", false)]

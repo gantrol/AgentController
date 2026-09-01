@@ -22,6 +22,26 @@ Windows 软件版的正式发行基线选定为：
 
 驱动对“完整 Micro 模式”是必需组件。基础应用仍允许在驱动被企业策略阻止时进入 **Limited mode**，但 Limited mode 不得被宣传为完整控制体验，也不得继续扩建一套平行的 UIA 仿制品。
 
+## App Server 现状核对与边界决策（2026-08-31）
+
+[Codex App Server 官方协议](https://developers.openai.com/codex/app-server)能够承载 Thread 生命周期、Turn start/steer/interrupt、审批请求、历史读取和流式事件。但当前仓库的实际接入只有：
+
+| 范围 | 当前状态 |
+| --- | --- |
+| initialize / initialized | 已用于两个短生命周期 stdio 只读探针 |
+| thread/list | 已用于 recent roster；最多取前六项映射 Agent 槽位 |
+| account/rateLimits/read | 已用于额度只读显示 |
+| Thread start/resume/read/fork | 尚未接入 App Server |
+| Turn start/steer/interrupt、Queue、审批和事件流 | 尚未接入 App Server |
+| 模型/effort | 通过 codex-ipc 桌面内部协议间接更新，不是 App Server stdio 直连 |
+
+据此作出以下约束：
+
+1. App Server 是语义平面的目标权威源；完成垂直切片后，Thread、Turn、Steer、Interrupt、审批和权威状态 readback 应迁移到这里。
+2. 真实 Micro 已表达的 Agent/Command key、Dial、Analog、PTT、灯光和设备状态继续走 HID；不得用 App Server 替代设备身份或双向设备协议。
+3. 在 App Server 语义 adapter 完成前，UIA、快捷键和现有命令适配器只能作为明确标记的 Limited/fallback 路径；transport Accepted 不得升级为业务成功。
+4. App Server-only 只能构成无驱动 Limited mode；Windows Full Micro mode 仍硬依赖匹配的 HID 驱动和 Broker。
+
 ## 为什么现在必须改方向
 
 [OpenAI 官方 Codex Micro 文档](https://learn.chatgpt.com/docs/features/codex-micro)已经公开确认了设备级能力：六个 Agent Key 及状态灯、可自定义 Command Key、按住和双击锁定的 PTT、四向模拟杆、可遍历 Composer 控件的旋钮、Reasoning-only 模式、灯光和电池状态。这些行为由 Codex 的设备集成持有，不是稳定的 UI 控件树。

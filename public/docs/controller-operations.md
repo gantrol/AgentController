@@ -3,6 +3,28 @@
 > Status: Product interaction contract
 > 这份表描述目标交互，不代表所有路径已经通过当前 Codex build 的真机验收。
 
+## 通道状态对照（2026-08-31）
+
+本节专门区分 App Server 的官方协议能力与当前 simulator 已接通的代码。官方协议能力见 [Codex App Server 官方文档](https://developers.openai.com/codex/app-server)；“已接通”不等于仅在协议上存在。
+
+| 语义操作 | App Server 能力 | 当前 simulator | HID / 当前主路径 |
+| --- | --- | --- | --- |
+| 最近任务列表 | thread/list | ✅ 直接只读；最多读取 18 条，映射前 6 条 | AG00..AG05 只是六个物理槽位，没有任意任务树能力 |
+| 新建任务 | thread/start | ❌ 未接入 | 本地 UI、快捷键或 thread.create 适配器 |
+| 打开/恢复任务 | thread/read、thread/resume | ❌ 未接入 | deeplink、窗口/UI 适配器；Agent 键不携带 thread ID |
+| Fork | thread/fork | ❌ 未接入 | ACT09 原生 Micro 信号；当前缺少 App Server fork readback |
+| 开始 Turn / Submit | turn/start | ❌ 未接入 | ACT12 原生 Submit 信号，由 Codex bridge 解释 |
+| Steer | turn/steer | ❌ 未接入 | Running 上下文的 Composer 命令/适配器，尚未直接传入当前 Turn ID |
+| Queue | 项目语义动作 | ❌ 未接入 App Server | Composer Dispatch、ACT12 或语义适配器 |
+| Stop | turn/interrupt | ❌ 未接入 | B 长按目标路径仍是 UI/适配器；没有专用 Stop HID |
+| Approve / Decline | App Server 审批 server request | ❌ 未接入 | ACT07 / ACT08 原生信号；必须验证审批上下文 |
+| Turn/Item 实时状态 | turn/*、item/*、thread/status/changed | ❌ 未建立持续事件流 | thstatus 只反映 Micro 槽位/灯光，不是权威 Turn 状态 |
+| 模型/effort | model/list 与 Turn 设置 | ⚠️ 间接 | codex-ipc 更新桌面当前任务下一轮设置；旋钮导航仍走 ENC |
+| 额度 | account/rateLimits/read | ✅ 直接只读 | HID 无等价能力 |
+| Micro 设备控制 | App Server 无对应能力 | — | AG、ACT、ENC、v.oai.rad、灯光和设备状态全部走 HID |
+
+当前真正直接调用的 App Server 业务方法只有 thread/list 和 account/rateLimits/read；initialize / initialized 只是连接握手。其余操作即使在官方协议中存在，也不能在产品状态或成功判据中标为已实现。
+
 ## 1. 基础层
 
 | 输入 | 操作 | 首选通道 |

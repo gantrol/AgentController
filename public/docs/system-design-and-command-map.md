@@ -270,6 +270,17 @@ sequenceDiagram
 
 在这些差异解决前，本文表格中的“当前”列优先描述代码事实；[手柄操作列表](controller-operations.md)中的“首选通道”描述产品目标。
 
+### 7.2 App Server 当前实现边界（2026-08-31）
+
+本节对第 7 节的“目标执行器”再加一层实现状态约束：
+
+- 当前直接调用 App Server 的业务方法只有 thread/list 和 account/rateLimits/read，分别用于 recent roster 和额度显示。
+- thread/start、thread/resume、thread/read、thread/fork、turn/start、turn/steer、turn/interrupt、审批请求/回应以及 turn/item 事件流，当前均未由 simulator 直接调用。
+- 模型/effort 切换当前使用 codex-ipc 桌面内部协议；它不是 App Server stdio 语义通道。
+- 因此 thread.create、thread.open、thread.fork、composer.submit、turn.stop、turn.steer、turn.queue 和 approval.* 的当前执行结果必须继续按适配器的 readback 规则判定，不能仅因存在 App Server 目标名称就标为已实现。
+
+App Server 语义主链与 Micro HID 设备主链是互补关系：前者负责 Thread/Turn 及权威状态，后者负责 Agent/Command、Dial、Analog、PTT、灯光和设备身份。完整 Micro 模式不能因接入 App Server 而移除 HID 驱动。
+
 ## 8. Micro 指令映射
 
 | 语义 | wire key | `act` / 时序 | 发送前门禁 |

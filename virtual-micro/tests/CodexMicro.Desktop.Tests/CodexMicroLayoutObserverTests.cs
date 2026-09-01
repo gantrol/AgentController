@@ -112,6 +112,21 @@ public sealed class CodexMicroLayoutObserverTests
     }
 
     [Fact]
+    public void NewKeycapResolvesAct06ToTheNativeNewTaskAction()
+    {
+        const string toml = """
+            [desktop.codex-micro-layout.slots.ACT06]
+            keycapId = "NEW"
+            """;
+
+        var result = CodexMicroLayoutObserver.Parse(toml, "test");
+
+        Assert.Equal("newTask", result.GetSlot("ACT06").ResolvedAction);
+        Assert.True(CodexDraftModelToggleService.CanDispatchComposerRebuild(
+            result.GetSlot("ACT06").ResolvedAction));
+    }
+
+    [Fact]
     public void ParseReadsCompactInlineLayout()
     {
         const string toml = """

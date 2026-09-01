@@ -139,6 +139,13 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
   复用其现有 App Server，不打开菜单也不抢焦点。长按打开官方 Micro 设置，右键
   直达当前 Agent 的独立设置。
 
+空白的 Codex 新会话草稿尚没有 App Server thread。仅在这种情况下，Codex Micro
+0.3.0 会先确认 IPC 已稳定初始化且没有可见的真实任务，再操作前台官方输入区模型菜单
+中的精确模型与思考强度。操作严格绑定同一 Codex 窗口、编辑器、模型按钮及几何关联的
+弹出菜单。第一轮创建真实任务后租约立即失效，后续切换全部恢复为当前任务的语义设置
+通道。Codex 官方空白草稿模型菜单可能同时更新以后新建任务的默认模型；真实任务内的
+切换仍不会修改全局默认值。
+
 ## 虚拟 HID
 
 `CodexMicroVhfUm.dll` 是基于微软 Virtual HID Framework 的 UMDF2 source driver。
@@ -159,34 +166,37 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 不明的证书。构建、签名和安装细节见
 [`UNSIGNED-DRIVER.zh-CN.md`](./UNSIGNED-DRIVER.zh-CN.md)。
 
+0.3.0 只更新 Monitor 应用，不替换也不捆绑虚拟 HID 驱动。已有驱动安装结果为
+`Ready` 时无需重装；尚未安装或未达到 `Ready` 时，仍需按上面的指南单独安装。
+
 ## 构建与封包
 
 准备 Windows 10/11 x64 和 .NET SDK 10。在仓库根目录运行：
 
 ```powershell
 dotnet build .\virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj -c Release
-.\scripts\package-micro.ps1 -Version 0.2.9
+.\scripts\package-micro.ps1 -Version 0.3.0
 # 准备不含 DeepSeek Bridge 的通用 Codex Micro Monitor 包
-.\scripts\package-micro.ps1 -Version 0.2.9 -Preset monitor
+.\scripts\package-micro.ps1 -Version 0.3.0 -Preset monitor
 # 准备带桥接插件和在线自动配置入口的 DeepSeek 特调包
-.\scripts\package-micro.ps1 -Version 0.2.9 -Preset deepseek
+.\scripts\package-micro.ps1 -Version 0.3.0 -Preset deepseek
 ```
 
 面向用户的两个产品各发布一个包：
 
-- `dist/Codex-Micro-Monitor-v0.2.9-win-x64.zip`，不含 DeepSeek Bridge 或托管
+- `dist/Codex-Micro-Monitor-v0.3.0-win-x64.zip`，不含 DeepSeek Bridge 或托管
   WSL 安装流程的通用 Codex 包；
 
-- `dist/Deepseek-Harness-Keypad-v0.2.9-win-x64.zip`，包含 Bridge 与自动配置入口；
+- `dist/Deepseek-Harness-Keypad-v0.3.0-win-x64.zip`，包含 Bridge 与自动配置入口；
   首次配置时在线安装固定的 DSH，不内置完整 WSL 根文件系统。
 
 以下是维护者构建与诊断产物，不作为普通用户的下载选项：
 
-- 单文件可执行程序：`.artifacts/micro-release/0.2.9/publish/CodexMicro.exe`；
-- 独立压缩包：`dist/CodexMicro-Keypad-0.2.9-win-x64.zip`；
+- 单文件可执行程序：`.artifacts/micro-release/0.3.0/publish/CodexMicro.exe`；
+- 独立压缩包：`dist/CodexMicro-Keypad-0.3.0-win-x64.zip`；
 - SHA-256：同名 `.sha256` 文件。
 - 可单独安装到已有 DSH 的 Bridge：
-  `dist/Deepseek-Harness-Keypad-Bridge-v0.2.9.zip`（也带独立 SHA-256）。
+  `dist/Deepseek-Harness-Keypad-Bridge-v0.3.0.zip`（也带独立 SHA-256）。
 
 发行包收录 `CodexMicro.exe`、README、许可证和小键盘端 `voice` 启动适配器。
 Monitor 包不包含 DeepSeek Bridge 或托管 WSL 安装流程。两个包均不复制模型、Python

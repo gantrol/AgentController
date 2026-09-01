@@ -129,6 +129,12 @@ internal static class Program
 
     private static void PrepareSurface(MicroSurfaceWindow window)
     {
+        // The live window uses a 29%-opacity exterior shadow so it separates
+        // from desktop content. Exported assets need a strictly transparent
+        // exterior, so keep the transparent stage and omit that window-only
+        // shadow before rendering.
+        window.DesignSurface.Background = Brushes.Transparent;
+        window.DeviceFrame.Effect = null;
         window.DesignSurface.Measure(new Size(SurfaceWidth, SurfaceHeight));
         window.DesignSurface.Arrange(
             new Rect(0, 0, SurfaceWidth, SurfaceHeight));

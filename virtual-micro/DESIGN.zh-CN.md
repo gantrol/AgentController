@@ -153,13 +153,17 @@ vendor child 由 Codex 的 `codex-micro-service` 消费；遗留键盘 child 仅
 `Layout + Options` 信息结构：上方直接镜像当前 Micro 本体（与灯光、额度和按键
 状态实时同步）；悬停并点击真实键位进入“编辑键帽”子页，可搜索全部官方键帽并
 分配官方命令或已安装 Skill。Options 支持 Agent 键来源、旋钮模式、麦克风模式、
-双麦克风键和单击聚焦；Extensions 支持快捷模型 A / B 与 Codex 键的 Harness 目标。
+双麦克风键和单击聚焦；Extensions 支持快捷模型 A / B、各自的目标推理强度与
+Codex 键的 Harness 目标。
 模型槽位只能保存两个不同的已知模型；选择另一槽位当前值时自动交换，避免重复。
-扩展默认值为 Sol / Luna，写入 `%LOCALAPPDATA%\CodexMicro\micro-profile.json`。
+扩展默认模型为 Sol / Luna，强度默认记忆当前任务中该模型的上次值；用户可为两个
+槽位分别指定固定强度。模型与强度写入
+`%LOCALAPPDATA%\CodexMicro\micro-profile.json`，交换模型槽位时强度随模型交换。
 快捷切换通过 Codex 的版本化跨窗口管道找到唯一当前任务，再由其 owner 复用同一
 App Server 的 `thread/settings/update`；不打开模型菜单、不抢焦点，也不使用 UIA。
-推理强度按 `threadId + modelId` 独立记忆到
-`%LOCALAPPDATA%\CodexMicro\thread-model-efforts.json`，且只在语义确认后提交。
+未指定固定强度时，推理强度按 `threadId + modelId` 独立记忆到
+`%LOCALAPPDATA%\CodexMicro\thread-model-efforts.json`，且只在语义确认后提交；
+显式槽位强度优先于该任务记忆值。
 
 目标切到外部 Harness 后，Codex 专属布局、麦克风和快捷模型字段会停用；同一页面
 显示通用 Harness 适配器卡，可配置管道或 WSL 回环控制地址、启动程序、参数、工作目录、离线自动启动

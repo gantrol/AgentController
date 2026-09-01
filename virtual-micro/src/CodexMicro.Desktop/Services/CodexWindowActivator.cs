@@ -29,18 +29,33 @@ internal static class CodexWindowActivator
     }
 
     internal static bool IsForeground(string? packageRoot = null)
+        => CaptureForegroundWindow(packageRoot) != IntPtr.Zero;
+
+    internal static IntPtr CaptureForegroundWindow(
+        string? packageRoot = null)
     {
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero ||
             !IsWindowVisible(foreground) ||
-            IsIconic(foreground))
+            IsIconic(foreground) ||
+            GetWindow(foreground, GwOwner) != IntPtr.Zero ||
+            (GetWindowLongPtr(foreground, GwlExStyle).ToInt64() &
+                WsExToolWindow) != 0)
         {
-            return false;
+            return IntPtr.Zero;
         }
 
         _ = GetWindowThreadProcessId(foreground, out var processId);
-        return processId != 0 && IsCodexProcess(processId, packageRoot);
+        return processId != 0 && IsCodexProcess(processId, packageRoot)
+            ? foreground
+            : IntPtr.Zero;
     }
+
+    internal static bool IsForegroundWindow(
+        IntPtr expectedWindow,
+        string? packageRoot = null) =>
+        expectedWindow != IntPtr.Zero &&
+        CaptureForegroundWindow(packageRoot) == expectedWindow;
 
     public static bool TryActivate(string? packageRoot)
     {

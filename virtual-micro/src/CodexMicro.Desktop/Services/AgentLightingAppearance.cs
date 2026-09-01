@@ -20,6 +20,10 @@ internal readonly record struct AgentLightingAppearance(
     private static readonly Color InactiveColor =
         Color.FromRgb(0x8D, 0xB5, 0xFF);
 
+    internal static AgentLightingAppearance ManualUnread(bool isCurrentSession) =>
+        FromHarnessSession(MicroHarnessSessionStatus.Completed, isCurrentSession)
+            with { StatusName = "未读" };
+
     internal static AgentLightingAppearance From(
         SlotLighting? lighting,
         bool isCurrentSession = false)

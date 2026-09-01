@@ -2,8 +2,9 @@
 
 This tool renders the real WPF `MicroSurfaceWindow` XAML off-screen. The
 result keeps the transparent window margin, WPF gradients, key templates,
-lighting, blur, and drop shadows instead of approximating them in a second
-drawing format.
+lighting, and internal key effects instead of approximating them in a second
+drawing format. The live window's 29%-opacity exterior drop shadow is omitted
+so every pixel outside the keypad silhouette has zero alpha.
 
 From the repository root:
 

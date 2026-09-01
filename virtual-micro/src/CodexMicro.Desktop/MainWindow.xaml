@@ -359,7 +359,7 @@
                                 </Grid>
                             </Border>
 
-                            <Button x:Name="AgentKey0" Grid.Row="0" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG00" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 1 · AG00" />
+                            <Button x:Name="AgentKey0" Grid.Row="0" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG00" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" PreviewMouseRightButtonDown="AgentKey_PreviewMouseRightButtonDown" ToolTip="Agent slot 1 · AG00" />
                             <Grid x:Name="AgentBackGlyph"
                                   Grid.Row="0"
                                   Grid.Column="1"
@@ -393,7 +393,7 @@
                                       StrokeLineJoin="Round"
                                       Stretch="Uniform" />
                             </Grid>
-                            <Button x:Name="AgentKey1" Grid.Row="0" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG01" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 2 · AG01" />
+                            <Button x:Name="AgentKey1" Grid.Row="0" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG01" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" PreviewMouseRightButtonDown="AgentKey_PreviewMouseRightButtonDown" ToolTip="Agent slot 2 · AG01" />
 
                             <Grid x:Name="JoystickSurface"
                                   Grid.Row="0"
@@ -515,10 +515,10 @@
                                 </Button>
                             </Grid>
 
-                            <Button x:Name="AgentKey2" Grid.Row="1" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="AG02" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 3 · AG02" />
-                            <Button x:Name="AgentKey3" Grid.Row="1" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG03" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 4 · AG03" />
-                            <Button x:Name="AgentKey4" Grid.Row="1" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG04" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 5 · AG04" />
-                            <Button x:Name="AgentKey5" Grid.Row="1" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="AG05" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" ToolTip="Agent slot 6 · AG05" />
+                            <Button x:Name="AgentKey2" Grid.Row="1" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="AG02" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" PreviewMouseRightButtonDown="AgentKey_PreviewMouseRightButtonDown" ToolTip="Agent slot 3 · AG02" />
+                            <Button x:Name="AgentKey3" Grid.Row="1" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="AG03" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" PreviewMouseRightButtonDown="AgentKey_PreviewMouseRightButtonDown" ToolTip="Agent slot 4 · AG03" />
+                            <Button x:Name="AgentKey4" Grid.Row="1" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="AG04" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" PreviewMouseRightButtonDown="AgentKey_PreviewMouseRightButtonDown" ToolTip="Agent slot 5 · AG04" />
+                            <Button x:Name="AgentKey5" Grid.Row="1" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="AG05" Style="{StaticResource AgentKey}" BorderBrush="#008DB5FF" Click="Key_Click" PreviewMouseRightButtonDown="AgentKey_PreviewMouseRightButtonDown" ToolTip="Agent slot 6 · AG05" />
 
                             <Button x:Name="ActionKey06" Grid.Row="2" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="ACT06" Style="{StaticResource CommandKey}" Click="Key_Click" ToolTip="Fast · ACT06">
                                 <controls:KeycapIcon x:Name="ActionIcon06" Width="28" Height="28" KeycapId="FAST" IconBrush="#171717" />

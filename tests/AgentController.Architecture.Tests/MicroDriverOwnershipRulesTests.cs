@@ -202,6 +202,9 @@ public sealed class MicroDriverOwnershipRulesTests
         var modelBridge = File.ReadAllText(Resolve(
             "virtual-micro/src/CodexMicro.Desktop/Services/" +
             "CodexModelToggleService.cs"));
+        var draftModelBridge = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/Services/" +
+            "CodexDraftModelToggleService.cs"));
 
         Assert.Contains(
             "_broker.StepEncoderAsync(reportedClockwise)",
@@ -235,6 +238,159 @@ public sealed class MicroDriverOwnershipRulesTests
         Assert.DoesNotContain(
             "System.Windows.Automation",
             modelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "System.Windows.Automation",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CodexDraftModelToggleService",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CodexWindowActivator.IsForeground()",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Func<bool> isDraftOperationCurrent",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Func<bool> isFreshDraftCurrent",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Func<CancellationToken, Task> invalidateRendererConfig",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Func<CancellationToken, Task<ComposerRebuildDispatch>>",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        var finalDraftConfig = draftModelBridge.IndexOf(
+            "draft-final-config-confirmed-before-rebuild",
+            StringComparison.Ordinal);
+        var composerRebuild = draftModelBridge.IndexOf(
+            "await rebuildComposer(cancellationToken)",
+            StringComparison.Ordinal);
+        var draftCompleted = draftModelBridge.IndexOf(
+            "completed = true;",
+            composerRebuild,
+            StringComparison.Ordinal);
+        Assert.True(
+            finalDraftConfig >= 0 &&
+            composerRebuild > finalDraftConfig &&
+            draftCompleted > composerRebuild,
+            "The blank composer must be rebuilt only after the final model " +
+            "config has been confirmed and before the transaction completes.");
+        Assert.Contains(
+            "Func<bool, CancellationToken, Task<bool>> stepEncoder",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CaptureForegroundDraftLeaseAsync",
+            mainWindow,
+            StringComparison.Ordinal);
+        var currentViewCheck = mainWindow.IndexOf(
+            "if (!resultTargetsCurrentView)",
+            StringComparison.Ordinal);
+        var renewDraftEvidence = mainWindow.IndexOf(
+            "TryRenewForegroundDraftEvidenceAfterGuardedRebuild",
+            currentViewCheck,
+            StringComparison.Ordinal);
+        var applyDraftPresentation = mainWindow.IndexOf(
+            "ApplyQuickModelPresentationState(new(",
+            renewDraftEvidence,
+            StringComparison.Ordinal);
+        Assert.True(
+            currentViewCheck >= 0 &&
+            renewDraftEvidence > currentViewCheck &&
+            applyDraftPresentation > renewDraftEvidence,
+            "Draft evidence must renew only after the old lease still owns " +
+            "the current view and before success is presented.");
+        Assert.Contains(
+            "app-server",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "config/read",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "model/list",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "config/batchWrite",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "reloadUserConfig = true",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "InvalidateUserSavedConfigAsync",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "DispatchDraftReasoningCommandAsync",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "MIND-",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "draft-target-probe-confirmed",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "rendererMutationConfirmed = true",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "draft-renderer-mutation-outcome-unknown",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "configRequirements/read",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "getAuthStatus",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "WriteDraftConfigAndEncoderModeAsync",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "WriteEncoderModeAsync",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "draft-ultra-confirmation",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "thread/start",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "codex://threads/",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AutomationElement.RootElement.FindAll",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Process.GetProcessesByName",
+            draftModelBridge,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DraftConfigResultTargetsCurrentDraft",
+            mainWindow,
             StringComparison.Ordinal);
     }
 

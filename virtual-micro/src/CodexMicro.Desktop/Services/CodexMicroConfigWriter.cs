@@ -41,26 +41,35 @@ internal sealed class CodexMicroConfigWriter
         string slotId,
         string keycapId,
         CodexMicroActionBinding? action)
+        => SetSlotBinding(
+            slotId,
+            new CodexMicroSlotBinding(keycapId, null, action));
+
+    internal bool SetSlotBinding(
+        string slotId,
+        CodexMicroSlotBinding binding)
     {
         if (!SlotIds.Contains(slotId))
         {
             throw new ArgumentOutOfRangeException(nameof(slotId));
         }
 
-        if (!CodexKeycapCatalog.IsKnown(keycapId))
+        ArgumentNullException.ThrowIfNull(binding);
+        if (!CodexKeycapCatalog.IsKnown(binding.KeycapId))
         {
-            throw new ArgumentOutOfRangeException(nameof(keycapId));
+            throw new ArgumentOutOfRangeException(nameof(binding));
         }
 
-        var actionValue = action switch
+        var actionValue = binding.Action switch
         {
             null => null,
-            { Type: "command" } =>
-                $"{{ type = \"command\", commandId = {TomlString(action.Id)} }}",
-            { Type: "skill", SkillPath: { Length: > 0 } path } =>
-                $"{{ type = \"skill\", skillName = {TomlString(action.Id)}, " +
+            { Type: "command" } commandAction =>
+                $"{{ type = \"command\", commandId = {TomlString(commandAction.Id)} }}",
+            { Type: "skill", SkillPath: { Length: > 0 } path }
+                skillAction =>
+                $"{{ type = \"skill\", skillName = {TomlString(skillAction.Id)}, " +
                 $"skillPath = {TomlString(path)} }}",
-            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+            _ => throw new ArgumentOutOfRangeException(nameof(binding)),
         };
 
         return Update(text => UpsertTable(
@@ -68,8 +77,10 @@ internal sealed class CodexMicroConfigWriter
             $"{LayoutTable}.slots.{slotId}",
             new Dictionary<string, string?>(StringComparer.Ordinal)
             {
-                ["keycapId"] = TomlString(keycapId),
-                ["commandId"] = null,
+                ["keycapId"] = TomlString(binding.KeycapId),
+                ["commandId"] = string.IsNullOrWhiteSpace(binding.CommandId)
+                    ? null
+                    : TomlString(binding.CommandId),
                 ["action"] = actionValue,
             }));
     }

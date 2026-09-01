@@ -8,6 +8,17 @@ namespace CodexMicro.Desktop.Tests;
 public sealed class AgentLightingAppearanceTests
 {
     [Fact]
+    public void ManualUnreadUsesCompletedGreenWithoutPretendingThereIsASignal()
+    {
+        var appearance = AgentLightingAppearance.ManualUnread(false);
+
+        Assert.True(appearance.IsActive);
+        Assert.False(appearance.IsCurrentSession);
+        Assert.Equal("未读", appearance.StatusName);
+        Assert.Equal(Color.FromRgb(0x00, 0xFF, 0x4C), appearance.Color);
+    }
+
+    [Fact]
     public void SolidLightingPreservesProtocolColorAndBrightness()
     {
         var appearance = AgentLightingAppearance.From(new SlotLighting(

@@ -48,5 +48,27 @@ internal static class CodexModelToggleDiagnostics
             // Diagnostics must never turn a successful toggle into a failure.
         }
     }
+
+    internal static void RecordStage(string stage, object? detail = null)
+    {
+        try
+        {
+            var entry = JsonSerializer.Serialize(new
+            {
+                timestampUtc = DateTimeOffset.UtcNow,
+                stage,
+                detail,
+            });
+            lock (Sync)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                File.AppendAllText(LogPath, entry + Environment.NewLine);
+            }
+        }
+        catch
+        {
+            // Diagnostics must never affect the model-toggle operation.
+        }
+    }
 }
 #endif

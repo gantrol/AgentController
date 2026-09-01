@@ -439,6 +439,19 @@ internal sealed class CodexThreadModelStateAccumulator
 /// </summary>
 internal sealed class CodexModelToggleService : IAsyncDisposable
 {
+    internal readonly record struct VisibleThreadSelection(
+        string? VisibleThreadId,
+        string? SemanticThreadId);
+
+    internal readonly record struct ForegroundDraftLease(
+        string ClientId,
+        long VisibilityGeneration,
+        string OperationId,
+        string? RendererClientId = null,
+        long RendererDraftGeneration = 0,
+        IntPtr ForegroundWindow = default,
+        DateTimeOffset RendererDraftObservedAt = default);
+
     internal enum FollowerSignalIntent
     {
         TrackedTrue,
@@ -477,9 +490,31 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         internal CodexThreadModelStateAccumulator Accumulator { get; }
     }
 
+    private sealed class VisibilityRefreshState
+    {
+        internal VisibilityRefreshState(IEnumerable<string> requestedThreadIds)
+        {
+            RequestedThreadIds = new(
+                requestedThreadIds,
+                StringComparer.Ordinal);
+        }
+
+        internal HashSet<string> RequestedThreadIds { get; }
+
+        internal Dictionary<string, string> ReportedThreadByClient { get; } =
+            new(StringComparer.Ordinal);
+    }
+
+    internal readonly record struct RendererDraftEvidence(
+        long Generation,
+        DateTimeOffset ObservedAt,
+        IntPtr ForegroundWindow);
+
     private const string PipeName = "codex-ipc";
     private const string LocalHostId = "local";
     private const string InitialClientId = "initializing-client";
+    internal const string ForegroundDraftOperationPrefix =
+        "foreground-new-task:";
     private const int MaximumFrameBytes = 256 * 1024 * 1024;
     private static readonly TimeSpan ConnectTimeout =
         TimeSpan.FromMilliseconds(900);
@@ -489,6 +524,18 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan VisibleThreadStabilityWindow =
         TimeSpan.FromMilliseconds(140);
+    private static readonly TimeSpan VisibilityRefreshCollectionWindow =
+        TimeSpan.FromMilliseconds(240);
+    private static readonly TimeSpan ForegroundDraftStabilityWindow =
+        TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan RendererDraftEvidenceLifetime =
+        TimeSpan.FromSeconds(30);
+    // Leave enough time for the slow blank-composer path to finish before the
+    // causal following=false evidence itself becomes stale. A lease admitted
+    // near the 30-second cleanup boundary can otherwise outlive the route it
+    // proved while App Server startup and renderer refreshes are still running.
+    internal static readonly TimeSpan ForegroundDraftLeaseAdmissionLifetime =
+        TimeSpan.FromSeconds(20);
     private static readonly TimeSpan SnapshotTimeout =
         TimeSpan.FromSeconds(4);
     private static readonly TimeSpan MaximumTrackingRetryDelay =
@@ -498,11 +545,14 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _toggleGate = new(1, 1);
+    private readonly SemaphoreSlim _visibilityRefreshGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>>
         _pendingRequests = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _visibleThreadByClient =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RendererDraftEvidence>
+        _rendererDraftEvidenceByClient = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SnapshotWaiter>
         _snapshotWaiters = new(StringComparer.Ordinal);
     private readonly CodexThreadModelEffortStore _effortStore;
@@ -510,11 +560,15 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private NamedPipeClientStream? _pipe;
     private Task? _readerTask;
     private string? _clientId;
+    private string? _selectedVisibleThreadId;
     private string? _trackedThreadId;
     private string? _trackedOwnerClientId;
     private CodexThreadModelStateAccumulator? _trackedStateAccumulator;
     private CodexThreadModelState? _currentThreadState;
+    private VisibilityRefreshState? _visibilityRefresh;
     private int _trackingGeneration;
+    private long _visibilityGeneration;
+    private long _rendererDraftEvidenceGeneration;
     private int _disposed;
 
     internal CodexModelToggleService(
@@ -539,18 +593,180 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The exact renderer-visible identity when it is unique. Unlike
+    /// <see cref="CurrentThreadState"/>, this includes new-task draft IDs;
+    /// <see langword="null"/> means visibility is absent or ambiguous.
+    /// </summary>
     internal string? CurrentVisibleThreadId
     {
         get
         {
             lock (_stateSync)
             {
-                var threadIds = _visibleThreadByClient.Values
+                return ResolveVisibleThreadSelection(
+                    _visibleThreadByClient.Values).VisibleThreadId;
+            }
+        }
+    }
+
+#if DEBUG
+    internal object CaptureVisibilityDiagnostics()
+    {
+        lock (_stateSync)
+        {
+            return new
+            {
+                connected = _pipe is { IsConnected: true },
+                clientId = _clientId,
+                following = _visibleThreadByClient
+                    .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                    .Select(pair => new
+                    {
+                        sourceClientId = pair.Key,
+                        conversationId = pair.Value,
+                    })
+                    .ToArray(),
+                draftEvidence = _rendererDraftEvidenceByClient
+                    .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                    .Select(pair => new
+                    {
+                        sourceClientId = pair.Key,
+                        pair.Value.Generation,
+                        foregroundWindow =
+                            pair.Value.ForegroundWindow.ToInt64(),
+                        ageMilliseconds = Math.Max(
+                            0,
+                            (DateTimeOffset.UtcNow - pair.Value.ObservedAt)
+                                .TotalMilliseconds),
+                    })
+                    .ToArray(),
+                refreshingVisibility = _visibilityRefresh is not null,
+            };
+        }
+    }
+#endif
+
+    /// <summary>
+    /// Re-samples the renderer visibility map before choosing the real-thread
+    /// or blank-draft path. Codex only replays <c>following=true</c> when a
+    /// renderer still follows the requested conversation, so replacing the
+    /// accumulated map with those directed replies removes stale clients
+    /// without guessing which of multiple live renderers is foreground.
+    /// </summary>
+    internal async Task<VisibleThreadSelection>
+        RefreshVisibleThreadSelectionAsync(
+            CancellationToken cancellationToken = default)
+    {
+        var gateEntered = false;
+        try
+        {
+            await EnsureConnectedAsync(cancellationToken);
+            await _visibilityRefreshGate.WaitAsync(cancellationToken);
+            gateEntered = true;
+
+            VisibilityRefreshState refresh;
+            lock (_stateSync)
+            {
+                var requestedThreadIds = _visibleThreadByClient.Values
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Distinct(StringComparer.Ordinal)
                     .ToArray();
-                return threadIds.Length == 1
-                    ? threadIds[0]
-                    : null;
+                if (requestedThreadIds.Length == 0)
+                {
+                    return ResolveVisibleThreadSelection(
+                        _visibleThreadByClient.Values);
+                }
+
+                refresh = new(requestedThreadIds);
+                _visibilityRefresh = refresh;
+                // A refresh started after a draft lease was captured, so that
+                // lease can no longer prove a stable renderer snapshot.
+                InvalidateForegroundDraftLeasesLocked();
+            }
+
+            try
+            {
+                foreach (var threadId in refresh.RequestedThreadIds)
+                {
+                    await SendBroadcastAsync(
+                        "thread-stream-following-status-requested",
+                        version: 1,
+                        new
+                        {
+                            conversationId = threadId,
+                            hostId = LocalHostId,
+                        },
+                        targetClientIds: null,
+                        cancellationToken);
+                }
+
+                await Task.Delay(
+                    VisibilityRefreshCollectionWindow,
+                    cancellationToken);
+            }
+            catch
+            {
+                lock (_stateSync)
+                {
+                    if (ReferenceEquals(_visibilityRefresh, refresh))
+                    {
+                        _visibilityRefresh = null;
+                    }
+                }
+
+                throw;
+            }
+
+            var changed = false;
+            VisibleThreadSelection selection;
+            lock (_stateSync)
+            {
+                if (!ReferenceEquals(_visibilityRefresh, refresh))
+                {
+                    return ResolveVisibleThreadSelection(
+                        _visibleThreadByClient.Values);
+                }
+
+                changed = ReplaceVisibleThreadMap(
+                    _visibleThreadByClient,
+                    refresh.ReportedThreadByClient);
+                _visibilityRefresh = null;
+                if (changed)
+                {
+                    InvalidateForegroundDraftLeasesLocked();
+                    PulseVisibleThreadChangedLocked();
+                }
+
+                selection = ResolveVisibleThreadSelection(
+                    _visibleThreadByClient.Values);
+            }
+
+            if (changed)
+            {
+                RefreshCurrentThreadTracking();
+            }
+
+            return selection;
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested)
+        {
+            return CaptureVisibleThreadSelection();
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                TimeoutException or
+                InvalidDataException or
+                ObjectDisposedException)
+        {
+            return CaptureVisibleThreadSelection();
+        }
+        finally
+        {
+            if (gateEntered)
+            {
+                _visibilityRefreshGate.Release();
             }
         }
     }
@@ -577,6 +793,253 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Invalidates the renderer's cached user config after an official
+    /// config/batchWrite performed by the blank-draft path. The broadcast is
+    /// the same IPC notification used by Codex itself; it does
+    /// not synthesize keyboard or UI-automation input.
+    /// </summary>
+    internal async Task InvalidateUserSavedConfigAsync(
+        string rendererClientId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rendererClientId);
+        await EnsureConnectedAsync(cancellationToken);
+        await SendBroadcastAsync(
+            "query-cache-invalidate",
+            version: 0,
+            new
+            {
+                queryKey = new object[] { "user-saved-config" },
+            },
+            targetClientIds: [rendererClientId],
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Captures a short-lived proof for a foreground blank draft. The strongest
+    /// proof is a renderer that explicitly stopped following a real task and
+    /// did not start following another one; this remains valid even while a
+    /// background renderer follows an older task. An empty visibility map by
+    /// itself is deliberately insufficient because it also occurs during IPC
+    /// reconnects before real-task state is replayed.
+    /// </summary>
+    internal async Task<ForegroundDraftLease?>
+        CaptureForegroundDraftLeaseAsync(
+            CancellationToken cancellationToken = default,
+            IntPtr foregroundWindow = default)
+    {
+        try
+        {
+            await EnsureConnectedAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                TimeoutException or
+                InvalidDataException or
+                ObjectDisposedException)
+        {
+            return null;
+        }
+
+        ForegroundDraftLease? candidate;
+        lock (_stateSync)
+        {
+            candidate = _visibilityRefresh is null
+                ? TryCreateForegroundDraftLeaseLocked(foregroundWindow)
+                : null;
+        }
+
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        await Task.Delay(ForegroundDraftStabilityWindow, cancellationToken);
+        return IsForegroundDraftLeaseCurrent(candidate.Value)
+            ? candidate
+            : null;
+    }
+
+    /// <summary>
+    /// Revalidates a captured foreground-draft lease against the live IPC
+    /// connection and the same renderer-owned draft evidence. Visibility in
+    /// unrelated background renderers cannot invalidate a renderer-bound lease.
+    /// </summary>
+    internal bool IsForegroundDraftLeaseCurrent(ForegroundDraftLease lease)
+    {
+        lock (_stateSync)
+        {
+            if (_visibilityRefresh is not null ||
+                _pipe is not { IsConnected: true } ||
+                !IsInitializedClientId(_clientId) ||
+                !string.Equals(
+                    lease.ClientId,
+                    _clientId,
+                    StringComparison.Ordinal) ||
+                !IsForegroundDraftOperationId(lease.OperationId))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(lease.RendererClientId))
+            {
+                var rendererStillHasDraftContext =
+                    !_visibleThreadByClient.TryGetValue(
+                        lease.RendererClientId,
+                        out var rendererThreadId) ||
+                    CodexDraftModelToggleService.IsDraftThreadId(
+                        rendererThreadId);
+                return rendererStillHasDraftContext &&
+                    _rendererDraftEvidenceByClient.TryGetValue(
+                        lease.RendererClientId,
+                        out var evidence) &&
+                    evidence.Generation == lease.RendererDraftGeneration &&
+                    evidence.ForegroundWindow == lease.ForegroundWindow;
+            }
+
+            return false;
+        }
+    }
+
+    internal static bool HasForegroundDraftOperationBudget(
+        ForegroundDraftLease lease,
+        DateTimeOffset now)
+    {
+        var age = now - lease.RendererDraftObservedAt;
+        return lease.RendererDraftObservedAt != default &&
+            age >= TimeSpan.Zero &&
+            age <= ForegroundDraftLeaseAdmissionLifetime;
+    }
+
+    /// <summary>
+    /// Renews renderer-owned blank-draft evidence only after the complete
+    /// guarded draft transaction has confirmed its final config and dispatched
+    /// a composer rebuild. Updating the renderer evidence generation revokes
+    /// every lease captured before that rebuild while allowing the next dial
+    /// action to capture a fresh operation token and admission timestamp.
+    /// </summary>
+    internal bool TryRenewForegroundDraftEvidenceAfterGuardedRebuild(
+        ForegroundDraftLease lease,
+        CodexModelToggleResult result)
+    {
+        if (!CodexWindowActivator.IsForegroundWindow(
+                lease.ForegroundWindow) ||
+            !CanRenewForegroundDraftEvidenceAfterGuardedRebuild(
+                lease,
+                result))
+        {
+            return false;
+        }
+
+        lock (_stateSync)
+        {
+            if (_visibilityRefresh is not null ||
+                _pipe is not { IsConnected: true } ||
+                !IsInitializedClientId(_clientId) ||
+                !string.Equals(
+                    lease.ClientId,
+                    _clientId,
+                    StringComparison.Ordinal) ||
+                !CodexWindowActivator.IsForegroundWindow(
+                    lease.ForegroundWindow) ||
+                !TryCreateRenewedForegroundDraftEvidence(
+                    lease,
+                    _visibleThreadByClient,
+                    _rendererDraftEvidenceByClient,
+                    NextRendererDraftEvidenceGenerationLocked(),
+                    DateTimeOffset.UtcNow,
+                    out var renewedEvidence))
+            {
+                return false;
+            }
+
+            _rendererDraftEvidenceByClient[lease.RendererClientId!] =
+                renewedEvidence;
+            return true;
+        }
+    }
+
+    internal static bool CanRenewForegroundDraftEvidenceAfterGuardedRebuild(
+        ForegroundDraftLease lease,
+        CodexModelToggleResult result) =>
+        result.Succeeded &&
+        string.Equals(
+            result.ThreadId,
+            lease.OperationId,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            result.Detail,
+            CodexDraftModelToggleService
+                .ComposerRebuildDispatchReceipt,
+            StringComparison.Ordinal);
+
+    internal static bool TryCreateRenewedForegroundDraftEvidence(
+        ForegroundDraftLease lease,
+        IReadOnlyDictionary<string, string> visibleThreadByClient,
+        IReadOnlyDictionary<string, RendererDraftEvidence>
+            rendererDraftEvidenceByClient,
+        long renewedGeneration,
+        DateTimeOffset observedAt,
+        out RendererDraftEvidence renewedEvidence)
+    {
+        renewedEvidence = default;
+        if (!HasRenewableForegroundDraftEvidence(
+                lease,
+                visibleThreadByClient,
+                rendererDraftEvidenceByClient) ||
+            renewedGeneration == lease.RendererDraftGeneration ||
+            observedAt == default ||
+            !rendererDraftEvidenceByClient.TryGetValue(
+                lease.RendererClientId!,
+                out var currentEvidence) ||
+            observedAt < currentEvidence.ObservedAt ||
+            observedAt - currentEvidence.ObservedAt >
+                RendererDraftEvidenceLifetime)
+        {
+            return false;
+        }
+
+        renewedEvidence = new(
+            renewedGeneration,
+            observedAt,
+            lease.ForegroundWindow);
+        return true;
+    }
+
+    internal static bool HasRenewableForegroundDraftEvidence(
+        ForegroundDraftLease lease,
+        IReadOnlyDictionary<string, string> visibleThreadByClient,
+        IReadOnlyDictionary<string, RendererDraftEvidence>
+            rendererDraftEvidenceByClient)
+    {
+        ArgumentNullException.ThrowIfNull(visibleThreadByClient);
+        ArgumentNullException.ThrowIfNull(rendererDraftEvidenceByClient);
+        if (!IsForegroundDraftOperationId(lease.OperationId) ||
+            string.IsNullOrWhiteSpace(lease.RendererClientId) ||
+            lease.ForegroundWindow == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var rendererStillHasDraftContext =
+            !visibleThreadByClient.TryGetValue(
+                lease.RendererClientId,
+                out var rendererThreadId) ||
+            CodexDraftModelToggleService.IsDraftThreadId(rendererThreadId);
+        return rendererStillHasDraftContext &&
+            rendererDraftEvidenceByClient.TryGetValue(
+                lease.RendererClientId,
+                out var evidence) &&
+            evidence.Generation == lease.RendererDraftGeneration &&
+            evidence.ForegroundWindow == lease.ForegroundWindow;
     }
 
     internal async Task<CodexModelToggleResult> ToggleAsync(
@@ -670,6 +1133,13 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 return Complete(Failure(
                     "visible-thread-changed",
                     expectedThreadId));
+            }
+
+            if (!CanTrackSemanticThread(threadId))
+            {
+                return Complete(Failure(
+                    "draft-thread-requires-picker",
+                    threadId));
             }
 
             attemptedThreadId = threadId;
@@ -1422,6 +1892,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 _pipe = pipe;
                 _clientId = null;
                 _visibleThreadByClient.Clear();
+                _rendererDraftEvidenceByClient.Clear();
+                _visibilityRefresh = null;
+                InvalidateForegroundDraftLeasesLocked();
+                _selectedVisibleThreadId = null;
                 _trackingGeneration++;
                 _trackedThreadId = null;
                 _trackedOwnerClientId = null;
@@ -1461,6 +1935,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 if (ReferenceEquals(_pipe, pipe))
                 {
                     _clientId = clientId;
+                    InvalidateForegroundDraftLeasesLocked();
                     _trackingGeneration++;
                     _trackedThreadId = null;
                     _trackedOwnerClientId = null;
@@ -1608,6 +2083,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         }
 
         var following = followingValue.GetBoolean();
+        var observedForegroundWindow =
+            CodexWindowActivator.CaptureForegroundWindow();
         var changed = false;
         lock (_stateSync)
         {
@@ -1616,28 +2093,63 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 return;
             }
 
-            if (following)
+            _visibleThreadByClient.TryGetValue(
+                sourceClientId,
+                out var previouslyVisibleThreadId);
+            var rendererDraftThread =
+                CodexDraftModelToggleService.IsDraftThreadId(threadId);
+            if (following && !rendererDraftThread)
             {
-                if (!_visibleThreadByClient.TryGetValue(
-                        sourceClientId,
-                        out var currentFollowedThread) ||
-                    currentFollowedThread != threadId)
-                {
-                    _visibleThreadByClient[sourceClientId] = threadId;
-                    changed = true;
-                }
+                _rendererDraftEvidenceByClient.Remove(sourceClientId);
             }
-            else if (_visibleThreadByClient.TryGetValue(
-                         sourceClientId,
-                         out var previouslyFollowedThread) &&
-                     previouslyFollowedThread == threadId)
+
+            if (_visibilityRefresh is { } refresh)
             {
-                _visibleThreadByClient.Remove(sourceClientId);
-                changed = true;
+                ApplyVisibleThreadFollowingChange(
+                    refresh.ReportedThreadByClient,
+                    sourceClientId,
+                    threadId,
+                    following);
+            }
+
+            // Keep renderer-owned draft IDs in the visibility map. They are
+            // exact UI identities even though they have no App Server owner;
+            // RefreshCurrentThreadTracking excludes them from semantic work.
+            changed = ApplyVisibleThreadFollowingChange(
+                _visibleThreadByClient,
+                sourceClientId,
+                threadId,
+                following);
+
+            if (changed &&
+                ((!following) || rendererDraftThread))
+            {
+                var hasExistingEvidence =
+                    _rendererDraftEvidenceByClient.TryGetValue(
+                        sourceClientId,
+                        out var existingEvidence);
+                var keepsExistingGeneration = hasExistingEvidence &&
+                    (CodexDraftModelToggleService.IsDraftThreadId(
+                        previouslyVisibleThreadId) ||
+                     rendererDraftThread);
+                var generation = keepsExistingGeneration
+                    ? existingEvidence.Generation
+                    : NextRendererDraftEvidenceGenerationLocked();
+                var evidenceWindow = keepsExistingGeneration
+                    ? existingEvidence.ForegroundWindow
+                    : observedForegroundWindow;
+                if (evidenceWindow != IntPtr.Zero)
+                {
+                    _rendererDraftEvidenceByClient[sourceClientId] = new(
+                        generation,
+                        DateTimeOffset.UtcNow,
+                        evidenceWindow);
+                }
             }
 
             if (changed)
             {
+                InvalidateForegroundDraftLeasesLocked();
                 PulseVisibleThreadChangedLocked();
             }
         }
@@ -1747,11 +2259,22 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         SnapshotWaiter[] disconnectedWaiters;
         lock (_stateSync)
         {
-            if (_visibleThreadByClient.Remove(clientId))
+            var evidenceRemoved =
+                _rendererDraftEvidenceByClient.Remove(clientId);
+            var visibilityRemoved =
+                _visibleThreadByClient.Remove(clientId);
+            if (evidenceRemoved || visibilityRemoved)
+            {
+                InvalidateForegroundDraftLeasesLocked();
+            }
+
+            if (visibilityRemoved)
             {
                 PulseVisibleThreadChangedLocked();
                 changed = true;
             }
+
+            _visibilityRefresh?.ReportedThreadByClient.Remove(clientId);
 
             if (_trackedOwnerClientId == clientId)
             {
@@ -1796,6 +2319,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         lock (_stateSync)
         {
             _visibleThreadByClient.Clear();
+            _rendererDraftEvidenceByClient.Clear();
+            _visibilityRefresh = null;
+            InvalidateForegroundDraftLeasesLocked();
+            _selectedVisibleThreadId = null;
             _trackingGeneration++;
             _trackedThreadId = null;
             _trackedOwnerClientId = null;
@@ -1816,17 +2343,19 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
 
     private void RefreshCurrentThreadTracking()
     {
+        string? nextVisibleThreadId;
         string? nextThreadId;
         string? previousThreadId;
         string? previousOwnerClientId;
         int generation;
         lock (_stateSync)
         {
-            var threadIds = _visibleThreadByClient.Values
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-            nextThreadId = threadIds.Length == 1 ? threadIds[0] : null;
-            if (nextThreadId == _trackedThreadId)
+            var selection = ResolveVisibleThreadSelection(
+                _visibleThreadByClient.Values);
+            nextVisibleThreadId = selection.VisibleThreadId;
+            nextThreadId = selection.SemanticThreadId;
+            if (nextVisibleThreadId == _selectedVisibleThreadId &&
+                nextThreadId == _trackedThreadId)
             {
                 return;
             }
@@ -1834,6 +2363,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             previousThreadId = _trackedThreadId;
             previousOwnerClientId = _trackedOwnerClientId;
             generation = ++_trackingGeneration;
+            _selectedVisibleThreadId = nextVisibleThreadId;
             _trackedThreadId = nextThreadId;
             _trackedOwnerClientId = null;
             _trackedStateAccumulator = null;
@@ -1859,6 +2389,11 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         string threadId,
         int generation)
     {
+        if (!CanTrackSemanticThread(threadId))
+        {
+            return;
+        }
+
         var lifetimeToken = _lifetime.Token;
         var retryDelay = TimeSpan.Zero;
         while (!lifetimeToken.IsCancellationRequested)
@@ -2181,6 +2716,15 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         return ValidateVisibleThreadSelection(visibleThreadIds, threadId);
     }
 
+    private VisibleThreadSelection CaptureVisibleThreadSelection()
+    {
+        lock (_stateSync)
+        {
+            return ResolveVisibleThreadSelection(
+                _visibleThreadByClient.Values);
+        }
+    }
+
     internal static string? ValidateVisibleThreadSelection(
         IEnumerable<string> visibleThreadIds,
         string selectedThreadId)
@@ -2204,6 +2748,178 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         return distinct[0].Equals(selectedThreadId, StringComparison.Ordinal)
             ? null
             : "visible-thread-changed";
+    }
+
+    internal static bool CanTrackSemanticThread(string threadId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        return !CodexDraftModelToggleService.IsDraftThreadId(threadId);
+    }
+
+    internal static bool IsForegroundDraftOperationId(string? operationId)
+    {
+        if (string.IsNullOrWhiteSpace(operationId) ||
+            !operationId.StartsWith(
+                ForegroundDraftOperationPrefix,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var token = operationId[ForegroundDraftOperationPrefix.Length..];
+        return token.Length == 32 &&
+            Guid.TryParseExact(token, "N", out _);
+    }
+
+    private ForegroundDraftLease? TryCreateForegroundDraftLeaseLocked(
+        IntPtr foregroundWindow)
+    {
+        if (_pipe is not { IsConnected: true } ||
+            !IsInitializedClientId(_clientId))
+        {
+            return null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var expiredClientIds = _rendererDraftEvidenceByClient
+            .Where(pair =>
+                now - pair.Value.ObservedAt > RendererDraftEvidenceLifetime)
+            .Select(pair => pair.Key)
+            .ToArray();
+        foreach (var clientId in expiredClientIds)
+        {
+            _rendererDraftEvidenceByClient.Remove(clientId);
+        }
+
+        var rendererClientId = SelectRendererDraftEvidenceClient(
+            _visibleThreadByClient,
+            _rendererDraftEvidenceByClient,
+            now,
+            RendererDraftEvidenceLifetime,
+            foregroundWindow);
+        if (rendererClientId is not null)
+        {
+            var rendererEvidence =
+                _rendererDraftEvidenceByClient[rendererClientId];
+            return new ForegroundDraftLease(
+                _clientId!,
+                _visibilityGeneration,
+                ForegroundDraftOperationPrefix +
+                    Guid.NewGuid().ToString("N"),
+                rendererClientId,
+                rendererEvidence.Generation,
+                foregroundWindow,
+                rendererEvidence.ObservedAt);
+        }
+
+        return null;
+    }
+
+    internal static string? SelectRendererDraftEvidenceClient(
+        IReadOnlyDictionary<string, string> visibleThreadByClient,
+        IReadOnlyDictionary<string, RendererDraftEvidence>
+            rendererDraftEvidenceByClient,
+        DateTimeOffset now,
+        TimeSpan evidenceLifetime,
+        IntPtr foregroundWindow)
+    {
+        ArgumentNullException.ThrowIfNull(visibleThreadByClient);
+        ArgumentNullException.ThrowIfNull(rendererDraftEvidenceByClient);
+        if (foregroundWindow == IntPtr.Zero ||
+            evidenceLifetime <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        return rendererDraftEvidenceByClient
+            .Where(pair =>
+                now >= pair.Value.ObservedAt &&
+                now - pair.Value.ObservedAt <= evidenceLifetime &&
+                pair.Value.ForegroundWindow == foregroundWindow &&
+                (!visibleThreadByClient.TryGetValue(
+                     pair.Key,
+                     out var rendererThreadId) ||
+                 CodexDraftModelToggleService.IsDraftThreadId(
+                     rendererThreadId)))
+            .OrderByDescending(pair => pair.Value.Generation)
+            .Select(pair => pair.Key)
+            .FirstOrDefault();
+    }
+
+    private static bool IsInitializedClientId(string? clientId) =>
+        !string.IsNullOrWhiteSpace(clientId) &&
+        !clientId.Equals(InitialClientId, StringComparison.Ordinal);
+
+    internal static VisibleThreadSelection ResolveVisibleThreadSelection(
+        IEnumerable<string> visibleThreadIds)
+    {
+        ArgumentNullException.ThrowIfNull(visibleThreadIds);
+        var distinct = visibleThreadIds
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var visibleThreadId = distinct.Length == 1
+            ? distinct[0]
+            : null;
+        var semanticThreadId = visibleThreadId is not null &&
+            CanTrackSemanticThread(visibleThreadId)
+                ? visibleThreadId
+                : null;
+        return new(visibleThreadId, semanticThreadId);
+    }
+
+    internal static bool ApplyVisibleThreadFollowingChange(
+        IDictionary<string, string> visibleThreadByClient,
+        string sourceClientId,
+        string threadId,
+        bool following)
+    {
+        ArgumentNullException.ThrowIfNull(visibleThreadByClient);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceClientId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+
+        if (following)
+        {
+            if (visibleThreadByClient.TryGetValue(
+                    sourceClientId,
+                    out var currentThreadId) &&
+                currentThreadId == threadId)
+            {
+                return false;
+            }
+
+            visibleThreadByClient[sourceClientId] = threadId;
+            return true;
+        }
+
+        return visibleThreadByClient.TryGetValue(
+                   sourceClientId,
+                   out var previouslyFollowedThread) &&
+               previouslyFollowedThread == threadId &&
+               visibleThreadByClient.Remove(sourceClientId);
+    }
+
+    private static bool ReplaceVisibleThreadMap(
+        IDictionary<string, string> current,
+        IReadOnlyDictionary<string, string> replacement)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(replacement);
+        if (current.Count == replacement.Count &&
+            current.All(pair =>
+                replacement.TryGetValue(pair.Key, out var threadId) &&
+                threadId.Equals(pair.Value, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        current.Clear();
+        foreach (var pair in replacement)
+        {
+            current[pair.Key] = pair.Value;
+        }
+
+        return true;
     }
 
     private async Task<CodexThreadModelState?> ReadThreadStateAsync(
@@ -2483,6 +3199,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _pipe = null;
             _clientId = null;
             _visibleThreadByClient.Clear();
+            _rendererDraftEvidenceByClient.Clear();
+            _visibilityRefresh = null;
+            InvalidateForegroundDraftLeasesLocked();
+            _selectedVisibleThreadId = null;
             _trackingGeneration++;
             _trackedThreadId = null;
             _trackedOwnerClientId = null;
@@ -2670,6 +3390,24 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         previous.TrySetResult(true);
     }
 
+    private void InvalidateForegroundDraftLeasesLocked()
+    {
+        unchecked
+        {
+            _visibilityGeneration++;
+        }
+    }
+
+    private long NextRendererDraftEvidenceGenerationLocked()
+    {
+        unchecked
+        {
+            _rendererDraftEvidenceGeneration++;
+        }
+
+        return _rendererDraftEvidenceGeneration;
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(
@@ -2696,6 +3434,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _readerTask = null;
             _clientId = null;
             _visibleThreadByClient.Clear();
+            _rendererDraftEvidenceByClient.Clear();
+            _visibilityRefresh = null;
+            InvalidateForegroundDraftLeasesLocked();
+            _selectedVisibleThreadId = null;
             _trackingGeneration++;
             _trackedThreadId = null;
             _trackedOwnerClientId = null;
