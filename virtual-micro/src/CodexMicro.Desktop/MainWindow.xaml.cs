@@ -42,6 +42,10 @@ public partial class MicroSurfaceWindow : Window
         TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan AgentDoubleTapThreshold =
         TimeSpan.FromMilliseconds(520);
+    private static readonly TimeSpan NewTaskDraftLeaseWait =
+        TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan NewTaskNavigationEpochLifetime =
+        TimeSpan.FromSeconds(5);
     private const double StatusLedGlowBlurRadius = 8;
     private const double StatusLedGlowOpacity = 0.78;
 
@@ -85,6 +89,10 @@ public partial class MicroSurfaceWindow : Window
     private readonly record struct StatusLedAppearance(
         Color Color,
         bool Glow);
+
+    private readonly record struct NewTaskNavigationEpoch(
+        IntPtr ForegroundWindow,
+        DateTimeOffset DispatchedAt);
 
     private enum KeypadVoiceServiceState
     {
@@ -169,7 +177,7 @@ public partial class MicroSurfaceWindow : Window
     private Button[] _agentKeys = [];
     private Border[] _agentWideGlows = [];
     private Border[] _agentNearGlows = [];
-    private readonly HashSet<int> _manualUnreadAgentSlots = [];
+    private readonly ManualUnreadThreadTracker _manualUnreadThreads = new();
     private InactiveDialInputRouter? _inactiveDialInputRouter;
     private MicroSettingsWindow? _settingsWindow;
     private HwndSource? _windowSource;
@@ -212,6 +220,7 @@ public partial class MicroSurfaceWindow : Window
     private string? _dialSelectionText;
     private CancellationTokenSource? _quotaRefreshCancellation;
     private CancellationTokenSource? _modelActionCancellation;
+    private NewTaskNavigationEpoch? _pendingNewTaskNavigation;
     private CancellationTokenSource? _harnessStateCancellation;
     private CodexQuotaSnapshot? _quotaSnapshot;
     private MicroHarnessStateSnapshot? _harnessStateSnapshot;
@@ -990,12 +999,14 @@ public partial class MicroSurfaceWindow : Window
         if (sender is Button { Tag: string key })
         {
             var isAgentKey = TryParseAgentSlot(key, out var selectedSlot);
-            if (isAgentKey && _manualUnreadAgentSlots.Remove(selectedSlot))
-            {
-                RefreshAgentSlotPresentation();
-            }
+            var selectedAgentThreadId = isAgentKey
+                ? _latestAgentRoster?.GetSlot(selectedSlot)?.ThreadId
+                : null;
             var harness = ActiveHarness();
             var externalHarness = harness.Id != "codex";
+            var isComposerTextKey = IsCodexComposerTextKey(
+                key,
+                _layoutObserver.Current);
             var focusAgentAfterTap = isAgentKey && ShouldFocusAgentAfterTap(key);
             var agentFocusResolvedBeforeTap = false;
             try
@@ -1050,7 +1061,8 @@ public partial class MicroSurfaceWindow : Window
                     return;
                 }
 
-                var codexIsForeground = ShouldActivateCodexForKey(key) &&
+                var codexIsForeground =
+                    (ShouldActivateCodexForKey(key) || isComposerTextKey) &&
                     IsHarnessForeground(harness);
                 if (isAgentKey && focusAgentAfterTap)
                 {
@@ -1085,6 +1097,31 @@ public partial class MicroSurfaceWindow : Window
 
                         codexIsForeground = true;
                     }
+                }
+
+                if (isComposerTextKey && !codexIsForeground)
+                {
+                    ShowHarnessActionStatus(
+                        _localization.IsEnglish ? "OPENING CODEX" : "正在打开 Codex",
+                        MicroHarnessDispatchStage.Opening,
+                        autoHide: false);
+                    var activated = await ActivateCodexAsync(
+                        initialDelayMilliseconds: 0,
+                        launchIfMissing: true);
+                    ShowHarnessActionStatus(
+                        activated
+                            ? _localization.IsEnglish ? "IN FRONT" : "已置前"
+                            : _localization.IsEnglish ? "NOT FOUND" : "未找到窗口",
+                        activated
+                            ? MicroHarnessDispatchStage.Foreground
+                            : MicroHarnessDispatchStage.Failed,
+                        autoHide: true);
+                    if (!activated)
+                    {
+                        return;
+                    }
+
+                    codexIsForeground = true;
                 }
 
                 if (key == "AG00")
@@ -1140,13 +1177,52 @@ public partial class MicroSurfaceWindow : Window
                     return;
                 }
 
+                var resolvedAction = _layoutObserver.Current
+                    .GetSlot(key)
+                    .ResolvedAction;
+                var newTaskWindow = IntPtr.Zero;
+                var newTaskDispatchedAt = DateTimeOffset.MinValue;
+                var requirePostNavigationDraftEvidence = false;
+                if (string.Equals(
+                        resolvedAction,
+                        "newTask",
+                        StringComparison.Ordinal))
+                {
+                    newTaskWindow =
+                        CodexWindowActivator.CaptureForegroundWindow();
+                    if (newTaskWindow != IntPtr.Zero)
+                    {
+                        requirePostNavigationDraftEvidence =
+                            _modelToggleService
+                                .TryCaptureForegroundDraftLeaseForReasoningStep(
+                                    newTaskWindow) is null;
+                        newTaskDispatchedAt = DateTimeOffset.UtcNow;
+                    }
+                }
+
                 var result = await RunActionAsync(
                     () => _broker.TapKeyAsync(key),
                     key);
+                if (string.Equals(
+                        resolvedAction,
+                        "newTask",
+                        StringComparison.Ordinal) &&
+                    result is { WasPossiblySent: true })
+                {
+                    _pendingNewTaskNavigation =
+                        requirePostNavigationDraftEvidence &&
+                        newTaskWindow != IntPtr.Zero
+                            ? new(
+                                newTaskWindow,
+                                newTaskDispatchedAt)
+                            : null;
+                }
+
                 if (
                     result is { WasPossiblySent: true } &&
                     isAgentKey)
                 {
+                    _manualUnreadThreads.Clear(selectedAgentThreadId);
                     _currentAgentSlotId = selectedSlot;
                     RefreshAgentSlotPresentation();
                 }
@@ -3357,6 +3433,22 @@ public partial class MicroSurfaceWindow : Window
     internal static bool ShouldActivateCodexForKey(string key) =>
         key == "ACT12" || TryParseAgentSlot(key, out _);
 
+    internal static bool IsCodexComposerTextKey(
+        string key,
+        CodexMicroLayoutSnapshot layout)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        if (!key.StartsWith("ACT", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var binding = layout.GetSlot(key);
+        return binding.Action is null &&
+            string.IsNullOrWhiteSpace(binding.CommandId) &&
+            binding.KeycapId is "YOLO" or "YEET";
+    }
+
     internal static bool ShouldActivateCodexBeforeHid(
         string key,
         bool codexIsForeground,
@@ -4159,7 +4251,7 @@ public partial class MicroSurfaceWindow : Window
         }
     }
 
-    private void AgentKey_PreviewMouseRightButtonDown(
+    private async void AgentKey_PreviewMouseRightButtonDown(
         object sender,
         MouseButtonEventArgs e)
     {
@@ -4170,17 +4262,71 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
+        // Right-click belongs to the Agent key even when the requested state
+        // change is ineligible. Do not let it open the device-frame menu.
+        e.Handled = true;
+        var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
+        if (rosterEntry is null)
+        {
+            SetStatus(_localization.IsEnglish
+                ? $"Agent {slotId + 1} is not mapped to a Codex chat yet."
+                : $"Agent {slotId + 1} 尚未映射到 Codex 对话，无法标记未读。");
+            return;
+        }
+
         var lighting = _latestSlotLighting?.Slots.FirstOrDefault(
             slot => slot.SlotId == slotId);
-        if (AgentLightingAppearance.From(lighting).IsActive)
+        var protocolAppearance = AgentLightingAppearance.From(lighting);
+        var hasColoredProtocolSignal = protocolAppearance.IsActive &&
+            lighting?.Color != 0xFFFFFF;
+        if (!_manualUnreadThreads.TryMarkUnread(
+                rosterEntry.ThreadId,
+                hasColoredProtocolSignal))
         {
             return;
         }
 
-        e.Handled = true;
-        _manualUnreadAgentSlots.Add(slotId);
+        var threadId = rosterEntry.ThreadId;
+        var displayTitle = rosterEntry.DisplayTitle;
         RefreshAgentSlotPresentation();
-        SetStatus($"Agent 槽位 {slotId + 1} 已标记为未读；左击该键后清除。");
+        SetStatus(_localization.IsEnglish
+            ? $"Marking “{displayTitle}” unread in Codex…"
+            : $"正在 Codex 中将“{displayTitle}”标记为未读…");
+
+        var result = await _modelToggleService.MarkThreadUnreadAsync(threadId);
+        if (_windowClosed)
+        {
+            return;
+        }
+
+        // A successful left-click can open the chat while the persistence
+        // confirmation is still in flight. Do not overwrite that newer UI
+        // outcome with the older right-click operation's status.
+        if (!_manualUnreadThreads.IsUnread(threadId))
+        {
+            return;
+        }
+
+        if (!result.Confirmed)
+        {
+            _manualUnreadThreads.Clear(threadId);
+            RefreshAgentSlotPresentation();
+            SetStatus(_localization.IsEnglish
+                ? $"Codex did not confirm “{displayTitle}” as unread. " +
+                    "Make sure Codex is running, then try again."
+                : $"Codex 未确认“{displayTitle}”的未读状态。" +
+                    "请确认 Codex 正在运行后重试。");
+            return;
+        }
+
+        _manualUnreadThreads.Confirm(threadId);
+        ReconcileConfirmedUnreadProjectionWithLighting();
+        RefreshAgentSlotPresentation();
+        SetStatus(_localization.IsEnglish
+            ? $"Codex confirmed “{displayTitle}” as unread; the state " +
+                "follows that chat if Agent slots reorder."
+            : $"Codex 已确认“{displayTitle}”为未读；" +
+                "Agent 槽位重排后该状态仍跟随此对话。");
     }
 
     private void ApplyAuthoritativeQuickModelState(
@@ -4681,6 +4827,75 @@ public partial class MicroSurfaceWindow : Window
         CodexDraftModelToggleService.IsDraftThreadId(visibleThreadId);
 #endif
 
+    private bool TryGetActiveNewTaskNavigationEpoch(
+        IntPtr foregroundWindow,
+        out NewTaskNavigationEpoch epoch)
+    {
+        epoch = default;
+        if (_pendingNewTaskNavigation is not { } pending)
+        {
+            return false;
+        }
+
+        var age = DateTimeOffset.UtcNow - pending.DispatchedAt;
+        if (age < TimeSpan.Zero || age > NewTaskNavigationEpochLifetime)
+        {
+            _pendingNewTaskNavigation = null;
+            return false;
+        }
+
+        if (foregroundWindow == IntPtr.Zero ||
+            pending.ForegroundWindow != foregroundWindow)
+        {
+            return false;
+        }
+
+        epoch = pending;
+        return true;
+    }
+
+    private async Task<CodexModelToggleService.ForegroundDraftLease?>
+        WaitForPostNavigationDraftLeaseAsync(
+            NewTaskNavigationEpoch epoch,
+            CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + NewTaskDraftLeaseWait;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!CodexWindowActivator.IsForegroundWindow(
+                    epoch.ForegroundWindow))
+            {
+                return null;
+            }
+
+            var lease = await _modelToggleService
+                .CaptureForegroundDraftLeaseAsync(
+                    cancellationToken,
+                    epoch.ForegroundWindow);
+            if (lease is { } candidate &&
+                candidate.RendererDraftObservedAt >= epoch.DispatchedAt)
+            {
+                _pendingNewTaskNavigation = null;
+                return candidate;
+            }
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            await Task.Delay(
+                remaining < TimeSpan.FromMilliseconds(75)
+                    ? remaining
+                    : TimeSpan.FromMilliseconds(75),
+                cancellationToken);
+        }
+
+        return null;
+    }
+
     private async Task ToggleQuickModelAsync()
     {
         if (_quickModelSwitching ||
@@ -4705,12 +4920,20 @@ public partial class MicroSurfaceWindow : Window
             _modelActionCancellation = action;
             foregroundCodexWindow =
                 CodexWindowActivator.CaptureForegroundWindow();
+            var requiresPostNavigationDraftLease =
+                TryGetActiveNewTaskNavigationEpoch(
+                    foregroundCodexWindow,
+                    out var navigationEpoch);
             if (foregroundCodexWindow != IntPtr.Zero)
             {
-                var draftCandidate = await _modelToggleService
-                    .CaptureForegroundDraftLeaseAsync(
-                        action.Token,
-                        foregroundCodexWindow);
+                var draftCandidate = requiresPostNavigationDraftLease
+                    ? await WaitForPostNavigationDraftLeaseAsync(
+                        navigationEpoch,
+                        action.Token)
+                    : await _modelToggleService
+                        .CaptureForegroundDraftLeaseAsync(
+                            action.Token,
+                            foregroundCodexWindow);
                 if (draftCandidate is { } candidate &&
                     CodexWindowActivator.IsForegroundWindow(
                         foregroundCodexWindow))
@@ -4725,6 +4948,11 @@ public partial class MicroSurfaceWindow : Window
             if (foregroundDraftLease is { } capturedDraftLease)
             {
                 operationThreadId = capturedDraftLease.OperationId;
+                usesDraftFallback = true;
+            }
+            else if (requiresPostNavigationDraftLease)
+            {
+                operationThreadId = null;
                 usesDraftFallback = true;
             }
             else
@@ -5054,10 +5282,8 @@ public partial class MicroSurfaceWindow : Window
             if (!resultCanDescribeCurrentView &&
                 draftMutationOutcomeUnknown)
             {
-                // NEW may already have rebuilt the composer and invalidated
-                // the old lease. Do not attach the result to the replacement
-                // view, but always report that the committed target config was
-                // retained and the renderer outcome is unknown.
+                // Do not attach an uncertain renderer mutation to a replacement
+                // view.
                 SetLed(
                     ActivityLed,
                     "#FFD66E",
@@ -5102,10 +5328,10 @@ public partial class MicroSurfaceWindow : Window
                         "#FFD66E",
                         "新会话凭据未续签");
                     SetStatus(_localization.IsEnglish
-                        ? "The target config was written, but the rebuilt " +
-                            "new-task proof could not be renewed. Open a " +
-                            "blank new task before switching again."
-                        : "目标配置已写入，但重建后的新会话凭据未能续签；" +
+                        ? "The target was confirmed, but the foreground " +
+                            "draft lease could not be renewed. Open a blank " +
+                            "new task before switching again."
+                        : "目标已确认，但前台新会话凭据未能续签；" +
                             "为避免下次命中后台任务，请重新打开空白新会话后再切换。");
                     return;
                 }
@@ -5119,16 +5345,11 @@ public partial class MicroSurfaceWindow : Window
                 SetLed(
                     ActivityLed,
                     "#9EBDFF",
-                    usesDraftFallback
-                        ? $"已请求切换到 {name}"
-                        : $"已切换到 {name}");
+                    $"已切换到 {name}");
                 SetStatus(usesDraftFallback
                     ? _localization.IsEnglish
-                        ? $"Requested a rebuilt new task with {name} · " +
-                            $"{effort}; the exact config was confirmed and " +
-                            "Full access was unchanged."
-                        : $"已请求按 {name} · {effort} 重建新会话；" +
-                            "目标配置已确认，Full access 未更改。"
+                        ? $"New task: {name} · {effort}; renderer confirmed."
+                        : $"新会话：{name} · {effort}；renderer 已确认。"
                     : _localization.IsEnglish
                         ? $"This task's next turn now uses {name} · {effort}; " +
                             "the global default was not changed."
@@ -6254,7 +6475,9 @@ public partial class MicroSurfaceWindow : Window
             _voiceInput,
             () => OpenCodexMicroSettingsAsync("打开 Codex Micro 设置"),
             ReconnectAsync,
-            () => _broker.IsReady)
+            () => _broker.IsReady,
+            () => _modelToggleService
+                .BroadcastUserSavedConfigInvalidationAsync())
         {
             Owner = this,
             Topmost = Topmost,
@@ -6376,6 +6599,7 @@ public partial class MicroSurfaceWindow : Window
                 return;
             }
 
+            ReconcileConfirmedUnreadProjectionWithLighting();
             ResolveCurrentAgentSlot();
             RefreshAgentSlotPresentation();
 
@@ -6427,6 +6651,47 @@ public partial class MicroSurfaceWindow : Window
             _latestAgentRoster?.Entries.Select(entry => entry.SlotId));
     }
 
+    private AgentLightingAppearance ResolveCodexAgentAppearance(
+        int slotId,
+        SlotLighting? lighting,
+        CodexAgentRosterEntry? rosterEntry)
+    {
+        var protocolAppearance = AgentLightingAppearance.From(lighting);
+        var isCurrentSession = slotId == _currentAgentSlotId;
+        var canShowUnread = !protocolAppearance.IsActive ||
+            lighting?.Color == 0xFFFFFF;
+        if (canShowUnread &&
+            _manualUnreadThreads.IsUnread(rosterEntry?.ThreadId))
+        {
+            return AgentLightingAppearance.ManualUnread(isCurrentSession);
+        }
+
+        // Active work, input-required, errors, and other colored protocol
+        // states take visual priority without erasing the optimistic unread
+        // projection. White idle is lower priority while confirmation waits.
+        return AgentLightingAppearance.From(lighting, isCurrentSession);
+    }
+
+    private void ReconcileConfirmedUnreadProjectionWithLighting()
+    {
+        if (_latestSlotLighting is null || _latestAgentRoster is null)
+        {
+            return;
+        }
+
+        foreach (var lighting in _latestSlotLighting.Slots)
+        {
+            if (lighting.Color != 0x00FF4C ||
+                !AgentLightingAppearance.From(lighting).IsActive)
+            {
+                continue;
+            }
+
+            _manualUnreadThreads.ClearConfirmed(
+                _latestAgentRoster.GetSlot(lighting.SlotId)?.ThreadId);
+        }
+    }
+
     private void RefreshAgentSlotPresentation()
     {
         if (!IsCodexHarnessActive())
@@ -6445,26 +6710,20 @@ public partial class MicroSurfaceWindow : Window
         {
             _agentKeys[slotId].IsEnabled = true;
             lightingBySlot.TryGetValue(slotId, out var lighting);
-            var hasSignal = AgentLightingAppearance.From(lighting).IsActive;
-            if (hasSignal)
-            {
-                _manualUnreadAgentSlots.Remove(slotId);
-            }
-
-            var appearance = !hasSignal && _manualUnreadAgentSlots.Contains(slotId)
-                ? AgentLightingAppearance.ManualUnread(
-                    slotId == _currentAgentSlotId)
-                : AgentLightingAppearance.From(
-                    lighting,
-                    slotId == _currentAgentSlotId);
+            var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
+            var appearance = ResolveCodexAgentAppearance(
+                slotId,
+                lighting,
+                rosterEntry);
             ApplyAgentLightingAppearance(slotId, appearance);
 
-            var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
             var title = rosterEntry?.DisplayTitle ?? $"Agent 槽位 {slotId + 1}";
             var state = appearance.UsesWhiteFallback
                 ? $"{appearance.StatusName} · 白光选择提示"
                 : appearance.IsActive
-                ? $"{appearance.StatusName} · #{lighting!.Color:X6} · " +
+                ? $"{appearance.StatusName} · " +
+                    $"#{appearance.Color.R:X2}{appearance.Color.G:X2}" +
+                    $"{appearance.Color.B:X2} · " +
                     $"{appearance.EffectName} · " +
                     $"显示亮度 {appearance.DisplayOpacity:P0}"
                 : appearance.StatusName;
@@ -6480,7 +6739,9 @@ public partial class MicroSurfaceWindow : Window
                 _agentKeys[slotId],
                 title,
                 $"Agent 槽位 {slotId + 1} · AG{slotId:00} · {state} · 单击切换" +
-                (hasSignal ? "。" : "；右击标记为未读。") +
+                (rosterEntry is not null && !appearance.IsActive
+                    ? "；右击标记为未读。"
+                    : "。") +
                 localMatch);
         }
     }
@@ -8273,7 +8534,31 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _broker.StartConnecting();
-        _ = _modelToggleService.StartAsync();
+        _ = StartCodexModelBridgeAsync();
+    }
+
+    private async Task StartCodexModelBridgeAsync()
+    {
+        if (!await _modelToggleService.StartAsync())
+        {
+            return;
+        }
+
+        try
+        {
+            await _modelToggleService
+                .BroadcastUserSavedConfigInvalidationAsync();
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                TimeoutException or
+                InvalidDataException or
+                InvalidOperationException or
+                ObjectDisposedException)
+        {
+            // Config-file watching remains the fallback when the renderer
+            // disconnects between initialization and invalidation.
+        }
     }
 
     internal void CloseForApplicationExit()

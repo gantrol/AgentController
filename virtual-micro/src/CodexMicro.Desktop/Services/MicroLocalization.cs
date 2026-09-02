@@ -123,6 +123,12 @@ internal static class MicroEnglishTranslations
     [
         // Keep complete status sentences ahead of generic fragments such as
         // "运行中" and "已连接" so localization cannot leave mixed text.
+        ("Agent {slotId + 1} 尚未映射到 Codex 对话，无法标记未读。", "Agent {slotId + 1} is not mapped to a Codex chat yet."),
+        ("正在 Codex 中将“{displayTitle}”标记为未读…", "Marking “{displayTitle}” unread in Codex…"),
+        ("Codex 未确认“{displayTitle}”的未读状态。", "Codex did not confirm “{displayTitle}” as unread."),
+        ("请确认 Codex 正在运行后重试。", "Make sure Codex is running, then try again."),
+        ("Codex 已确认“{displayTitle}”为未读；", "Codex confirmed “{displayTitle}” as unread; "),
+        ("Agent 槽位重排后该状态仍跟随此对话。", "The state follows that chat if Agent slots reorder."),
         ("Codex 额度与 Micro 设置", "Codex quota and Micro settings"),
         ("左键：通过原生 Micro 信号打开官方设置。\n右键：直达右下角当前 Agent 的软件设置。", "Left-click: open official settings through the native Micro input path.\nRight-click: open the current lower-right Agent's software settings."),
         ("滚轮/按住左键上下或左右拖动：只调节推理强度。\n短按：打开推理强度滑块或高级选项。", "Wheel or hold the left button and drag vertically or horizontally: adjust reasoning effort only.\nClick: open the reasoning slider or advanced options."),

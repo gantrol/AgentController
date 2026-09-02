@@ -1,6 +1,9 @@
 # This repository intentionally tracks the application, its tests,
 # root project documents, and design specifications.
 /*
+# try AGENTS.md
+!AGENTS.md
+# others files
 !/.gitignore
 !/LICENSE
 !/README.md

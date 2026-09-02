@@ -270,6 +270,9 @@ public sealed class MicroDriverOwnershipRulesTests
         var finalDraftConfig = draftModelBridge.IndexOf(
             "draft-final-config-confirmed-before-rebuild",
             StringComparison.Ordinal);
+        var finalDraftWrite = draftModelBridge.IndexOf(
+            "draft-explicit-final-config-write",
+            StringComparison.Ordinal);
         var composerRebuild = draftModelBridge.IndexOf(
             "await rebuildComposer(cancellationToken)",
             StringComparison.Ordinal);
@@ -283,6 +286,15 @@ public sealed class MicroDriverOwnershipRulesTests
             draftCompleted > composerRebuild,
             "The blank composer must be rebuilt only after the final model " +
             "config has been confirmed and before the transaction completes.");
+        Assert.True(finalDraftWrite >= 0 && composerRebuild > finalDraftWrite);
+        Assert.DoesNotContain(
+            "invalidateRendererConfig",
+            draftModelBridge[finalDraftWrite..composerRebuild],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "invalidateRendererConfig",
+            draftModelBridge[composerRebuild..draftCompleted],
+            StringComparison.Ordinal);
         Assert.Contains(
             "Func<bool, CancellationToken, Task<bool>> stepEncoder",
             draftModelBridge,

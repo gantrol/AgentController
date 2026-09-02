@@ -121,7 +121,10 @@ wsl -d Ubuntu -- bash -lc 'python3.12 -m venv "$HOME/.local/share/codex-micro/qw
 
 ## 控件
 
-- 6 个 Agent 键发送 `AG00`–`AG05`，并显示 Codex 返回的槽位灯光；
+- 6 个 Agent 键发送 `AG00`–`AG05`，并显示 Codex 返回的槽位灯光。对于已绑定
+  对话但当前熄灭的 Codex Agent 键，右击会通过 Codex 带版本的桌面协调通道，
+  把真实对话标记为未读。等待确认时先显示绿色，随后由 Codex 接管真实灯光和持久状态；
+  最近槽位重排时操作会跟随该对话，且小键盘不会直接改写全局状态文件；
 - 4 个命令键发送 `ACT06`–`ACT09`；Codex 模式下，Codex 键会在需要时启动应用，
   或将已有主窗口置前；本次激活不会提交输入框。Codex 已在前台后，再按一次才发送
   `ACT12`；

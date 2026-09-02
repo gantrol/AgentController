@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -33,6 +34,7 @@ public partial class MicroSettingsWindow : Window
     private readonly Func<Task>? _openOfficialSettings;
     private readonly Func<Task>? _reconnect;
     private readonly Func<bool> _isConnected;
+    private readonly Func<Task>? _codexConfigChanged;
     private bool _lastConfigSaveSucceeded = true;
     private bool _syncing;
     private bool _showHarnessAdapterDetail;
@@ -48,7 +50,8 @@ public partial class MicroSettingsWindow : Window
         MicroVoiceInputService? voiceInput = null,
         Func<Task>? openOfficialSettings = null,
         Func<Task>? reconnect = null,
-        Func<bool>? isConnected = null)
+        Func<bool>? isConnected = null,
+        Func<Task>? codexConfigChanged = null)
     {
         _localization = localization ??
             throw new ArgumentNullException(nameof(localization));
@@ -64,6 +67,7 @@ public partial class MicroSettingsWindow : Window
         _openOfficialSettings = openOfficialSettings;
         _reconnect = reconnect;
         _isConnected = isConnected ?? (() => false);
+        _codexConfigChanged = codexConfigChanged;
 
         InitializeComponent();
         LiveMicroPreviewBrush.Visual = previewVisual;
@@ -947,12 +951,13 @@ public partial class MicroSettingsWindow : Window
         if (_lastConfigSaveSucceeded)
         {
             _layoutObserver.ReloadNow();
+            _ = NotifyCodexConfigChangedAsync();
         }
 
         RefreshSaveState();
     }
 
-    private void PreviewSlotButton_Click(object sender, RoutedEventArgs e)
+    private async void PreviewSlotButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string slotId })
         {
@@ -968,21 +973,63 @@ public partial class MicroSettingsWindow : Window
             return;
         }
 
-        var editor = harness.Id == "codex"
-            ? new KeycapEditorWindow(
-                slotId,
-                _layoutObserver.Current.GetSlot(slotId),
-                _localization,
-                _configWriter,
-                _layoutObserver)
-            : new KeycapEditorWindow(
-                slotId,
-                harness.Id,
-                _localization,
-                _harnessRegistry);
-        editor.Owner = this;
-        editor.Topmost = Topmost;
-        _ = editor.ShowDialog();
+        try
+        {
+            var editor = harness.Id == "codex"
+                ? new KeycapEditorWindow(
+                    slotId,
+                    _layoutObserver.Current.GetSlot(slotId),
+                    _localization,
+                    _configWriter,
+                    _layoutObserver)
+                : new KeycapEditorWindow(
+                    slotId,
+                    harness.Id,
+                    _localization,
+                    _harnessRegistry);
+            editor.Owner = this;
+            editor.Topmost = Topmost;
+            if (editor.ShowDialog() == true && harness.Id == "codex")
+            {
+                await NotifyCodexConfigChangedAsync();
+            }
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException)
+        {
+            SaveStatusText.Text = _localization.IsEnglish
+                ? $"Could not open the {slotId} editor: {exception.Message}"
+                : $"无法打开 {slotId} 编辑器：{exception.Message}";
+            SaveStatusText.Foreground = new SolidColorBrush(
+                Color.FromRgb(0xB0, 0x6B, 0x4F));
+        }
+    }
+
+    private async Task NotifyCodexConfigChangedAsync()
+    {
+        if (_codexConfigChanged is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _codexConfigChanged();
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                TimeoutException or
+                InvalidDataException or
+                InvalidOperationException or
+                ObjectDisposedException)
+        {
+            SaveStatusText.Text = _localization.IsEnglish
+                ? "Saved, but Codex has not reloaded the setting yet. " +
+                    "Reconnect or restart Codex."
+                : "设置已保存，但 Codex 尚未重新加载；请重新连接或重启 Codex。";
+            SaveStatusText.Foreground = new SolidColorBrush(
+                Color.FromRgb(0xB0, 0x6B, 0x4F));
+        }
     }
 
     private void ResetButton_Click(object sender, RoutedEventArgs e)

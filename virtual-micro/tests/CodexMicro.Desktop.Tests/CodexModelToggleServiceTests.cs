@@ -64,6 +64,25 @@ public sealed class CodexModelToggleServiceTests
                 "thread-a"));
     }
 
+    [Fact]
+    public void ExplicitSemanticTargetMayCoexistWithBackgroundRenderers()
+    {
+        Assert.Null(CodexModelToggleService
+            .ValidateExpectedVisibleThreadSelection(
+                ["thread-background", "thread-foreground"],
+                "thread-foreground"));
+        Assert.Equal(
+            "visible-thread-changed",
+            CodexModelToggleService.ValidateExpectedVisibleThreadSelection(
+                ["thread-background"],
+                "thread-foreground"));
+        Assert.Equal(
+            "no-visible-thread",
+            CodexModelToggleService.ValidateExpectedVisibleThreadSelection(
+                [],
+                "thread-foreground"));
+    }
+
     [Theory]
     [InlineData("client-new-thread:abc", false)]
     [InlineData("019f-real-thread", true)]

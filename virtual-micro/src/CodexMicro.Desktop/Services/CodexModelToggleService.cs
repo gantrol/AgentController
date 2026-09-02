@@ -24,6 +24,12 @@ internal sealed record CodexThreadModelState(
     string ModelId,
     string? Effort);
 
+internal readonly record struct CodexThreadUnreadResult(
+    string ThreadId,
+    bool WasPossiblySent,
+    bool Confirmed,
+    string? Error = null);
+
 internal readonly record struct CodexThreadStateApplyResult(
     bool Applied,
     bool RequiresSnapshot,
@@ -526,6 +532,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CurrentThreadTimeout =
         TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan UnreadConfirmationTimeout =
+        TimeSpan.FromSeconds(2);
     private static readonly TimeSpan VisibleThreadStabilityWindow =
         TimeSpan.FromMilliseconds(140);
     private static readonly TimeSpan VisibilityRefreshCollectionWindow =
@@ -564,6 +572,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private readonly Dictionary<string, SnapshotWaiter>
         _snapshotWaiters = new(StringComparer.Ordinal);
     private readonly CodexThreadModelEffortStore _effortStore;
+    private readonly CodexUnreadStateReader _unreadStateReader;
     private TaskCompletionSource<bool> _visibleThreadChanged = NewSignal();
     private NamedPipeClientStream? _pipe;
     private Task? _readerTask;
@@ -580,9 +589,11 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private int _disposed;
 
     internal CodexModelToggleService(
-        CodexThreadModelEffortStore? effortStore = null)
+        CodexThreadModelEffortStore? effortStore = null,
+        CodexUnreadStateReader? unreadStateReader = null)
     {
         _effortStore = effortStore ?? new CodexThreadModelEffortStore();
+        _unreadStateReader = unreadStateReader ?? new CodexUnreadStateReader();
     }
 
     /// <summary>
@@ -855,6 +866,80 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Marks one existing local Codex thread unread through the desktop
+    /// renderer's versioned coordination channel. This is the same broadcast
+    /// Codex uses for its own Mark unread action; the keypad never edits the
+    /// persisted global-state file directly.
+    /// </summary>
+    internal async Task<CodexThreadUnreadResult> MarkThreadUnreadAsync(
+        string threadId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        var normalizedThreadId = threadId.Trim();
+        var wasPossiblySent = false;
+        try
+        {
+            await EnsureConnectedAsync(cancellationToken);
+            wasPossiblySent = true;
+            await SendMessageAsync(
+                CreateThreadReadStateBroadcast(
+                    ReadClientId(),
+                    normalizedThreadId,
+                    hasUnreadTurn: true),
+                cancellationToken);
+            var confirmed = await _unreadStateReader.WaitUntilUnreadAsync(
+                normalizedThreadId,
+                UnreadConfirmationTimeout,
+                cancellationToken);
+            return new CodexThreadUnreadResult(
+                normalizedThreadId,
+                WasPossiblySent: true,
+                Confirmed: confirmed,
+                Error: confirmed
+                    ? null
+                    : "Codex did not confirm the unread state.");
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                TimeoutException or
+                OperationCanceledException or
+                InvalidDataException or
+                InvalidOperationException or
+                ObjectDisposedException)
+        {
+            return new CodexThreadUnreadResult(
+                normalizedThreadId,
+                wasPossiblySent,
+                Confirmed: false,
+                Error: exception.Message);
+        }
+    }
+
+    internal static JsonElement CreateThreadReadStateBroadcast(
+        string sourceClientId,
+        string threadId,
+        bool hasUnreadTurn)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceClientId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        return JsonSerializer.SerializeToElement(new
+        {
+            type = "broadcast",
+            method = "thread-read-state-changed",
+            sourceClientId = sourceClientId.Trim(),
+            targetClientIds = (string[]?)null,
+            @params = new
+            {
+                conversationId = threadId.Trim(),
+                hostId = LocalHostId,
+                hasUnreadTurn,
+            },
+            version = 2,
+        });
+    }
+
+    /// <summary>
     /// Invalidates the renderer's cached user config after an official
     /// config/batchWrite performed by the blank-draft path. The broadcast is
     /// the same IPC notification used by Codex itself; it does
@@ -874,6 +959,25 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 queryKey = new object[] { "user-saved-config" },
             },
             targetClientIds: [rendererClientId],
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Notifies every connected Codex renderer after the keypad settings
+    /// surface writes the shared user config directly.
+    /// </summary>
+    internal async Task BroadcastUserSavedConfigInvalidationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureConnectedAsync(cancellationToken);
+        await SendBroadcastAsync(
+            "query-cache-invalidate",
+            version: 0,
+            new
+            {
+                queryKey = new object[] { "user-saved-config" },
+            },
+            targetClientIds: null,
             cancellationToken);
     }
 
@@ -1051,8 +1155,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
 
     /// <summary>
     /// Renews renderer-owned blank-draft evidence only after the complete
-    /// guarded draft transaction has confirmed its final config and dispatched
-    /// a composer rebuild. Updating the renderer evidence generation revokes
+    /// guarded draft transaction has confirmed its final renderer state.
+    /// Updating the renderer evidence generation revokes
     /// every lease captured before that rebuild while allowing the next dial
     /// action to capture a fresh operation token and admission timestamp.
     /// </summary>
@@ -1109,11 +1213,9 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             result.ThreadId,
             lease.OperationId,
             StringComparison.Ordinal) &&
-        string.Equals(
-            result.Detail,
-            CodexDraftModelToggleService
-                .ComposerRebuildDispatchReceipt,
-            StringComparison.Ordinal);
+        result.Detail is
+            CodexDraftModelToggleService.ComposerRebuildDispatchReceipt or
+            CodexDraftModelToggleService.NativeTargetConfirmationReceipt;
 
     internal static bool TryCreateRenewedForegroundDraftEvidence(
         ForegroundDraftLease lease,

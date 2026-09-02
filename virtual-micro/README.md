@@ -149,7 +149,12 @@ service, run this from the extracted package directory:
 ## Controls
 
 - Six Agent keys send `AG00` through `AG05` and render slot lighting returned
-  by Codex.
+  by Codex. Right-click an assigned Codex chat whose key is off to mark the
+  actual chat unread through Codex's versioned desktop coordination channel.
+  A green optimistic indicator appears while confirmation is pending; after
+  that, Codex owns the actual lighting and persisted state. The operation
+  follows the chat if recent slots reorder and never edits the global-state
+  file directly.
 - Four command keys send `ACT06` through `ACT09`. In Codex mode, the Codex
   key starts the app when needed or brings its main window to the foreground;
   that activation press never submits composer text. Once Codex is already in

@@ -10,14 +10,15 @@ namespace CodexMicro.Desktop.Services;
 /// <summary>
 /// Switches Codex's renderer-owned blank composer through the official
 /// App Server config writer and Codex Micro HID bridge. A blank composer has
-/// no App Server thread owner, so thread/update cannot address it. The exact
-/// quick profile is written before the foreground blank composer is rebuilt.
+/// no App Server thread owner, so thread/update cannot address it.
 /// </summary>
 internal sealed class CodexDraftModelToggleService
 {
     internal const string DraftThreadPrefix = "client-new-thread:";
     internal const string ComposerRebuildDispatchReceipt =
         "config-confirmed-rebuild-dispatched";
+    internal const string NativeTargetConfirmationReceipt =
+        "renderer-native-target-confirmed";
 
     private const string AppServerServiceName = "codex_micro_monitor";
     private const string ModelPickerViewKey =
@@ -25,8 +26,10 @@ internal sealed class CodexDraftModelToggleService
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan ProcessExitTimeout =
         TimeSpan.FromMilliseconds(900);
-    private static readonly TimeSpan ComposerRebuildMountDelay =
-        TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan RendererConfigApplyDelay =
+        TimeSpan.FromMilliseconds(2000);
+    private static readonly TimeSpan NativeSetterSettleDelay =
+        TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan ConfigTransitionTimeout =
         TimeSpan.FromSeconds(4);
     private static readonly TimeSpan DraftReplacementGraceTimeout =
@@ -401,7 +404,7 @@ internal sealed class CodexDraftModelToggleService
 
         if (targetIndex > 0)
         {
-            var finalStep = target is "max" or "ultra"
+            var finalStep = target is "ultra"
                 ? (EffortStep?)null
                 : new EffortStep(
                     Clockwise: false,
@@ -487,7 +490,9 @@ internal sealed class CodexDraftModelToggleService
         string? previousEffort = null;
         string? previousEncoderMode = null;
         AppServerSession? session = null;
+        var encoderModeChanged = false;
         var modelConfigChanged = false;
+        var rendererMutationConfirmed = false;
         var composerRebuildDispatched = false;
         var completed = false;
 
@@ -503,12 +508,35 @@ internal sealed class CodexDraftModelToggleService
 
         CodexModelToggleResult Fail(string error, string? detail = null)
         {
+            if (rendererMutationConfirmed &&
+                error is not
+                    "draft-composer-rebuild-outcome-unknown" and not
+                    "draft-renderer-mutation-outcome-unknown")
+            {
+                detail = detail is null
+                    ? error
+                    : $"{error}: {detail}";
+                error = "draft-renderer-mutation-outcome-unknown";
+            }
+
             return Complete(Failure(
                 previous,
                 previousEffort,
                 draftOperationId,
                 error,
                 detail));
+        }
+
+        async Task<bool> SendEncoderStepAsync(
+            bool clockwise,
+            CancellationToken token)
+        {
+            if (!CanContinueFreshDraft(isFreshDraftCurrent))
+            {
+                return false;
+            }
+
+            return await stepEncoder(clockwise, token);
         }
 
         try
@@ -681,30 +709,167 @@ internal sealed class CodexDraftModelToggleService
                 return Fail("draft-target-effort-unavailable");
             }
 
+            TargetEffortProbe targetProbe;
+            try
+            {
+                targetProbe = ResolveTargetEffortProbe(
+                    targetModel.SupportedEfforts,
+                    targetEffort);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return Fail("draft-effort-state-unavailable");
+            }
+
 #if DEBUG
             CodexModelToggleDiagnostics.RecordStage(
-                "draft-direct-config-start",
+                "draft-native-reasoning-nudge-start",
                 new
                 {
                     previous = previous.ToString(),
                     previousEffort,
                     target = target.ToString(),
                     targetEffort,
+                    targetProbe,
                 });
 #endif
 
-            // App Server discovery can consume a meaningful part of the
-            // renderer-evidence budget. Recheck the original admission proof
-            // immediately before the first config mutation; after mutation
-            // starts, the live draft predicate—not wall-clock age—guards the
-            // rest of the transaction and its rollback.
             if (!CanStartDraftOperation(isDraftOperationCurrent) ||
                 !CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
             }
 
+            encoderModeChanged = true;
             modelConfigChanged = true;
+            var seedWrite = await WriteDraftConfigAndEncoderModeAsync(
+                session,
+                targetModelId,
+                targetProbe.SeedEffort,
+                "reasoning",
+                cancellationToken);
+            if (!TryReadConfigWriteStatus(
+                    seedWrite,
+                    out var seedStatus,
+                    out var seedError) ||
+                seedStatus != "ok")
+            {
+                return Fail(
+                    "draft-target-seed-write-failed",
+                    seedError ?? seedStatus);
+            }
+
+#if DEBUG
+            CodexModelToggleDiagnostics.RecordStage(
+                "draft-atomic-seed-write",
+                new
+                {
+                    targetModelId,
+                    effort = targetProbe.SeedEffort,
+                    encoderMode = "reasoning",
+                });
+#endif
+            await invalidateRendererConfig(cancellationToken);
+            var transition = await WaitForPersistedConfigAsync(
+                target,
+                targetProbe.SeedEffort,
+                userConfigPath,
+                isFreshDraftCurrent,
+                ConfigTransitionTimeout,
+                cancellationToken);
+            if (transition.Result != ConfigTransitionResult.Matched)
+            {
+                return Fail(transition.Result ==
+                    ConfigTransitionResult.ContextChanged
+                        ? "draft-context-changed"
+                        : "draft-target-seed-timeout");
+            }
+
+            await Task.Delay(RendererConfigApplyDelay, cancellationToken);
+            if (!CanContinueFreshDraft(isFreshDraftCurrent))
+            {
+                return Fail("draft-context-changed");
+            }
+
+            if (!await SendEncoderStepAsync(
+                    targetProbe.ProbeStep.Clockwise,
+                    cancellationToken))
+            {
+                return Fail("draft-target-probe-rejected");
+            }
+
+            transition = await WaitForPersistedConfigAsync(
+                target,
+                targetProbe.ProbeStep.ExpectedEffort,
+                userConfigPath,
+                isFreshDraftCurrent,
+                ConfigTransitionTimeout,
+                cancellationToken);
+            if (transition.Result != ConfigTransitionResult.Matched)
+            {
+                return Fail(transition.Result ==
+                    ConfigTransitionResult.ContextChanged
+                        ? "draft-context-changed"
+                        : "draft-target-probe-timeout");
+            }
+            rendererMutationConfirmed = true;
+
+            await Task.Delay(NativeSetterSettleDelay, cancellationToken);
+            if (!CanContinueFreshDraft(isFreshDraftCurrent))
+            {
+                return Fail("draft-context-changed");
+            }
+
+#if DEBUG
+            CodexModelToggleDiagnostics.RecordStage(
+                "draft-target-probe-confirmed",
+                new
+                {
+                    targetModelId,
+                    effort = targetProbe.ProbeStep.ExpectedEffort,
+                    prewarmClearedByNativeSetter = true,
+                });
+#endif
+
+            var nativeFinalConfirmation = string.Equals(
+                targetProbe.ProbeStep.ExpectedEffort,
+                targetEffort,
+                StringComparison.Ordinal);
+            if (targetProbe.FinalStep is { } finalStep)
+            {
+                if (!await SendEncoderStepAsync(
+                        finalStep.Clockwise,
+                        cancellationToken))
+                {
+                    return Fail("draft-target-final-step-rejected");
+                }
+
+                transition = await WaitForPersistedConfigAsync(
+                    target,
+                    finalStep.ExpectedEffort,
+                    userConfigPath,
+                    isFreshDraftCurrent,
+                    ConfigTransitionTimeout,
+                    cancellationToken);
+                if (transition.Result != ConfigTransitionResult.Matched)
+                {
+                    return Fail(transition.Result ==
+                        ConfigTransitionResult.ContextChanged
+                            ? "draft-context-changed"
+                            : "draft-target-final-step-timeout");
+                }
+
+                await Task.Delay(
+                    NativeSetterSettleDelay,
+                    cancellationToken);
+                if (!CanContinueFreshDraft(isFreshDraftCurrent))
+                {
+                    return Fail("draft-context-changed");
+                }
+
+                nativeFinalConfirmation = true;
+            }
+
             if (!CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
@@ -736,9 +901,11 @@ internal sealed class CodexDraftModelToggleService
                     targetEffort,
                     encoderMode = previousEncoderMode,
                     permissionProfileChanged = false,
-            });
+                });
 #endif
-            var transition = await WaitForPersistedConfigAsync(
+            encoderModeChanged = false;
+            await invalidateRendererConfig(cancellationToken);
+            transition = await WaitForPersistedConfigAsync(
                 target,
                 targetEffort,
                 userConfigPath,
@@ -752,81 +919,34 @@ internal sealed class CodexDraftModelToggleService
                         ? "draft-context-changed"
                         : "draft-final-config-timeout");
             }
+
+            await Task.Delay(NativeSetterSettleDelay, cancellationToken);
             if (!CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
             }
 
+            if (!nativeFinalConfirmation)
+            {
 #if DEBUG
-            CodexModelToggleDiagnostics.RecordStage(
-                "draft-final-config-confirmed-before-rebuild",
-                new { targetModelId, targetEffort });
+                CodexModelToggleDiagnostics.RecordStage(
+                    "draft-passive-final-config-unconfirmed",
+                    new { targetModelId, targetEffort });
 #endif
-
-            var rebuildDispatch = await rebuildComposer(cancellationToken);
-            if (rebuildDispatch == ComposerRebuildDispatch.NotDispatched)
-            {
-                return Fail("draft-composer-rebuild-rejected");
-            }
-            composerRebuildDispatched = true;
-
-            // OutcomeUnknown means the HID report may already have reached
-            // Codex. Treat it as a commit boundary so disk and a possibly
-            // rebuilt composer are not split by a one-sided rollback, but do
-            // not call the toggle successful or renew renderer evidence.
-            if (rebuildDispatch == ComposerRebuildDispatch.OutcomeUnknown)
-            {
                 return Fail(
-                    "draft-composer-rebuild-outcome-unknown",
-                    "hid-outcome-unknown");
-            }
-
-#if DEBUG
-            CodexModelToggleDiagnostics.RecordStage(
-                "draft-composer-rebuild-dispatched",
-                new
-                {
-                    targetModelId,
-                    targetEffort,
-                    semanticAcknowledgement = false,
-                });
-#endif
-            await Task.Delay(ComposerRebuildMountDelay, cancellationToken);
-            if (!CanContinueFreshDraft(isFreshDraftCurrent))
-            {
-                return Fail(
-                    "draft-composer-rebuild-outcome-unknown",
-                    "draft-context-changed");
-            }
-
-            // NEW mounted from the exact durable config. A second renderer
-            // invalidation would recreate the same blank-to-old-task race.
-            transition = await WaitForPersistedConfigAsync(
-                target,
-                targetEffort,
-                userConfigPath,
-                isFreshDraftCurrent,
-                ConfigTransitionTimeout,
-                cancellationToken);
-            if (transition.Result != ConfigTransitionResult.Matched)
-            {
-                return Fail(
-                    "draft-composer-rebuild-outcome-unknown",
-                    transition.Result == ConfigTransitionResult.ContextChanged
-                        ? "draft-context-changed"
-                        : "draft-final-config-timeout");
+                    "draft-renderer-mutation-outcome-unknown",
+                    "passive-final-config-unconfirmed");
             }
 
             completed = true;
 #if DEBUG
             CodexModelToggleDiagnostics.RecordStage(
-                "draft-final-config-applied-after-composer-rebuild",
+                "draft-native-target-confirmed",
                 new
                 {
                     targetModelId,
                     targetEffort,
-                    semanticAcknowledgement = false,
-                    permissionProfileChanged = false,
+                    prewarmClearedByNativeSetter = true,
                 });
 #endif
             return Complete(Success(
@@ -835,13 +955,19 @@ internal sealed class CodexDraftModelToggleService
                 target,
                 targetEffort,
                 draftOperationId,
-                ComposerRebuildDispatchReceipt));
+                NativeTargetConfirmationReceipt));
         }
         catch (OperationCanceledException) when (composerRebuildDispatched)
         {
             return Fail(
                 "draft-composer-rebuild-outcome-unknown",
                 "cancelled-after-rebuild-dispatch");
+        }
+        catch (OperationCanceledException) when (rendererMutationConfirmed)
+        {
+            return Fail(
+                "draft-renderer-mutation-outcome-unknown",
+                "cancelled-after-native-probe");
         }
         catch (OperationCanceledException)
         {
@@ -864,6 +990,7 @@ internal sealed class CodexDraftModelToggleService
         finally
         {
             if (!completed &&
+                !rendererMutationConfirmed &&
                 !composerRebuildDispatched &&
                 session is not null &&
                 modelConfigChanged)
@@ -872,6 +999,13 @@ internal sealed class CodexDraftModelToggleService
                     session,
                     previous,
                     previousEffort);
+            }
+
+            if (session is not null && encoderModeChanged)
+            {
+                _ = await TryRestoreEncoderModeAsync(
+                    session,
+                    previousEncoderMode);
             }
 
             if (!completed && session is not null)

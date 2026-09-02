@@ -280,7 +280,7 @@ public sealed class CodexDraftModelToggleServiceTests
     }
 
     [Fact]
-    public void LunaMaxUsesSafeProbeThenNativeExactFinalStep()
+    public void LunaMaxUsesSafeProbeThenPassiveReplay()
     {
         var probe = CodexDraftModelToggleService.ResolveTargetEffortProbe(
             ["low", "medium", "high", "xhigh", "max"],
@@ -288,7 +288,7 @@ public sealed class CodexDraftModelToggleServiceTests
 
         Assert.Equal("max", probe.SeedEffort);
         Assert.Equal(new(true, "xhigh"), probe.ProbeStep);
-        Assert.Equal(new(false, "max"), probe.FinalStep);
+        Assert.Null(probe.FinalStep);
     }
 
     [Fact]
