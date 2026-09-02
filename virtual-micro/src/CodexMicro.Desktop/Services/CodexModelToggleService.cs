@@ -1060,12 +1060,19 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                         out var rendererThreadId) ||
                     CodexDraftModelToggleService.IsDraftThreadId(
                         rendererThreadId);
-                return rendererStillHasDraftContext &&
+                if (rendererStillHasDraftContext &&
                     _rendererDraftEvidenceByClient.TryGetValue(
                         lease.RendererClientId,
                         out var evidence) &&
                     evidence.Generation == lease.RendererDraftGeneration &&
-                    evidence.ForegroundWindow == lease.ForegroundWindow;
+                    evidence.ForegroundWindow == lease.ForegroundWindow)
+                {
+                    return true;
+                }
+
+                return HasPreservedForegroundDraftContinuityLocked(
+                    lease,
+                    DateTimeOffset.UtcNow);
             }
 
             return false;
@@ -1175,6 +1182,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
 
         lock (_stateSync)
         {
+            var now = DateTimeOffset.UtcNow;
             if (_visibilityRefresh is not null ||
                 _pipe is not { IsConnected: true } ||
                 !IsInitializedClientId(_clientId) ||
@@ -1183,16 +1191,34 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                     _clientId,
                     StringComparison.Ordinal) ||
                 !CodexWindowActivator.IsForegroundWindow(
-                    lease.ForegroundWindow) ||
-                !TryCreateRenewedForegroundDraftEvidence(
+                    lease.ForegroundWindow))
+            {
+                return false;
+            }
+
+            var renewedGeneration =
+                NextRendererDraftEvidenceGenerationLocked();
+            var renewedOriginalEvidence =
+                TryCreateRenewedForegroundDraftEvidence(
                     lease,
                     _visibleThreadByClient,
                     _rendererDraftEvidenceByClient,
-                    NextRendererDraftEvidenceGenerationLocked(),
-                    DateTimeOffset.UtcNow,
-                    out var renewedEvidence))
+                    renewedGeneration,
+                    now,
+                    out var renewedEvidence);
+            if (!renewedOriginalEvidence)
             {
-                return false;
+                if (!HasPreservedForegroundDraftContinuityLocked(
+                        lease,
+                        now))
+                {
+                    return false;
+                }
+
+                renewedEvidence = new(
+                    renewedGeneration,
+                    now,
+                    lease.ForegroundWindow);
             }
 
             _rendererDraftEvidenceByClient[lease.RendererClientId!] =
@@ -1276,6 +1302,46 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 out var evidence) &&
             evidence.Generation == lease.RendererDraftGeneration &&
             evidence.ForegroundWindow == lease.ForegroundWindow;
+    }
+
+    private bool HasPreservedForegroundDraftContinuityLocked(
+        ForegroundDraftLease lease,
+        DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(lease.RendererClientId) ||
+            lease.ForegroundWindow == IntPtr.Zero ||
+            !_rendererDraftContinuityByClient.TryGetValue(
+                lease.RendererClientId,
+                out var continuity) ||
+            continuity.ForegroundWindow != lease.ForegroundWindow ||
+            continuity.ObservedAt < lease.RendererDraftObservedAt ||
+            now < continuity.ObservedAt ||
+            now - continuity.ObservedAt >
+                ForegroundDraftLeaseAdmissionLifetime ||
+            !_foregroundRendererClientByWindow.TryGetValue(
+                lease.ForegroundWindow,
+                out var foregroundRendererClientId) ||
+            !string.Equals(
+                foregroundRendererClientId,
+                lease.RendererClientId,
+                StringComparison.Ordinal) ||
+            (_visibleThreadByClient.TryGetValue(
+                 lease.RendererClientId,
+                 out var rendererThreadId) &&
+             !CodexDraftModelToggleService.IsDraftThreadId(
+                 rendererThreadId)) ||
+            !_rendererDraftEvidenceByClient.TryGetValue(
+                lease.RendererClientId,
+                out var evidence) ||
+            evidence.ForegroundWindow != lease.ForegroundWindow ||
+            evidence.ObservedAt < continuity.ObservedAt ||
+            now < evidence.ObservedAt ||
+            now - evidence.ObservedAt > RendererDraftEvidenceLifetime)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     internal async Task<CodexModelToggleResult> ToggleAsync(

@@ -5145,6 +5145,16 @@ public partial class MicroSurfaceWindow : Window
                                 send.WasPossiblySent,
                         });
 #endif
+                        if (send.Disposition ==
+                                MicroSendDisposition.Accepted &&
+                            foregroundDraftLease is { } draftLease &&
+                            !_modelToggleService
+                                .TryPreserveForegroundDraftAfterReasoningStep(
+                                    draftLease))
+                        {
+                            return false;
+                        }
+
                         cancellation.ThrowIfCancellationRequested();
                         return send.WasPossiblySent &&
                             IsFreshDraftCurrent();
