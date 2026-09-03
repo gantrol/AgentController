@@ -160,10 +160,31 @@ Codex 键的 Harness 目标。
 槽位分别指定固定强度。模型与强度写入
 `%LOCALAPPDATA%\CodexMicro\micro-profile.json`，交换模型槽位时强度随模型交换。
 快捷切换通过 Codex 的版本化跨窗口管道找到唯一当前任务，再由其 owner 复用同一
-App Server 的 `thread/settings/update`；不打开模型菜单、不抢焦点，也不使用 UIA。
+任务设置通道；当前实验协议对应 `thread/settings/update`，但它要求真实 `threadId`，
+且不是公开稳定的空白草稿 API。真实任务不打开模型菜单、不抢焦点，也不使用 UIA。
 未指定固定强度时，推理强度按 `threadId + modelId` 独立记忆到
 `%LOCALAPPDATA%\CodexMicro\thread-model-efforts.json`，且只在语义确认后提交；
 显式槽位强度优先于该任务记忆值。
+
+空白新会话没有真实 `threadId`，按
+[ADR-0003](../docs/adr/0003-codex-blank-draft-model-switch.zh-CN.md) 作为窄例外处理：
+锁定同一前台 Codex 主窗口与 Composer，以可访问性角色、名称、可用态和选中态选择模型，
+再重新定位独立 `Power` 控件，并只执行 ownership 已证明控件公开的可访问性 action；
+不得按固定坐标、列表序号或 encoder 步数猜测。Codex
+Desktop `26.901.1978.0` 的模型菜单顶部包含独立 `Default` 项，模型行暴露为
+RadioButton；`Power` 公开带位置的当前状态。adapter 根据档位总数计算目标位置；同一
+菜单面存在可写 RangeValue 时一次设置，否则从带 `N of M` 状态的唯一滑轨节点取得实时
+矩形并只点击目标刻度一次，随后恢复鼠标位置。滑轨与 `Power` MenuItem 是兄弟节点，
+不能只搜索 MenuItem 子树。不得先向一端扫描再反向寻找目标，缺少直接动作时失败关闭。
+
+整个空白草稿事务由 `_quickModelSwitching` 独占，额度环持续显示加载动画，重复短按不
+排队。出现 `Use Ultra with Full access?` 时进入等待用户状态，不自动选择保留 Full
+access 或降级权限；弹窗关闭后丢弃旧控件引用并重新核验模型、effort、权限结果和草稿
+租约。操作开始前已存在的警告不归新事务所有，必须失败关闭。本操作触发的警告可等待
+用户任意时长，但失焦、换任务、换 renderer 或 lease 无法续签时立即结束。DEBUG E2E
+不得输入/提交文本、创建或导航任务、主动激活 Codex 或循环抢回前台；它只在用户已打开
+且已置前的空白草稿内执行非提交 A→B→A 回读。锁定模型访问弹窗及未知弹窗一律失败关闭。
+现有 config + encoder seed 路径已由 E2E 证明不能切换 renderer 草稿模型，不能作为发布路径。
 
 目标切到外部 Harness 后，Codex 专属布局、麦克风和快捷模型字段会停用；同一页面
 显示通用 Harness 适配器卡，可配置管道或 WSL 回环控制地址、启动程序、参数、工作目录、离线自动启动

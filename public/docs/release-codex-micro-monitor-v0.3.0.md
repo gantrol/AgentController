@@ -8,26 +8,34 @@ Download and extract:
 
 Run `CodexMicro.exe`. Windows requires the .NET 10 Desktop Runtime x64.
 
-### Emergency fix: model switching in new tasks
+### Compatibility correction: model switching in new tasks (2026-09-02)
 
-- A blank Codex new-task draft can now switch the configured quick model A/B
-  before its first turn creates an App Server thread.
-- The draft path is restricted to the visible model picker in the foreground
-  Codex window and selects the exact target model and configured effort. It is
-  enabled only after initialized IPC reports no visible real task for a stable
-  window.
-- Portal-based model and effort submenus are supported through same-process
-  popup roots bound geometrically to the same editor and model trigger.
+- Treat blank-draft quick-model switching in 0.3.0 as unavailable on current
+  Codex Desktop builds. E2E on `26.831.1445.0` showed that the config-plus-dial
+  path changed Sol's effort but did not switch the renderer-owned draft to
+  Luna; it stopped before submitting probe text and restored the config.
+- Codex Desktop has since updated to `26.901.1978.0`. Its model picker contains
+  a separate `Default` entry and radio-button model rows; a separate `Power`
+  control exposes a discrete Slider state. The adapter computes the absolute
+  effort position and writes RangeValue once when available; otherwise it
+  derives one target click from the live bounds of the unique `N of M` track.
+  It does not sweep left and then right, and fails closed when neither direct
+  action is safe. Old indexes, coordinates, and combined model/effort
+  assumptions are invalid.
+- The accepted replacement is a build-gated foreground Composer transaction
+  for blank drafts only. It selects model and effort by accessible semantics,
+  verifies both values, shows a loading state, and rejects repeated clicks.
+- An Ultra plus Full access warning is always left to the user in Codex. The
+  monitor does not choose a permission outcome; it waits and verifies again
+  after a dialog caused by that operation closes. A pre-existing warning is
+  not adopted by a new operation.
 - Once a real task exists, switching continues to use the authoritative
-  per-task owner/follower IPC path; a real-task IPC failure never falls back to
-  UI automation.
-- Any real-task visibility event, reconnection, foreground change, or editor
-  replacement invalidates the draft operation immediately.
-- A delayed draft result cannot overwrite a newly-created real task's state.
-- The official blank-draft picker may also update Codex's default model for
-  later new tasks. Switching inside a real task still leaves the global
-  default unchanged.
-- Production binaries contain no model-toggle diagnostic logging code.
+  per-task owner/follower IPC path. That existing-task path remains separate
+  from the pending blank-draft adapter.
+- The replacement is staged in the current worktree but is not part of 0.3.0.
+  Final `26.901.1978.0` regression remains pending under a non-submitting test
+  policy: DEBUG E2E may not type/submit text or activate/navigate Codex. See
+  [ADR-0003](../../docs/adr/0003-codex-blank-draft-model-switch.zh-CN.md).
 
 ### Virtual HID driver
 
@@ -45,21 +53,25 @@ Run `CodexMicro.exe`. Windows requires the .NET 10 Desktop Runtime x64.
 
 运行 `CodexMicro.exe`。Windows 需要安装 .NET 10 Desktop Runtime x64。
 
-### 紧急修复：新会话模型切换
+### 兼容性更正：新会话模型切换（2026-09-02）
 
-- 空白 Codex 新会话在第一轮创建 App Server thread 之前，现在也能切换设置中的快捷
-  模型 A / B。
-- 草稿通路严格限定为前台 Codex 窗口内可见的官方模型菜单，并精确选择目标模型与设置
-  的思考强度；仅在 IPC 已初始化且稳定确认没有可见真实任务后才会启用。
-- Model 与 Effort 的 portal 子菜单通过同进程 popup root 访问，并与同一编辑器和模型
-  按钮进行几何绑定。
-- 真实任务创建后继续使用权威的 per-task owner/follower IPC；真实任务 IPC 失败时绝不
-  降级到 UI 自动化。
-- 一旦出现真实任务、IPC 重连、前台窗口变化或编辑器被替换，草稿操作立即失效。
-- 延迟返回的草稿结果不会覆盖刚刚创建的真实任务状态。
-- 官方空白草稿模型菜单可能同时更新 Codex 以后新建任务的默认模型；真实任务内切换
-  仍不会修改全局默认值。
-- 生产二进制不包含模型切换诊断日志代码。
+- 当前 Codex Desktop 构建中，应把 0.3.0 的空白草稿快捷模型切换视为不可用。
+  `26.831.1445.0` 的 E2E 证明 config + 旋钮路径只改变了 Sol 的 effort，没有把
+  renderer 草稿切到 Luna；流程在提交探针文本前停止并恢复了配置。
+- Codex Desktop 随后更新到 `26.901.1978.0`。模型菜单新增独立 `Default` 项及
+  RadioButton 模型行；adapter 根据独立 `Power` 的档位状态计算绝对目标，有可写
+  RangeValue 时一次设置，否则根据唯一 `N of M` 滑轨的实时矩形只点击目标刻度一次。
+  不再先向左、再向右扫描，无法安全直接操作时失败关闭。旧列表序号、坐标和
+  模型/effort 合并结构假设全部失效。
+- 接受的替代方案只对空白草稿执行带构建门禁的前台 Composer 界面事务：按可访问性
+  语义分别选择并核验模型与 effort，期间显示加载状态并拒绝重复短按。
+- Ultra + Full access 警告始终交给用户在 Codex 中处理；监控器不代选权限结果，弹窗
+  由本操作触发并关闭后重新核验；新操作不接管操作前已经存在的警告。
+- 真实任务创建后仍使用权威的 per-task owner/follower IPC；该已存在任务路径与尚未
+  完成的空白草稿 adapter 相互独立。
+- 替代实现已暂存在当前工作树，但不属于 0.3.0。`26.901.1978.0` 最终回归仍须遵守
+  非提交测试策略：DEBUG E2E 不得输入/提交文本，也不得激活或导航 Codex。详见
+  [ADR-0003](../../docs/adr/0003-codex-blank-draft-model-switch.zh-CN.md)。
 
 ### 虚拟 HID 驱动
 

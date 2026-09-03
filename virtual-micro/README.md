@@ -181,15 +181,28 @@ service, run this from the extracted package directory:
   Server without opening a menu or taking focus. A long-press opens the
   official Micro settings, and right-click opens the active Agent's settings.
 
-A blank Codex new-task draft does not have an App Server thread yet. In that
-one case, Codex Micro 0.3.0 requires a stable initialized IPC state with no
-visible real task, then operates the exact model and effort entries in the
-official foreground composer picker. The operation is bound to the same Codex
-window, editor, trigger, and geometrically-associated popup surfaces. Once the
-first turn creates the task, the lease is invalidated and all later switches
-return to the per-task semantic channel. Codex's official blank-draft picker
-may also update the default model for later new tasks; real-task switches still
-leave the global default unchanged.
+A blank Codex new-task draft does not have an App Server thread yet. E2E on
+2026-09-02 confirmed that the current config-plus-encoder seed can change the
+renderer-owned model's effort but cannot reliably switch its model. The
+accepted fix operates the official foreground Composer only during this blank
+draft phase: it selects the exact model by semantics, then selects effort
+through the separate `Power` control. It computes the absolute effort position
+and writes the Slider RangeValue once when available. On builds that expose no
+writable RangeValue, it derives one target click from the live bounds of the
+unique track carrying the `N of M` state, then restores the pointer. It never
+sweeps left and then right, and fails closed if neither direct action is safe.
+No fixed coordinates, list indexes, or blind step counts are used. The quota
+ring remains in a loading state and repeated
+clicks are rejected for the whole transaction. An Ultra plus Full access
+warning is left to the user in Codex; permissions are never auto-confirmed,
+and final state is read again after the dialog closes. A warning that predates
+the operation is not adopted. Debug E2E never types or submits probe text and
+never activates, navigates, or pulls Codex back to the foreground; it requires
+an already-foreground blank draft and stops on focus loss. The lease is invalidated
+when the first turn creates a real task, after which switching returns to the
+per-task semantic channel. See
+[ADR-0003](../docs/adr/0003-codex-blank-draft-model-switch.zh-CN.md) for status
+and version boundaries.
 
 ## Virtual HID
 

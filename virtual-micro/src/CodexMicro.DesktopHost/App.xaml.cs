@@ -60,7 +60,10 @@ public partial class App : System.Windows.Application
             {
                 var response = MicroKeypadControlClient.TrySendAsync(
                         command,
-                        TimeSpan.FromSeconds(60))
+                        command == MicroKeypadControlCommand
+                            .E2eToggleQuickModel
+                                ? TimeSpan.FromMinutes(10)
+                                : TimeSpan.FromSeconds(60))
                     .GetAwaiter()
                     .GetResult();
                 Shutdown(response is { Accepted: true } ? 0 : 3);

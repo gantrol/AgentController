@@ -3,7 +3,7 @@
 > Status: Accepted / Planned
 > Priority: P0
 > Depends on: 01-core-architecture, 02-codex-app-server
-> Decision: [ADR-0002](../docs/adr/0002-codex-micro-native-compatibility.zh-CN.md)
+> Decisions: [ADR-0002](../docs/adr/0002-codex-micro-native-compatibility.zh-CN.md), [ADR-0003](../docs/adr/0003-codex-blank-draft-model-switch.zh-CN.md)
 
 ## 产品结论
 
@@ -20,6 +20,19 @@ Windows 完整模式必须暴露一个会被 ChatGPT/Codex Desktop 原生识别�
 - [OpenAI 官方 Codex Micro 行为](https://learn.chatgpt.com/docs/features/codex-micro)
 
 这些证据记录的是指定 Codex 构建和当前公开行为，不是公开稳定 HID ABI。未知构建必须熔断。
+
+### 空白新会话快捷模型（2026-09-02）
+
+- [x] 在 Codex Desktop `26.831.1445.0` 用内置 E2E 复现 `draft-renderer-seed-not-applied`：配置写入成功，但 renderer 只把 Sol 的 effort 从 `xhigh` 调到 `high`、`medium`，没有切到 Luna；探针文本未提交，配置已恢复。
+- [x] 确认根因是空白草稿没有真实 `threadId`/owner，磁盘配置失效通知不会调用 renderer 草稿的模型 setter；不是 Luna 本身错误率高，也不能靠增加等待修复。
+- [x] 接受 ADR-0003：真实任务保留语义设置通道；只有空白草稿使用绑定前台 Composer 的受观察界面事务。
+- [x] 当前工作树已在快捷模型事务期间显示循环加载动画，并用 `_quickModelSwitching` 拒绝重复短按；弹窗等待包含在同一事务生命周期内。
+- [x] 用按角色、名称、可用态和选中态定位的界面 adapter 替换空白草稿的 config + encoder seed 路径；禁止固定坐标、菜单序号和盲发步数。
+- [x] 适配 Codex Desktop `26.901.1978.0`：模型菜单包含独立 `Default` 项和 RadioButton 模型行；根据 `Power` 的当前位置/总档数计算绝对目标；有可写 RangeValue 时一次设置，否则按带 `N of M` 状态的唯一滑轨实时矩形只点击目标刻度一次并恢复鼠标位置；滑轨与 `Power` MenuItem 为兄弟节点，查找覆盖整个菜单；不再执行先左后右的双向扫描；收起摘要可为 `5.6 Sol Ultra`。
+- [x] 实现 `WaitingForUserDecision`：本操作触发 `Use Ultra with Full access?` 时不自动确认，保持加载并阻止重复输入；关闭后重新解析并核验最终模型、effort 与 renderer lease。操作前已有的警告失败关闭，不由新事务接管。
+- [ ] 锁定模型访问弹窗、未知弹窗和未知构建全部失败关闭，不自动升级、购买或放宽权限。
+- [x] 删除 DEBUG E2E 的 Unicode 输入、提交、主动激活、自动建新任务及前台抢占；只允许用户预先置前的空白草稿执行非提交回读，失焦即停。
+- [ ] 在 `26.901.1978.0` 完成无输入、无提交、无导航、无前台抢占的空白草稿 A→B→A E2E，再由用户自然创建第一轮真实 turn 后验证自动恢复真实任务语义通道。
 
 ### `virtual-micro/` 参考审计（2026-07-18）
 

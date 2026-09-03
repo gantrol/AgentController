@@ -1205,7 +1205,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                     _rendererDraftEvidenceByClient,
                     renewedGeneration,
                     now,
-                    out var renewedEvidence);
+                    out var renewedEvidence,
+                    allowExpiredEvidence:
+                        result.Detail == CodexDraftModelToggleService
+                            .NativeTargetConfirmationReceipt);
             if (!renewedOriginalEvidence)
             {
                 if (!HasPreservedForegroundDraftContinuityLocked(
@@ -1250,7 +1253,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             rendererDraftEvidenceByClient,
         long renewedGeneration,
         DateTimeOffset observedAt,
-        out RendererDraftEvidence renewedEvidence)
+        out RendererDraftEvidence renewedEvidence,
+        bool allowExpiredEvidence = false)
     {
         renewedEvidence = default;
         if (!HasRenewableForegroundDraftEvidence(
@@ -1263,8 +1267,9 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 lease.RendererClientId!,
                 out var currentEvidence) ||
             observedAt < currentEvidence.ObservedAt ||
-            observedAt - currentEvidence.ObservedAt >
-                RendererDraftEvidenceLifetime)
+            (!allowExpiredEvidence &&
+                observedAt - currentEvidence.ObservedAt >
+                    RendererDraftEvidenceLifetime))
         {
             return false;
         }
@@ -2690,6 +2695,15 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         int generation;
         lock (_stateSync)
         {
+            // Renderer visibility broadcasts can arrive before the initialize
+            // response publishes this client's real IPC identity. Keep the
+            // visibility snapshot, then let EnsureConnectedAsync start
+            // semantic tracking after initialization completes.
+            if (string.IsNullOrWhiteSpace(_clientId))
+            {
+                return;
+            }
+
             var selection = ResolveVisibleThreadSelection(
                 _visibleThreadByClient.Values);
             nextVisibleThreadId = selection.VisibleThreadId;
@@ -3578,13 +3592,14 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                     return false;
                 }
 
-                pipe = _pipe is { IsConnected: true } connected
-                    ? connected
-                    : throw new IOException("Codex IPC is not connected.");
-                sourceClientId = !string.IsNullOrWhiteSpace(_clientId)
-                    ? _clientId
-                    : throw new InvalidOperationException(
-                        "Codex IPC is not initialized.");
+                if (_pipe is not { IsConnected: true } connected ||
+                    string.IsNullOrWhiteSpace(_clientId))
+                {
+                    return false;
+                }
+
+                pipe = connected;
+                sourceClientId = _clientId;
             }
 
             var frame = EncodeFrame(new
