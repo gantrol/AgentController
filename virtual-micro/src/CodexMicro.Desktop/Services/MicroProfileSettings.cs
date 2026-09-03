@@ -58,7 +58,8 @@ internal sealed record MicroProfileSnapshot(
     bool InvertDialDirection = false,
     MicroVoiceProfile? Voice = null,
     string? QuickModelAEffort = null,
-    string? QuickModelBEffort = null)
+    string? QuickModelBEffort = null,
+    bool AutoConfirmUltraFullAccess = false)
 {
     internal MicroVoiceProfile VoiceSettings =>
         Voice ?? MicroVoiceProfile.Default;
@@ -257,6 +258,9 @@ internal sealed class MicroProfileSettings
                 effort),
         });
 
+    internal void SetAutoConfirmUltraFullAccess(bool value) =>
+        Update(Current with { AutoConfirmUltraFullAccess = value });
+
     internal void SetActiveHarness(string harnessId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(harnessId);
@@ -379,6 +383,8 @@ internal sealed class MicroProfileSettings
                     QuickModelB = ToSettingValue(snapshot.QuickModelB),
                     QuickModelAEffort = snapshot.QuickModelAEffort,
                     QuickModelBEffort = snapshot.QuickModelBEffort,
+                    AutoConfirmUltraFullAccess =
+                        snapshot.AutoConfirmUltraFullAccess,
                     ActiveHarnessId = snapshot.ActiveHarnessId,
                     AgentSource = snapshot.AgentSource,
                     SingleTapAgentKeys = snapshot.SingleTapAgentKeys,
@@ -436,7 +442,8 @@ internal sealed class MicroProfileSettings
                 stored.InvertDialDirection,
                 stored.Voice?.ToProfile(),
                 stored.QuickModelAEffort,
-                stored.QuickModelBEffort));
+                stored.QuickModelBEffort,
+                stored.AutoConfirmUltraFullAccess));
         }
         catch
         {
@@ -494,7 +501,8 @@ internal sealed class MicroProfileSettings
                 snapshot.QuickModelAEffort),
             NormalizeReasoningEffortForModel(
                 second,
-                snapshot.QuickModelBEffort));
+                snapshot.QuickModelBEffort),
+            snapshot.AutoConfirmUltraFullAccess);
     }
 
     private static MicroVoiceProfile NormalizeVoice(MicroVoiceProfile value)
@@ -734,6 +742,8 @@ internal sealed class MicroProfileSettings
         public string? QuickModelAEffort { get; set; }
 
         public string? QuickModelBEffort { get; set; }
+
+        public bool AutoConfirmUltraFullAccess { get; set; }
 
         public string ActiveHarnessId { get; set; } = "codex";
 

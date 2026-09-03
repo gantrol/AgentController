@@ -4923,6 +4923,7 @@ public partial class MicroSurfaceWindow : Window
                     quickModels.QuickModelAEffort,
                     quickModels.QuickModelB,
                     quickModels.QuickModelBEffort,
+                    quickModels.AutoConfirmUltraFullAccess,
                     operationThreadId,
                     IsFreshDraftCurrent,
                     action.Token);

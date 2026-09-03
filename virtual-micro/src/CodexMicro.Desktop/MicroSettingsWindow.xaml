@@ -758,6 +758,26 @@
                                                   SelectionChanged="QuickModelBEffortCombo_SelectionChanged" />
                                     </StackPanel>
                                 </Grid>
+                                <Border x:Name="AutoConfirmUltraSeparator"
+                                        Height="1"
+                                        Background="{StaticResource SettingsLine}" />
+                                <Grid x:Name="AutoConfirmUltraRow" MinHeight="78">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="AutoConfirmUltraTitleText"
+                                               Margin="0,0,28,0"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource OptionTitle}"
+                                               Text="Automatically choose Use Full access" />
+                                    <CheckBox x:Name="AutoConfirmUltraToggle"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource SwitchToggle}"
+                                              Checked="AutoConfirmUltraToggle_Changed"
+                                              Unchecked="AutoConfirmUltraToggle_Changed" />
+                                </Grid>
                                 <Border Height="1" Background="{StaticResource SettingsLine}" />
                                 <Grid x:Name="HarnessOptionRow" MinHeight="88">
                                     <Grid.ColumnDefinitions>

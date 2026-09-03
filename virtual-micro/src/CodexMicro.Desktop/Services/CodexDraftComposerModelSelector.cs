@@ -66,6 +66,7 @@ internal sealed class CodexDraftComposerModelSelector
         string? firstEffort,
         CodexQuickModel second,
         string? secondEffort,
+        bool autoConfirmUltraFullAccess,
         string draftOperationId,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
@@ -99,6 +100,7 @@ internal sealed class CodexDraftComposerModelSelector
                 firstEffort,
                 second,
                 secondEffort,
+                autoConfirmUltraFullAccess,
                 draftOperationId,
                 isDraftCurrent,
                 cancellationToken),
@@ -111,6 +113,7 @@ internal sealed class CodexDraftComposerModelSelector
         string? firstEffort,
         CodexQuickModel second,
         string? secondEffort,
+        bool autoConfirmUltraFullAccess,
         string draftOperationId,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
@@ -195,12 +198,14 @@ internal sealed class CodexDraftComposerModelSelector
                 foregroundWindow,
                 target,
                 targetEffort,
+                autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
             VerifyFinalSelection(
                 foregroundWindow,
                 target,
                 targetEffort,
+                autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
 
@@ -347,6 +352,7 @@ internal sealed class CodexDraftComposerModelSelector
         IntPtr foregroundWindow,
         CodexQuickModel target,
         string targetEffort,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
@@ -380,6 +386,7 @@ internal sealed class CodexDraftComposerModelSelector
                 current,
                 target,
                 targetEffort,
+                autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
         }
@@ -411,6 +418,7 @@ internal sealed class CodexDraftComposerModelSelector
         ComposerSelection current,
         CodexQuickModel target,
         string targetEffort,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
@@ -524,6 +532,7 @@ internal sealed class CodexDraftComposerModelSelector
             target,
             targetEffort,
             permissionBefore,
+            autoConfirmUltraFullAccess,
             isDraftCurrent,
             cancellationToken);
     }
@@ -534,6 +543,7 @@ internal sealed class CodexDraftComposerModelSelector
         CodexQuickModel target,
         string targetEffort,
         string? permissionBefore,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
@@ -565,10 +575,12 @@ internal sealed class CodexDraftComposerModelSelector
 
                 WaitForUltraDecision(
                     foregroundWindow,
+                    autoConfirmUltraFullAccess,
                     isDraftCurrent,
                     cancellationToken);
                 latest = ReadVerifiedSelection(
                     foregroundWindow,
+                    autoConfirmUltraFullAccess,
                     isDraftCurrent,
                     cancellationToken);
                 if (!latest.Matches(target, targetEffort))
@@ -774,11 +786,13 @@ internal sealed class CodexDraftComposerModelSelector
         IntPtr foregroundWindow,
         CodexQuickModel target,
         string targetEffort,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
         var selection = ReadVerifiedSelection(
             foregroundWindow,
+            autoConfirmUltraFullAccess,
             isDraftCurrent,
             cancellationToken);
         if (!selection.Matches(target, targetEffort))
@@ -801,6 +815,7 @@ internal sealed class CodexDraftComposerModelSelector
 
     private static ComposerSelection ReadVerifiedSelection(
         IntPtr foregroundWindow,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
@@ -810,6 +825,7 @@ internal sealed class CodexDraftComposerModelSelector
         {
             WaitForUltraDecision(
                 foregroundWindow,
+                autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
             root = RequireRoot(foregroundWindow);
@@ -946,6 +962,7 @@ internal sealed class CodexDraftComposerModelSelector
 
     private static void WaitForUltraDecision(
         IntPtr foregroundWindow,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
@@ -953,19 +970,31 @@ internal sealed class CodexDraftComposerModelSelector
         CodexModelToggleDiagnostics.RecordStage(
             "draft-ui-waiting-for-ultra-decision");
 #endif
+        var autoConfirmAttempted = false;
+        var autoConfirmDeadline = DateTimeOffset.UtcNow + MenuTimeout;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            EnsureCurrent(
+                foregroundWindow,
+                isDraftCurrent,
+                cancellationToken);
             var root = RequireRoot(foregroundWindow);
             if (!HasUltraWarning(root))
             {
-                EnsureCurrent(
-                    foregroundWindow,
-                    isDraftCurrent,
-                    cancellationToken);
                 root = RequireRoot(foregroundWindow);
                 EnsureNoUnexpectedDialog(root);
 #if DEBUG
+                if (autoConfirmAttempted)
+                {
+                    CodexModelToggleDiagnostics.RecordStage(
+                        "draft-ui-ultra-auto-confirmed",
+                        new
+                        {
+                            permission = TryReadPermissionMode(root),
+                        });
+                }
+
                 CodexModelToggleDiagnostics.RecordStage(
                     "draft-ui-ultra-decision-complete",
                     new
@@ -976,8 +1005,56 @@ internal sealed class CodexDraftComposerModelSelector
                 return;
             }
 
+            if (autoConfirmUltraFullAccess && !autoConfirmAttempted)
+            {
+                var button = FindUltraFullAccessButton(root);
+                if (button is null)
+                {
+                    if (DateTimeOffset.UtcNow >= autoConfirmDeadline)
+                    {
+                        throw new DraftUiException(
+                            "draft-ui-ultra-auto-confirm-unavailable");
+                    }
+
+                    Thread.Sleep(PollInterval);
+                    continue;
+                }
+
+#if DEBUG
+                CodexModelToggleDiagnostics.RecordStage(
+                    "draft-ui-ultra-auto-confirming");
+#endif
+                Invoke(button);
+                autoConfirmAttempted = true;
+            }
+
             Thread.Sleep(TimeSpan.FromMilliseconds(120));
         }
+    }
+
+    private static AutomationElement? FindUltraFullAccessButton(
+        AutomationElement root)
+    {
+        var processId = SafeRead(() => root.Current.ProcessId, 0);
+        if (processId == 0 || !HasUltraWarning(root, processId))
+        {
+            return null;
+        }
+
+        var buttons = FindElements(
+                root,
+                ControlType.Button,
+                visibleOnly: true)
+            .Where(element =>
+                SafeRead(() => element.Current.ProcessId, 0) == processId &&
+                SafeRead(() => element.Current.IsEnabled, false) &&
+                string.Equals(
+                    SafeRead(() => element.Current.Name, string.Empty),
+                    "Use Full access",
+                    StringComparison.Ordinal))
+            .Take(2)
+            .ToArray();
+        return buttons.Length == 1 ? buttons[0] : null;
     }
 
     private static bool HasUltraWarning(AutomationElement root)

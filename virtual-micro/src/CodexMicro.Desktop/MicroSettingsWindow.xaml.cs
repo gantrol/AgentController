@@ -179,6 +179,8 @@ public partial class MicroSettingsWindow : Window
                 profile.ActiveHarnessId);
             InvertDialDirectionToggle.IsChecked =
                 isCodex && profile.InvertDialDirection;
+            AutoConfirmUltraToggle.IsChecked =
+                isCodex && profile.AutoConfirmUltraFullAccess;
             SingleTapToggle.IsChecked = profile.SingleTapAgentKeys;
             if (!isCodex)
             {
@@ -275,6 +277,9 @@ public partial class MicroSettingsWindow : Window
         QuickModelBDetailText.Text = english
             ? "Second model and its target reasoning effort"
             : "第二个模型及切换后的目标思考强度";
+        AutoConfirmUltraTitleText.Text = english
+            ? "Automatically choose Use Full access"
+            : "自动选择 Use Full access";
         HarnessTitleText.Text = english ? "Codex key target" : "Codex 键目标";
         HarnessDetailText.Text = english
             ? "Select Codex, DeepSeek Harness, or any registered direct adapter"
@@ -396,6 +401,9 @@ public partial class MicroSettingsWindow : Window
         AutomationProperties.SetName(
             HarnessCombo,
             english ? "Codex key target" : "Codex 键目标");
+        AutomationProperties.SetName(
+            AutoConfirmUltraToggle,
+            AutoConfirmUltraTitleText.Text);
         ApplyHarnessScope(harness);
         RefreshLayoutPresentation(layout);
         RefreshConnectionState();
@@ -429,6 +437,9 @@ public partial class MicroSettingsWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         QuickModelBRow.Visibility = QuickModelARow.Visibility;
+        AutoConfirmUltraRow.Visibility = QuickModelARow.Visibility;
+        AutoConfirmUltraSeparator.Visibility = QuickModelARow.Visibility;
+        AutoConfirmUltraToggle.IsEnabled = isCodex;
         HarnessManagementHeadingText.Visibility = isCodex
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -1002,6 +1013,19 @@ public partial class MicroSettingsWindow : Window
                 : $"无法打开 {slotId} 编辑器：{exception.Message}";
             SaveStatusText.Foreground = new SolidColorBrush(
                 Color.FromRgb(0xB0, 0x6B, 0x4F));
+        }
+    }
+
+    private void AutoConfirmUltraToggle_Changed(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!_syncing &&
+            _harnessRegistry.Resolve(_profileSettings.Current.ActiveHarnessId).Id ==
+                "codex")
+        {
+            _profileSettings.SetAutoConfirmUltraFullAccess(
+                AutoConfirmUltraToggle.IsChecked == true);
         }
     }
 
