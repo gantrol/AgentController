@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -210,23 +208,19 @@ internal static class HarnessWindowActivator
 
     private static bool IsSupportedBrowser(uint processId)
     {
-        try
-        {
-            using var process = Process.GetProcessById(checked((int)processId));
-            return process.ProcessName is "chrome" or
-                "msedge" or
-                "brave" or
-                "firefox" or
-                "vivaldi" or
-                "arc";
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or
-                InvalidOperationException or
-                Win32Exception)
+        if (!WindowsProcessImage.TryGetFileNameWithoutExtension(
+                processId,
+                out var processName))
         {
             return false;
         }
+
+        return processName is "chrome" or
+            "msedge" or
+            "brave" or
+            "firefox" or
+            "vivaldi" or
+            "arc";
     }
 
     private static bool AttachIfNeeded(uint currentThread, uint otherThread) =>

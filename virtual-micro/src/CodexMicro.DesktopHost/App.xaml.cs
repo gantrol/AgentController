@@ -16,6 +16,8 @@ public partial class App : System.Windows.Application
     private const string RestartedArgument = "--restarted";
     private static readonly TimeSpan RelaunchWaitTimeout =
         TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ShutdownTimeout =
+        TimeSpan.FromSeconds(8);
 
     private Mutex? _singleInstance;
     private bool _ownsSingleInstance;
@@ -173,29 +175,63 @@ public partial class App : System.Windows.Application
         }
 
         _exiting = true;
+        var surface = _surface;
+        _surface = null;
+        var controlServer = _controlServer;
+        _controlServer = null;
         try
         {
-            if (_surface is not null)
-            {
-                await _surface.ShutdownAsync();
-                _surface = null;
-            }
-
-            if (_controlServer is not null)
-            {
-                await _controlServer.DisposeAsync();
-                _controlServer = null;
-            }
-
             _trayIcon?.Dispose();
-            _trayIcon = null;
-            Shutdown();
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            _exiting = false;
-            _restartQueued = false;
-            _trayIcon?.ShowRestartFailed(exception.Message);
+        }
+
+        _trayIcon = null;
+        try
+        {
+            var cleanupTasks = new List<Task>(2);
+            if (surface is not null)
+            {
+                cleanupTasks.Add(surface.ShutdownAsync());
+            }
+
+            if (controlServer is not null)
+            {
+                cleanupTasks.Add(controlServer.DisposeAsync().AsTask());
+            }
+
+            var cleanup = Task.WhenAll(cleanupTasks);
+            var completed = await Task.WhenAny(
+                cleanup,
+                Task.Delay(ShutdownTimeout));
+            if (ReferenceEquals(completed, cleanup))
+            {
+                await cleanup;
+            }
+            else
+            {
+                _ = cleanup.ContinueWith(
+                    static task => _ = task.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted |
+                        TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                Shutdown();
+            }
+            else
+            {
+                await Dispatcher.InvokeAsync(Shutdown);
+            }
         }
     }
 

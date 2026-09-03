@@ -50,10 +50,12 @@ internal sealed class CodexRecentThreadsService
                     encoderShouldEmitUTF8Identifier: false),
             },
         };
+        var started = false;
 
         try
         {
-            if (!process.Start())
+            started = process.Start();
+            if (!started)
             {
                 return null;
             }
@@ -93,17 +95,7 @@ internal sealed class CodexRecentThreadsService
         }
         finally
         {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch (InvalidOperationException)
-            {
-                // The process never started or exited during cleanup.
-            }
+            await CodexAppServerProcess.StopAsync(process, started);
         }
     }
 

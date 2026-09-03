@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -12,7 +13,7 @@ namespace CodexMicro.Desktop.Services;
 /// App Server config writer and Codex Micro HID bridge. A blank composer has
 /// no App Server thread owner, so thread/update cannot address it.
 /// </summary>
-internal sealed class CodexDraftModelToggleService
+internal sealed class CodexDraftModelToggleService : IAsyncDisposable
 {
     internal const string DraftThreadPrefix = "client-new-thread:";
     internal const string ComposerRebuildDispatchReceipt =
@@ -26,16 +27,19 @@ internal sealed class CodexDraftModelToggleService
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan ProcessExitTimeout =
         TimeSpan.FromMilliseconds(900);
-    private static readonly TimeSpan RendererConfigApplyDelay =
-        TimeSpan.FromMilliseconds(2000);
-    private static readonly TimeSpan NativeSetterSettleDelay =
-        TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan ConfigTransitionTimeout =
         TimeSpan.FromSeconds(4);
     private static readonly TimeSpan DraftReplacementGraceTimeout =
         TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan ConfigPollInterval =
         TimeSpan.FromMilliseconds(100);
+    private const int RendererSeedAttemptLimit = 3;
+
+    private readonly SemaphoreSlim _sessionGate = new(1, 1);
+    private AppServerSession? _cachedSession;
+    private string? _cachedCliPath;
+    private string? _cachedWorkingDirectory;
+    private int _disposed;
 
     internal sealed record WorkspaceSelection(
         string Cwd,
@@ -83,6 +87,9 @@ internal sealed class CodexDraftModelToggleService
             rebuildComposer,
         CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref _disposed) != 0,
+            this);
         if (!IsDraftOperationId(draftOperationId))
         {
             throw new ArgumentException(
@@ -469,7 +476,7 @@ internal sealed class CodexDraftModelToggleService
             effort);
     }
 
-    private static async Task<CodexModelToggleResult> ToggleCoreAsync(
+    private async Task<CodexModelToggleResult> ToggleCoreAsync(
         CodexQuickModel first,
         string? firstEffort,
         CodexQuickModel second,
@@ -494,6 +501,7 @@ internal sealed class CodexDraftModelToggleService
         var modelConfigChanged = false;
         var rendererMutationConfirmed = false;
         var composerRebuildDispatched = false;
+        var sessionGateEntered = false;
         var completed = false;
 
         CodexModelToggleResult Complete(CodexModelToggleResult result)
@@ -541,6 +549,11 @@ internal sealed class CodexDraftModelToggleService
 
         try
         {
+            await _sessionGate.WaitAsync(cancellationToken);
+            sessionGateEntered = true;
+            ObjectDisposedException.ThrowIf(
+                Volatile.Read(ref _disposed) != 0,
+                this);
             cancellationToken.ThrowIfCancellationRequested();
             if (!CanStartDraftOperation(isDraftOperationCurrent))
             {
@@ -579,7 +592,7 @@ internal sealed class CodexDraftModelToggleService
                 return Fail("draft-cli-unavailable");
             }
 
-            var sessionStart = await StartInitializedSessionAsync(
+            var sessionStart = await GetOrStartInitializedSessionAsync(
                 cliPath,
                 workspace.Cwd,
                 cancellationToken);
@@ -599,7 +612,7 @@ internal sealed class CodexDraftModelToggleService
                 return Fail("draft-context-changed");
             }
 
-            var configRead = await RequestWithTimeoutAsync(
+            var configReadTask = RequestWithTimeoutAsync(
                 session,
                 "config/read",
                 new
@@ -608,16 +621,43 @@ internal sealed class CodexDraftModelToggleService
                     includeLayers = false,
                 },
                 cancellationToken);
+            var requirementsReadTask = RequestWithTimeoutAsync(
+                session,
+                "configRequirements/read",
+                new { },
+                cancellationToken);
+            var authStatusTask = RequestWithTimeoutAsync(
+                session,
+                "getAuthStatus",
+                new
+                {
+                    includeToken = false,
+                    refreshToken = false,
+                },
+                cancellationToken);
+            var modelListTask = RequestWithTimeoutAsync(
+                session,
+                "model/list",
+                new
+                {
+                    includeHidden = false,
+                    cursor = (string?)null,
+                    limit = 100,
+                },
+                cancellationToken);
+            await Task.WhenAll(
+                configReadTask,
+                requirementsReadTask,
+                authStatusTask,
+                modelListTask);
+
+            var configRead = await configReadTask;
             if (!configRead.Succeeded)
             {
                 return Fail("draft-config-read-failed", configRead.Error);
             }
 
-            var requirementsRead = await RequestWithTimeoutAsync(
-                session,
-                "configRequirements/read",
-                new { },
-                cancellationToken);
+            var requirementsRead = await requirementsReadTask;
             if (!requirementsRead.Succeeded ||
                 !TryReadManagedNewThreadRequirement(
                     requirementsRead.Result,
@@ -633,15 +673,7 @@ internal sealed class CodexDraftModelToggleService
                 return Fail("draft-managed-new-thread-unsupported");
             }
 
-            var authStatus = await RequestWithTimeoutAsync(
-                session,
-                "getAuthStatus",
-                new
-                {
-                    includeToken = false,
-                    refreshToken = false,
-                },
-                cancellationToken);
+            var authStatus = await authStatusTask;
             if (!authStatus.Succeeded ||
                 !TryReadAuthMethod(
                     authStatus.Result,
@@ -675,16 +707,7 @@ internal sealed class CodexDraftModelToggleService
                 targetModelId,
                 configuredEffort);
 
-            var modelList = await RequestWithTimeoutAsync(
-                session,
-                "model/list",
-                new
-                {
-                    includeHidden = false,
-                    cursor = (string?)null,
-                    limit = 100,
-                },
-                cancellationToken);
+            var modelList = await modelListTask;
             if (!modelList.Succeeded)
             {
                 return Fail("draft-model-list-failed", modelList.Error);
@@ -785,36 +808,108 @@ internal sealed class CodexDraftModelToggleService
                         : "draft-target-seed-timeout");
             }
 
-            await Task.Delay(RendererConfigApplyDelay, cancellationToken);
-            if (!CanContinueFreshDraft(isFreshDraftCurrent))
+            var rendererSeedConfirmed = false;
+            for (var attempt = 1;
+                 attempt <= RendererSeedAttemptLimit;
+                 attempt++)
             {
-                return Fail("draft-context-changed");
+                if (attempt > 1)
+                {
+                    if (!CanContinueFreshDraft(isFreshDraftCurrent))
+                    {
+                        return Fail("draft-context-changed");
+                    }
+
+                    seedWrite = await WriteDraftConfigAndEncoderModeAsync(
+                        session,
+                        targetModelId,
+                        targetProbe.SeedEffort,
+                        "reasoning",
+                        cancellationToken);
+                    if (!TryReadConfigWriteStatus(
+                            seedWrite,
+                            out seedStatus,
+                            out seedError) ||
+                        seedStatus != "ok")
+                    {
+                        return Fail(
+                            "draft-target-reseed-write-failed",
+                            seedError ?? seedStatus);
+                    }
+
+                    await invalidateRendererConfig(cancellationToken);
+                    transition = await WaitForPersistedConfigAsync(
+                        target,
+                        targetProbe.SeedEffort,
+                        userConfigPath,
+                        isFreshDraftCurrent,
+                        ConfigTransitionTimeout,
+                        cancellationToken);
+                    if (transition.Result != ConfigTransitionResult.Matched)
+                    {
+                        return Fail(transition.Result ==
+                            ConfigTransitionResult.ContextChanged
+                                ? "draft-context-changed"
+                                : "draft-target-reseed-timeout");
+                    }
+                }
+
+                if (!await SendEncoderStepAsync(
+                        targetProbe.ProbeStep.Clockwise,
+                        cancellationToken))
+                {
+                    return Fail("draft-target-probe-rejected");
+                }
+
+                var probeTransition =
+                    await WaitForNativeConfigMutationAsync(
+                        transition.Current,
+                        target,
+                        targetProbe.ProbeStep.ExpectedEffort,
+                        userConfigPath,
+                        isFreshDraftCurrent,
+                        ConfigTransitionTimeout,
+                        cancellationToken);
+                if (probeTransition.Result ==
+                    ConfigTransitionResult.Matched)
+                {
+                    transition = probeTransition;
+                    rendererSeedConfirmed = true;
+                    break;
+                }
+
+                if (probeTransition.Result ==
+                    ConfigTransitionResult.ContextChanged)
+                {
+                    return Fail("draft-context-changed");
+                }
+
+                if (probeTransition.Result ==
+                    ConfigTransitionResult.TimedOut)
+                {
+                    return Fail("draft-target-probe-timeout");
+                }
+
+#if DEBUG
+                CodexModelToggleDiagnostics.RecordStage(
+                    "draft-renderer-seed-stale",
+                    new
+                    {
+                        attempt,
+                        observedModel =
+                            probeTransition.Current.Model.ToString(),
+                        observedEffort =
+                            probeTransition.Current.Effort,
+                    });
+#endif
             }
 
-            if (!await SendEncoderStepAsync(
-                    targetProbe.ProbeStep.Clockwise,
-                    cancellationToken))
+            if (!rendererSeedConfirmed)
             {
-                return Fail("draft-target-probe-rejected");
+                return Fail("draft-renderer-seed-not-applied");
             }
 
-            transition = await WaitForPersistedConfigAsync(
-                target,
-                targetProbe.ProbeStep.ExpectedEffort,
-                userConfigPath,
-                isFreshDraftCurrent,
-                ConfigTransitionTimeout,
-                cancellationToken);
-            if (transition.Result != ConfigTransitionResult.Matched)
-            {
-                return Fail(transition.Result ==
-                    ConfigTransitionResult.ContextChanged
-                        ? "draft-context-changed"
-                        : "draft-target-probe-timeout");
-            }
             rendererMutationConfirmed = true;
-
-            await Task.Delay(NativeSetterSettleDelay, cancellationToken);
             if (!CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
@@ -844,7 +939,8 @@ internal sealed class CodexDraftModelToggleService
                     return Fail("draft-target-final-step-rejected");
                 }
 
-                transition = await WaitForPersistedConfigAsync(
+                transition = await WaitForNativeConfigMutationAsync(
+                    transition.Current,
                     target,
                     finalStep.ExpectedEffort,
                     userConfigPath,
@@ -856,15 +952,10 @@ internal sealed class CodexDraftModelToggleService
                     return Fail(transition.Result ==
                         ConfigTransitionResult.ContextChanged
                             ? "draft-context-changed"
-                            : "draft-target-final-step-timeout");
-                }
-
-                await Task.Delay(
-                    NativeSetterSettleDelay,
-                    cancellationToken);
-                if (!CanContinueFreshDraft(isFreshDraftCurrent))
-                {
-                    return Fail("draft-context-changed");
+                            : transition.Result ==
+                                ConfigTransitionResult.Unexpected
+                                    ? "draft-target-final-step-unexpected"
+                                    : "draft-target-final-step-timeout");
                 }
 
                 nativeFinalConfirmation = true;
@@ -920,7 +1011,6 @@ internal sealed class CodexDraftModelToggleService
                         : "draft-final-config-timeout");
             }
 
-            await Task.Delay(NativeSetterSettleDelay, cancellationToken);
             if (!CanContinueFreshDraft(isFreshDraftCurrent))
             {
                 return Fail("draft-context-changed");
@@ -930,12 +1020,39 @@ internal sealed class CodexDraftModelToggleService
             {
 #if DEBUG
                 CodexModelToggleDiagnostics.RecordStage(
-                    "draft-passive-final-config-unconfirmed",
+                    "draft-passive-final-config-rebuild",
                     new { targetModelId, targetEffort });
 #endif
-                return Fail(
-                    "draft-renderer-mutation-outcome-unknown",
-                    "passive-final-config-unconfirmed");
+                var rebuildDispatch = await rebuildComposer(
+                    cancellationToken);
+                if (rebuildDispatch ==
+                    ComposerRebuildDispatch.NotDispatched)
+                {
+                    return Fail("draft-composer-rebuild-rejected");
+                }
+
+                composerRebuildDispatched = true;
+                if (rebuildDispatch ==
+                    ComposerRebuildDispatch.OutcomeUnknown)
+                {
+                    return Fail(
+                        "draft-composer-rebuild-outcome-unknown",
+                        "hid-outcome-unknown");
+                }
+
+                completed = true;
+#if DEBUG
+                CodexModelToggleDiagnostics.RecordStage(
+                    "draft-final-config-rebuild-dispatched",
+                    new { targetModelId, targetEffort });
+#endif
+                return Complete(Success(
+                    previous,
+                    previousEffort,
+                    target,
+                    targetEffort,
+                    draftOperationId,
+                    ComposerRebuildDispatchReceipt));
             }
 
             completed = true;
@@ -1020,9 +1137,19 @@ internal sealed class CodexDraftModelToggleService
                 }
             }
 
-            if (session is not null)
+            try
             {
-                await session.DisposeAsync();
+                if (session is not null && !session.IsUsable)
+                {
+                    await DiscardCachedSessionAsync(session);
+                }
+            }
+            finally
+            {
+                if (sessionGateEntered)
+                {
+                    _sessionGate.Release();
+                }
             }
         }
     }
@@ -1247,6 +1374,77 @@ internal sealed class CodexDraftModelToggleService
         return new(ConfigTransitionResult.TimedOut, latest);
     }
 
+    private static async Task<ConfigProbe>
+        WaitForNativeConfigMutationAsync(
+            DraftConfig baseline,
+            CodexQuickModel expectedModel,
+            string expectedEffort,
+            string userConfigPath,
+            Func<bool> isFreshDraftCurrent,
+            TimeSpan timeoutDuration,
+            CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeout.CancelAfter(timeoutDuration);
+        var latest = baseline;
+        long? draftReplacementStarted = null;
+        while (!timeout.IsCancellationRequested)
+        {
+            latest = TryReadPersistedUserConfig(userConfigPath);
+            var freshDraftCurrent =
+                CanContinueFreshDraft(isFreshDraftCurrent);
+            var modelSettingsChanged =
+                latest.Model != baseline.Model ||
+                !string.Equals(
+                    latest.Effort,
+                    baseline.Effort,
+                    StringComparison.Ordinal);
+            if (freshDraftCurrent && modelSettingsChanged)
+            {
+                return new(
+                    CanAcceptPersistedConfig(
+                        latest,
+                        expectedModel,
+                        expectedEffort,
+                        freshDraftCurrent)
+                            ? ConfigTransitionResult.Matched
+                            : ConfigTransitionResult.Unexpected,
+                    latest);
+            }
+
+            if (freshDraftCurrent)
+            {
+                draftReplacementStarted = null;
+            }
+            else
+            {
+                draftReplacementStarted ??= Stopwatch.GetTimestamp();
+                if (Stopwatch.GetElapsedTime(
+                        draftReplacementStarted.Value) >=
+                    DraftReplacementGraceTimeout)
+                {
+                    return new(
+                        ConfigTransitionResult.ContextChanged,
+                        latest);
+                }
+            }
+
+            try
+            {
+                await Task.Delay(ConfigPollInterval, timeout.Token);
+            }
+            catch (OperationCanceledException) when (
+                !cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return new(ConfigTransitionResult.TimedOut, latest);
+    }
+
     internal static bool CanAcceptPersistedConfig(
         DraftConfig latest,
         CodexQuickModel expectedModel,
@@ -1342,6 +1540,92 @@ internal sealed class CodexDraftModelToggleService
         }
     }
 
+    private async Task<AppServerStartResult>
+        GetOrStartInitializedSessionAsync(
+            string cliPath,
+            string workingDirectory,
+            CancellationToken cancellationToken)
+    {
+        if (_cachedSession is { IsUsable: true } cached &&
+            string.Equals(
+                _cachedCliPath,
+                cliPath,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                _cachedWorkingDirectory,
+                workingDirectory,
+                StringComparison.OrdinalIgnoreCase))
+        {
+#if DEBUG
+            CodexModelToggleDiagnostics.RecordStage(
+                "draft-app-server-session-reused");
+#endif
+            return new(cached, null, null);
+        }
+
+        await DisposeCachedSessionAsync();
+        var started = await StartInitializedSessionAsync(
+            cliPath,
+            workingDirectory,
+            cancellationToken);
+        if (started.Session is { } session)
+        {
+            _cachedSession = session;
+            _cachedCliPath = cliPath;
+            _cachedWorkingDirectory = workingDirectory;
+#if DEBUG
+            CodexModelToggleDiagnostics.RecordStage(
+                "draft-app-server-session-started");
+#endif
+        }
+
+        return started;
+    }
+
+    private async ValueTask DiscardCachedSessionAsync(
+        AppServerSession session)
+    {
+        if (!ReferenceEquals(_cachedSession, session))
+        {
+            return;
+        }
+
+        _cachedSession = null;
+        _cachedCliPath = null;
+        _cachedWorkingDirectory = null;
+        await session.DisposeAsync();
+    }
+
+    private async ValueTask DisposeCachedSessionAsync()
+    {
+        var session = _cachedSession;
+        _cachedSession = null;
+        _cachedCliPath = null;
+        _cachedWorkingDirectory = null;
+        if (session is not null)
+        {
+            await session.DisposeAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        await _sessionGate.WaitAsync();
+        try
+        {
+            await DisposeCachedSessionAsync();
+        }
+        finally
+        {
+            _sessionGate.Release();
+        }
+    }
+
     private static async Task<RpcResponse> InitializeAsync(
         AppServerSession session,
         CancellationToken cancellationToken)
@@ -1355,7 +1639,7 @@ internal sealed class CodexDraftModelToggleService
                 {
                     name = AppServerServiceName,
                     title = "Codex Micro Monitor",
-                    version = "0.3.1",
+                    version = "0.3.2-quick-fix.1",
                 },
                 capabilities = new
                 {
@@ -1801,6 +2085,7 @@ internal sealed class CodexDraftModelToggleService
     private enum ConfigTransitionResult
     {
         Matched,
+        Unexpected,
         ContextChanged,
         TimedOut,
     }
@@ -1814,16 +2099,45 @@ internal sealed class CodexDraftModelToggleService
         private const int MaximumStderrTailLength = 800;
 
         private readonly Process _process;
+        private readonly SemaphoreSlim _writeGate = new(1, 1);
+        private readonly CancellationTokenSource _lifetime = new();
+        private readonly ConcurrentDictionary<
+            long,
+            TaskCompletionSource<RpcResponse>> _pendingRequests = new();
         private readonly object _stderrSync = new();
         private readonly StringBuilder _stderrTail = new();
+        private readonly Task _stdoutDrain;
         private readonly Task _stderrDrain;
+        private Exception? _transportFailure;
         private long _nextRequestId;
         private int _disposed;
 
         private AppServerSession(Process process)
         {
             _process = process;
+            _stdoutDrain = DrainStdoutAsync(process.StandardOutput);
             _stderrDrain = DrainStderrAsync(process.StandardError);
+        }
+
+        internal bool IsUsable
+        {
+            get
+            {
+                if (Volatile.Read(ref _disposed) != 0 ||
+                    Volatile.Read(ref _transportFailure) is not null)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    return !_process.HasExited;
+                }
+                catch (InvalidOperationException)
+                {
+                    return false;
+                }
+            }
         }
 
         internal static AppServerSession Start(
@@ -1886,64 +2200,22 @@ internal sealed class CodexDraftModelToggleService
                 ["params"] = parameters,
             };
             var json = JsonSerializer.Serialize(request);
+            var completion = new TaskCompletionSource<RpcResponse>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_pendingRequests.TryAdd(requestId, completion))
+            {
+                throw new InvalidOperationException(
+                    "Duplicate Codex App Server request id.");
+            }
+
             try
             {
-                await _process.StandardInput.WriteLineAsync(
-                    json.AsMemory(),
-                    cancellationToken);
-                await _process.StandardInput.FlushAsync(cancellationToken);
+                await WriteMessageAsync(json, cancellationToken);
+                return await completion.Task.WaitAsync(cancellationToken);
             }
-            catch (IOException exception)
+            finally
             {
-                await AwaitTerminationDiagnosticsAsync();
-                throw new IOException(
-                    "Codex App Server request write failed " +
-                        BuildTransportDiagnostics() + ".",
-                    exception);
-            }
-
-            while (true)
-            {
-                string? line;
-                try
-                {
-                    line = await _process.StandardOutput.ReadLineAsync(
-                        cancellationToken);
-                }
-                catch (IOException exception)
-                {
-                    await AwaitTerminationDiagnosticsAsync();
-                    throw new IOException(
-                        "Codex App Server response read failed " +
-                            BuildTransportDiagnostics() + ".",
-                        exception);
-                }
-
-                if (line is null)
-                {
-                    await AwaitTerminationDiagnosticsAsync();
-                    throw new IOException(
-                        BuildClosedResponseStreamMessage());
-                }
-
-                using var document = JsonDocument.Parse(line);
-                var root = document.RootElement;
-                if (!ResponseIdEquals(root, requestId))
-                {
-                    continue;
-                }
-
-                if (root.TryGetProperty("error", out var error))
-                {
-                    return new(false, default, ReadRpcError(error));
-                }
-
-                if (!root.TryGetProperty("result", out var result))
-                {
-                    return new(false, default, "rpc-result-missing");
-                }
-
-                return new(true, result.Clone());
+                _pendingRequests.TryRemove(requestId, out _);
             }
         }
 
@@ -1961,10 +2233,36 @@ internal sealed class CodexDraftModelToggleService
                 ["params"] = parameters,
             };
             var json = JsonSerializer.Serialize(notification);
-            await _process.StandardInput.WriteLineAsync(
-                json.AsMemory(),
-                cancellationToken);
-            await _process.StandardInput.FlushAsync(cancellationToken);
+            await WriteMessageAsync(json, cancellationToken);
+        }
+
+        private async Task WriteMessageAsync(
+            string json,
+            CancellationToken cancellationToken)
+        {
+            await _writeGate.WaitAsync(cancellationToken);
+            try
+            {
+                ObjectDisposedException.ThrowIf(
+                    Volatile.Read(ref _disposed) != 0,
+                    this);
+                await _process.StandardInput.WriteLineAsync(
+                    json.AsMemory(),
+                    cancellationToken);
+                await _process.StandardInput.FlushAsync(cancellationToken);
+            }
+            catch (IOException exception)
+            {
+                await AwaitTerminationDiagnosticsAsync();
+                throw new IOException(
+                    "Codex App Server request write failed " +
+                        BuildTransportDiagnostics() + ".",
+                    exception);
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
 
         public async ValueTask DisposeAsync()
@@ -1982,6 +2280,8 @@ internal sealed class CodexDraftModelToggleService
             {
                 // The server may already have exited.
             }
+
+            _lifetime.Cancel();
 
             try
             {
@@ -2005,6 +2305,16 @@ internal sealed class CodexDraftModelToggleService
 
             try
             {
+                await _stdoutDrain.WaitAsync(
+                    TimeSpan.FromMilliseconds(300));
+            }
+            catch
+            {
+                // The owned process has already been stopped above.
+            }
+
+            try
+            {
                 await _stderrDrain.WaitAsync(TimeSpan.FromMilliseconds(300));
             }
             catch
@@ -2013,6 +2323,8 @@ internal sealed class CodexDraftModelToggleService
             }
 
             _process.Dispose();
+            _lifetime.Dispose();
+            _writeGate.Dispose();
         }
 
         private void TryKillOwnedProcess()
@@ -2031,14 +2343,17 @@ internal sealed class CodexDraftModelToggleService
             }
         }
 
-        private static bool ResponseIdEquals(
+        private static bool TryReadResponseId(
             JsonElement root,
-            long expectedId) =>
+            out long requestId)
+        {
+            requestId = 0;
+            return
             root.ValueKind == JsonValueKind.Object &&
             root.TryGetProperty("id", out var id) &&
             id.ValueKind == JsonValueKind.Number &&
-            id.TryGetInt64(out var actualId) &&
-            actualId == expectedId;
+                id.TryGetInt64(out requestId);
+        }
 
         private static string ReadRpcError(JsonElement error)
         {
@@ -2097,6 +2412,88 @@ internal sealed class CodexDraftModelToggleService
             catch (IOException)
             {
                 // The diagnostic stream itself can close during teardown.
+            }
+        }
+
+        private async Task DrainStdoutAsync(StreamReader reader)
+        {
+            Exception? failure = null;
+            try
+            {
+                while (await reader.ReadLineAsync(_lifetime.Token) is
+                       { } line)
+                {
+                    using var document = JsonDocument.Parse(line);
+                    var root = document.RootElement;
+                    if (!TryReadResponseId(root, out var requestId) ||
+                        !_pendingRequests.TryRemove(
+                            requestId,
+                            out var completion))
+                    {
+                        continue;
+                    }
+
+                    if (root.TryGetProperty("error", out var error))
+                    {
+                        completion.TrySetResult(new(
+                            false,
+                            default,
+                            ReadRpcError(error)));
+                    }
+                    else if (!root.TryGetProperty(
+                                 "result",
+                                 out var result))
+                    {
+                        completion.TrySetResult(new(
+                            false,
+                            default,
+                            "rpc-result-missing"));
+                    }
+                    else
+                    {
+                        completion.TrySetResult(new(
+                            true,
+                            result.Clone()));
+                    }
+                }
+
+                if (Volatile.Read(ref _disposed) == 0)
+                {
+                    await AwaitTerminationDiagnosticsAsync();
+                    failure = new IOException(
+                        BuildClosedResponseStreamMessage());
+                }
+            }
+            catch (OperationCanceledException) when (
+                _lifetime.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    InvalidOperationException or
+                    ObjectDisposedException or
+                    JsonException)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                if (failure is not null)
+                {
+                    Volatile.Write(ref _transportFailure, failure);
+                }
+
+                var completionFailure = failure ??
+                    new ObjectDisposedException(nameof(AppServerSession));
+                foreach (var pending in _pendingRequests.ToArray())
+                {
+                    if (_pendingRequests.TryRemove(
+                            pending.Key,
+                            out var completion))
+                    {
+                        completion.TrySetException(completionFailure);
+                    }
+                }
             }
         }
 

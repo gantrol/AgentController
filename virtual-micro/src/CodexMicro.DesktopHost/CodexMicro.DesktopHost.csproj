@@ -8,16 +8,18 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <DebugType>None</DebugType>
-    <DebugSymbols>false</DebugSymbols>
+    <DebugType Condition="'$(Configuration)' == 'Debug'">portable</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Debug'">true</DebugSymbols>
+    <DebugType Condition="'$(Configuration)' != 'Debug'">None</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' != 'Debug'">false</DebugSymbols>
     <AssemblyName>CodexMicro</AssemblyName>
     <RootNamespace>CodexMicro.DesktopHost</RootNamespace>
     <AssemblyTitle>Codex Micro Keypad</AssemblyTitle>
     <Product>Codex Micro Keypad</Product>
     <Description>Standalone Codex Micro keypad using the original WPF XAML.</Description>
-    <Version>0.3.1</Version>
-    <AssemblyVersion>0.3.1.0</AssemblyVersion>
-    <FileVersion>0.3.1.0</FileVersion>
+    <Version>0.3.2-quick-fix.1</Version>
+    <AssemblyVersion>0.3.2.0</AssemblyVersion>
+    <FileVersion>0.3.2.0</FileVersion>
     <ApplicationIcon>..\..\Assets\CodexMicro.ico</ApplicationIcon>
   </PropertyGroup>
 

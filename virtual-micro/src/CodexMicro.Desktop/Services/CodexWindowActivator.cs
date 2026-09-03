@@ -238,34 +238,22 @@ internal static class CodexWindowActivator
 
     private static bool IsCodexProcess(uint processId, string? packageRoot)
     {
-        try
-        {
-            using var process = Process.GetProcessById(checked((int)processId));
-            var path = process.MainModule?.FileName;
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return false;
-            }
-
-            if (!string.IsNullOrWhiteSpace(packageRoot) &&
-                path.StartsWith(
-                    packageRoot,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return path.Contains(
-                @"\WindowsApps\OpenAI.Codex_",
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or
-                InvalidOperationException or
-                System.ComponentModel.Win32Exception)
+        if (!WindowsProcessImage.TryGetPath(processId, out var path))
         {
             return false;
         }
+
+        if (!string.IsNullOrWhiteSpace(packageRoot) &&
+            path.StartsWith(
+                packageRoot,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return path.Contains(
+            @"\WindowsApps\OpenAI.Codex_",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private readonly record struct WindowCandidate(

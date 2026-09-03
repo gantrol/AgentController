@@ -53,6 +53,7 @@ internal sealed class CodexDraftComposerModelSelector
     private readonly record struct PowerTrackCandidate(
         AutomationElement Element,
         int Score,
+        Rect Rectangle,
         double Area);
 
     private sealed class DraftUiException(string error) : Exception(error)
@@ -439,22 +440,16 @@ internal sealed class CodexDraftComposerModelSelector
         var root = RequireRoot(foregroundWindow);
         EnsureNoUnexpectedDialog(root);
         var permissionBefore = TryReadPermissionMode(root);
-        _ = EnsureMenuOpen(
+        var menu = WaitForDirectPowerMenu(
             foregroundWindow,
+            target,
+            current.Count,
             isDraftCurrent,
             cancellationToken);
-        var menu = WaitForMenu(
-            foregroundWindow,
-            isDraftCurrent,
-            cancellationToken,
-            candidate =>
-                FindPowerItem(candidate) is not null &&
-                HasDirectPowerTarget(candidate, target, current.Count),
-            "draft-ui-power-track-unavailable");
         var mechanism = "track-click";
-        var minimum = double.NaN;
-        var maximum = double.NaN;
-        var targetValue = double.NaN;
+        double? minimum = null;
+        double? maximum = null;
+        double? targetValue = null;
         var slider = FindPowerSlider(menu);
         if (slider is not null &&
             slider.TryGetCurrentPattern(
@@ -475,7 +470,7 @@ internal sealed class CodexDraftComposerModelSelector
                         (targetPosition - 1d) /
                         (current.Count - 1d));
                 mechanism = "range-value";
-                rangePattern.SetValue(targetValue);
+                rangePattern.SetValue(targetValue.Value);
             }
         }
 
@@ -535,6 +530,54 @@ internal sealed class CodexDraftComposerModelSelector
             autoConfirmUltraFullAccess,
             isDraftCurrent,
             cancellationToken);
+    }
+
+    private static AutomationElement WaitForDirectPowerMenu(
+        IntPtr foregroundWindow,
+        CodexQuickModel target,
+        int count,
+        Func<bool> isDraftCurrent,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            _ = EnsureMenuOpen(
+                foregroundWindow,
+                isDraftCurrent,
+                cancellationToken);
+            try
+            {
+                return WaitForMenu(
+                    foregroundWindow,
+                    isDraftCurrent,
+                    cancellationToken,
+                    candidate =>
+                        FindPowerItem(candidate) is not null &&
+                        HasDirectPowerTarget(candidate, target, count),
+                    "draft-ui-power-track-unavailable");
+            }
+            catch (DraftUiException exception) when (
+                attempt == 0 &&
+                exception.Error == "draft-ui-power-track-unavailable")
+            {
+#if DEBUG
+                CodexModelToggleDiagnostics.RecordStage(
+                    "draft-ui-power-menu-retrying",
+                    new
+                    {
+                        target = target.ToString(),
+                        count,
+                    });
+#endif
+                CloseMenu(
+                    foregroundWindow,
+                    isDraftCurrent,
+                    cancellationToken);
+                Thread.Sleep(PollInterval);
+            }
+        }
+
+        throw new DraftUiException("draft-ui-power-track-unavailable");
     }
 
     private static ComposerSelection WaitForDirectPowerSelection(
@@ -1480,6 +1523,7 @@ internal sealed class CodexDraftComposerModelSelector
             candidates.Add(new(
                 element,
                 score,
+                rectangle,
                 rectangle.Width * rectangle.Height));
         }
 
@@ -1492,14 +1536,31 @@ internal sealed class CodexDraftComposerModelSelector
             return null;
         }
 
-        if (ordered.Length > 1 &&
-            ordered[0].Score == ordered[1].Score &&
-            Math.Abs(ordered[0].Area - ordered[1].Area) < 0.5)
+        var leadingCandidates = ordered
+            .Where(candidate =>
+                candidate.Score == ordered[0].Score &&
+                Math.Abs(candidate.Area - ordered[0].Area) < 0.5)
+            .ToArray();
+        if (leadingCandidates.Skip(1).Any(candidate =>
+                !AreEquivalentTrackRectangles(
+                    ordered[0].Rectangle,
+                    candidate.Rectangle)))
         {
             return null;
         }
 
         return ordered[0].Element;
+    }
+
+    private static bool AreEquivalentTrackRectangles(
+        Rect first,
+        Rect second)
+    {
+        const double tolerance = 1d;
+        return Math.Abs(first.Left - second.Left) <= tolerance &&
+            Math.Abs(first.Top - second.Top) <= tolerance &&
+            Math.Abs(first.Width - second.Width) <= tolerance &&
+            Math.Abs(first.Height - second.Height) <= tolerance;
     }
 
     private static Point ResolvePowerTrackPoint(
@@ -1930,9 +1991,20 @@ internal sealed class CodexDraftComposerModelSelector
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!CodexWindowActivator.IsForegroundWindow(foregroundWindow) ||
-            !isDraftCurrent())
+        var foregroundCurrent =
+            CodexWindowActivator.IsForegroundWindow(foregroundWindow);
+        var draftCurrent = isDraftCurrent();
+        if (!foregroundCurrent || !draftCurrent)
         {
+#if DEBUG
+            CodexModelToggleDiagnostics.RecordStage(
+                "draft-ui-current-check-failed",
+                new
+                {
+                    foregroundCurrent,
+                    draftCurrent,
+                });
+#endif
             throw new DraftUiException("visible-thread-changed");
         }
     }

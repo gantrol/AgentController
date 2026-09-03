@@ -115,7 +115,6 @@ internal sealed class CodexAgentRosterObserver : IDisposable
 
     public void Dispose()
     {
-        CancellationTokenSource? reloadCancellation;
         lock (_gate)
         {
             if (_disposed)
@@ -128,10 +127,8 @@ internal sealed class CodexAgentRosterObserver : IDisposable
             _watcher = null;
             _reloadTimer?.Dispose();
             _reloadTimer = null;
-            reloadCancellation = _reloadCancellation;
+            _reloadCancellation?.Cancel();
         }
-
-        reloadCancellation?.Cancel();
     }
 
     internal static CodexAgentRosterSnapshot Parse(
@@ -489,9 +486,9 @@ internal sealed class CodexAgentRosterObserver : IDisposable
                     {
                         _reloadCancellation = null;
                     }
-                }
 
-                reloadCancellation.Dispose();
+                    reloadCancellation.Dispose();
+                }
             }
         }
 

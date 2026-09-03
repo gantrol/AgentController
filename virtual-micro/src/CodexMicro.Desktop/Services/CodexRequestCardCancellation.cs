@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
@@ -281,28 +280,14 @@ public static class CodexRequestCardCancellation
     }
 
     private static bool IsCodexProcess(uint processId, string? packageRoot)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(checked((int)processId));
-            var path = process.MainModule?.FileName;
-            return !string.IsNullOrWhiteSpace(path) &&
-                ((!string.IsNullOrWhiteSpace(packageRoot) &&
-                  path.StartsWith(
-                      packageRoot,
-                      StringComparison.OrdinalIgnoreCase)) ||
-                 path.Contains(
-                     @"\WindowsApps\OpenAI.Codex_",
-                     StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or
-                InvalidOperationException or
-                Win32Exception)
-        {
-            return false;
-        }
-    }
+        => WindowsProcessImage.TryGetPath(processId, out var path) &&
+            ((!string.IsNullOrWhiteSpace(packageRoot) &&
+              path.StartsWith(
+                  packageRoot,
+                  StringComparison.OrdinalIgnoreCase)) ||
+             path.Contains(
+                 @"\WindowsApps\OpenAI.Codex_",
+                 StringComparison.OrdinalIgnoreCase));
 
     private static NativeInput CreateKeyInput(ushort key, bool keyUp) => new()
     {

@@ -58,10 +58,12 @@ internal sealed class CodexQuotaService
                 RedirectStandardError = true,
             },
         };
+        var started = false;
 
         try
         {
-            if (!process.Start())
+            started = process.Start();
+            if (!started)
             {
                 return null;
             }
@@ -103,17 +105,7 @@ internal sealed class CodexQuotaService
         }
         finally
         {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch (InvalidOperationException)
-            {
-                // The process never started or exited during cleanup.
-            }
+            await CodexAppServerProcess.StopAsync(process, started);
         }
     }
 

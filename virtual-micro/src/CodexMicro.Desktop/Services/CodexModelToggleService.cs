@@ -520,6 +520,11 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         DateTimeOffset ObservedAt,
         IntPtr ForegroundWindow);
 
+    private readonly record struct ForegroundDraftNavigationExpectation(
+        Guid Token,
+        DateTimeOffset DispatchedAt,
+        IntPtr ForegroundWindow);
+
     private const string PipeName = "codex-ipc";
     private const string LocalHostId = "local";
     private const string InitialClientId = "initializing-client";
@@ -542,6 +547,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan RendererDraftEvidenceLifetime =
         TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ForegroundDraftNavigationLifetime =
+        TimeSpan.FromSeconds(5);
     // Leave enough time for the slow blank-composer path to finish before the
     // causal following=false evidence itself becomes stale. A lease admitted
     // near the 30-second cleanup boundary can otherwise outlive the route it
@@ -583,6 +590,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private CodexThreadModelStateAccumulator? _trackedStateAccumulator;
     private CodexThreadModelState? _currentThreadState;
     private VisibilityRefreshState? _visibilityRefresh;
+    private ForegroundDraftNavigationExpectation?
+        _foregroundDraftNavigationExpectation;
     private int _trackingGeneration;
     private long _visibilityGeneration;
     private long _rendererDraftEvidenceGeneration;
@@ -711,6 +720,19 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                         sourceClientId = pair.Value,
                     })
                     .ToArray(),
+                pendingDraftNavigation =
+                    _foregroundDraftNavigationExpectation is { } navigation
+                        ? new
+                        {
+                            foregroundWindow =
+                                navigation.ForegroundWindow.ToInt64(),
+                            ageMilliseconds = Math.Max(
+                                0,
+                                (DateTimeOffset.UtcNow -
+                                    navigation.DispatchedAt)
+                                    .TotalMilliseconds),
+                        }
+                        : null,
                 refreshingVisibility = _visibilityRefresh is not null,
             };
         }
@@ -989,11 +1011,56 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     /// itself is deliberately insufficient because it also occurs during IPC
     /// reconnects before real-task state is replayed.
     /// </summary>
+    internal Guid? BeginForegroundDraftNavigation(
+        IntPtr foregroundWindow,
+        DateTimeOffset dispatchedAt)
+    {
+        if (foregroundWindow == IntPtr.Zero ||
+            dispatchedAt == default ||
+            !CodexWindowActivator.IsForegroundWindow(foregroundWindow))
+        {
+            return null;
+        }
+
+        lock (_stateSync)
+        {
+            if (_pipe is not { IsConnected: true } ||
+                !IsInitializedClientId(_clientId))
+            {
+                return null;
+            }
+
+            var token = Guid.NewGuid();
+            _foregroundDraftNavigationExpectation = new(
+                token,
+                dispatchedAt,
+                foregroundWindow);
+            return token;
+        }
+    }
+
+    internal void CancelForegroundDraftNavigation(Guid token)
+    {
+        lock (_stateSync)
+        {
+            if (_foregroundDraftNavigationExpectation is { } navigation &&
+                navigation.Token == token)
+            {
+                _foregroundDraftNavigationExpectation = null;
+            }
+        }
+    }
+
     internal async Task<ForegroundDraftLease?>
         CaptureForegroundDraftLeaseAsync(
             CancellationToken cancellationToken = default,
             IntPtr foregroundWindow = default)
     {
+        if (!CodexWindowActivator.IsForegroundWindow(foregroundWindow))
+        {
+            return null;
+        }
+
         try
         {
             await EnsureConnectedAsync(cancellationToken);
@@ -1008,6 +1075,11 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 TimeoutException or
                 InvalidDataException or
                 ObjectDisposedException)
+        {
+            return null;
+        }
+
+        if (!CodexWindowActivator.IsForegroundWindow(foregroundWindow))
         {
             return null;
         }
@@ -2219,6 +2291,9 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 _clientId = null;
                 _visibleThreadByClient.Clear();
                 _rendererDraftEvidenceByClient.Clear();
+                _rendererDraftContinuityByClient.Clear();
+                _foregroundRendererClientByWindow.Clear();
+                _foregroundDraftNavigationExpectation = null;
                 _visibilityRefresh = null;
                 InvalidateForegroundDraftLeasesLocked();
                 _selectedVisibleThreadId = null;
@@ -2412,6 +2487,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         var observedForegroundWindow =
             CodexWindowActivator.CaptureForegroundWindow();
         var changed = false;
+        var displacedDraftEvidence = false;
         lock (_stateSync)
         {
             if (sourceClientId == _clientId)
@@ -2451,6 +2527,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             if (changed &&
                 ((!following) || rendererDraftThread))
             {
+                var evidenceObservedAt = DateTimeOffset.UtcNow;
                 var hasExistingEvidence =
                     _rendererDraftEvidenceByClient.TryGetValue(
                         sourceClientId,
@@ -2462,23 +2539,41 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 var generation = keepsExistingGeneration
                     ? existingEvidence.Generation
                     : NextRendererDraftEvidenceGenerationLocked();
+                var navigationWindow = keepsExistingGeneration
+                    ? IntPtr.Zero
+                    : TryConsumeForegroundDraftNavigationLocked(
+                        sourceClientId,
+                        previouslyVisibleThreadId,
+                        following,
+                        observedForegroundWindow,
+                        evidenceObservedAt);
                 var evidenceWindow = keepsExistingGeneration
                     ? existingEvidence.ForegroundWindow
-                    : observedForegroundWindow;
+                    : navigationWindow != IntPtr.Zero
+                        ? navigationWindow
+                        : ResolveRendererForegroundWindowLocked(
+                            sourceClientId,
+                            observedForegroundWindow);
+                _rendererDraftEvidenceByClient[sourceClientId] = new(
+                    generation,
+                    evidenceObservedAt,
+                    evidenceWindow);
                 if (evidenceWindow != IntPtr.Zero)
                 {
-                    _rendererDraftEvidenceByClient[sourceClientId] = new(
-                        generation,
-                        DateTimeOffset.UtcNow,
-                        evidenceWindow);
-                    _foregroundRendererClientByWindow[evidenceWindow] =
-                        sourceClientId;
+                    displacedDraftEvidence |=
+                        BindRendererToForegroundWindowLocked(
+                            sourceClientId,
+                            evidenceWindow);
                 }
+            }
+
+            if (changed || displacedDraftEvidence)
+            {
+                InvalidateForegroundDraftLeasesLocked();
             }
 
             if (changed)
             {
-                InvalidateForegroundDraftLeasesLocked();
                 PulseVisibleThreadChangedLocked();
             }
         }
@@ -2487,6 +2582,103 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         {
             RefreshCurrentThreadTracking();
         }
+    }
+
+    private IntPtr TryConsumeForegroundDraftNavigationLocked(
+        string rendererClientId,
+        string? previouslyVisibleThreadId,
+        bool following,
+        IntPtr observedForegroundWindow,
+        DateTimeOffset observedAt)
+    {
+        if (_foregroundDraftNavigationExpectation is not { } navigation)
+        {
+            return IntPtr.Zero;
+        }
+
+        var age = observedAt - navigation.DispatchedAt;
+        if (age < TimeSpan.Zero ||
+            age > ForegroundDraftNavigationLifetime)
+        {
+            _foregroundDraftNavigationExpectation = null;
+            return IntPtr.Zero;
+        }
+
+        if (following ||
+            (observedForegroundWindow != IntPtr.Zero &&
+             observedForegroundWindow != navigation.ForegroundWindow) ||
+            string.IsNullOrWhiteSpace(previouslyVisibleThreadId) ||
+            CodexDraftModelToggleService.IsDraftThreadId(
+                previouslyVisibleThreadId) ||
+            (_foregroundRendererClientByWindow.TryGetValue(
+                 navigation.ForegroundWindow,
+                 out var expectedRendererClientId) &&
+             !string.Equals(
+                 expectedRendererClientId,
+                 rendererClientId,
+                 StringComparison.Ordinal)))
+        {
+            return IntPtr.Zero;
+        }
+
+        _foregroundDraftNavigationExpectation = null;
+        return navigation.ForegroundWindow;
+    }
+
+    private IntPtr ResolveRendererForegroundWindowLocked(
+        string rendererClientId,
+        IntPtr observedForegroundWindow)
+    {
+        var knownWindows = _foregroundRendererClientByWindow
+            .Where(pair => string.Equals(
+                pair.Value,
+                rendererClientId,
+                StringComparison.Ordinal))
+            .Select(pair => pair.Key)
+            .Take(2)
+            .ToArray();
+        return knownWindows.Length == 1
+            ? knownWindows[0]
+            : observedForegroundWindow;
+    }
+
+    private bool BindRendererToForegroundWindowLocked(
+        string rendererClientId,
+        IntPtr foregroundWindow)
+    {
+        var displacedDraftEvidence = false;
+        if (_foregroundRendererClientByWindow.TryGetValue(
+                foregroundWindow,
+                out var displacedRendererClientId) &&
+            !string.Equals(
+                displacedRendererClientId,
+                rendererClientId,
+                StringComparison.Ordinal))
+        {
+            displacedDraftEvidence =
+                _rendererDraftEvidenceByClient.Remove(
+                    displacedRendererClientId) |
+                _rendererDraftContinuityByClient.Remove(
+                    displacedRendererClientId);
+        }
+
+        var staleWindows = _foregroundRendererClientByWindow
+            .Where(pair =>
+                pair.Key != foregroundWindow &&
+                string.Equals(
+                    pair.Value,
+                    rendererClientId,
+                    StringComparison.Ordinal))
+            .Select(pair => pair.Key)
+            .ToArray();
+        foreach (var staleWindow in staleWindows)
+        {
+            _foregroundRendererClientByWindow.Remove(staleWindow);
+        }
+
+        _foregroundRendererClientByWindow[foregroundWindow] =
+            rendererClientId;
+        return displacedDraftEvidence;
     }
 
     private void ProcessThreadStateChanged(JsonElement message)
@@ -2665,6 +2857,9 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         {
             _visibleThreadByClient.Clear();
             _rendererDraftEvidenceByClient.Clear();
+            _rendererDraftContinuityByClient.Clear();
+            _foregroundRendererClientByWindow.Clear();
+            _foregroundDraftNavigationExpectation = null;
             _visibilityRefresh = null;
             InvalidateForegroundDraftLeasesLocked();
             _selectedVisibleThreadId = null;
@@ -3252,6 +3447,10 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _rendererDraftContinuityByClient.Remove(clientId);
         }
 
+        TryBindSingleUnboundDraftEvidenceLocked(
+            foregroundWindow,
+            now);
+
         var rendererClientId = SelectRendererDraftEvidenceClient(
             _visibleThreadByClient,
             _rendererDraftEvidenceByClient,
@@ -3303,6 +3502,49 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         }
 
         return null;
+    }
+
+    private void TryBindSingleUnboundDraftEvidenceLocked(
+        IntPtr foregroundWindow,
+        DateTimeOffset now)
+    {
+        if (foregroundWindow == IntPtr.Zero ||
+            _visibleThreadByClient.Values.Any(CanTrackSemanticThread))
+        {
+            return;
+        }
+
+        var candidates = _rendererDraftEvidenceByClient
+            .Where(pair =>
+                pair.Value.ForegroundWindow == IntPtr.Zero &&
+                now >= pair.Value.ObservedAt &&
+                now - pair.Value.ObservedAt <=
+                    RendererDraftEvidenceLifetime &&
+                (!_visibleThreadByClient.TryGetValue(
+                     pair.Key,
+                     out var rendererThreadId) ||
+                 CodexDraftModelToggleService.IsDraftThreadId(
+                     rendererThreadId)))
+            .OrderByDescending(pair => pair.Value.Generation)
+            .Take(2)
+            .ToArray();
+        if (candidates.Length != 1)
+        {
+            return;
+        }
+
+        var candidate = candidates[0];
+        _rendererDraftEvidenceByClient[candidate.Key] =
+            candidate.Value with
+            {
+                ForegroundWindow = foregroundWindow,
+            };
+        if (BindRendererToForegroundWindowLocked(
+                candidate.Key,
+                foregroundWindow))
+        {
+            InvalidateForegroundDraftLeasesLocked();
+        }
     }
 
     internal static string? SelectRendererDraftEvidenceClient(
@@ -3736,6 +3978,9 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _clientId = null;
             _visibleThreadByClient.Clear();
             _rendererDraftEvidenceByClient.Clear();
+            _rendererDraftContinuityByClient.Clear();
+            _foregroundRendererClientByWindow.Clear();
+            _foregroundDraftNavigationExpectation = null;
             _visibilityRefresh = null;
             InvalidateForegroundDraftLeasesLocked();
             _selectedVisibleThreadId = null;
@@ -3973,6 +4218,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             _rendererDraftEvidenceByClient.Clear();
             _rendererDraftContinuityByClient.Clear();
             _foregroundRendererClientByWindow.Clear();
+            _foregroundDraftNavigationExpectation = null;
             _visibilityRefresh = null;
             InvalidateForegroundDraftLeasesLocked();
             _selectedVisibleThreadId = null;
@@ -3992,7 +4238,6 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             waiter.Completion.TrySetCanceled();
         }
 
-        pipe?.Dispose();
         if (reader is not null)
         {
             try
@@ -4005,6 +4250,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             }
         }
 
+        pipe?.Dispose();
         _lifetime.Dispose();
         // Start/toggle/tracking continuations can still be unwinding after the
         // pipe and lifetime token are cancelled. SemaphoreSlim owns no native

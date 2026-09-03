@@ -500,6 +500,16 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _windowClosed = true;
+        try
+        {
+            _broker.Dispose();
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(
+                $"Codex Micro broker close cleanup failed: {exception}");
+        }
+
         _modelToggleService.CurrentThreadStateChanged -=
             ModelToggleService_CurrentThreadStateChanged;
         try
@@ -561,18 +571,6 @@ public partial class MicroSurfaceWindow : Window
         }
         finally
         {
-            try
-            {
-                // Held keys and joystick state must be neutralized even when
-                // an unrelated observer or window cleanup step failed.
-                _broker.Dispose();
-            }
-            catch (Exception exception)
-            {
-                Debug.WriteLine(
-                    $"Codex Micro broker close cleanup failed: {exception}");
-            }
-
             try
             {
                 await _voiceInput.DisposeAsync();
@@ -4234,6 +4232,7 @@ public partial class MicroSurfaceWindow : Window
         var newTaskWindow = IntPtr.Zero;
         var newTaskDispatchedAt = DateTimeOffset.MinValue;
         var requirePostNavigationDraftEvidence = false;
+        Guid? draftNavigationToken = null;
         if (string.Equals(
                 resolvedAction,
                 "newTask",
@@ -4246,12 +4245,32 @@ public partial class MicroSurfaceWindow : Window
                     .TryCaptureForegroundDraftLeaseForReasoningStep(
                         newTaskWindow) is null;
                 newTaskDispatchedAt = DateTimeOffset.UtcNow;
+                if (requirePostNavigationDraftEvidence)
+                {
+                    draftNavigationToken = _modelToggleService
+                        .BeginForegroundDraftNavigation(
+                            newTaskWindow,
+                            newTaskDispatchedAt);
+                }
             }
         }
 
-        var result = await RunActionAsync(
-            () => _broker.TapKeyAsync(key),
-            label);
+        MicroSendResult? result = null;
+        try
+        {
+            result = await RunActionAsync(
+                () => _broker.TapKeyAsync(key),
+                label);
+        }
+        finally
+        {
+            if (draftNavigationToken is { } token &&
+                result is not { WasPossiblySent: true })
+            {
+                _modelToggleService.CancelForegroundDraftNavigation(token);
+            }
+        }
+
         if (string.Equals(
                 resolvedAction,
                 "newTask",

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Automation;
@@ -473,27 +472,16 @@ internal sealed class CodexMenuSelectionObserver
             return cached;
         }
 
-        var isCodex = false;
-        try
-        {
-            using var process = Process.GetProcessById(processId);
-            var path = process.MainModule?.FileName;
-            isCodex = !string.IsNullOrWhiteSpace(path) &&
-                ((!string.IsNullOrWhiteSpace(packageRoot) &&
-                    path.StartsWith(
-                        packageRoot,
-                        StringComparison.OrdinalIgnoreCase)) ||
-                 path.Contains(
-                     @"\WindowsApps\OpenAI.Codex_",
-                     StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or
-                InvalidOperationException or
-                Win32Exception)
-        {
-            isCodex = false;
-        }
+        var isCodex = WindowsProcessImage.TryGetPath(
+                checked((uint)processId),
+                out var path) &&
+            ((!string.IsNullOrWhiteSpace(packageRoot) &&
+                path.StartsWith(
+                    packageRoot,
+                    StringComparison.OrdinalIgnoreCase)) ||
+             path.Contains(
+                 @"\WindowsApps\OpenAI.Codex_",
+                 StringComparison.OrdinalIgnoreCase));
 
         cache[processId] = isCodex;
         return isCodex;

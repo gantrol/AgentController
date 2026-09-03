@@ -41,6 +41,7 @@ Windows 软件版的正式发行基线选定为：
 2. 真实 Micro 已表达的 Agent/Command key、Dial、Analog、PTT、灯光和设备状态继续走 HID；不得用 App Server 替代设备身份或双向设备协议。
 3. 在 App Server 语义 adapter 完成前，UIA、快捷键和现有命令适配器只能作为明确标记的 Limited/fallback 路径；transport Accepted 不得升级为业务成功。
 4. App Server-only 只能构成无驱动 Limited mode；Windows Full Micro mode 仍硬依赖匹配的 HID 驱动和 Broker。
+5. 空白新会话尚无真实 `threadId`，其快捷模型切换采用 [ADR-0003](./0003-codex-blank-draft-model-switch.zh-CN.md) 定义的、仅限当前前台 Composer 的受观察界面事务；这项窄例外不改变真实任务与其他 Micro 能力的原生/语义主路径。
 
 ## 为什么现在必须改方向
 

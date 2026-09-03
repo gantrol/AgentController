@@ -55,6 +55,8 @@
          does not load or reference the retired hosted WPF surface assembly. -->
     <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexRequestCardCancellation.cs"
              Link="Services\Micro\CodexRequestCardCancellation.cs" />
+    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\WindowsProcessImage.cs"
+             Link="Services\Micro\WindowsProcessImage.cs" />
   </ItemGroup>
 
 </Project>
