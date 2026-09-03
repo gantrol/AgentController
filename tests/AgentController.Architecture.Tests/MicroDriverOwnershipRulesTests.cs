@@ -205,6 +205,9 @@ public sealed class MicroDriverOwnershipRulesTests
         var draftModelBridge = File.ReadAllText(Resolve(
             "virtual-micro/src/CodexMicro.Desktop/Services/" +
             "CodexDraftModelToggleService.cs"));
+        var draftComposerSelector = File.ReadAllText(Resolve(
+            "virtual-micro/src/CodexMicro.Desktop/Services/" +
+            "CodexDraftComposerModelSelector.cs"));
 
         Assert.Contains(
             "_broker.StepEncoderAsync(reportedClockwise)",
@@ -341,8 +344,16 @@ public sealed class MicroDriverOwnershipRulesTests
             draftModelBridge,
             StringComparison.Ordinal);
         Assert.Contains(
-            "InvalidateUserSavedConfigAsync",
+            "_draftComposerModelSelector.ToggleAsync(",
             mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EnsureCurrent(",
+            draftComposerSelector,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "VerifyFinalSelection(",
+            draftComposerSelector,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "DispatchDraftReasoningCommandAsync",

@@ -411,7 +411,7 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
 
         if (targetIndex > 0)
         {
-            var finalStep = target is "ultra"
+            var finalStep = target is "max" or "ultra"
                 ? (EffortStep?)null
                 : new EffortStep(
                     Clockwise: false,
@@ -995,7 +995,6 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
                 });
 #endif
             encoderModeChanged = false;
-            await invalidateRendererConfig(cancellationToken);
             transition = await WaitForPersistedConfigAsync(
                 target,
                 targetEffort,
@@ -1020,11 +1019,13 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
             {
 #if DEBUG
                 CodexModelToggleDiagnostics.RecordStage(
+                    "draft-final-config-confirmed-before-rebuild",
+                    new { targetModelId, targetEffort });
+                CodexModelToggleDiagnostics.RecordStage(
                     "draft-passive-final-config-rebuild",
                     new { targetModelId, targetEffort });
 #endif
-                var rebuildDispatch = await rebuildComposer(
-                    cancellationToken);
+                var rebuildDispatch = await rebuildComposer(cancellationToken);
                 if (rebuildDispatch ==
                     ComposerRebuildDispatch.NotDispatched)
                 {
