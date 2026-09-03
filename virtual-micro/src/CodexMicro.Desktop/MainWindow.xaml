@@ -587,7 +587,13 @@
                                               Stroke="#FFA8C7FF"
                                               StrokeThickness="2.35"
                                               StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round" />
+                                              StrokeEndLineCap="Round">
+                                            <Path.RenderTransform>
+                                                <RotateTransform x:Name="QuotaProgressRotate"
+                                                                 CenterX="26"
+                                                                 CenterY="26" />
+                                            </Path.RenderTransform>
+                                        </Path>
                                         <StackPanel HorizontalAlignment="Center"
                                                     VerticalAlignment="Center">
                                             <TextBlock x:Name="QuotaValueText"

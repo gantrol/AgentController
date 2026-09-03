@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using AgentController.MicroBroker;
 using CodexMicro.Protocol;
 
@@ -46,13 +47,39 @@ internal sealed class VirtualMicroBroker : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var info = _driver.Connect();
+        PublishConnected(info);
+        return info;
+    }
+
+    public bool TryConnect(
+        [NotNullWhen(true)] out BrokerDriverInfo? info,
+        out string error)
+    {
+        if (_disposed)
+        {
+            info = null;
+            error = "The Codex Micro keypad transport is closed.";
+            return false;
+        }
+
+        if (!_driver.TryConnect(out info, out error))
+        {
+            PublishState(_driver.State);
+            return false;
+        }
+
+        PublishConnected(info);
+        return true;
+    }
+
+    private void PublishConnected(BrokerDriverInfo info)
+    {
         PublishState(_driver.State);
         Log?.Invoke(
             this,
             info.CodexLinkObserved
                 ? $"{info.TransportName} ready · epoch {info.ConnectionEpoch:X16} · drops {info.DroppedOutputReports}"
                 : $"{info.TransportName} connected · direct HID ready; Codex output not yet observed");
-        return info;
     }
 
     public Task<BrokerDriverInfo> RecoverCodexLinkAsync()

@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using CodexMicro.Protocol;
 
 namespace AgentController.MicroBroker;
@@ -21,6 +23,7 @@ public sealed class MicroBrokerClient : IDisposable
     private static readonly TimeSpan RecoveryRequestTimeout =
         TimeSpan.FromSeconds(8);
     private const int ConnectFailureBackoffMs = 2_000;
+    private const uint PipeAvailabilityWaitMilliseconds = 50;
 
     private readonly Guid _clientId = Guid.NewGuid();
     private readonly string _clientName;
@@ -38,6 +41,7 @@ public sealed class MicroBrokerClient : IDisposable
     private int _backgroundConnectRunning;
     private volatile bool _connected;
     private bool _disposed;
+    private int _hasBrokerLease;
     private int _state = (int)MicroBrokerClientState.Unavailable;
     private int _codexLinkObserved;
 
@@ -86,60 +90,32 @@ public sealed class MicroBrokerClient : IDisposable
 
     public BrokerDriverInfo Connect()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_connectionSync)
         {
-            if (_connected)
-            {
-                try
-                {
-                    var status = SendRequest(
-                        MicroBrokerProtocol.Hello,
-                        allowLaunch: false);
-                    if (status.Succeeded && status.Driver is not null)
-                    {
-                        UpdateDriverState(status.Driver);
-                        return status.Driver;
-                    }
-                }
-                catch (Exception exception) when (
-                    exception is IOException or
-                        TimeoutException or
-                        InvalidDataException)
-                {
-                }
-
-                _connected = false;
-            }
-
-            var response = TryConnectExisting();
-            if (response is null)
-            {
-                LaunchBroker();
-                response = WaitForBroker();
-            }
-
-            if (
-                response is null ||
-                !response.Succeeded ||
-                response.Driver is null)
-            {
-                Volatile.Write(
-                    ref _retryAfter,
-                    Environment.TickCount64 + ConnectFailureBackoffMs);
-                State = MicroBrokerClientState.Unavailable;
-                throw new InvalidOperationException(
-                    response?.Error ??
-                    "AgentController Micro Broker is unavailable.");
-            }
-
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _connected = true;
-            Volatile.Write(ref _retryAfter, 0);
-            _eventCursor = 0;
-            UpdateDriverState(response.Driver);
-            StartPollLoop();
-            return response.Driver;
+            if (TryConnectCore(out var driver, out var error))
+            {
+                return driver;
+            }
+
+            throw new InvalidOperationException(error);
+        }
+    }
+
+    public bool TryConnect(
+        [NotNullWhen(true)] out BrokerDriverInfo? driver,
+        out string error)
+    {
+        lock (_connectionSync)
+        {
+            if (_disposed)
+            {
+                driver = null;
+                error = "AgentController Micro Broker client is closed.";
+                return false;
+            }
+
+            return TryConnectCore(out driver, out error);
         }
     }
 
@@ -161,12 +137,7 @@ public sealed class MicroBrokerClient : IDisposable
         {
             try
             {
-                _ = Connect();
-            }
-            catch (Exception exception) when (
-                exception is InvalidOperationException or
-                    ObjectDisposedException)
-            {
+                _ = TryConnect(out _, out _);
             }
             finally
             {
@@ -277,12 +248,16 @@ public sealed class MicroBrokerClient : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        lock (_connectionSync)
         {
-            return;
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
         }
 
-        _disposed = true;
         try
         {
             _backgroundConnectTask?.Wait(TimeSpan.FromSeconds(3));
@@ -304,13 +279,17 @@ public sealed class MicroBrokerClient : IDisposable
         }
 
         _pollTask = null;
-        if (_connected)
+        if (Volatile.Read(ref _hasBrokerLease) != 0)
         {
             try
             {
-                _ = SendRequest(
+                var response = SendRequest(
                     MicroBrokerProtocol.Disconnect,
                     allowLaunch: false);
+                if (response.Succeeded)
+                {
+                    Volatile.Write(ref _hasBrokerLease, 0);
+                }
             }
             catch
             {
@@ -341,19 +320,16 @@ public sealed class MicroBrokerClient : IDisposable
             return false;
         }
 
-        try
-        {
-            _ = Connect();
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
+        return TryConnect(out _, out _);
     }
 
     private BrokerResponse? TryConnectExisting()
     {
+        if (!IsPipeAvailable())
+        {
+            return null;
+        }
+
         try
         {
             var response = SendRequest(
@@ -386,6 +362,80 @@ public sealed class MicroBrokerClient : IDisposable
 
         return null;
     }
+
+    private bool TryConnectCore(
+        [NotNullWhen(true)] out BrokerDriverInfo? driver,
+        out string error)
+    {
+        driver = null;
+        error = "AgentController Micro Broker is unavailable.";
+        if (_connected)
+        {
+            try
+            {
+                var status = SendRequest(
+                    MicroBrokerProtocol.Hello,
+                    allowLaunch: false);
+                if (status.Succeeded && status.Driver is not null)
+                {
+                    Volatile.Write(ref _hasBrokerLease, 1);
+                    UpdateDriverState(status.Driver);
+                    driver = status.Driver;
+                    error = string.Empty;
+                    return true;
+                }
+            }
+            catch (Exception exception) when (
+                exception is IOException or
+                    TimeoutException or
+                    InvalidDataException)
+            {
+            }
+
+            _connected = false;
+        }
+
+        var response = TryConnectExisting();
+        if (response is null)
+        {
+            LaunchBroker();
+            response = WaitForBroker();
+        }
+
+        if (
+            response is null ||
+            !response.Succeeded ||
+            response.Driver is null)
+        {
+            Volatile.Write(
+                ref _retryAfter,
+                Environment.TickCount64 + ConnectFailureBackoffMs);
+            State = MicroBrokerClientState.Unavailable;
+            error = response?.Error ?? error;
+            return false;
+        }
+
+        Volatile.Write(ref _hasBrokerLease, 1);
+        if (_disposed)
+        {
+            error = "AgentController Micro Broker client is closed.";
+            return false;
+        }
+
+        _connected = true;
+        Volatile.Write(ref _retryAfter, 0);
+        _eventCursor = 0;
+        UpdateDriverState(response.Driver);
+        StartPollLoop();
+        driver = response.Driver;
+        error = string.Empty;
+        return true;
+    }
+
+    private bool IsPipeAvailable() =>
+        WaitNamedPipe(
+            $@"\\.\pipe\{_pipeName}",
+            PipeAvailabilityWaitMilliseconds);
 
     private void LaunchBroker()
     {
@@ -702,4 +752,14 @@ public sealed class MicroBrokerClient : IDisposable
             }
         }
     }
+
+    [DllImport(
+        "kernel32.dll",
+        EntryPoint = "WaitNamedPipeW",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WaitNamedPipe(
+        string pipeName,
+        uint timeoutMilliseconds);
 }
