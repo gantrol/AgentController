@@ -10,10 +10,9 @@ namespace CodexMicro.Desktop.Services;
 internal sealed class CodexDraftComposerModelSelector
 {
     private const ushort VirtualKeyEscape = 0x1B;
-    private const uint InputMouse = 0;
+    private const ushort VirtualKeyLeft = 0x25;
+    private const ushort VirtualKeyRight = 0x27;
     private const uint InputKeyboard = 1;
-    private const uint MouseEventLeftDown = 0x0002;
-    private const uint MouseEventLeftUp = 0x0004;
     private const uint KeyEventKeyUp = 0x0002;
 
     private static readonly TimeSpan PollInterval =
@@ -49,12 +48,6 @@ internal sealed class CodexDraftComposerModelSelector
         AutomationElement Element,
         int Score,
         double Distance);
-
-    private readonly record struct PowerTrackCandidate(
-        AutomationElement Element,
-        int Score,
-        Rect Rectangle,
-        double Area);
 
     private sealed class DraftUiException(string error) : Exception(error)
     {
@@ -138,7 +131,10 @@ internal sealed class CodexDraftComposerModelSelector
             root = RequireRoot(foregroundWindow);
             EnsureNoUnexpectedDialog(root);
 
-            var trigger = RequireTrigger(root);
+            var trigger = WaitForTrigger(
+                foregroundWindow,
+                isDraftCurrent,
+                cancellationToken);
             var initial = ReadTriggerSelection(trigger);
             var menu = EnsureMenuOpen(
                 foregroundWindow,
@@ -440,13 +436,12 @@ internal sealed class CodexDraftComposerModelSelector
         var root = RequireRoot(foregroundWindow);
         EnsureNoUnexpectedDialog(root);
         var permissionBefore = TryReadPermissionMode(root);
-        var menu = WaitForDirectPowerMenu(
+        var menu = EnsurePowerMenu(
             foregroundWindow,
             target,
-            current.Count,
             isDraftCurrent,
             cancellationToken);
-        var mechanism = "track-click";
+        var mechanism = "keyboard-step";
         double? minimum = null;
         double? maximum = null;
         double? targetValue = null;
@@ -474,23 +469,28 @@ internal sealed class CodexDraftComposerModelSelector
             }
         }
 
-        Rect trackRectangle = Rect.Empty;
-        Point targetPoint = default;
-        if (mechanism == "track-click")
+        if (mechanism == "keyboard-step")
         {
-            var track = FindPowerTrack(menu, target, current.Count) ??
-                throw new DraftUiException(
-                    "draft-ui-power-track-unavailable");
-            trackRectangle = SafeRead(
-                () => track.Current.BoundingRectangle,
-                Rect.Empty);
-            targetPoint = ResolvePowerTrackPoint(
-                trackRectangle,
-                targetPosition,
-                current.Count);
-            ClickPowerTrack(
+            current = SetPowerWithKeyboard(
                 foregroundWindow,
-                targetPoint,
+                current,
+                target,
+                targetEffort,
+                targetPosition,
+                permissionBefore,
+                autoConfirmUltraFullAccess,
+                isDraftCurrent,
+                cancellationToken);
+        }
+        else
+        {
+            current = WaitForDirectPowerSelection(
+                foregroundWindow,
+                current,
+                target,
+                targetEffort,
+                permissionBefore,
+                autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
         }
@@ -503,81 +503,192 @@ internal sealed class CodexDraftComposerModelSelector
                 target = target.ToString(),
                 targetEffort,
                 targetPosition,
-                current.Count,
                 mechanism,
                 minimum,
                 maximum,
                 targetValue,
-                track = trackRectangle.IsEmpty
-                    ? null
-                    : new
-                    {
-                        trackRectangle.Left,
-                        trackRectangle.Top,
-                        trackRectangle.Width,
-                        trackRectangle.Height,
-                        x = targetPoint.X,
-                        y = targetPoint.Y,
-                    },
+                current.Position,
+                current.Count,
             });
 #endif
-        return WaitForDirectPowerSelection(
-            foregroundWindow,
-            current,
-            target,
-            targetEffort,
-            permissionBefore,
-            autoConfirmUltraFullAccess,
-            isDraftCurrent,
-            cancellationToken);
+        return current;
     }
 
-    private static AutomationElement WaitForDirectPowerMenu(
+    private static ComposerSelection SetPowerWithKeyboard(
         IntPtr foregroundWindow,
+        ComposerSelection current,
         CodexQuickModel target,
-        int count,
+        string targetEffort,
+        int targetPosition,
+        string? permissionBefore,
+        bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 2; attempt++)
+        var originalCount = current.Count;
+        var remaining = Math.Abs(targetPosition - current.Position);
+        for (var step = 0; step < remaining; step++)
         {
-            _ = EnsureMenuOpen(
+            EnsureCurrent(
                 foregroundWindow,
                 isDraftCurrent,
                 cancellationToken);
-            try
-            {
-                return WaitForMenu(
-                    foregroundWindow,
-                    isDraftCurrent,
-                    cancellationToken,
-                    candidate =>
-                        FindPowerItem(candidate) is not null &&
-                        HasDirectPowerTarget(candidate, target, count),
-                    "draft-ui-power-track-unavailable");
-            }
-            catch (DraftUiException exception) when (
-                attempt == 0 &&
-                exception.Error == "draft-ui-power-track-unavailable")
-            {
+            FocusPower(
+                foregroundWindow,
+                target,
+                isDraftCurrent,
+                cancellationToken);
+
+            var direction = targetPosition > current.Position
+                ? VirtualKeyRight
+                : VirtualKeyLeft;
+            var expectedPosition = current.Position +
+                (direction == VirtualKeyRight ? 1 : -1);
 #if DEBUG
-                CodexModelToggleDiagnostics.RecordStage(
-                    "draft-ui-power-menu-retrying",
-                    new
-                    {
-                        target = target.ToString(),
-                        count,
-                    });
+            CodexModelToggleDiagnostics.RecordStage(
+                "draft-ui-power-step",
+                new
+                {
+                    target = target.ToString(),
+                    targetEffort,
+                    current.Position,
+                    current.Count,
+                    expectedPosition,
+                    direction = direction == VirtualKeyRight
+                        ? "right"
+                        : "left",
+                });
 #endif
-                CloseMenu(
+            SendVirtualKey(direction);
+
+            if (expectedPosition == targetPosition)
+            {
+                return WaitForDirectPowerSelection(
                     foregroundWindow,
+                    current,
+                    target,
+                    targetEffort,
+                    permissionBefore,
+                    autoConfirmUltraFullAccess,
                     isDraftCurrent,
                     cancellationToken);
-                Thread.Sleep(PollInterval);
+            }
+
+            current = WaitForPowerPosition(
+                foregroundWindow,
+                current,
+                target,
+                originalCount,
+                expectedPosition,
+                isDraftCurrent,
+                cancellationToken);
+            if (current.Count != originalCount)
+            {
+                throw new DraftUiException(
+                    "draft-ui-power-position-unavailable");
             }
         }
 
-        throw new DraftUiException("draft-ui-power-track-unavailable");
+        return current;
+    }
+
+    private static ComposerSelection WaitForPowerPosition(
+        IntPtr foregroundWindow,
+        ComposerSelection before,
+        CodexQuickModel target,
+        int count,
+        int expectedPosition,
+        Func<bool> isDraftCurrent,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + SelectionTimeout;
+        var latest = before;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var root = RequireRoot(foregroundWindow);
+            EnsureCurrent(
+                foregroundWindow,
+                isDraftCurrent,
+                cancellationToken);
+            EnsureNoUnexpectedDialog(root);
+            var trigger = FindTrigger(root);
+            var menu = FindMenu(root, trigger);
+            var power = menu is null ? null : FindPowerItem(menu);
+            var triggerSelection = trigger is null
+                ? default
+                : ReadTriggerSelection(trigger);
+            var selection = power is null
+                ? triggerSelection
+                : PreferPowerSelection(
+                    triggerSelection,
+                    ReadPowerSelection(power, menu!));
+            if (selection.Model == target && selection.Effort is not null)
+            {
+                latest = selection;
+                if (MatchesPowerPosition(
+                        selection,
+                        count,
+                        expectedPosition))
+                {
+                    return selection with
+                    {
+                        Position = expectedPosition,
+                        Count = count,
+                    };
+                }
+
+                if (!SamePowerPosition(selection, before, count))
+                {
+                    throw new DraftUiException(
+                        "draft-ui-power-step-mismatch");
+                }
+            }
+
+            Thread.Sleep(PollInterval);
+        }
+
+#if DEBUG
+        RecordPowerDiagnostics(
+            "draft-ui-power-step-unconfirmed",
+            foregroundWindow,
+            latest);
+#endif
+        throw new DraftUiException("draft-ui-transition-unconfirmed");
+    }
+
+    private static bool MatchesPowerPosition(
+        ComposerSelection selection,
+        int count,
+        int expectedPosition)
+    {
+        if (selection.Position > 0)
+        {
+            return selection.Count == count &&
+                selection.Position == expectedPosition;
+        }
+
+        return selection.Effort is not null &&
+            TryResolvePowerPosition(selection.Effort, count) ==
+                expectedPosition;
+    }
+
+    private static bool SamePowerPosition(
+        ComposerSelection selection,
+        ComposerSelection before,
+        int count) =>
+        MatchesPowerPosition(selection, count, before.Position);
+
+    private static int TryResolvePowerPosition(string effort, int count)
+    {
+        try
+        {
+            return ResolvePowerPosition(effort, count);
+        }
+        catch (DraftUiException)
+        {
+            return 0;
+        }
     }
 
     private static ComposerSelection WaitForDirectPowerSelection(
@@ -879,7 +990,10 @@ internal sealed class CodexDraftComposerModelSelector
             isDraftCurrent,
             cancellationToken);
         EnsureNoUnexpectedDialog(root);
-        var trigger = RequireTrigger(root);
+        var trigger = WaitForTrigger(
+            foregroundWindow,
+            isDraftCurrent,
+            cancellationToken);
         var triggerSelection = ReadTriggerSelection(trigger);
         if (triggerSelection.Model != CodexQuickModel.Unknown &&
             triggerSelection.Effort is not null)
@@ -919,7 +1033,10 @@ internal sealed class CodexDraftComposerModelSelector
             return existing;
         }
 
-        var trigger = RequireTrigger(root);
+        var trigger = WaitForTrigger(
+            foregroundWindow,
+            isDraftCurrent,
+            cancellationToken);
         var pattern = GetExpandCollapsePattern(trigger) ??
             throw new DraftUiException("draft-ui-trigger-unavailable");
         pattern.Expand();
@@ -929,6 +1046,31 @@ internal sealed class CodexDraftComposerModelSelector
             cancellationToken,
             _ => true,
             "draft-ui-menu-unavailable");
+    }
+
+    private static AutomationElement WaitForTrigger(
+        IntPtr foregroundWindow,
+        Func<bool> isDraftCurrent,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + MenuTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            EnsureCurrent(
+                foregroundWindow,
+                isDraftCurrent,
+                cancellationToken);
+            var root = RequireRoot(foregroundWindow);
+            EnsureNoUnexpectedDialog(root);
+            if (FindTrigger(root) is { } trigger)
+            {
+                return trigger;
+            }
+
+            Thread.Sleep(PollInterval);
+        }
+
+        throw new DraftUiException("draft-ui-trigger-unavailable");
     }
 
     private static AutomationElement WaitForMenu(
@@ -1408,256 +1550,80 @@ internal sealed class CodexDraftComposerModelSelector
         return ranged.Length == 1 ? ranged[0] : null;
     }
 
-    private static bool HasDirectPowerTarget(
-        AutomationElement menu,
-        CodexQuickModel target,
-        int count)
-    {
-        if (FindPowerTrack(menu, target, count) is not null)
-        {
-            return true;
-        }
-
-        var slider = FindPowerSlider(menu);
-        return slider is not null && SafeRead(
-            () =>
-            {
-                if (!slider.TryGetCurrentPattern(
-                        RangeValuePattern.Pattern,
-                        out var rawPattern) ||
-                    rawPattern is not RangeValuePattern rangePattern)
-                {
-                    return false;
-                }
-
-                var range = rangePattern.Current;
-                return !range.IsReadOnly &&
-                    double.IsFinite(range.Minimum) &&
-                    double.IsFinite(range.Maximum) &&
-                    range.Maximum > range.Minimum;
-            },
-            false);
-    }
-
-    private static AutomationElement? FindPowerTrack(
-        AutomationElement menu,
-        CodexQuickModel target,
-        int count)
-    {
-        var power = FindPowerItem(menu);
-        if (power is not null &&
-            SelectPowerTrack(
-                FindAll(power),
-                target,
-                count,
-                scopedToPowerItem: true) is { } scopedTrack)
-        {
-            return scopedTrack;
-        }
-
-        return SelectPowerTrack(
-            FindAll(menu),
-            target,
-            count,
-            scopedToPowerItem: false);
-    }
-
-    private static AutomationElement? SelectPowerTrack(
-        IReadOnlyList<AutomationElement> elements,
-        CodexQuickModel target,
-        int count,
-        bool scopedToPowerItem)
-    {
-        var candidates = new List<PowerTrackCandidate>();
-        foreach (var element in elements)
-        {
-            if (!IsRendered(element) ||
-                !SafeRead(() => element.Current.IsEnabled, false))
-            {
-                continue;
-            }
-
-            var rectangle = SafeRead(
-                () => element.Current.BoundingRectangle,
-                Rect.Empty);
-            if (rectangle.IsEmpty ||
-                rectangle.Width <= rectangle.Height * 3 ||
-                rectangle.Width < count * 20)
-            {
-                continue;
-            }
-
-            var text = string.Join(
-                " ",
-                ReadOwnAccessibleStrings(element));
-            var selection = ParseSelection(text);
-            var isSlider = SafeRead(
-                () => element.Current.ControlType == ControlType.Slider,
-                false);
-            var hasMatchingState = selection.Model == target &&
-                selection.Position > 0 &&
-                selection.Count == count;
-            if (!scopedToPowerItem && !isSlider && !hasMatchingState)
-            {
-                continue;
-            }
-
-            var score = scopedToPowerItem ? 400 : 0;
-            if (isSlider)
-            {
-                score += 200;
-            }
-
-            if (hasMatchingState)
-            {
-                score += 300;
-            }
-
-            if (text.Contains(
-                    "arrow keys to adjust power",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                score += 100;
-            }
-
-            candidates.Add(new(
-                element,
-                score,
-                rectangle,
-                rectangle.Width * rectangle.Height));
-        }
-
-        var ordered = candidates
-            .OrderByDescending(candidate => candidate.Score)
-            .ThenBy(candidate => candidate.Area)
-            .ToArray();
-        if (ordered.Length == 0)
-        {
-            return null;
-        }
-
-        var leadingCandidates = ordered
-            .Where(candidate =>
-                candidate.Score == ordered[0].Score &&
-                Math.Abs(candidate.Area - ordered[0].Area) < 0.5)
-            .ToArray();
-        if (leadingCandidates.Skip(1).Any(candidate =>
-                !AreEquivalentTrackRectangles(
-                    ordered[0].Rectangle,
-                    candidate.Rectangle)))
-        {
-            return null;
-        }
-
-        return ordered[0].Element;
-    }
-
-    private static bool AreEquivalentTrackRectangles(
-        Rect first,
-        Rect second)
-    {
-        const double tolerance = 1d;
-        return Math.Abs(first.Left - second.Left) <= tolerance &&
-            Math.Abs(first.Top - second.Top) <= tolerance &&
-            Math.Abs(first.Width - second.Width) <= tolerance &&
-            Math.Abs(first.Height - second.Height) <= tolerance;
-    }
-
-    private static Point ResolvePowerTrackPoint(
-        Rect rectangle,
-        int position,
-        int count)
-    {
-        if (rectangle.IsEmpty ||
-            rectangle.Width <= 0 ||
-            rectangle.Height <= 0 ||
-            position <= 0 ||
-            position > count ||
-            count <= 1)
-        {
-            throw new DraftUiException("draft-ui-power-track-unavailable");
-        }
-
-        var endpointInset = Math.Min(
-            rectangle.Height / 2d,
-            rectangle.Width / (count * 2d));
-        var usableWidth = rectangle.Width - (endpointInset * 2d);
-        if (usableWidth <= 0)
-        {
-            throw new DraftUiException("draft-ui-power-track-unavailable");
-        }
-
-        return new(
-            rectangle.Left + endpointInset +
-                (usableWidth * (position - 1d) / (count - 1d)),
-            rectangle.Top + (rectangle.Height / 2d));
-    }
-
-    private static void ClickPowerTrack(
+    private static void FocusPower(
         IntPtr foregroundWindow,
-        Point target,
+        CodexQuickModel target,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
     {
-        EnsureCurrent(
-            foregroundWindow,
-            isDraftCurrent,
-            cancellationToken);
-        var root = RequireRoot(foregroundWindow);
-        var rootRectangle = SafeRead(
-            () => root.Current.BoundingRectangle,
-            Rect.Empty);
-        if (rootRectangle.IsEmpty || !rootRectangle.Contains(target))
+        var deadline = DateTimeOffset.UtcNow + SelectionTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
         {
-            throw new DraftUiException("draft-ui-power-track-unavailable");
-        }
-
-        if (!GetCursorPos(out var original))
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
-
-        try
-        {
-            var x = checked((int)Math.Round(target.X));
-            var y = checked((int)Math.Round(target.Y));
-            if (!SetCursorPos(x, y))
-            {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
-
             EnsureCurrent(
                 foregroundWindow,
                 isDraftCurrent,
                 cancellationToken);
-            root = RequireRoot(foregroundWindow);
-            rootRectangle = SafeRead(
-                () => root.Current.BoundingRectangle,
-                Rect.Empty);
-            if (rootRectangle.IsEmpty || !rootRectangle.Contains(target))
+            AutomationElement? power;
+            try
             {
-                throw new DraftUiException(
-                    "draft-ui-power-track-unavailable");
+                var menu = EnsurePowerMenu(
+                    foregroundWindow,
+                    target,
+                    isDraftCurrent,
+                    cancellationToken);
+                power = FindPowerItem(menu);
+                if (power is null ||
+                    !SafeRead(() => power.Current.IsEnabled, false) ||
+                    !SafeRead(
+                        () => power.Current.IsKeyboardFocusable,
+                        false))
+                {
+                    Thread.Sleep(PollInterval);
+                    continue;
+                }
+
+                power.SetFocus();
+            }
+            catch (DraftUiException exception) when (
+                exception.Error == "draft-ui-power-unavailable")
+            {
+                Thread.Sleep(PollInterval);
+                continue;
+            }
+            catch (Exception exception) when (
+                exception is ElementNotAvailableException or
+                    InvalidOperationException or
+                    COMException)
+            {
+                Thread.Sleep(PollInterval);
+                continue;
             }
 
-            var inputs = new[]
+            var focusDeadline = DateTimeOffset.UtcNow +
+                TimeSpan.FromSeconds(1);
+            if (focusDeadline > deadline)
             {
-                MouseButtonInput(MouseEventLeftDown),
-                MouseButtonInput(MouseEventLeftUp),
-            };
-            var sent = SendInput(
-                checked((uint)inputs.Length),
-                inputs,
-                Marshal.SizeOf<NativeInput>());
-            if (sent != inputs.Length)
+                focusDeadline = deadline;
+            }
+
+            while (DateTimeOffset.UtcNow < focusDeadline)
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+                EnsureCurrent(
+                    foregroundWindow,
+                    isDraftCurrent,
+                    cancellationToken);
+                if (SafeRead(
+                        () => power.Current.HasKeyboardFocus,
+                        false))
+                {
+                    return;
+                }
+
+                Thread.Sleep(PollInterval);
             }
         }
-        finally
-        {
-            _ = SetCursorPos(original.X, original.Y);
-        }
+
+        throw new DraftUiException("draft-ui-power-focus-unavailable");
     }
 
     private static AutomationElement? FindMenuItem(
@@ -2062,19 +2028,6 @@ internal sealed class CodexDraftComposerModelSelector
         }
     }
 
-    private static NativeInput MouseButtonInput(uint flags) =>
-        new()
-        {
-            Type = InputMouse,
-            Data = new NativeInputUnion
-            {
-                Mouse = new NativeMouseInput
-                {
-                    Flags = flags,
-                },
-            },
-        };
-
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeInput
     {
@@ -2082,14 +2035,11 @@ internal sealed class CodexDraftComposerModelSelector
         public NativeInputUnion Data;
     }
 
-    [StructLayout(LayoutKind.Explicit)]
+    [StructLayout(LayoutKind.Explicit, Size = 32)]
     private struct NativeInputUnion
     {
         [FieldOffset(0)]
         public NativeKeyboardInput Keyboard;
-
-        [FieldOffset(0)]
-        public NativeMouseInput Mouse;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -2102,35 +2052,9 @@ internal sealed class CodexDraftComposerModelSelector
         public nuint ExtraInfo;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
-    {
-        public int X;
-        public int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeMouseInput
-    {
-        public int X;
-        public int Y;
-        public uint MouseData;
-        public uint Flags;
-        public uint Time;
-        public nuint ExtraInfo;
-    }
-
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(
         uint count,
         [In] NativeInput[] inputs,
         int size);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetCursorPos(out NativePoint point);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetCursorPos(int x, int y);
 }

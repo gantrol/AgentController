@@ -4499,6 +4499,14 @@ public partial class MicroSurfaceWindow : Window
                 "E2E NEW requires Codex to already be in the foreground.");
         }
 
+        if (!await _modelToggleService.StartAsync())
+        {
+            throw new InvalidOperationException(
+                "The Codex model bridge could not be initialized.");
+        }
+
+        await Task.Delay(350);
+
         var initialVisibleThreadId =
             _modelToggleService.CurrentVisibleThreadId;
         if (string.IsNullOrWhiteSpace(initialVisibleThreadId) ||

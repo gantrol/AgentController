@@ -1640,7 +1640,7 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
                 {
                     name = AppServerServiceName,
                     title = "Codex Micro Monitor",
-                    version = "0.3.2-quick-fix.1",
+                    version = "0.3.2-quick-fix.2",
                 },
                 capabilities = new
                 {

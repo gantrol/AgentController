@@ -355,6 +355,22 @@ public sealed class MicroDriverOwnershipRulesTests
             "VerifyFinalSelection(",
             draftComposerSelector,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "FocusPower(",
+            draftComposerSelector,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "StructLayout(LayoutKind.Explicit, Size = 32)",
+            draftComposerSelector,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SetCursorPos",
+            draftComposerSelector,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "InputMouse",
+            draftComposerSelector,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "DispatchDraftReasoningCommandAsync",
             mainWindow,
