@@ -1355,7 +1355,7 @@ internal sealed class CodexDraftModelToggleService
                 {
                     name = AppServerServiceName,
                     title = "Codex Micro Monitor",
-                    version = "0.3.0",
+                    version = "0.3.1",
                 },
                 capabilities = new
                 {
