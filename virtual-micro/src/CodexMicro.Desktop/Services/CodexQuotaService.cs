@@ -13,12 +13,18 @@ internal sealed record CodexQuotaWindow(
     public double RemainingPercent => Math.Clamp(100 - UsedPercent, 0, 100);
 }
 
+internal sealed record CodexQuotaResetCredit(
+    string Title,
+    DateTimeOffset ExpiresAt);
+
 internal sealed record CodexQuotaSnapshot(
     CodexQuotaWindow Primary,
     CodexQuotaWindow? Secondary,
     string? PlanType,
     DateTimeOffset ReadAt)
 {
+    public IReadOnlyList<CodexQuotaResetCredit>? AvailableResets { get; init; }
+
     public IReadOnlyList<CodexQuotaWindow> Windows => Secondary is null
         ? [Primary]
         : [Primary, Secondary];
@@ -138,11 +144,74 @@ internal sealed class CodexQuotaService
             planType = planElement.GetString();
         }
 
+        var snapshotReadAt = readAt ?? DateTimeOffset.Now;
         return new CodexQuotaSnapshot(
             primary,
             secondary,
             planType,
-            readAt ?? DateTimeOffset.Now);
+            snapshotReadAt)
+        {
+            AvailableResets = ReadAvailableResets(result, snapshotReadAt),
+        };
+    }
+
+    private static IReadOnlyList<CodexQuotaResetCredit>? ReadAvailableResets(
+        JsonElement result,
+        DateTimeOffset readAt)
+    {
+        if (!result.TryGetProperty("rateLimitResetCredits", out var resets) ||
+            resets.ValueKind != JsonValueKind.Object ||
+            !resets.TryGetProperty("credits", out var credits) ||
+            credits.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var available = new List<CodexQuotaResetCredit>();
+        foreach (var credit in credits.EnumerateArray())
+        {
+            if (credit.ValueKind != JsonValueKind.Object ||
+                !credit.TryGetProperty("status", out var status) ||
+                status.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            if (!string.Equals(
+                    status.GetString(),
+                    "available",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!credit.TryGetProperty("title", out var title) ||
+                title.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(title.GetString()) ||
+                !credit.TryGetProperty("expiresAt", out var expiresAt) ||
+                expiresAt.ValueKind != JsonValueKind.Number ||
+                !expiresAt.TryGetInt64(out var expiresAtSeconds))
+            {
+                return null;
+            }
+
+            DateTimeOffset expiration;
+            try
+            {
+                expiration = DateTimeOffset.FromUnixTimeSeconds(expiresAtSeconds);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+
+            if (expiration > readAt)
+            {
+                available.Add(new CodexQuotaResetCredit(title.GetString()!, expiration));
+            }
+        }
+
+        return available.OrderBy(credit => credit.ExpiresAt).ToArray();
     }
 
     internal static string ResolveCodexExecutable()

@@ -7687,6 +7687,35 @@ public partial class MicroSurfaceWindow : Window
             })
             .ToList();
 
+        lines.Add(string.Empty);
+        if (snapshot.AvailableResets is { } resets)
+        {
+            lines.Add(english
+                ? $"Usage limit resets: {resets.Count} available"
+                : $"额度重置：可用 {resets.Count} 次");
+            foreach (var credit in resets)
+            {
+                var title = !english && credit.Title.Equals(
+                    "Full reset",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "全额重置"
+                    : credit.Title;
+                var expiration = credit.ExpiresAt.ToLocalTime().ToString(
+                    english ? "MMM d, h:mm tt" : "MM/dd HH:mm",
+                    culture);
+                lines.Add(english
+                    ? $"○ {title} · expires {expiration}"
+                    : $"○ {title} · {expiration} 到期");
+            }
+        }
+        else
+        {
+            lines.Add(english
+                ? "Usage limit resets: unavailable"
+                : "额度重置：暂不可用");
+        }
+
+        lines.Add(string.Empty);
         var updated = snapshot.ReadAt.ToLocalTime().ToString(
             english ? "h:mm tt" : "HH:mm",
             culture);
