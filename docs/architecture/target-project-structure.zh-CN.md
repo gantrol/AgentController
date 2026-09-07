@@ -24,6 +24,7 @@ src/
 
   AgentController.Adapters.Codex.AppServer/
   AgentController.Adapters.Codex.Automation.Windows/
+  AgentController.Adapters.DeveloperTools/       # dotnet/MSBuild/SARIF、VS 与性能诊断适配器
   AgentController.Protocols.Micro/         # 纯 framing/RPC，不依赖 OS 或 Codex 进程
   AgentController.Adapters.Micro/
   AgentController.MicroBroker/             # Windows 当前用户低权限进程
@@ -83,6 +84,7 @@ app.Tests/                          # 迁移期保留的当前回归测试
 | `Platform.Abstractions` | 窗口、前台、输入设备、权限、生命周期等 OS 能力合同 | Domain |
 | `Protocols.Micro` | 纯 HID framing、RPC codec、DTO 和 golden vectors；不做设备枚举或 Action 路由 | BCL |
 | `Adapters.*` | Codex App Server、Windows UIA、Micro 指纹/layout/transport 等外部系统实现 | Application/Domain 中拥有的端口、必要的平台抽象、Protocols.Micro |
+| `Adapters.DeveloperTools` | dotnet/MSBuild/SARIF、Visual Studio 与性能采集实现；限制命令、范围、时长和产物大小 | Application 的 Diagnostics ports/contracts |
 | `MicroBroker` | 当前用户会话中的 Micro RPC、兼容指纹、held/neutral 生命周期和私有驱动 IPC；无桌面 UI | Protocols.Micro、最小 Windows interop/IPC contract；不引用 Desktop |
 | `Platform.Windows/macOS` | XInput/Raw HID、Win32、CoreHID/IOKit、权限和本地 IPC | Platform.Abstractions、Domain |
 | `native/windows` | 极小 VHF driver 与只处理固定产品包的提权 Device Support 生命周期 | WDK/SetupAPI；不引用托管业务项目 |

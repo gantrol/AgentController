@@ -9,6 +9,10 @@ namespace CodexMicro.Desktop.Services;
 
 internal sealed class CodexDraftComposerModelSelector
 {
+    [ThreadStatic]
+    private static CodexModelCatalog? _operationCatalog;
+
+    private static CodexModelCatalog ModelCatalog => _operationCatalog ?? CodexModelCatalog.Load();
     private const ushort VirtualKeyEscape = 0x1B;
     private const ushort VirtualKeyLeft = 0x25;
     private const ushort VirtualKeyRight = 0x27;
@@ -54,7 +58,7 @@ internal sealed class CodexDraftComposerModelSelector
         internal string Error { get; } = error;
     }
 
-    internal Task<CodexModelToggleResult> ToggleAsync(
+    internal async Task<CodexModelToggleResult> ToggleAsync(
         IntPtr foregroundWindow,
         CodexQuickModel first,
         string? firstEffort,
@@ -87,17 +91,30 @@ internal sealed class CodexDraftComposerModelSelector
         }
 
         ArgumentNullException.ThrowIfNull(isDraftCurrent);
-        return Task.Run(
-            () => ToggleCore(
-                foregroundWindow,
-                first,
-                firstEffort,
-                second,
-                secondEffort,
-                autoConfirmUltraFullAccess,
-                draftOperationId,
-                isDraftCurrent,
-                cancellationToken),
+        var catalog = await CodexDraftModelToggleService.FetchModelCatalogAsync(cancellationToken);
+        return await Task.Run(
+            () =>
+            {
+                var previousCatalog = _operationCatalog;
+                _operationCatalog = catalog;
+                try
+                {
+                    return ToggleCore(
+                        foregroundWindow,
+                        first,
+                        firstEffort,
+                        second,
+                        secondEffort,
+                        autoConfirmUltraFullAccess,
+                        draftOperationId,
+                        isDraftCurrent,
+                        cancellationToken);
+                }
+                finally
+                {
+                    _operationCatalog = previousCatalog;
+                }
+            },
             CancellationToken.None);
     }
 
@@ -113,6 +130,7 @@ internal sealed class CodexDraftComposerModelSelector
         CancellationToken cancellationToken)
     {
         var previous = CodexQuickModel.Unknown;
+        var mutationStarted = false;
         string? previousEffort = null;
         try
         {
@@ -169,7 +187,7 @@ internal sealed class CodexDraftComposerModelSelector
             var rememberedEffort = target == first
                 ? firstEffort
                 : secondEffort;
-            var targetEffort = CodexModelToggleService.ResolveTargetEffort(
+            var targetEffort = ModelCatalog.ResolveEffort(
                 CodexModelToggleService.ToModelId(target),
                 rememberedEffort);
 
@@ -186,6 +204,7 @@ internal sealed class CodexDraftComposerModelSelector
                 });
 #endif
 
+            mutationStarted = true;
             SelectModel(
                 foregroundWindow,
                 target,
@@ -230,11 +249,17 @@ internal sealed class CodexDraftComposerModelSelector
             return new(
                 Succeeded: false,
                 Previous: previous,
-                Current: previous,
+                Current: mutationStarted ? CodexQuickModel.Unknown : previous,
                 ThreadId: draftOperationId,
                 PreviousEffort: previousEffort,
-                CurrentEffort: previousEffort,
-                Error: exception.Error);
+                CurrentEffort: mutationStarted ? null : previousEffort,
+                Error: mutationStarted ? "draft-renderer-mutation-outcome-unknown" : exception.Error,
+                Detail: exception.Error);
+        }
+        catch (CodexModelCapabilityException exception)
+        {
+            return new(false, previous, previous, draftOperationId,
+                previousEffort, previousEffort, exception.Error);
         }
         catch (OperationCanceledException)
         {
@@ -260,11 +285,11 @@ internal sealed class CodexDraftComposerModelSelector
             return new(
                 Succeeded: false,
                 Previous: previous,
-                Current: previous,
+                Current: mutationStarted ? CodexQuickModel.Unknown : previous,
                 ThreadId: draftOperationId,
                 PreviousEffort: previousEffort,
-                CurrentEffort: previousEffort,
-                Error: "draft-ui-automation-failed");
+                CurrentEffort: mutationStarted ? null : previousEffort,
+                Error: mutationStarted ? "draft-renderer-mutation-outcome-unknown" : "draft-ui-automation-failed");
         }
     }
 
@@ -291,15 +316,11 @@ internal sealed class CodexDraftComposerModelSelector
                 "draft-ui-model-menu-unavailable");
         }
 
-        var label = ModelLabel(target);
         var rows = FindElements(
                 menu,
                 ControlType.RadioButton,
                 visibleOnly: true)
-            .Where(row => string.Equals(
-                SafeRead(() => row.Current.Name, string.Empty),
-                label,
-                StringComparison.OrdinalIgnoreCase))
+            .Where(row => ParseModel(SafeRead(() => row.Current.Name, string.Empty)) == target)
             .ToArray();
         if (rows.Length != 1)
         {
@@ -426,9 +447,6 @@ internal sealed class CodexDraftComposerModelSelector
             throw new DraftUiException("draft-ui-power-position-unavailable");
         }
 
-        var targetPosition = ResolvePowerPosition(
-            targetEffort,
-            current.Count);
         EnsureCurrent(
             foregroundWindow,
             isDraftCurrent,
@@ -441,6 +459,7 @@ internal sealed class CodexDraftComposerModelSelector
             target,
             isDraftCurrent,
             cancellationToken);
+        var targetPosition = ResolvePowerPosition(menu, current, target, targetEffort);
         var mechanism = "keyboard-step";
         double? minimum = null;
         double? maximum = null;
@@ -668,9 +687,7 @@ internal sealed class CodexDraftComposerModelSelector
                 selection.Position == expectedPosition;
         }
 
-        return selection.Effort is not null &&
-            TryResolvePowerPosition(selection.Effort, count) ==
-                expectedPosition;
+        return false;
     }
 
     private static bool SamePowerPosition(
@@ -678,18 +695,6 @@ internal sealed class CodexDraftComposerModelSelector
         ComposerSelection before,
         int count) =>
         MatchesPowerPosition(selection, count, before.Position);
-
-    private static int TryResolvePowerPosition(string effort, int count)
-    {
-        try
-        {
-            return ResolvePowerPosition(effort, count);
-        }
-        catch (DraftUiException)
-        {
-            return 0;
-        }
-    }
 
     private static ComposerSelection WaitForDirectPowerSelection(
         IntPtr foregroundWindow,
@@ -1829,52 +1834,76 @@ internal sealed class CodexDraftComposerModelSelector
     }
 
     private static CodexQuickModel ParseModel(string value) =>
-        CodexModelToggleService.ParseModelId(value);
+        CodexQuickModel.FromId(ModelCatalog.MatchLabel(value)?.Id);
 
     private static string? ParseEffort(string value)
     {
-        foreach (var (label, effort) in new[]
-                 {
-                     ("Extra High", "xhigh"),
-                     ("Extended", "high"),
-                     ("Standard", "medium"),
-                     ("Ultra", "ultra"),
-                     ("Max", "max"),
-                     ("XHigh", "xhigh"),
-                     ("High", "high"),
-                     ("Medium", "medium"),
-                     ("Light", "low"),
-                     ("Low", "low"),
-                     ("Minimal", "low"),
-                 })
-        {
-            if (value.Contains(label, StringComparison.OrdinalIgnoreCase))
-            {
-                return effort;
-            }
-        }
-
-        return null;
+        var catalog = ModelCatalog;
+        var model = catalog.MatchLabel(value);
+        return model is null ? null : catalog.MatchEffort(model.Id, value);
     }
 
-    private static int ResolvePowerPosition(string effort, int count)
+    private static int ResolvePowerPosition(
+        AutomationElement menu,
+        ComposerSelection current,
+        CodexQuickModel target,
+        string effort)
     {
-        var position = effort switch
+        var catalog = ModelCatalog;
+        var model = catalog.Find(target.Id);
+        if (!catalog.IsFresh || model is not { Hidden: false })
         {
-            "low" => 1,
-            "medium" => 2,
-            "high" => 3,
-            "xhigh" => 4,
-            "max" => 5,
-            "ultra" => 6,
-            _ => 0,
-        };
-        if (position <= 0 || position > count)
+            throw new DraftUiException("model-catalog-unavailable");
+        }
+
+        // Codex builds an explicit model's slider in model/list effort order.
+        // Its live announcement exposes only the selected position, not every stop.
+        var efforts = model.SupportedEfforts.ToArray();
+        if (current.Model != target || current.Count != efforts.Length ||
+            current.Position <= 0 || current.Position > efforts.Length ||
+            efforts.Distinct(StringComparer.Ordinal).Count() != efforts.Length ||
+            !string.Equals(efforts[current.Position - 1], current.Effort,
+                StringComparison.Ordinal))
+        {
+            throw new DraftUiException("draft-ui-power-position-unavailable");
+        }
+
+        var positions = ReadAccessibleStrings(menu)
+            .Select(ParseSelection)
+            .Append(current)
+            .Where(selection => selection.Position > 0)
+            .Distinct()
+            .ToArray();
+        if (positions.Any(selection =>
+                selection.Model != target || selection.Count != efforts.Length ||
+                selection.Position > efforts.Length ||
+                !string.Equals(efforts[selection.Position - 1], selection.Effort,
+                    StringComparison.Ordinal)))
+        {
+            throw new DraftUiException("draft-ui-power-position-unavailable");
+        }
+
+        var targetIndex = Array.IndexOf(efforts, effort);
+        if (targetIndex < 0)
         {
             throw new DraftUiException("draft-ui-target-unavailable");
         }
 
-        return position;
+#if DEBUG
+        CodexModelToggleDiagnostics.RecordStage(
+            "draft-ui-power-position-resolved",
+            new
+            {
+                target = target.Id,
+                targetEffort = effort,
+                targetPosition = targetIndex + 1,
+                current.Position,
+                current.Count,
+                supportedEfforts = efforts,
+                observedPositions = positions.Length,
+            });
+#endif
+        return targetIndex + 1;
     }
 
     private static ComposerSelection PreferPowerSelection(
@@ -1900,13 +1929,7 @@ internal sealed class CodexDraftComposerModelSelector
             text.Contains(value, StringComparison.OrdinalIgnoreCase));
 
     private static string ModelLabel(CodexQuickModel model) =>
-        model switch
-        {
-            CodexQuickModel.Sol => "5.6 Sol",
-            CodexQuickModel.Terra => "5.6 Terra",
-            CodexQuickModel.Luna => "5.6 Luna",
-            _ => throw new ArgumentOutOfRangeException(nameof(model)),
-        };
+        ModelCatalog.Find(model.Id)?.Label ?? CodexModelCatalog.ModelLabel(model.Id);
 
     private static ExpandCollapsePattern? GetExpandCollapsePattern(
         AutomationElement element) =>

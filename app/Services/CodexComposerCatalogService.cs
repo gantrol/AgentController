@@ -1,6 +1,6 @@
 using System.IO;
-using System.Text.Json;
 using System.Text.RegularExpressions;
+using CodexMicro.Desktop.Services;
 
 namespace CodexController.Services;
 
@@ -18,13 +18,12 @@ public sealed class ComposerCatalog
 
     public IReadOnlyList<string> EffortsForModel(int modelIndex)
     {
-        if (Models.Count == 0)
+        if (modelIndex < 0 || modelIndex >= Models.Count)
         {
             return [];
         }
 
-        var safeIndex = Math.Clamp(modelIndex, 0, Models.Count - 1);
-        return Models[safeIndex].Efforts;
+        return Models[modelIndex].Efforts;
     }
 }
 
@@ -45,15 +44,19 @@ internal sealed class CodexComposerCatalogService
     internal ComposerCatalog LoadCatalog()
     {
         var codexHome = _resolveCodexHome();
-        var models = LoadModels(Path.Combine(codexHome, "models_cache.json"));
+        var catalog = CodexModelCatalog.Load(Path.Combine(codexHome, "models_cache.json"));
+        var models = catalog.Models.Where(model => !model.Hidden)
+            .Select(model => new ComposerModelOption(model.Id, model.Label,
+                catalog.IsFresh ? model.SupportedEfforts.Select(EffortLabel).ToArray() : []))
+            .ToArray();
         var preferences = ReadConfig(Path.Combine(codexHome, "config.toml"));
         var buttonName = _readComposerButtonName();
-        if (models.Count == 0)
+        if (models.Length == 0)
         {
             return new ComposerCatalog
             {
                 Models = [],
-                InitialModelIndex = 0,
+                InitialModelIndex = -1,
                 InitialEffort = string.Empty,
                 InitialSpeed = FindSpeed(
                     buttonName,
@@ -61,15 +64,11 @@ internal sealed class CodexComposerCatalogService
             };
         }
 
-        var modelIndex = FindModelIndex(
-            models,
-            buttonName,
-            preferences.ModelSlug);
-        var modelEfforts = models[modelIndex].Efforts;
-        var effort = FindEffort(
-            modelEfforts,
-            buttonName,
-            EffortLabel(preferences.Effort));
+        var selected = catalog.MatchLabel(buttonName);
+        var modelIndex = selected is null ? -1 : Array.FindIndex(models, model => model.Slug == selected.Id);
+        var effort = modelIndex >= 0 && catalog.IsFresh && buttonName is not null
+            ? EffortLabel(catalog.MatchEffort(models[modelIndex].Slug, buttonName))
+            : string.Empty;
 
         return new ComposerCatalog
         {
@@ -80,78 +79,6 @@ internal sealed class CodexComposerCatalogService
                 buttonName,
                 preferences.ServiceTier),
         };
-    }
-
-    private static IReadOnlyList<ComposerModelOption> LoadModels(string path)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            if (
-                !document.RootElement.TryGetProperty(
-                    "models",
-                    out var modelsElement) ||
-                modelsElement.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            var models = new List<(
-                ComposerModelOption Option,
-                int Priority,
-                int SourceOrder)>();
-            var sourceOrder = 0;
-            foreach (var model in modelsElement.EnumerateArray())
-            {
-                if (
-                    GetString(model, "visibility") != "list" ||
-                    GetString(model, "slug") is not { Length: > 0 } slug ||
-                    GetString(model, "display_name") is not { Length: > 0 }
-                        displayName)
-                {
-                    continue;
-                }
-
-                var efforts = new List<string>();
-                if (
-                    model.TryGetProperty(
-                        "supported_reasoning_levels",
-                        out var effortElement) &&
-                    effortElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var effort in effortElement.EnumerateArray())
-                    {
-                        var label = EffortLabel(GetString(effort, "effort"));
-                        if (
-                            label.Length > 0 &&
-                            !efforts.Contains(
-                                label,
-                                StringComparer.OrdinalIgnoreCase))
-                        {
-                            efforts.Add(label);
-                        }
-                    }
-                }
-
-                models.Add((
-                    new ComposerModelOption(
-                        slug,
-                        ModelLabel(displayName),
-                        efforts),
-                    GetInt(model, "priority") ?? int.MaxValue,
-                    sourceOrder++));
-            }
-
-            return models
-                .OrderBy(item => item.Priority)
-                .ThenBy(item => item.SourceOrder)
-                .Select(item => item.Option)
-                .ToArray();
-        }
-        catch
-        {
-            return [];
-        }
     }
 
     private static ConfigPreferences ReadConfig(string path)
@@ -176,75 +103,6 @@ internal sealed class CodexComposerCatalogService
             text,
             $@"(?m)^\s*{Regex.Escape(key)}\s*=\s*[""']([^""']+)[""']");
         return match.Success ? match.Groups[1].Value.Trim() : null;
-    }
-
-    private static int FindModelIndex(
-        IReadOnlyList<ComposerModelOption> models,
-        string? buttonName,
-        string? configuredSlug)
-    {
-        if (!string.IsNullOrWhiteSpace(buttonName))
-        {
-            var normalizedButton =
-                ComposerChoiceNormalizer.Normalize(buttonName);
-            var match = models
-                .Select((model, index) => new
-                {
-                    Index = index,
-                    Length = ComposerChoiceNormalizer.Normalize(
-                        model.DisplayName).Length,
-                    Matches = normalizedButton.StartsWith(
-                        ComposerChoiceNormalizer.Normalize(
-                            model.DisplayName),
-                        StringComparison.Ordinal),
-                })
-                .Where(item => item.Matches)
-                .OrderByDescending(item => item.Length)
-                .FirstOrDefault();
-            if (match is not null)
-            {
-                return match.Index;
-            }
-        }
-
-        var configuredIndex = models
-            .Select((model, index) => new { model, index })
-            .FirstOrDefault(item =>
-                string.Equals(
-                    item.model.Slug,
-                    configuredSlug,
-                    StringComparison.OrdinalIgnoreCase))?.index;
-        return configuredIndex ?? 0;
-    }
-
-    private static string FindEffort(
-        IReadOnlyList<string> efforts,
-        string? buttonName,
-        string configuredEffort)
-    {
-        if (!string.IsNullOrWhiteSpace(buttonName))
-        {
-            var normalizedButton =
-                ComposerChoiceNormalizer.Normalize(buttonName);
-            var fromButton = efforts
-                .OrderByDescending(value => value.Length)
-                .FirstOrDefault(value =>
-                    normalizedButton.EndsWith(
-                        ComposerChoiceNormalizer.Normalize(value),
-                        StringComparison.Ordinal));
-            if (fromButton is not null)
-            {
-                return fromButton;
-            }
-        }
-
-        return efforts.FirstOrDefault(value =>
-                   string.Equals(
-                       value,
-                       configuredEffort,
-                       StringComparison.OrdinalIgnoreCase))
-               ?? efforts.FirstOrDefault()
-               ?? string.Empty;
     }
 
     private static string FindSpeed(
@@ -273,15 +131,7 @@ internal sealed class CodexComposerCatalogService
             : "Standard";
     }
 
-    internal static string ModelLabel(string displayName)
-    {
-        var value = displayName.StartsWith(
-            "GPT-",
-            StringComparison.OrdinalIgnoreCase)
-            ? displayName[4..]
-            : displayName;
-        return value.Replace('-', ' ');
-    }
+    internal static string ModelLabel(string displayName) => CodexModelCatalog.ModelLabel(displayName);
 
     private static string EffortLabel(string? effort)
     {
@@ -307,18 +157,6 @@ internal sealed class CodexComposerCatalogService
                         part[1..].ToLowerInvariant())),
         };
     }
-
-    private static string? GetString(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) &&
-        value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private static int? GetInt(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) &&
-        value.TryGetInt32(out var number)
-            ? number
-            : null;
 
     private static string ResolveCodexHome()
     {

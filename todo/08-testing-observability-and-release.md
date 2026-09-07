@@ -53,6 +53,35 @@
 - [ ] 支持一键导出、用户预览和脱敏。
 - [ ] 区分 NotSent、AcceptedUnverified、Unknown 和 Failed 的用户文案。
 
+### 编程诊断与性能分析集成
+
+- [ ] 定义与 IDE 无关的 `DeveloperDiagnostic` 契约，至少包含 provider、tool version、workspace、file、line/column、severity、code、message、project、configuration、correlation id 和原始证据位置；Domain/Application 不引用 Visual Studio、Roslyn 或 MSBuild DTO。
+- [ ] 首个 provider 使用已固定 SDK 的 `dotnet build` / MSBuild 结构化输出，采集编译错误、警告、项目与目标框架；必须直接执行项目或解决方案，不通过 Visual Studio UI 自动化。
+- [ ] 支持导入 SARIF，并把 Roslyn analyzers、编译器、NuGet audit 和后续第三方静态分析结果规范化到同一诊断模型；保留 provider 原始 error code，不用模型生成的分类覆盖工具结论。
+- [ ] 错误列表按根因指纹去重和聚合，区分首个失败、级联错误、重复诊断和 stale 结果；用户修复后只重跑受影响项目，避免每次重建完整 solution。
+- [ ] 合并 CLI、语言服务器与 IDE 诊断时按 document version、build id 和 provider authority 仲裁；Visual Studio Error List 与 `dotnet build` 命中同一诊断时只显示一项，并保留全部来源证据。
+- [ ] 修复建议必须区分编译器/Analyzer 提供的 code fix、项目配置建议和模型推断；自动应用前展示 diff，高风险或跨项目修改仍需用户确认。
+- [ ] 为诊断执行设置 workspace allowlist、命令 allowlist、超时、并发和输出大小上限；默认禁止执行仓库脚本、任意 MSBuild target 和诊断建议中的命令。
+- [ ] 性能分析首选 `dotnet-counters`、`dotnet-trace` / EventPipe 和 MSBuild binary log 等稳定命令行接口；采集必须显式开启、限时、可取消，并记录目标进程、配置、采样窗口与工具版本。
+- [ ] 将“构建性能”和“应用运行性能”分开：前者展示 restore/evaluation/compile target 耗时与增量构建失效原因，后者展示 CPU、GC、分配、线程与关键 Action latency，不把两类数据混成单一分数。
+- [ ] 提供可选的 Visual Studio 原生适配器：优先使用进程外 `VisualStudio.Extensibility` 读取活动 solution/document、build event 与 Error List，并支持定位到对应源码；允许与 VS UI 联动，但不得阻塞 IDE UI thread。
+- [ ] `vswhere`、MSBuild/toolchain 与 `.sln` 配置发现仍可脱离已启动的 VS 工作；旧 DTE/COM 仅作为版本门禁后的兼容 fallback，不成为诊断核心的必需依赖。
+- [ ] 给各 provider 设置性能预算并记录自身开销；文件变化采用 debounce、取消旧运行和项目级缓存，后台诊断不得与用户主动构建争抢并行 MSBuild 节点。
+- [ ] 诊断导出默认脱敏绝对路径、用户名、源码片段、命令参数和环境变量；性能 trace 与 binlog 视为可能含源码/路径的敏感产物，导出前单独提示并允许用户预览。
+- [ ] 为每个 provider 暴露 Available、Unsupported、Misconfigured、Running、Succeeded、Failed、Cancelled 状态以及明确修复建议；缺少 VS 时仍可使用 dotnet SDK provider。
+
+建议顺序：先落地 `dotnet build + SARIF` 的只读诊断垂直切片，再接 Visual Studio 进程外扩展与去重仲裁，然后做增量重跑、MSBuild binlog 和 EventPipe 性能采集。VS UI 可以作为原生入口，但编译器宿主、诊断聚合和性能采样器仍位于独立 adapter/use case 边界，不直接塞进 Desktop/ViewModel。
+
+#### 2026-09-02：Developer Tools 后端切片
+
+- [x] Application 增加 provider、request、run、diagnostic/evidence/location 和 performance measurement 契约，不引用 VS、Roslyn 或 MSBuild DTO。
+- [x] 增加独立 `AgentController.Adapters.DeveloperTools` 项目；首个 provider 只允许 `dotnet build`，限制 workspace/target/configuration、默认 `--no-restore`，并要求调用方显式确认项目执行。
+- [x] 编译器/Analyzer SARIF 与 MSBuild 控制台错误进入同一聚合器，按 code、规范化 message、file、line/column 指纹去重并保留多来源证据。
+- [x] 输出、SARIF、超时和产物目录均有边界；原始 stdout/stderr 落到单次 build id 目录，可选 binlog 使用 `ProjectImports=None`。
+- [x] coordinator 对同一 target 做 debounce，并在新请求到达时取消旧构建；只缓存最新的非取消结果，避免后台诊断堆积。
+- [x] 独立 Release 编译通过，0 warnings、0 errors；按仓库约束未新增或运行测试。
+- [ ] 待接入宿主 composition、Visual Studio 进程外扩展、Error List 导航、binlog target 耗时解析和 EventPipe 运行时采样。
+
 ### CI 与发布
 
 - [ ] Windows 和 macOS 分平台构建、测试和打包。
@@ -67,3 +96,5 @@
 - 私有协议版本变化会在发布前被合同测试发现。
 - 正式发布同时具备自动化证据和真机验收记录。
 - 诊断信息足以支持用户排错，但不泄露用户内容。
+- 编译诊断在未安装 Visual Studio 时仍可通过固定的 .NET SDK 工作，且同一问题不会因级联错误或重复 provider 被多次呈现。
+- 性能结论可追溯到明确工具、采样窗口和原始证据；未获得用户显式触发时不附加或采样其他进程。

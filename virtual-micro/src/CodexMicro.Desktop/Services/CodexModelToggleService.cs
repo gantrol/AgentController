@@ -1568,7 +1568,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             var configuredEffort = target == first
                 ? firstEffort
                 : secondEffort;
-            var targetEffort = ResolveTargetEffort(
+            var catalog = await CodexDraftModelToggleService.FetchModelCatalogAsync(cancellationToken);
+            var targetEffort = catalog.ResolveEffort(
                 targetModelId,
                 string.IsNullOrWhiteSpace(configuredEffort)
                     ? RecallEffort(state.ThreadId, targetModelId)
@@ -1613,6 +1614,11 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 attemptedPrevious,
                 attemptedPreviousEffort));
             throw;
+        }
+        catch (CodexModelCapabilityException exception)
+        {
+            return Complete(Failure(exception.Error, attemptedThreadId,
+                attemptedPrevious, attemptedPreviousEffort));
         }
         catch (TimeoutException)
         {
@@ -2042,27 +2048,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
                 : value[..500];
     }
 
-    internal static CodexQuickModel ParseModelId(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return CodexQuickModel.Unknown;
-        }
-
-        if (value.Contains("luna", StringComparison.OrdinalIgnoreCase))
-        {
-            return CodexQuickModel.Luna;
-        }
-
-        if (value.Contains("terra", StringComparison.OrdinalIgnoreCase))
-        {
-            return CodexQuickModel.Terra;
-        }
-
-        return value.Contains("sol", StringComparison.OrdinalIgnoreCase)
-            ? CodexQuickModel.Sol
-            : CodexQuickModel.Unknown;
-    }
+    internal static CodexQuickModel ParseModelId(string? value) =>
+        CodexQuickModel.FromId(value);
 
     internal static CodexQuickModel ResolveToggleTarget(
         CodexQuickModel current,
@@ -2074,100 +2061,15 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     }
 
     internal static string ToModelId(CodexQuickModel model) =>
-        model switch
-        {
-            CodexQuickModel.Sol => "gpt-5.6-sol",
-            CodexQuickModel.Terra => "gpt-5.6-terra",
-            CodexQuickModel.Luna => "gpt-5.6-luna",
-            _ => throw new ArgumentOutOfRangeException(nameof(model)),
-        };
+        model != CodexQuickModel.Unknown
+            ? model.Id
+            : throw new ArgumentOutOfRangeException(nameof(model));
 
     internal static string ResolveTargetEffort(
         string modelId,
         string? rememberedEffort,
-        string? modelsCachePath = null)
-    {
-        var fallback = modelId.Equals(
-            "gpt-5.6-sol",
-            StringComparison.OrdinalIgnoreCase)
-                ? "low"
-                : "medium";
-        var knownRememberedEffort = IsKnownReasoningEffort(rememberedEffort)
-            ? rememberedEffort!.Trim().ToLowerInvariant()
-            : null;
-        try
-        {
-            var path = modelsCachePath ?? ResolveModelsCachePath(
-                Environment.GetEnvironmentVariable("CODEX_HOME"));
-            if (!File.Exists(path))
-            {
-                return knownRememberedEffort ?? fallback;
-            }
-
-            using var cache = JsonDocument.Parse(File.ReadAllText(path));
-            if (!cache.RootElement.TryGetProperty("models", out var models) ||
-                models.ValueKind != JsonValueKind.Array)
-            {
-                return knownRememberedEffort ?? fallback;
-            }
-
-            foreach (var model in models.EnumerateArray())
-            {
-                if (!TryReadString(model, "slug", out var slug) ||
-                    !slug.Equals(modelId, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var supported = model.TryGetProperty(
-                        "supported_reasoning_levels",
-                        out var levels) &&
-                    levels.ValueKind == JsonValueKind.Array
-                        ? levels.EnumerateArray()
-                            .Select(level =>
-                                TryReadString(level, "effort", out var effort)
-                                    ? effort
-                                    : null)
-                            .Where(effort => effort is not null)
-                            .Select(effort => effort!)
-                            .ToHashSet(StringComparer.OrdinalIgnoreCase)
-                        : [];
-                if (knownRememberedEffort is not null &&
-                    supported.Contains(knownRememberedEffort))
-                {
-                    return knownRememberedEffort;
-                }
-
-                if (TryReadString(
-                        model,
-                        "default_reasoning_level",
-                        out var defaultEffort) &&
-                    (supported.Count == 0 || supported.Contains(defaultEffort)))
-                {
-                    return defaultEffort;
-                }
-
-                return fallback;
-            }
-        }
-        catch (Exception exception) when (
-            exception is IOException or
-                UnauthorizedAccessException or
-                JsonException)
-        {
-            // A stale or partially-written cache is handled by the offline
-            // policy below.
-        }
-
-        // When model metadata is unavailable, retain an explicit/remembered
-        // effort that is part of Codex's known vocabulary. Silently replacing
-        // a user-selected Ultra with Low would make the settings UI lie.
-        return knownRememberedEffort ?? fallback;
-    }
-
-    private static bool IsKnownReasoningEffort(string? effort) =>
-        effort?.Trim().ToLowerInvariant() is
-            "low" or "medium" or "high" or "xhigh" or "max" or "ultra";
+        string? modelsCachePath = null) =>
+        CodexModelCatalog.Load(modelsCachePath).ResolveEffort(modelId, rememberedEffort);
 
     internal static string ResolveModelsCachePath(string? codexHome)
     {
@@ -4135,7 +4037,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private static CodexModelToggleResult Failure(
         string error,
         string? threadId = null,
-        CodexQuickModel previous = CodexQuickModel.Unknown,
+        CodexQuickModel previous = default,
         string? previousEffort = null,
         string? detail = null) =>
         new(

@@ -36,6 +36,7 @@ public partial class MicroSettingsWindow : Window
     private readonly Func<bool> _isConnected;
     private readonly Func<Task>? _codexConfigChanged;
     private bool _lastConfigSaveSucceeded = true;
+    private readonly CancellationTokenSource _catalogRefreshCancellation = new();
     private bool _syncing;
     private bool _showHarnessAdapterDetail;
     private MicroVoiceSettingsWindow? _voiceSettingsWindow;
@@ -76,7 +77,21 @@ public partial class MicroSettingsWindow : Window
         _layoutObserver.LayoutChanged += LayoutObserver_LayoutChanged;
         _harnessRegistry.Changed += HarnessRegistry_Changed;
         Closed += Window_Closed;
+        Closed += (_, _) => _catalogRefreshCancellation.Cancel();
+        Loaded += RefreshModelsOnLoaded;
         RefreshPresentation();
+    }
+
+    private async void RefreshModelsOnLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= RefreshModelsOnLoaded;
+        try
+        {
+            await _profileSettings.RefreshModelsAsync(_catalogRefreshCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private void RefreshPresentation()
@@ -90,12 +105,9 @@ public partial class MicroSettingsWindow : Window
         _syncing = true;
         try
         {
-            var models = new[]
-            {
-                new ModelChoice(CodexQuickModel.Sol, "Sol"),
-                new ModelChoice(CodexQuickModel.Luna, "Luna"),
-                new ModelChoice(CodexQuickModel.Terra, "Terra"),
-            };
+            var models = _profileSettings.GetModels()
+                .Select(model => new ModelChoice(CodexQuickModel.FromId(model.Id), model.Label))
+                .ToArray();
             QuickModelACombo.ItemsSource = models;
             QuickModelBCombo.ItemsSource = models;
             QuickModelACombo.SelectedItem = models.First(choice =>
@@ -107,13 +119,15 @@ public partial class MicroSettingsWindow : Window
                 QuickModelAEffortCombo,
                 CreateReasoningEffortChoices(
                     profile.QuickModelA,
-                    english),
+                    english,
+                    profile.QuickModelAEffort),
                 profile.QuickModelAEffort ?? "remember");
             SetChoices(
                 QuickModelBEffortCombo,
                 CreateReasoningEffortChoices(
                     profile.QuickModelB,
-                    english),
+                    english,
+                    profile.QuickModelBEffort),
                 profile.QuickModelBEffort ?? "remember");
 
             SetChoices(
@@ -473,7 +487,8 @@ public partial class MicroSettingsWindow : Window
 
     private IReadOnlyList<SettingChoice> CreateReasoningEffortChoices(
         CodexQuickModel model,
-        bool english)
+        bool english,
+        string? savedEffort)
     {
         var choices = new List<SettingChoice>
         {
@@ -493,6 +508,11 @@ public partial class MicroSettingsWindow : Window
                         "ultra" => "Ultra",
                         _ => effort,
                     })));
+        if (savedEffort is not null && !choices.Any(choice => choice.Id == savedEffort))
+        {
+            choices.Add(new(savedEffort, savedEffort));
+        }
+
         return choices;
     }
 

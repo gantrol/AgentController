@@ -13,6 +13,8 @@ internal sealed class CodexRateLimitResetService
 {
     private static readonly TimeSpan QueryTimeout =
         TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan ProcessExitTimeout =
+        TimeSpan.FromMilliseconds(500);
 
     public async Task<IReadOnlyList<CodexRateLimitResetCredit>>
         ReadAvailableFullResetsAsync(
@@ -35,10 +37,12 @@ internal sealed class CodexRateLimitResetService
                 RedirectStandardError = true,
             },
         };
+        var started = false;
 
         try
         {
-            if (!process.Start())
+            started = process.Start();
+            if (!started)
             {
                 return [];
             }
@@ -82,17 +86,56 @@ internal sealed class CodexRateLimitResetService
         }
         finally
         {
-            try
+            await StopProcessAsync(process, started);
+        }
+    }
+
+    private static async ValueTask StopProcessAsync(
+        Process process,
+        bool started)
+    {
+        if (!started)
+        {
+            return;
+        }
+
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+        }
+
+        Task exit;
+        try
+        {
+            exit = process.WaitForExitAsync();
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or Win32Exception)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(
+                await Task.WhenAny(exit, Task.Delay(ProcessExitTimeout)),
+                exit))
+        {
+            await exit;
+            return;
+        }
+
+        try
+        {
+            if (!process.HasExited)
             {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
+                process.Kill();
             }
-            catch (InvalidOperationException)
-            {
-                // The process never started or exited during cleanup.
-            }
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or Win32Exception)
+        {
         }
     }
 

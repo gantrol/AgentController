@@ -5002,6 +5002,11 @@ public partial class MicroSurfaceWindow : Window
                 result.Error is
                     "draft-composer-rebuild-outcome-unknown" or
                     "draft-renderer-mutation-outcome-unknown";
+            if (resultCanDescribeCurrentView && draftMutationOutcomeUnknown)
+            {
+                ApplyQuickModelPresentationState(new(result.ThreadId, CodexQuickModel.Unknown));
+            }
+
             if (!resultCanDescribeCurrentView &&
                 draftMutationOutcomeUnknown)
             {
@@ -5226,13 +5231,7 @@ public partial class MicroSurfaceWindow : Window
         };
 
     private static string FormatQuickModelName(CodexQuickModel model) =>
-        model switch
-        {
-            CodexQuickModel.Sol => "Sol",
-            CodexQuickModel.Terra => "Terra",
-            CodexQuickModel.Luna => "Luna",
-            _ => "快捷模型",
-        };
+        model == CodexQuickModel.Unknown ? "快捷模型" : CodexModelCatalog.ShortLabel(model.Id);
 
     private string FormatReasoningEffort(string? effort) =>
         string.IsNullOrWhiteSpace(effort)
@@ -7494,13 +7493,9 @@ public partial class MicroSurfaceWindow : Window
                         _quickModelThreadId)));
         QuotaCaptionText.Text = quickModelSwitching
             ? "···"
-            : _quickModel switch
-            {
-                CodexQuickModel.Sol => "SOL",
-                CodexQuickModel.Terra => "TERRA",
-                CodexQuickModel.Luna => "LUNA",
-                _ => FormatQuickModelPairCaption(quickModels),
-            };
+            : _quickModel == CodexQuickModel.Unknown
+                ? FormatQuickModelPairCaption(quickModels)
+                : FormatQuickModelName(_quickModel).ToUpperInvariant();
         var modelName = FormatQuickModelName(_quickModel);
         var modelStatus = _quickModel == CodexQuickModel.Unknown
             ? english
@@ -7746,13 +7741,7 @@ public partial class MicroSurfaceWindow : Window
         QuickModelAbbreviation(snapshot.QuickModelB);
 
     private static string QuickModelAbbreviation(CodexQuickModel model) =>
-        model switch
-        {
-            CodexQuickModel.Sol => "S",
-            CodexQuickModel.Terra => "T",
-            CodexQuickModel.Luna => "L",
-            _ => "?",
-        };
+        model == CodexQuickModel.Unknown ? "?" : FormatQuickModelName(model)[..1].ToUpperInvariant();
 
     private static string FormatQuotaWindowLabel(
         int durationMinutes,

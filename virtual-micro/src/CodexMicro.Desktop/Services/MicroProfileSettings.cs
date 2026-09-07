@@ -72,19 +72,6 @@ internal sealed record MicroProfileSnapshot(
 /// </summary>
 internal sealed class MicroProfileSettings
 {
-    private sealed record ModelReasoningProfile(
-        IReadOnlyList<string> SupportedEfforts);
-
-    private static readonly string[] KnownReasoningEfforts =
-    [
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max",
-        "ultra",
-    ];
-
     private static readonly MicroProfileSnapshot DefaultSnapshot =
         new(
             CodexQuickModel.Sol,
@@ -93,15 +80,23 @@ internal sealed class MicroProfileSettings
 
     private readonly string? _settingsPath;
     private readonly MicroProfileSnapshot _defaultSnapshot;
-    private readonly IReadOnlyDictionary<CodexQuickModel, ModelReasoningProfile>
-        _modelReasoningProfiles;
+    private readonly string _modelsCachePath;
+    private CodexModelCatalog? _runtimeCatalog;
+
+    private CodexModelCatalog ModelCatalog =>
+        _runtimeCatalog is { IsFresh: true } catalog ? catalog : CodexModelCatalog.Load(_modelsCachePath);
+
+    internal async Task RefreshModelsAsync(CancellationToken cancellationToken)
+    {
+        _runtimeCatalog = await CodexDraftModelToggleService.FetchModelCatalogAsync(cancellationToken);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     internal MicroProfileSettings(
         string? settingsPath = null,
         string? modelsCachePath = null)
     {
-        _modelReasoningProfiles = ReadModelReasoningProfiles(
-            modelsCachePath ?? GetDefaultModelsCachePath());
+        _modelsCachePath = modelsCachePath ?? GetDefaultModelsCachePath();
         var fallback = settingsPath is null
             ? MicroDistributionPreset.TryLoad()?.Apply(DefaultSnapshot) ??
                 DefaultSnapshot
@@ -116,8 +111,7 @@ internal sealed class MicroProfileSettings
         MicroProfileSnapshot fallback,
         string persistentKeypadId)
     {
-        _modelReasoningProfiles = ReadModelReasoningProfiles(
-            GetDefaultModelsCachePath());
+        _modelsCachePath = GetDefaultModelsCachePath();
         _settingsPath = settingsPath;
         PersistentKeypadId = persistentKeypadId;
         _defaultSnapshot = Normalize(fallback);
@@ -130,8 +124,7 @@ internal sealed class MicroProfileSettings
         MicroProfileSnapshot snapshot,
         string? modelsCachePath)
     {
-        _modelReasoningProfiles = ReadModelReasoningProfiles(
-            modelsCachePath ?? GetDefaultModelsCachePath());
+        _modelsCachePath = modelsCachePath ?? GetDefaultModelsCachePath();
         _defaultSnapshot = Normalize(snapshot);
         Current = _defaultSnapshot;
         LastSaveSucceeded = true;
@@ -153,13 +146,28 @@ internal sealed class MicroProfileSettings
         string? modelsCachePath = null) =>
         new(snapshot ?? DefaultSnapshot, modelsCachePath);
 
-    internal IReadOnlyList<string> GetSupportedReasoningEfforts(
-        CodexQuickModel model)
+    internal IReadOnlyList<string> GetSupportedReasoningEfforts(CodexQuickModel model)
     {
         ValidateKnown(model);
-        return _modelReasoningProfiles.TryGetValue(model, out var profile)
-            ? profile.SupportedEfforts
-            : KnownReasoningEfforts;
+        var catalog = ModelCatalog;
+        return catalog.IsFresh && catalog.Find(model.Id) is { Hidden: false } descriptor
+            ? descriptor.SupportedEfforts : [];
+    }
+
+    internal IReadOnlyList<CodexModelDescriptor> GetModels()
+    {
+        var catalog = ModelCatalog;
+        var models = catalog.Models.Where(model => !model.Hidden).ToList();
+        foreach (var selected in new[] { Current.QuickModelA, Current.QuickModelB })
+        {
+            if (!models.Any(model => model.Id == selected.Id))
+            {
+                models.Add(catalog.Find(selected.Id) ??
+                    new(selected.Id, selected.Id, [], null, true, int.MaxValue));
+            }
+        }
+
+        return models;
     }
 
     internal static MicroProfileSettings CreateForKeypad(
@@ -204,6 +212,11 @@ internal sealed class MicroProfileSettings
     {
         ValidateKnown(model);
         var current = Current;
+        if (model == current.QuickModelA)
+        {
+            return;
+        }
+
         Update(model == current.QuickModelB
             ? current with
             {
@@ -215,9 +228,7 @@ internal sealed class MicroProfileSettings
             : current with
             {
                 QuickModelA = model,
-                QuickModelAEffort = NormalizeReasoningEffortForModel(
-                    model,
-                    current.QuickModelAEffort),
+                QuickModelAEffort = null,
             });
     }
 
@@ -225,6 +236,11 @@ internal sealed class MicroProfileSettings
     {
         ValidateKnown(model);
         var current = Current;
+        if (model == current.QuickModelB)
+        {
+            return;
+        }
+
         Update(model == current.QuickModelA
             ? current with
             {
@@ -236,9 +252,7 @@ internal sealed class MicroProfileSettings
             : current with
             {
                 QuickModelB = model,
-                QuickModelBEffort = NormalizeReasoningEffortForModel(
-                    model,
-                    current.QuickModelBEffort),
+                QuickModelBEffort = null,
             });
     }
 
@@ -554,140 +568,25 @@ internal sealed class MicroProfileSettings
     private static string NormalizeText(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
-    private static CodexQuickModel ParseModel(
-        string? value,
-        CodexQuickModel fallback) =>
-        value?.Trim().ToLowerInvariant() switch
-        {
-            "sol" => CodexQuickModel.Sol,
-            "terra" => CodexQuickModel.Terra,
-            "luna" => CodexQuickModel.Luna,
-            _ => fallback,
-        };
+    private static CodexQuickModel ParseModel(string? value, CodexQuickModel fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : CodexQuickModel.FromSetting(value);
 
-    private static string ToSettingValue(CodexQuickModel model) =>
-        model.ToString().ToLowerInvariant();
+    private static string ToSettingValue(CodexQuickModel model) => model.Id;
 
     private static string? NormalizeReasoningEffort(string? effort) =>
-        effort?.Trim().ToLowerInvariant() switch
-        {
-            "low" => "low",
-            "medium" => "medium",
-            "high" => "high",
-            "xhigh" => "xhigh",
-            "max" => "max",
-            "ultra" => "ultra",
-            _ => null,
-        };
+        string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
 
-    private string? NormalizeReasoningEffortForModel(
-        CodexQuickModel model,
-        string? effort)
+    private static string? NormalizeReasoningEffortForModel(CodexQuickModel model, string? effort) =>
+        NormalizeReasoningEffort(effort);
+
+    private string? ValidateReasoningEffort(CodexQuickModel model, string? effort)
     {
         var normalized = NormalizeReasoningEffort(effort);
-        return normalized is null || IsReasoningEffortSupported(model, normalized)
-            ? normalized
-            : null;
+        return normalized is null || GetSupportedReasoningEfforts(model).Contains(normalized, StringComparer.Ordinal)
+            ? normalized : throw new ArgumentOutOfRangeException(nameof(effort));
     }
 
-    private string? ValidateReasoningEffort(
-        CodexQuickModel model,
-        string? effort)
-    {
-        if (string.IsNullOrWhiteSpace(effort))
-        {
-            return null;
-        }
-
-        var normalized = NormalizeReasoningEffort(effort) ??
-            throw new ArgumentOutOfRangeException(nameof(effort));
-        return IsReasoningEffortSupported(model, normalized)
-            ? normalized
-            : throw new ArgumentOutOfRangeException(nameof(effort));
-    }
-
-    private bool IsReasoningEffortSupported(
-        CodexQuickModel model,
-        string effort) =>
-        !_modelReasoningProfiles.TryGetValue(model, out var profile) ||
-        profile.SupportedEfforts.Contains(
-            effort,
-            StringComparer.OrdinalIgnoreCase);
-
-    private static IReadOnlyDictionary<CodexQuickModel, ModelReasoningProfile>
-        ReadModelReasoningProfiles(string path)
-    {
-        var profiles = new Dictionary<CodexQuickModel, ModelReasoningProfile>();
-        try
-        {
-            if (!File.Exists(path))
-            {
-                return profiles;
-            }
-
-            using var cache = JsonDocument.Parse(File.ReadAllText(path));
-            if (!cache.RootElement.TryGetProperty("models", out var models) ||
-                models.ValueKind != JsonValueKind.Array)
-            {
-                return profiles;
-            }
-
-            foreach (var model in models.EnumerateArray())
-            {
-                if (!model.TryGetProperty("slug", out var slugElement) ||
-                    slugElement.ValueKind != JsonValueKind.String ||
-                    ParseCachedModel(slugElement.GetString()) is not { } quickModel ||
-                    !model.TryGetProperty(
-                        "supported_reasoning_levels",
-                        out var levels) ||
-                    levels.ValueKind != JsonValueKind.Array)
-                {
-                    continue;
-                }
-
-                var supported = levels.EnumerateArray()
-                    .Select(level =>
-                        level.ValueKind == JsonValueKind.Object &&
-                        level.TryGetProperty("effort", out var effortElement) &&
-                        effortElement.ValueKind == JsonValueKind.String
-                            ? NormalizeReasoningEffort(effortElement.GetString())
-                            : null)
-                    .Where(effort => effort is not null)
-                    .Select(effort => effort!)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                // An explicitly empty list is still authoritative: it means
-                // the model exposes no known selectable effort. Only a missing
-                // or unreadable model record falls back to the conservative
-                // all-known list used for offline settings.
-                profiles[quickModel] = new(supported);
-            }
-        }
-        catch (Exception exception) when (
-            exception is IOException or
-                UnauthorizedAccessException or
-                JsonException)
-        {
-            // Missing, stale, or partially-written model metadata must not
-            // invalidate an otherwise legal persisted profile.
-        }
-
-        return profiles;
-    }
-
-    private static CodexQuickModel? ParseCachedModel(string? modelId) =>
-        modelId?.Trim().ToLowerInvariant() switch
-        {
-            "gpt-5.6-sol" => CodexQuickModel.Sol,
-            "gpt-5.6-terra" => CodexQuickModel.Terra,
-            "gpt-5.6-luna" => CodexQuickModel.Luna,
-            _ => null,
-        };
-
-    private static bool IsKnown(CodexQuickModel model) =>
-        model is CodexQuickModel.Sol or
-            CodexQuickModel.Terra or
-            CodexQuickModel.Luna;
+    private static bool IsKnown(CodexQuickModel model) => model != CodexQuickModel.Unknown;
 
     private static bool IsAgentSource(string? value) =>
         value is "recent" or "pinned" or "priority" or "custom";

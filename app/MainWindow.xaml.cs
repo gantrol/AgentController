@@ -3777,18 +3777,15 @@ public partial class MainWindow : Window
     {
         if (
             _composerCatalog is null ||
-            _composerCatalog.Models.Count == 0)
+            _modelIndex < 0 || _modelIndex >= _composerCatalog.Models.Count)
         {
             return _localization.Strings.ComposerAgentNotForeground(
                 _activeAgent.DisplayName);
         }
 
-        var model = _composerCatalog.Models[Math.Clamp(
-            _modelIndex,
-            0,
-            _composerCatalog.Models.Count - 1)];
+        var model = _composerCatalog.Models[_modelIndex];
         var efforts = CurrentEfforts();
-        return efforts.Count == 0
+        return _reasoningIndex < 0 || _reasoningIndex >= efforts.Count
             ? model.DisplayName
             : $"{model.DisplayName} {efforts[Math.Clamp(
                 _reasoningIndex,
@@ -5171,10 +5168,9 @@ public partial class MainWindow : Window
     private void InitializeComposerControls()
     {
         _composerCatalog = _composerAutomation.LoadCatalog();
-        _modelIndex = Math.Clamp(
-            _composerCatalog.InitialModelIndex,
-            0,
-            Math.Max(0, _composerCatalog.Models.Count - 1));
+        _modelIndex = _composerCatalog.InitialModelIndex >= 0 &&
+            _composerCatalog.InitialModelIndex < _composerCatalog.Models.Count
+                ? _composerCatalog.InitialModelIndex : -1;
         var efforts = CurrentEfforts();
         _reasoningIndex = FindValueIndex(
             efforts,
@@ -5210,7 +5206,7 @@ public partial class MainWindow : Window
             }
         }
 
-        return 0;
+        return -1;
     }
 
     private void UpdateRightModeUi()
@@ -5223,11 +5219,8 @@ public partial class MainWindow : Window
                 CurrentReasoningDisplay(),
             RightControlMode.Model =>
                 _composerCatalog is not null &&
-                _composerCatalog.Models.Count > 0
-                    ? _composerCatalog.Models[Math.Clamp(
-                        _modelIndex,
-                        0,
-                        _composerCatalog.Models.Count - 1)].DisplayName
+                _modelIndex >= 0 && _modelIndex < _composerCatalog.Models.Count
+                    ? _composerCatalog.Models[_modelIndex].DisplayName
                     : _localization.Strings.ComposerAgentNotForeground(
                         _activeAgent.DisplayName),
             RightControlMode.Speed => SpeedLabel(_speedIndex),
@@ -5241,7 +5234,7 @@ public partial class MainWindow : Window
     private string CurrentReasoningDisplay()
     {
         var efforts = CurrentEfforts();
-        return efforts.Count == 0
+        return _reasoningIndex < 0 || _reasoningIndex >= efforts.Count
             ? _localization.Strings.ComposerAgentNotForeground(
                 _activeAgent.DisplayName)
             : ComposerTargetLabel(

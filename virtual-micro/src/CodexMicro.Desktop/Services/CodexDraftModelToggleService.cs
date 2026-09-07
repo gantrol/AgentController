@@ -73,6 +73,43 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
         OutcomeUnknown,
     }
 
+    internal static async Task<CodexModelCatalog> FetchModelCatalogAsync(
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        try
+        {
+            var state = await ReadGlobalStateAsync(
+                Path.Combine(ResolveCodexHome(), ".codex-global-state.json"), timeout.Token);
+            var workspace = ResolveWorkspaceSelection(state);
+            var cli = ResolveCliExecutable();
+            if (workspace is null || cli is null)
+            {
+                return CodexModelCatalog.Load();
+            }
+
+            await using var reader = new CodexDraftModelToggleService();
+            var started = await reader.GetOrStartInitializedSessionAsync(cli, workspace.Cwd, timeout.Token);
+            if (started.Session is null)
+            {
+                return CodexModelCatalog.Load();
+            }
+
+            var result = await ReadModelCatalogAsync(started.Session, timeout.Token);
+            return result.Succeeded ? CodexModelCatalog.Parse(result.Result) : CodexModelCatalog.Load();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return CodexModelCatalog.Load();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or
+            JsonException or Win32Exception or UnauthorizedAccessException)
+        {
+            return CodexModelCatalog.Load();
+        }
+    }
+
     internal Task<CodexModelToggleResult> ToggleAsync(
         CodexQuickModel first,
         string? firstEffort,
@@ -305,62 +342,11 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
         out string authMethod) =>
         TryReadString(result, "authMethod", out authMethod);
 
-    internal static IReadOnlyList<ModelCatalogEntry> ParseModelCatalog(
-        JsonElement result)
-    {
-        if (result.ValueKind != JsonValueKind.Object ||
-            !result.TryGetProperty("data", out var data) ||
-            data.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var models = new List<ModelCatalogEntry>();
-        foreach (var item in data.EnumerateArray())
-        {
-            if (!TryReadString(item, "model", out var id))
-            {
-                continue;
-            }
-
-            var efforts = new List<string>();
-            if (item.TryGetProperty(
-                    "supportedReasoningEfforts",
-                    out var supported) &&
-                supported.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var effortEntry in supported.EnumerateArray())
-                {
-                    if (TryReadString(
-                            effortEntry,
-                            "reasoningEffort",
-                            out var value) &&
-                        NormalizeEffort(value) is { } effort &&
-                        !efforts.Contains(effort, StringComparer.Ordinal))
-                    {
-                        efforts.Add(effort);
-                    }
-                }
-            }
-
-            var defaultEffort = TryReadString(
-                    item,
-                    "defaultReasoningEffort",
-                    out var configuredDefault)
-                ? NormalizeEffort(configuredDefault)
-                : null;
-            var hidden = item.TryGetProperty("hidden", out var hiddenValue) &&
-                hiddenValue.ValueKind is JsonValueKind.True;
-            models.Add(new(
-                id,
-                CodexModelToggleService.ParseModelId(id),
-                efforts,
-                defaultEffort,
-                hidden));
-        }
-
-        return models;
-    }
+    internal static IReadOnlyList<ModelCatalogEntry> ParseModelCatalog(JsonElement result) =>
+        CodexModelCatalog.Parse(result).Models
+            .Select(model => new ModelCatalogEntry(model.Id, CodexQuickModel.FromId(model.Id),
+                model.SupportedEfforts, model.DefaultEffort, model.Hidden))
+            .ToArray();
 
     internal static string? ParseModelPickerMenuView(string? source)
     {
@@ -635,16 +621,7 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
                     refreshToken = false,
                 },
                 cancellationToken);
-            var modelListTask = RequestWithTimeoutAsync(
-                session,
-                "model/list",
-                new
-                {
-                    includeHidden = false,
-                    cursor = (string?)null,
-                    limit = 100,
-                },
-                cancellationToken);
+            var modelListTask = ReadModelCatalogAsync(session, cancellationToken);
             await Task.WhenAll(
                 configReadTask,
                 requirementsReadTask,
@@ -703,10 +680,6 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
             var configuredEffort = target == first
                 ? firstEffort
                 : secondEffort;
-            var targetEffort = CodexModelToggleService.ResolveTargetEffort(
-                targetModelId,
-                configuredEffort);
-
             var modelList = await modelListTask;
             if (!modelList.Succeeded)
             {
@@ -725,7 +698,9 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
             }
 
             var targetModel = models[targetIndex];
-            if (!targetModel.SupportedEfforts.Contains(
+            var targetEffort = string.IsNullOrWhiteSpace(configuredEffort)
+                ? targetModel.DefaultEffort : configuredEffort.Trim();
+            if (targetModel.Hidden || targetEffort is null || !targetModel.SupportedEfforts.Contains(
                     targetEffort,
                     StringComparer.Ordinal))
             {
@@ -1745,6 +1720,44 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
         }
 
         return new(null, initializeError, exceptionDetail);
+    }
+
+    private static async Task<RpcResponse> ReadModelCatalogAsync(
+        AppServerSession session,
+        CancellationToken cancellationToken)
+    {
+        var entries = new List<JsonElement>();
+        var cursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        for (var page = 0; page < 100; page++)
+        {
+            var response = await RequestWithTimeoutAsync(session, "model/list",
+                new { includeHidden = false, cursor, limit = 100 }, cancellationToken);
+            if (!response.Succeeded)
+            {
+                return response;
+            }
+
+            if (response.Result.ValueKind != JsonValueKind.Object ||
+                !response.Result.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            {
+                return new(false, default, "model-catalog-invalid");
+            }
+
+            entries.AddRange(data.EnumerateArray().Select(item => item.Clone()));
+            if (!response.Result.TryGetProperty("nextCursor", out var next) || next.ValueKind == JsonValueKind.Null)
+            {
+                return new(true, JsonSerializer.SerializeToElement(new { data = entries }));
+            }
+
+            if (next.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(cursor = next.GetString()) ||
+                !cursors.Add(cursor))
+            {
+                return new(false, default, "model-catalog-cursor-invalid");
+            }
+        }
+
+        return new(false, default, "model-catalog-page-limit");
     }
 
     private static async Task<RpcResponse> RequestWithTimeoutAsync(
