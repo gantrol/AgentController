@@ -37,6 +37,32 @@
                 <Setter Property="Fill" Value="#B8B98B" />
                 <Setter Property="SnapsToDevicePixels" Value="True" />
             </Style>
+            <Style x:Key="PageDot" TargetType="{x:Type RadioButton}">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type RadioButton}">
+                            <Grid Background="Transparent">
+                                <Border x:Name="Dot" Width="7" Height="7"
+                                        CornerRadius="4" Background="#55718592"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Dot" Property="Width" Value="20" />
+                                    <Setter TargetName="Dot" Property="Background" Value="#FF7185EA" />
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Dot" Property="Opacity" Value="0.65" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
     <Grid Background="Transparent">
@@ -251,6 +277,19 @@
                                    TextTrimming="CharacterEllipsis"
                                    Visibility="Collapsed" />
 
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                                    Margin="0,28,0,0" Panel.ZIndex="35">
+                            <RadioButton x:Name="ControlPageButton" GroupName="KeypadPage"
+                                         Style="{StaticResource PageDot}" IsChecked="True"
+                                         Tag="0" Click="PageButton_Click" />
+                            <RadioButton x:Name="MonitorPageButton" GroupName="KeypadPage"
+                                         Style="{StaticResource PageDot}"
+                                         Tag="1" Click="PageButton_Click" />
+                        </StackPanel>
+                        <Grid x:Name="MonitorGrid" Width="424" Height="424"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Visibility="Collapsed" />
                         <Grid x:Name="ControlGrid"
                               Width="424"
                               Height="424"

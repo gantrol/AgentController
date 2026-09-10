@@ -325,6 +325,20 @@
                                              Fill="Transparent"
                                              Stroke="{StaticResource PaperRecessRingBrush}"
                                              StrokeThickness="1.6" />
+                                    <Ellipse x:Name="CurrentSessionRing"
+                                             Width="82"
+                                             Height="82"
+                                             Stroke="#FF8A8A8A"
+                                             StrokeThickness="2"
+                                             Opacity="0"
+                                             IsHitTestVisible="False">
+                                        <Ellipse.Effect>
+                                            <DropShadowEffect BlurRadius="6"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.55"
+                                                              Color="#8A8A8A" />
+                                        </Ellipse.Effect>
+                                    </Ellipse>
                                     <Grid x:Name="AgentGlyph"
                                           Width="18"
                                           Height="18"

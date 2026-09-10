@@ -10,7 +10,8 @@ internal sealed record CodexRecentThread(
     string ThreadId,
     string Title,
     string? WorkspacePath,
-    DateTimeOffset RecencyAt);
+    DateTimeOffset RecencyAt,
+    string? RolloutPath = null);
 
 /// <summary>
 /// Reads the same recency ordering used by Codex's local thread list. The
@@ -25,8 +26,11 @@ internal sealed class CodexRecentThreadsService
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(8);
 
     public async Task<IReadOnlyList<CodexRecentThread>?> ReadAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int limit = 6)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(limit, 128);
         using var timeout = CancellationTokenSource
             .CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(QueryTimeout);
@@ -75,14 +79,25 @@ internal sealed class CodexRecentThreadsService
                 timeout.Token);
             await WriteRequestAsync(
                 process,
-                """{"method":"thread/list","id":2,"params":{"limit":18,"sortKey":"recency_at","sortDirection":"desc","useStateDbOnly":true}}""",
+                JsonSerializer.Serialize(new
+                {
+                    method = "thread/list",
+                    id = 2,
+                    @params = new
+                    {
+                        limit = Math.Max(18, limit),
+                        sortKey = "recency_at",
+                        sortDirection = "desc",
+                        useStateDbOnly = true,
+                    },
+                }),
                 timeout.Token);
             var response = await ReadResponseAsync(
                 process,
                 responseId: 2,
                 timeout.Token);
 
-            return Parse(response);
+            return Parse(response, limit);
         }
         catch (Exception exception)
             when (exception is IOException or
@@ -99,7 +114,7 @@ internal sealed class CodexRecentThreadsService
         }
     }
 
-    internal static IReadOnlyList<CodexRecentThread>? Parse(string response)
+    internal static IReadOnlyList<CodexRecentThread>? Parse(string response, int limit = 6)
     {
         using var document = JsonDocument.Parse(response);
         if (!document.RootElement.TryGetProperty("result", out var result) ||
@@ -110,7 +125,7 @@ internal sealed class CodexRecentThreadsService
             return null;
         }
 
-        var threads = new List<CodexRecentThread>(6);
+        var threads = new List<CodexRecentThread>(limit);
         foreach (var item in data.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object ||
@@ -127,6 +142,7 @@ internal sealed class CodexRecentThreadsService
                 threadId.Trim();
 
             _ = TryReadString(item, "cwd", out var workspacePath);
+            _ = TryReadString(item, "path", out var rolloutPath);
             var recencyAt = TryReadUnixTime(item, "recencyAt", out var recency)
                 ? recency
                 : TryReadUnixTime(item, "updatedAt", out var updated)
@@ -139,8 +155,9 @@ internal sealed class CodexRecentThreadsService
                 string.IsNullOrWhiteSpace(workspacePath)
                     ? null
                     : workspacePath.Trim(),
-                recencyAt));
-            if (threads.Count == 6)
+                recencyAt,
+                string.IsNullOrWhiteSpace(rolloutPath) ? null : rolloutPath));
+            if (threads.Count == limit)
             {
                 break;
             }

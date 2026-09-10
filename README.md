@@ -175,6 +175,8 @@ Target selection is a hard input boundary: Codex-only keyboard, accessibility, a
 
 ### Build from source
 
+See the [maintainer handbook (简体中文)](docs/maintainer-handbook.zh-CN.md) for environment checks, settings backups, version preparation, package verification, draft releases, and rollback.
+
 Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 18 or newer; Visual Studio 2022 cannot load the SDK selected by `global.json`. Then run:
 
 ```powershell
@@ -202,7 +204,7 @@ To create or update the GitHub Release and upload both artifacts, install and au
 ./scripts/publish-release.ps1 -Version 1.2.1 -IncludeCompact
 ```
 
-The command rebuilds both packages, verifies their SHA-256 checksums, checks the remote tag, and idempotently creates or updates the Release. Pass `-SkipBuild` to upload already-built artifacts.
+The command rebuilds both packages and verifies their SHA-256 checksums and contents. It requires a clean worktree and a tag in the target repository pointing to HEAD before creating or updating the Release. Pass `-SkipBuild` to upload existing artifacts and `-Draft` to start with a draft. Existing assets are not overwritten unless you explicitly pass `-ReplaceAssets`. See the maintainer handbook for the full workflow.
 
 ### If you want to modify the source
 

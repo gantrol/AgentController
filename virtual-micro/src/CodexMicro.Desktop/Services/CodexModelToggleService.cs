@@ -538,7 +538,7 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     private static readonly TimeSpan CurrentThreadTimeout =
         TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan UnreadConfirmationTimeout =
-        TimeSpan.FromSeconds(2);
+        TimeSpan.FromSeconds(5);
     private static readonly TimeSpan VisibleThreadStabilityWindow =
         TimeSpan.FromMilliseconds(140);
     private static readonly TimeSpan VisibilityRefreshCollectionWindow =
@@ -889,9 +889,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
 
     /// <summary>
     /// Marks one existing local Codex thread unread through the desktop
-    /// renderer's versioned coordination channel. This is the same broadcast
-    /// Codex uses for its own Mark unread action; the keypad never edits the
-    /// persisted global-state file directly.
+    /// versioned coordination channel, with the account and execution host
+    /// context required by v3. Codex owns persistence and validates the context.
     /// </summary>
     internal async Task<CodexThreadUnreadResult> MarkThreadUnreadAsync(
         string threadId,
@@ -902,18 +901,26 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
         var wasPossiblySent = false;
         try
         {
+            var unreadState = await _unreadStateReader.ReadAsync(cancellationToken);
+            if (unreadState is null)
+            {
+                throw new InvalidOperationException("Codex read state is unavailable.");
+            }
+
             await EnsureConnectedAsync(cancellationToken);
             wasPossiblySent = true;
             await SendMessageAsync(
                 CreateThreadReadStateBroadcast(
                     ReadClientId(),
                     normalizedThreadId,
-                    hasUnreadTurn: true),
+                    hasUnreadTurn: true,
+                    unreadState.Context),
                 cancellationToken);
             var confirmed = await _unreadStateReader.WaitUntilUnreadAsync(
                 normalizedThreadId,
                 UnreadConfirmationTimeout,
-                cancellationToken);
+                cancellationToken,
+                unreadState.Context);
             return new CodexThreadUnreadResult(
                 normalizedThreadId,
                 WasPossiblySent: true,
@@ -941,23 +948,34 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
     internal static JsonElement CreateThreadReadStateBroadcast(
         string sourceClientId,
         string threadId,
-        bool hasUnreadTurn)
+        bool hasUnreadTurn,
+        CodexThreadReadContext? context = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceClientId);
         ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        var parameters = new Dictionary<string, object?>
+        {
+            ["conversationId"] = threadId.Trim(),
+            ["hostId"] = LocalHostId,
+            ["hasUnreadTurn"] = hasUnreadTurn,
+        };
+        if (context is not null)
+        {
+            parameters["context"] = new
+            {
+                identity = context.Identity,
+                executionHostKey = context.ExecutionHostKey,
+            };
+        }
+
         return JsonSerializer.SerializeToElement(new
         {
             type = "broadcast",
             method = "thread-read-state-changed",
             sourceClientId = sourceClientId.Trim(),
             targetClientIds = (string[]?)null,
-            @params = new
-            {
-                conversationId = threadId.Trim(),
-                hostId = LocalHostId,
-                hasUnreadTurn,
-            },
-            version = 2,
+            @params = parameters,
+            version = context is null ? 2 : 3,
         });
     }
 

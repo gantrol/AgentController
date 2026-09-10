@@ -30,6 +30,9 @@ public partial class App : System.Windows.Application
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private bool _exiting;
     private bool _restartQueued;
+#if DEBUG
+    private int _consoleExitRequested;
+#endif
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -41,6 +44,7 @@ public partial class App : System.Windows.Application
         }
 
 #if DEBUG
+        Console.CancelKeyPress += Console_CancelKeyPress;
         var e2eCommand = ResolveE2eControlCommand(e.Args);
 #endif
 
@@ -71,7 +75,16 @@ public partial class App : System.Windows.Application
                 Shutdown(response is { Accepted: true } ? 0 : 3);
                 return;
             }
-#endif
+
+            var message =
+                $"Codex Micro: {Environment.ProcessPath} was built/launched, " +
+                "but another keypad instance is running. Exit that keypad " +
+                "from its tray menu before starting debugging again.";
+            Console.Error.WriteLine(message);
+            Debug.WriteLine(message);
+            Shutdown(2);
+            return;
+#else
             if (!e.Args.Contains(
                     "--background",
                     StringComparer.OrdinalIgnoreCase))
@@ -85,6 +98,7 @@ public partial class App : System.Windows.Application
 
             Shutdown();
             return;
+#endif
         }
 
         base.OnStartup(e);
@@ -127,6 +141,9 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+#if DEBUG
+        Console.CancelKeyPress -= Console_CancelKeyPress;
+#endif
         _trayIcon?.Dispose();
         _trayIcon = null;
         if (_controlServer is not null)
@@ -157,11 +174,45 @@ public partial class App : System.Windows.Application
 
     private async void RestartApplication()
     {
+#if DEBUG
+        if (Volatile.Read(ref _consoleExitRequested) != 0)
+        {
+            return;
+        }
+#endif
         _restartQueued = true;
         await StopApplicationAsync(restart: true);
     }
 
-    private async Task StopApplicationAsync(bool restart)
+#if DEBUG
+    private void Console_CancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        // The first interrupt runs the same cleanup as Exit, including the
+        // broker disconnect. A second interrupt keeps the console's default
+        // termination behavior if cleanup or the UI dispatcher is stuck.
+        e.Cancel = false;
+        if (Interlocked.Exchange(ref _consoleExitRequested, 1) != 0 ||
+            Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        try
+        {
+            _ = Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Send,
+                new Action(async () =>
+                    await StopApplicationAsync(restart: false, exitCode: 130)));
+        }
+        catch (InvalidOperationException)
+        {
+            e.Cancel = false;
+        }
+    }
+#endif
+
+    private async Task StopApplicationAsync(bool restart, int exitCode = 0)
     {
         if (_exiting)
         {
@@ -226,11 +277,11 @@ public partial class App : System.Windows.Application
         {
             if (Dispatcher.CheckAccess())
             {
-                Shutdown();
+                Shutdown(exitCode);
             }
             else
             {
-                await Dispatcher.InvokeAsync(Shutdown);
+                await Dispatcher.InvokeAsync(() => Shutdown(exitCode));
             }
         }
     }

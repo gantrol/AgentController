@@ -20,9 +20,21 @@ internal readonly record struct AgentLightingAppearance(
     private static readonly Color InactiveColor =
         Color.FromRgb(0x8D, 0xB5, 0xFF);
 
+    internal bool UsesNeutralSelectionRing =>
+        IsCurrentSession && (!IsActive || UsesWhiteFallback || Color == Colors.White);
+
     internal static AgentLightingAppearance ManualUnread(bool isCurrentSession) =>
         FromHarnessSession(MicroHarnessSessionStatus.Completed, isCurrentSession)
             with { StatusName = "未读" };
+
+    internal static AgentLightingAppearance FromCodexSession(
+        MicroHarnessSessionStatus? status,
+        bool isCurrentSession) =>
+        status is null or MicroHarnessSessionStatus.Idle && isCurrentSession
+            ? From(null, isCurrentSession: true)
+            : status is { } knownStatus
+                ? FromHarnessSession(knownStatus, isCurrentSession)
+                : From(null);
 
     internal static AgentLightingAppearance From(
         SlotLighting? lighting,

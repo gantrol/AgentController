@@ -1066,7 +1066,7 @@ internal sealed class MicroHarnessRegistry
             harness.Id,
             sessions
                 .OrderByDescending(item => item.UpdatedAt)
-                .Take(6)
+                .Take(CodexTaskMonitorService.Capacity)
                 .ToArray(),
             currentSessionId,
             capabilities,

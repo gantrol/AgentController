@@ -175,6 +175,8 @@ Codex 与 DeepSeek Harness 现在都是内置目标。在基础层按 **View** �
 
 ### 从源码构建
 
+维护者请先阅读[人类维护与发布手册](docs/maintainer-handbook.zh-CN.md)，包含环境检查、设置备份、版本准备、封包校验、草稿发布与回退步骤。
+
 先安装 .NET SDK 10.0.302。使用 IDE 构建时需要 Visual Studio 2026 与 MSBuild 18 或更新版本；Visual Studio 2022 无法加载 `global.json` 选择的 SDK。然后运行：
 
 ```powershell
@@ -201,7 +203,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
 ./scripts/publish-release.ps1 -Version 1.2.1 -IncludeCompact
 ```
 
-该命令会重新构建两种发布包、核验各自的 SHA-256、检查远程标签，并以幂等方式创建或更新 Release。若只需上传现有产物，可加 `-SkipBuild`。
+该命令会重新构建两种发布包、核验 SHA-256 和包内容，要求工作区干净且目标仓库的远程标签指向当前 HEAD，再创建或更新 Release。若只需上传现有产物，可加 `-SkipBuild`；先发草稿加 `-Draft`。同名附件默认拒绝覆盖，经核对后用 `-ReplaceAssets` 显式替换。完整流程见维护手册。
 
 ### 如果你想改源码
 

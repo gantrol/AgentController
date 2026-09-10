@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.2.1",
+    [string]$Version,
+    [ValidateSet('win-x64')]
     [string]$Runtime = "win-x64",
     [switch]$Compact,
     [double]$MaximumCompactPackageMiB = 30
@@ -11,6 +12,9 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot ".."))
+. (Join-Path $PSScriptRoot 'release-common.ps1')
+$Version = Get-ControllerReleaseVersion $Version
+& (Join-Path $PSScriptRoot 'verify-release.ps1') -Version $Version -SourceOnly
 $packageSuffix = if ($Compact) { "-compact" } else { "" }
 $packageName = "AgentController-$Version-$Runtime$packageSuffix"
 $artifactRoot = [System.IO.Path]::GetFullPath(
@@ -115,6 +119,9 @@ Copy-Item -LiteralPath (
     -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
     Join-Path $repoRoot "docs\CodexMicroSimulator-installation.md") `
+    -Destination $docsDesignRoot
+Copy-Item -LiteralPath (
+    Join-Path $repoRoot "docs\maintainer-handbook.zh-CN.md") `
     -Destination $docsDesignRoot
 $installTutorials = @(
     Get-ChildItem `

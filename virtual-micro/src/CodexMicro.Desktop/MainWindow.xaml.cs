@@ -124,7 +124,6 @@ public partial class MicroSurfaceWindow : Window
     private readonly Dictionary<FrameworkElement, (string Title, string Detail)>
         _helpContent = [];
     private readonly CodexMicroLayoutObserver _layoutObserver = new();
-    private readonly CodexAgentRosterObserver _agentRosterObserver = new();
     private readonly CodexMenuSelectionObserver _menuSelectionObserver = new();
     private readonly CodexQuotaService _quotaService = new();
     private readonly CodexModelToggleService _modelToggleService = new();
@@ -298,6 +297,7 @@ public partial class MicroSurfaceWindow : Window
         _deepSeekSetupCoordinator = new DeepSeekSetupCoordinator(
             _harnessRegistry);
         InitializeComponent();
+        InitializeMonitorPage();
         _codexDeviceFrameBackground = DeviceFrame.Background;
         _codexPearlLightGuideBackground = PearlLightGuide.Background;
         _codexCrystalDepthBackground = CrystalDepthPlate.Background;
@@ -380,7 +380,6 @@ public partial class MicroSurfaceWindow : Window
         _broker.StateChanged += Broker_StateChanged;
         _broker.SlotLightingObserved += Broker_SlotLightingObserved;
         _layoutObserver.LayoutChanged += LayoutObserver_LayoutChanged;
-        _agentRosterObserver.RosterChanged += AgentRosterObserver_RosterChanged;
         _dialSelectionHideTimer.Tick += DialSelectionHideTimer_Tick;
         _quotaRefreshTimer.Tick += QuotaRefreshTimer_Tick;
         _harnessStateRefreshTimer.Tick += HarnessStateRefreshTimer_Tick;
@@ -453,8 +452,6 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _layoutObserver.Start();
-        _agentRosterObserver.Start();
-        _latestAgentRoster = _agentRosterObserver.Current;
         ResolveCurrentAgentSlot();
         RefreshAgentSlotPresentation();
         ApplyHarnessContext();
@@ -463,6 +460,7 @@ public partial class MicroSurfaceWindow : Window
         RestartVoiceBridgeMonitor();
         RestartKeypadVoiceWarmUp();
         StartBackgroundServices();
+        UpdateMonitorRefresh();
         await ConnectAsync();
     }
 
@@ -500,6 +498,7 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _windowClosed = true;
+        StopMonitorPage();
         try
         {
             _broker.Dispose();
@@ -545,9 +544,6 @@ public partial class MicroSurfaceWindow : Window
             _joystickReportQueue.Clear();
             _layoutObserver.LayoutChanged -= LayoutObserver_LayoutChanged;
             _layoutObserver.Dispose();
-            _agentRosterObserver.RosterChanged -=
-                AgentRosterObserver_RosterChanged;
-            _agentRosterObserver.Dispose();
             _localization.LanguageChanged -= Localization_LanguageChanged;
             _profileSettings.Changed -= ProfileSettings_Changed;
             _harnessRegistry.Changed -= HarnessRegistry_Changed;
@@ -608,6 +604,7 @@ public partial class MicroSurfaceWindow : Window
         object sender,
         DependencyPropertyChangedEventArgs e)
     {
+        UpdateMonitorRefresh();
         if (e.NewValue is true)
         {
             StartQuotaRefresh();
@@ -1070,6 +1067,27 @@ public partial class MicroSurfaceWindow : Window
                 var codexIsForeground =
                     (ShouldActivateCodexForKey(key) || isComposerTextKey) &&
                     IsHarnessForeground(harness);
+                if (isAgentKey && focusAgentAfterTap && !codexIsForeground &&
+                    _monitorAvailable &&
+                    _latestAgentRoster?.Source == CodexRecentThreadsService.SourceName &&
+                    Guid.TryParse(selectedAgentThreadId, out var threadId))
+                {
+                    // Shell navigation restores the task directly, including
+                    // when Codex has no window yet. Foreground keys retain the
+                    // native Micro menu/back and double-tap behavior below.
+                    agentFocusResolvedBeforeTap = true;
+                    try
+                    {
+                        OpenCodexTask(threadId);
+                    }
+                    catch (Exception exception) when (exception is
+                        Win32Exception or InvalidOperationException)
+                    {
+                        SetStatus(exception.Message);
+                    }
+                    return;
+                }
+
                 if (isAgentKey && focusAgentAfterTap)
                 {
                     // A non-activating keypad click leaves the previous app in
@@ -4312,18 +4330,27 @@ public partial class MicroSurfaceWindow : Window
 
         var lighting = _latestSlotLighting?.Slots.FirstOrDefault(
             slot => slot.SlotId == slotId);
-        var protocolAppearance = AgentLightingAppearance.From(lighting);
-        var hasColoredProtocolSignal = protocolAppearance.IsActive &&
-            lighting?.Color != 0xFFFFFF;
+        var appearance = ResolveCodexAgentAppearance(slotId, lighting, rosterEntry);
+        var hasColoredProtocolSignal = appearance.IsActive &&
+            appearance.Color != Colors.White;
+        await MarkCodexThreadUnreadAsync(
+            rosterEntry.ThreadId,
+            rosterEntry.DisplayTitle,
+            hasColoredProtocolSignal);
+    }
+
+    private async Task MarkCodexThreadUnreadAsync(
+        string threadId,
+        string displayTitle,
+        bool hasColoredSignal)
+    {
         if (!_manualUnreadThreads.TryMarkUnread(
-                rosterEntry.ThreadId,
-                hasColoredProtocolSignal))
+                threadId,
+                hasColoredSignal))
         {
             return;
         }
 
-        var threadId = rosterEntry.ThreadId;
-        var displayTitle = rosterEntry.DisplayTitle;
         RefreshAgentSlotPresentation();
         SetStatus(_localization.IsEnglish
             ? $"Marking “{displayTitle}” unread in Codex…"
@@ -4389,6 +4416,9 @@ public partial class MicroSurfaceWindow : Window
         }
 
         ApplyQuickModelPresentationState(next);
+        ResolveCurrentAgentSlot();
+        RefreshAgentSlotPresentation();
+        _ = RefreshMonitorAsync();
     }
 
     internal static QuickModelPresentationState ReduceQuickModelSnapshot(
@@ -5817,7 +5847,7 @@ public partial class MicroSurfaceWindow : Window
         MouseButtonEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed ||
-            FindAncestor<Button>(e.OriginalSource as DependencyObject) is not null)
+            FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) is not null)
         {
             return;
         }
@@ -6371,23 +6401,6 @@ public partial class MicroSurfaceWindow : Window
         });
     }
 
-    private void AgentRosterObserver_RosterChanged(
-        object? sender,
-        CodexAgentRosterSnapshot snapshot)
-    {
-        _ = Dispatcher.InvokeAsync(() =>
-        {
-            _latestAgentRoster = snapshot;
-            if (!IsCodexHarnessActive())
-            {
-                return;
-            }
-
-            ResolveCurrentAgentSlot();
-            RefreshAgentSlotPresentation();
-        });
-    }
-
     private void ResolveCurrentAgentSlot()
     {
         if (!IsCodexHarnessActive())
@@ -6395,10 +6408,23 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
+        var currentThreadId = CurrentCodexAgentThreadId();
+        if (currentThreadId is null)
+        {
+            _currentAgentSlotId = null;
+            return;
+        }
+
+        if (_latestAgentRoster is { Source: CodexRecentThreadsService.SourceName } roster)
+        {
+            _currentAgentSlotId = roster.Entries
+                .FirstOrDefault(entry => entry.ThreadId == currentThreadId)?.SlotId;
+            return;
+        }
+
         _currentAgentSlotId = AgentLightingAppearance.ResolveCurrentSessionSlot(
             _latestSlotLighting?.Slots ?? [],
-            _currentAgentSlotId,
-            _latestAgentRoster?.Entries.Select(entry => entry.SlotId));
+            _currentAgentSlotId);
     }
 
     private AgentLightingAppearance ResolveCodexAgentAppearance(
@@ -6407,7 +6433,18 @@ public partial class MicroSurfaceWindow : Window
         CodexAgentRosterEntry? rosterEntry)
     {
         var protocolAppearance = AgentLightingAppearance.From(lighting);
-        var isCurrentSession = slotId == _currentAgentSlotId;
+        var currentThreadId = CurrentCodexAgentThreadId();
+        var isCurrentSession = currentThreadId is not null &&
+            (rosterEntry is not null
+                ? rosterEntry.ThreadId == currentThreadId
+                : slotId == _currentAgentSlotId);
+        if (_monitorAvailable && rosterEntry is not null &&
+            _monitoredTasks?.FirstOrDefault(task => task.Id == rosterEntry.ThreadId) is { } task)
+        {
+            var status = ResolveMonitoredTaskStatus(task.Status);
+            return ResolveMonitoredCodexAppearance(task.Id, status, isCurrentSession);
+        }
+
         var canShowUnread = !protocolAppearance.IsActive ||
             lighting?.Color == 0xFFFFFF;
         if (canShowUnread &&
@@ -6444,6 +6481,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void RefreshAgentSlotPresentation()
     {
+        RefreshMonitorPresentation();
         if (!IsCodexHarnessActive())
         {
             RefreshHarnessSessionPresentation();
@@ -6468,8 +6506,8 @@ public partial class MicroSurfaceWindow : Window
             ApplyAgentLightingAppearance(slotId, appearance);
 
             var title = rosterEntry?.DisplayTitle ?? $"Agent 槽位 {slotId + 1}";
-            var state = appearance.UsesWhiteFallback
-                ? $"{appearance.StatusName} · 白光选择提示"
+            var state = appearance.UsesNeutralSelectionRing
+                ? appearance.StatusName
                 : appearance.IsActive
                 ? $"{appearance.StatusName} · " +
                     $"#{appearance.Color.R:X2}{appearance.Color.G:X2}" +
@@ -6598,9 +6636,13 @@ public partial class MicroSurfaceWindow : Window
     {
         key.BorderBrush = new SolidColorBrush(appearance.Color)
         {
-            Opacity = appearance.DisplayOpacity,
+            Opacity = appearance.UsesNeutralSelectionRing ? 0 : appearance.DisplayOpacity,
         };
         key.ApplyTemplate();
+        SetTemplatePartOpacity(
+            key,
+            "CurrentSessionRing",
+            appearance.UsesNeutralSelectionRing ? 1 : 0);
         SetTemplatePartOpacity(key, "GlowWide", appearance.WideGlowOpacity);
         SetTemplatePartOpacity(key, "Glow", appearance.OuterGlowOpacity);
         SetTemplatePartOpacity(key, "StatusCapWash", appearance.CapWashOpacity);
@@ -6816,6 +6858,7 @@ public partial class MicroSurfaceWindow : Window
         UpdateQuotaPresentation();
         if (changed && IsLoaded)
         {
+            UpdateMonitorRefresh();
             _ = Dispatcher.BeginInvoke(
                 System.Windows.Threading.DispatcherPriority.ContextIdle,
                 new Action(PromptForHarnessSetupIfNeeded));
@@ -8281,6 +8324,8 @@ public partial class MicroSurfaceWindow : Window
 
     private void RefreshLocalizedChrome()
     {
+        RefreshPageHelp();
+        RefreshMonitorPresentation();
         Title = _localization.IsEnglish
             ? $"Codex Micro · {_keypadDisplayName}"
             : $"Codex Micro · {_keypadDisplayName}";
