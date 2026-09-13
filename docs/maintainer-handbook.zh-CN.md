@@ -305,8 +305,8 @@ gh release edit $previousTag --repo gantrol/AgentController --latest
 
 ```powershell
 # 示例版本取自当前 Micro Monitor 发布
-.\scripts\package-micro.ps1 -Version 0.3.5 -Preset standard
-.\scripts\package-micro.ps1 -Version 0.3.5 -Preset monitor
+.\scripts\package-micro.ps1 -Version 0.3.6 -Preset standard
+.\scripts\package-micro.ps1 -Version 0.3.6 -Preset monitor
 .\scripts\package-micro.ps1 -Version 0.2.9 -Preset deepseek
 ```
 
