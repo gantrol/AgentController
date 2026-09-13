@@ -29,6 +29,11 @@ public partial class MicroSurfaceWindow
             yield break;
         }
 
+        if (IsHarnessMenuNavigationActive(ActiveHarness()))
+        {
+            yield break;
+        }
+
         for (var index = 0; index < _agentKeys.Length; index++)
         {
             var id = harnessId == "codex"
@@ -61,6 +66,7 @@ public partial class MicroSurfaceWindow
     private async void PageButton_Click(object sender, RoutedEventArgs e)
     {
         if (_pageSwitching || _monitorQuickBusy || _quickModelSwitching ||
+            _harnessModelSwitching || _monitorOpening ||
             sender is not RadioButton { Tag: string page })
         {
             ControlPageButton.IsChecked = !_monitorPage;
@@ -77,6 +83,8 @@ public partial class MicroSurfaceWindow
         _pageSwitching = true;
         ControlPageButton.IsEnabled = false;
         MonitorPageButton.IsEnabled = false;
+        ControlGrid.IsHitTestVisible = false;
+        MonitorSurface.IsHitTestVisible = false;
         var cleanups = new List<Action>();
         using var cancellation = new CancellationTokenSource();
         _pageMotionCancellation = cancellation;
@@ -104,8 +112,6 @@ public partial class MicroSurfaceWindow
             FrameworkElement outgoing = _monitorPage ? MonitorSurface : ControlGrid;
             FrameworkElement incoming = next ? MonitorSurface : ControlGrid;
             _monitorPage = next;
-            ControlGrid.IsHitTestVisible = false;
-            MonitorSurface.IsHitTestVisible = false;
             ControlGrid.Visibility = Visibility.Visible;
             MonitorSurface.Visibility = Visibility.Visible;
             UpdateMonitorRefresh();
@@ -187,7 +193,7 @@ public partial class MicroSurfaceWindow
             }
             if (!_windowClosed)
             {
-                RefreshMonitorPresentation();
+                RefreshAgentSlotPresentation();
             }
         }
     }

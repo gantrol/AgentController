@@ -70,7 +70,8 @@ internal sealed partial class CodexModelToggleService
 
             var update = await UpdateThreadSettingsWithRetryAsync(
                 expectedThreadId, context.OwnerClientId, expectedModelId,
-                targetEffort, allowOtherVisibleThreads: true, cancellationToken);
+                targetEffort, allowOtherVisibleThreads: true, cancellationToken,
+                isTargetCurrent);
             if (!update.Succeeded)
             {
                 return Failed(update.Error ?? "thread-settings-rejected");

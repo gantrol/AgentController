@@ -1803,7 +1803,8 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             string targetModelId,
             string targetEffort,
             bool allowOtherVisibleThreads,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Func<bool>? isTargetCurrent = null)
     {
         const int maximumAttempts = 2;
         var ownerClientId = initialOwnerClientId;
@@ -1812,6 +1813,12 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
 
         for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (isTargetCurrent?.Invoke() == false)
+            {
+                return new(false, ownerClientId, "visible-thread-changed");
+            }
+
             if (attempt > 0)
             {
                 var reconciledOwner = ReadTrackedTargetOwner(
@@ -1903,6 +1910,11 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             if (visibility is not null)
             {
                 return new(false, ownerClientId, visibility);
+            }
+
+            if (isTargetCurrent?.Invoke() == false)
+            {
+                return new(false, ownerClientId, "visible-thread-changed");
             }
 
             JsonElement response;

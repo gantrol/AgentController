@@ -98,6 +98,10 @@ public partial class MicroSurfaceWindow
             _monitorRefreshTimer.Stop();
             _monitorRefreshCancellation?.Cancel();
             StopMonitorQuickControls();
+            if (_windowClosed || !IsLoaded || !IsVisible)
+            {
+                _pageMotionCancellation?.Cancel();
+            }
             return;
         }
 
@@ -414,6 +418,7 @@ public partial class MicroSurfaceWindow
 
     private void StopMonitorPage()
     {
+        _pageMotionCancellation?.Cancel();
         StopMonitorQuickControls();
         _monitorRefreshTimer.Stop();
         _monitorRefreshTimer.Tick -= MonitorRefreshTimer_Tick;

@@ -99,6 +99,14 @@ public partial class MicroSurfaceWindow
         var english = _localization.IsEnglish;
         var codex = IsCodexHarnessActive();
         var harness = ActiveHarness();
+        if (_monitorModelCatalog is not { IsFresh: true })
+        {
+            _monitorModelCatalog = CodexModelCatalog.Load();
+            if (!_monitorModelCatalog.IsFresh)
+            {
+                _monitorDraftSelection = null;
+            }
+        }
         var target = CaptureMonitorComposerTarget();
         var context = $"{harness.Id}:{target?.ThreadId ?? CurrentHarnessSessionId()}";
         if (_monitorQuickContext != context)
@@ -112,11 +120,6 @@ public partial class MicroSurfaceWindow
             CloseMonitorEffortMenu();
         }
 
-        _monitorModelCatalog ??= CodexModelCatalog.Load();
-        if (!_monitorModelCatalog.IsFresh)
-        {
-            _monitorDraftSelection = null;
-        }
         var state = _modelToggleService.CurrentThreadState;
         var modelId = target?.ModelId;
         var effort = target?.Draft is null && state?.ThreadId == target?.ThreadId
@@ -139,15 +142,17 @@ public partial class MicroSurfaceWindow
         var busy = _monitorQuickBusy || _quickModelSwitching || _harnessModelSwitching;
         var available = IsLoaded && IsVisible && _monitorPage && !_pageSwitching && !busy &&
             !_monitorOpening && !_voicePressed;
+        var externalAvailable = external is { NavigationDepth: 0 } &&
+            !string.IsNullOrWhiteSpace(CurrentHarnessSessionId());
         MonitorModelValue.Text = modelLabel;
-        MonitorEffortValue.Text = (english ? "Effort · " : "思考 · ") +
-            (busy ? "…" : QuickEffortLabel(effort, english));
+        MonitorEffortValue.Text = busy ? "…" : QuickEffortLabel(effort, english);
         MonitorModelButton.IsEnabled = available && (codex ||
+            externalAvailable &&
             external?.Capabilities.Supports(MicroHarnessActionIds.ToggleQuickModel) == true);
         MonitorEffortButton.IsEnabled = available && (codex ? target is not null :
-            external is { NavigationDepth: 0 } &&
-            (external.Capabilities.Supports(MicroHarnessActionIds.ReasoningDecrease) ||
-             external.Capabilities.Supports(MicroHarnessActionIds.ReasoningIncrease)));
+            externalAvailable &&
+            (external?.Capabilities.Supports(MicroHarnessActionIds.ReasoningDecrease) == true ||
+             external?.Capabilities.Supports(MicroHarnessActionIds.ReasoningIncrease) == true));
 
         var pair = _profileSettings.Current;
         var modelHelp = codex
@@ -192,30 +197,29 @@ public partial class MicroSurfaceWindow
         var stale = _quotaSnapshot is { } snapshot && (_quotaRefreshFailed ||
             DateTimeOffset.Now - snapshot.ReadAt > TimeSpan.FromMinutes(4));
         ApplyMonitorQuotaWindow(MonitorWeekQuotaButton, MonitorWeekQuotaText,
-            MonitorWeekQuotaBar, first, stale, english, weeklyPlaceholder: true);
+            MonitorWeekQuotaBar, first, stale, english);
         ApplyMonitorQuotaWindow(MonitorShortQuotaButton, MonitorShortQuotaText,
-            MonitorShortQuotaBar, second, stale, english, weeklyPlaceholder: false);
+            MonitorShortQuotaBar, second, stale, english);
         MonitorShortQuotaButton.Visibility = second is null ? Visibility.Collapsed : Visibility.Visible;
         MonitorShortQuotaColumn.Width = second is null ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         MonitorQuotaGap.Width = second is null ? new GridLength(0) : new GridLength(16);
     }
 
     private void ApplyMonitorQuotaWindow(Button button, TextBlock text, ProgressBar bar,
-        CodexQuotaWindow? window, bool stale, bool english, bool weeklyPlaceholder)
+        CodexQuotaWindow? window, bool stale, bool english)
     {
-        var label = window?.WindowDurationMinutes switch
+        var duration = window?.WindowDurationMinutes switch
         {
-            10080 => english ? "Week left" : "周剩余",
-            300 => english ? "5h left" : "5h 剩余",
-            int minutes when minutes % 1440 == 0 => $"{minutes / 1440}d " + (english ? "left" : "剩余"),
-            int minutes when minutes % 60 == 0 => $"{minutes / 60}h " + (english ? "left" : "剩余"),
-            int minutes => $"{minutes}m " + (english ? "left" : "剩余"),
-            _ => weeklyPlaceholder ? english ? "Week left" : "周剩余" : "5h",
+            int minutes when minutes % 1440 == 0 => $"{minutes / 1440}d",
+            int minutes when minutes % 60 == 0 => $"{minutes / 60}h",
+            int minutes => $"{minutes}m",
+            _ => null,
         };
         var expired = window is not null && window.ResetsAt <= DateTimeOffset.Now;
         stale |= expired;
         var value = window is null ? "—" : $"{window.RemainingPercent:0}%";
-        text.Text = $"{label}  {value}" + (stale ? english ? " · old" : " · 旧" : string.Empty);
+        text.Text = (duration is null ? value : $"{duration}  {value}") +
+            (stale ? "  ↺" : string.Empty);
         bar.Value = window?.RemainingPercent ?? 0;
         bar.Visibility = window is null ? Visibility.Hidden : Visibility.Visible;
         bar.Opacity = stale ? 0.45 : 0.85;
@@ -227,7 +231,9 @@ public partial class MicroSurfaceWindow
         });
         var help = window is null
             ? english ? "Quota unavailable · click to refresh" : "额度暂不可用 · 点击刷新"
-            : $"{text.Text}\n{(english ? "Resets" : "重置时间")} · " +
+            : $"{duration} · {(english ? "Remaining" : "剩余")} {value}" +
+                (stale ? english ? " · old" : " · 旧" : string.Empty) +
+                $"\n{(english ? "Resets" : "重置时间")} · " +
                 window.ResetsAt.ToLocalTime().ToString("g") +
                 $"\n{(english ? "Read" : "读取时间")} · {_quotaSnapshot!.ReadAt.ToLocalTime():g}" +
                 (stale ? english ? "\nLast known value; not a live balance." : "\n这是上次读数，不代表当前剩余额度。" : string.Empty) +
@@ -278,7 +284,8 @@ public partial class MicroSurfaceWindow
 
     private async void MonitorModel_Click(object sender, RoutedEventArgs e)
     {
-        if (_monitorQuickBusy || _pageSwitching || !_monitorPage)
+        if (_monitorQuickBusy || _quickModelSwitching || _harnessModelSwitching ||
+            _monitorOpening || _pageSwitching || !_monitorPage || _windowClosed || !IsVisible)
         {
             return;
         }
@@ -305,6 +312,8 @@ public partial class MicroSurfaceWindow
         }
         finally
         {
+            _monitorDraftSelection = null;
+            _monitorLastDraftRead = default;
             _monitorQuickBusy = false;
             UpdateMonitorQuickControls();
         }
@@ -312,7 +321,8 @@ public partial class MicroSurfaceWindow
 
     private async void MonitorEffort_Click(object sender, RoutedEventArgs e)
     {
-        if (_monitorQuickBusy || _pageSwitching || !_monitorPage)
+        if (_monitorQuickBusy || _quickModelSwitching || _harnessModelSwitching ||
+            _monitorOpening || _pageSwitching || !_monitorPage || _windowClosed || !IsVisible)
         {
             return;
         }
@@ -488,6 +498,10 @@ public partial class MicroSurfaceWindow
             if (ReferenceEquals(_monitorEffortMenu, menu))
             {
                 _monitorEffortMenu = null;
+                if (!_monitorQuickBusy)
+                {
+                    _monitorQuickTarget = null;
+                }
             }
         };
         return menu;
@@ -592,6 +606,10 @@ public partial class MicroSurfaceWindow
     {
         var menu = _monitorEffortMenu;
         _monitorEffortMenu = null;
+        if (!_monitorQuickBusy)
+        {
+            _monitorQuickTarget = null;
+        }
         if (menu is not null)
         {
             menu.IsOpen = false;
@@ -605,6 +623,5 @@ public partial class MicroSurfaceWindow
         CloseMonitorEffortMenu();
         CancelMonitorQuickRead();
         _monitorQuickCancellation?.Cancel();
-        _pageMotionCancellation?.Cancel();
     }
 }

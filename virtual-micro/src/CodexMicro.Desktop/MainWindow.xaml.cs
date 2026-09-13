@@ -6482,6 +6482,10 @@ public partial class MicroSurfaceWindow : Window
     private void RefreshAgentSlotPresentation()
     {
         RefreshMonitorPresentation();
+        if (_pageMotionActive)
+        {
+            return;
+        }
         if (!IsCodexHarnessActive())
         {
             RefreshHarnessSessionPresentation();
