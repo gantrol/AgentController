@@ -443,7 +443,7 @@ internal sealed class CodexThreadModelStateAccumulator
 /// Desktop. The bridge uses Codex's versioned cross-window IPC protocol; it
 /// never opens or drives the model picker and never guesses from recent tasks.
 /// </summary>
-internal sealed class CodexModelToggleService : IAsyncDisposable
+internal sealed partial class CodexModelToggleService : IAsyncDisposable
 {
     internal readonly record struct VisibleThreadSelection(
         string? VisibleThreadId,
@@ -1803,7 +1803,8 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             string targetModelId,
             string targetEffort,
             bool allowOtherVisibleThreads,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Func<bool>? isTargetCurrent = null)
     {
         const int maximumAttempts = 2;
         var ownerClientId = initialOwnerClientId;
@@ -1812,6 +1813,12 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
 
         for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (isTargetCurrent?.Invoke() == false)
+            {
+                return new(false, ownerClientId, "visible-thread-changed");
+            }
+
             if (attempt > 0)
             {
                 var reconciledOwner = ReadTrackedTargetOwner(
@@ -1908,6 +1915,12 @@ internal sealed class CodexModelToggleService : IAsyncDisposable
             JsonElement response;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (isTargetCurrent?.Invoke() == false)
+                {
+                    return new(false, ownerClientId, "visible-thread-changed");
+                }
+
                 response = await SendRequestAsync(
                     "thread-follower-update-thread-settings",
                     version: 1,

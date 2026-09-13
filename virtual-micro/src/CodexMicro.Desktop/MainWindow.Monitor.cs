@@ -20,9 +20,17 @@ public partial class MicroSurfaceWindow
     {
         Interval = TimeSpan.FromSeconds(2),
     };
-    private readonly Button[] _monitorKeys = new Button[CodexTaskMonitorService.Capacity];
-    private readonly Border[] _monitorWideGlows = new Border[CodexTaskMonitorService.Capacity];
-    private readonly Border[] _monitorNearGlows = new Border[CodexTaskMonitorService.Capacity];
+    private const int MonitorTaskCapacity = CodexTaskMonitorService.Capacity - 2;
+    private readonly Grid _sharedPageControls = new()
+    {
+        Width = 424,
+        Height = 424,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+    private readonly Button[] _monitorKeys = new Button[MonitorTaskCapacity];
+    private readonly Border[] _monitorWideGlows = new Border[MonitorTaskCapacity];
+    private readonly Border[] _monitorNearGlows = new Border[MonitorTaskCapacity];
     private IReadOnlyList<CodexMonitoredTask>? _monitoredTasks;
     private CancellationTokenSource? _monitorRefreshCancellation;
     private string? _monitorHarnessId;
@@ -39,6 +47,8 @@ public partial class MicroSurfaceWindow
         {
             MonitorGrid.RowDefinitions.Add(new() { Height = new GridLength(106) });
             MonitorGrid.ColumnDefinitions.Add(new() { Width = new GridLength(106) });
+            _sharedPageControls.RowDefinitions.Add(new() { Height = new GridLength(106) });
+            _sharedPageControls.ColumnDefinitions.Add(new() { Width = new GridLength(106) });
         }
 
         for (var index = 0; index < _monitorKeys.Length; index++)
@@ -59,8 +69,9 @@ public partial class MicroSurfaceWindow
             ToolTipService.SetShowOnDisabled(key, true);
             foreach (var element in new FrameworkElement[] { wide, near, key })
             {
-                Grid.SetRow(element, index / 4);
-                Grid.SetColumn(element, index % 4);
+                var cell = index < 12 ? index : index + 1;
+                Grid.SetRow(element, cell / 4);
+                Grid.SetColumn(element, cell % 4);
                 MonitorGrid.Children.Add(element);
             }
 
@@ -71,6 +82,13 @@ public partial class MicroSurfaceWindow
             _monitorNearGlows[index] = near;
         }
 
+        foreach (var control in new FrameworkElement[] { ModelKnob, ActionKey12 })
+        {
+            ControlGrid.Children.Remove(control);
+            _sharedPageControls.Children.Add(control);
+        }
+        ((Panel)ControlGrid.Parent).Children.Add(_sharedPageControls);
+
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
         RefreshPageHelp();
@@ -79,70 +97,11 @@ public partial class MicroSurfaceWindow
     private void RefreshPageHelp()
     {
         var controls = _localization.IsEnglish ? "Controls" : "控制页";
-        var monitor = _localization.IsEnglish ? "16 tasks" : "16 个任务";
+        var monitor = _localization.IsEnglish ? "14 tasks" : "14 个任务";
         ControlPageButton.ToolTip = controls;
         MonitorPageButton.ToolTip = monitor;
         AutomationProperties.SetName(ControlPageButton, controls);
         AutomationProperties.SetName(MonitorPageButton, monitor);
-    }
-
-    private async void PageButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_pageSwitching || sender is not RadioButton { Tag: string page })
-        {
-            return;
-        }
-
-        var next = page == "1";
-        if (next == _monitorPage)
-        {
-            return;
-        }
-
-        _pageSwitching = true;
-        ControlPageButton.IsEnabled = false;
-        MonitorPageButton.IsEnabled = false;
-        try
-        {
-            // Release captured/held input before its originating control is hidden.
-            if (_voicePressed)
-            {
-                await ReleaseVoiceAsync();
-            }
-
-            if (_windowClosed)
-            {
-                return;
-            }
-
-            if (_joystickDragging)
-            {
-                EndJoystickDrag();
-            }
-
-            CancelDialGesture();
-            _encoderSteps.Clear();
-            _lastAgentTapKey = null;
-            _monitorPage = next;
-            ControlGrid.Visibility = next ? Visibility.Collapsed : Visibility.Visible;
-            MonitorGrid.Visibility = next ? Visibility.Visible : Visibility.Collapsed;
-            UpdateMonitorRefresh();
-        }
-        catch (Exception exception)
-        {
-            if (!_windowClosed)
-            {
-                SetStatus(exception.Message);
-            }
-        }
-        finally
-        {
-            ControlPageButton.IsChecked = !_monitorPage;
-            MonitorPageButton.IsChecked = _monitorPage;
-            ControlPageButton.IsEnabled = true;
-            MonitorPageButton.IsEnabled = true;
-            _pageSwitching = false;
-        }
     }
 
     private void MonitorRefreshTimer_Tick(object? sender, EventArgs e) =>
@@ -155,6 +114,10 @@ public partial class MicroSurfaceWindow
         {
             _monitorRefreshTimer.Stop();
             _monitorRefreshCancellation?.Cancel();
+            if (_windowClosed || !IsLoaded || !IsVisible)
+            {
+                _pageMotionCancellation?.Cancel();
+            }
             return;
         }
 
@@ -269,7 +232,7 @@ public partial class MicroSurfaceWindow
         var byId = tasks.ToDictionary(task => task.Id, StringComparer.Ordinal);
         // Restore row-major recency order when the pointer leaves the keys.
         // Never replace the identity of a hovered or captured key.
-        var freezeAssignments = _monitorOpening ||
+        var freezeAssignments = _pageMotionActive || _monitorOpening ||
             _monitorKeys.Any(key => key.Tag is not null &&
                 (key.IsMouseOver || key.IsMouseCaptured));
         for (var index = 0; index < _monitorKeys.Length; index++)
@@ -470,6 +433,7 @@ public partial class MicroSurfaceWindow
 
     private void StopMonitorPage()
     {
+        _pageMotionCancellation?.Cancel();
         _monitorRefreshTimer.Stop();
         _monitorRefreshTimer.Tick -= MonitorRefreshTimer_Tick;
         _monitorRefreshCancellation?.Cancel();

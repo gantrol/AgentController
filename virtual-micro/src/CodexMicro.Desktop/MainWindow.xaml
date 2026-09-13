@@ -572,7 +572,7 @@
                                 <controls:KeycapIcon x:Name="ActionIcon09" Width="28" Height="28" KeycapId="SPLIT" IconBrush="#171717" />
                             </Button>
 
-                            <Grid Grid.Row="3"
+                            <Grid x:Name="ModelKnob" Grid.Row="3"
                                   Grid.Column="0"
                                   Width="96"
                                   Height="96"
@@ -592,6 +592,7 @@
                                         Height="96"
                                         Style="{StaticResource DarkKnobButton}"
                                         Click="Settings_Click"
+                                        MouseWheel="Settings_MouseWheel"
                                         PreviewMouseLeftButtonDown="Settings_PreviewMouseLeftButtonDown"
                                         PreviewMouseRightButtonDown="Settings_PreviewMouseRightButtonDown"
                                         ContextMenuOpening="Settings_ContextMenuOpening"
