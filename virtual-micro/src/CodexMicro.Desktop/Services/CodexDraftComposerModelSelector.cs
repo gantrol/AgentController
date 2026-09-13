@@ -7,7 +7,7 @@ using System.Windows.Automation;
 
 namespace CodexMicro.Desktop.Services;
 
-internal sealed class CodexDraftComposerModelSelector
+internal sealed partial class CodexDraftComposerModelSelector
 {
     [ThreadStatic]
     private static CodexModelCatalog? _operationCatalog;

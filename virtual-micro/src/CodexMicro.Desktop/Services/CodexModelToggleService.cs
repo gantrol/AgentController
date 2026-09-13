@@ -443,7 +443,7 @@ internal sealed class CodexThreadModelStateAccumulator
 /// Desktop. The bridge uses Codex's versioned cross-window IPC protocol; it
 /// never opens or drives the model picker and never guesses from recent tasks.
 /// </summary>
-internal sealed class CodexModelToggleService : IAsyncDisposable
+internal sealed partial class CodexModelToggleService : IAsyncDisposable
 {
     internal readonly record struct VisibleThreadSelection(
         string? VisibleThreadId,
