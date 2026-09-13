@@ -73,76 +73,18 @@ public partial class MicroSurfaceWindow
 
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
+        InitializeMonitorQuickControls();
         RefreshPageHelp();
     }
 
     private void RefreshPageHelp()
     {
         var controls = _localization.IsEnglish ? "Controls" : "控制页";
-        var monitor = _localization.IsEnglish ? "16 tasks" : "16 个任务";
+        var monitor = _localization.IsEnglish ? "Tasks and quick controls" : "任务与快捷控制";
         ControlPageButton.ToolTip = controls;
         MonitorPageButton.ToolTip = monitor;
         AutomationProperties.SetName(ControlPageButton, controls);
         AutomationProperties.SetName(MonitorPageButton, monitor);
-    }
-
-    private async void PageButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_pageSwitching || sender is not RadioButton { Tag: string page })
-        {
-            return;
-        }
-
-        var next = page == "1";
-        if (next == _monitorPage)
-        {
-            return;
-        }
-
-        _pageSwitching = true;
-        ControlPageButton.IsEnabled = false;
-        MonitorPageButton.IsEnabled = false;
-        try
-        {
-            // Release captured/held input before its originating control is hidden.
-            if (_voicePressed)
-            {
-                await ReleaseVoiceAsync();
-            }
-
-            if (_windowClosed)
-            {
-                return;
-            }
-
-            if (_joystickDragging)
-            {
-                EndJoystickDrag();
-            }
-
-            CancelDialGesture();
-            _encoderSteps.Clear();
-            _lastAgentTapKey = null;
-            _monitorPage = next;
-            ControlGrid.Visibility = next ? Visibility.Collapsed : Visibility.Visible;
-            MonitorGrid.Visibility = next ? Visibility.Visible : Visibility.Collapsed;
-            UpdateMonitorRefresh();
-        }
-        catch (Exception exception)
-        {
-            if (!_windowClosed)
-            {
-                SetStatus(exception.Message);
-            }
-        }
-        finally
-        {
-            ControlPageButton.IsChecked = !_monitorPage;
-            MonitorPageButton.IsChecked = _monitorPage;
-            ControlPageButton.IsEnabled = true;
-            MonitorPageButton.IsEnabled = true;
-            _pageSwitching = false;
-        }
     }
 
     private void MonitorRefreshTimer_Tick(object? sender, EventArgs e) =>
@@ -155,6 +97,11 @@ public partial class MicroSurfaceWindow
         {
             _monitorRefreshTimer.Stop();
             _monitorRefreshCancellation?.Cancel();
+            StopMonitorQuickControls();
+            if (_windowClosed || !IsLoaded || !IsVisible)
+            {
+                _pageMotionCancellation?.Cancel();
+            }
             return;
         }
 
@@ -246,6 +193,7 @@ public partial class MicroSurfaceWindow
 
     private void RefreshMonitorPresentation()
     {
+        UpdateMonitorQuickControls();
         if (!_monitorPage || _windowClosed)
         {
             return;
@@ -269,7 +217,7 @@ public partial class MicroSurfaceWindow
         var byId = tasks.ToDictionary(task => task.Id, StringComparer.Ordinal);
         // Restore row-major recency order when the pointer leaves the keys.
         // Never replace the identity of a hovered or captured key.
-        var freezeAssignments = _monitorOpening ||
+        var freezeAssignments = _pageMotionActive || _monitorOpening ||
             _monitorKeys.Any(key => key.Tag is not null &&
                 (key.IsMouseOver || key.IsMouseCaptured));
         for (var index = 0; index < _monitorKeys.Length; index++)
@@ -470,6 +418,8 @@ public partial class MicroSurfaceWindow
 
     private void StopMonitorPage()
     {
+        _pageMotionCancellation?.Cancel();
+        StopMonitorQuickControls();
         _monitorRefreshTimer.Stop();
         _monitorRefreshTimer.Tick -= MonitorRefreshTimer_Tick;
         _monitorRefreshCancellation?.Cancel();

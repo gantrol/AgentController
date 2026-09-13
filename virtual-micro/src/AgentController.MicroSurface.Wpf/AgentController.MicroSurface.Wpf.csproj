@@ -13,6 +13,10 @@
     <Compile Include="MicroSurfaceController.cs" />
     <Compile Include="..\CodexMicro.Desktop\MainWindow.Monitor.cs"
              Link="MicroSurfaceWindow.Monitor.cs" />
+    <Compile Include="..\CodexMicro.Desktop\MainWindow.QuickControls.cs"
+             Link="MicroSurfaceWindow.QuickControls.cs" />
+    <Compile Include="..\CodexMicro.Desktop\MainWindow.PageMotion.cs"
+             Link="MicroSurfaceWindow.PageMotion.cs" />
     <Compile Include="..\..\..\app\Services\CodexRolloutStatusReader.cs"
              Link="Services\CodexRolloutStatusReader.cs" />
     <Compile Include="..\..\..\app\Models\ThreadStatus.cs"
