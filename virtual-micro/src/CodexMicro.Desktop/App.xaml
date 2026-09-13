@@ -328,17 +328,10 @@
                                     <Ellipse x:Name="CurrentSessionRing"
                                              Width="82"
                                              Height="82"
-                                             Stroke="#FF8A8A8A"
-                                             StrokeThickness="2"
+                                             Stroke="#AA8F86B8"
+                                             StrokeThickness="1.25"
                                              Opacity="0"
-                                             IsHitTestVisible="False">
-                                        <Ellipse.Effect>
-                                            <DropShadowEffect BlurRadius="6"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.55"
-                                                              Color="#8A8A8A" />
-                                        </Ellipse.Effect>
-                                    </Ellipse>
+                                             IsHitTestVisible="False" />
                                     <Grid x:Name="AgentGlyph"
                                           Width="18"
                                           Height="18"
