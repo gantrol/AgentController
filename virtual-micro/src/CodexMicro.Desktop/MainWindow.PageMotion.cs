@@ -65,7 +65,7 @@ public partial class MicroSurfaceWindow
 
     private async void PageButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_pageSwitching || _quickModelSwitching ||
+        if (_pageSwitching || _monitorQuickBusy || _quickModelSwitching ||
             _harnessModelSwitching || _monitorOpening ||
             sender is not RadioButton { Tag: string page })
         {
@@ -84,13 +84,15 @@ public partial class MicroSurfaceWindow
         ControlPageButton.IsEnabled = false;
         MonitorPageButton.IsEnabled = false;
         ControlGrid.IsHitTestVisible = false;
-        MonitorGrid.IsHitTestVisible = false;
+        MonitorSurface.IsHitTestVisible = false;
         _sharedPageControls.IsHitTestVisible = false;
         var cleanups = new List<Action>();
         using var cancellation = new CancellationTokenSource();
         _pageMotionCancellation = cancellation;
         try
         {
+            CloseMonitorEffortMenu();
+            CancelMonitorQuickRead();
             if (_voicePressed)
             {
                 await ReleaseVoiceAsync();
@@ -109,11 +111,11 @@ public partial class MicroSurfaceWindow
             _lastAgentTapKey = null;
 
             var frames = CapturePageKeyFrames(_monitorPage);
-            FrameworkElement outgoing = _monitorPage ? MonitorGrid : ControlGrid;
-            FrameworkElement incoming = next ? MonitorGrid : ControlGrid;
+            FrameworkElement outgoing = _monitorPage ? MonitorSurface : ControlGrid;
+            FrameworkElement incoming = next ? MonitorSurface : ControlGrid;
             _monitorPage = next;
             ControlGrid.Visibility = Visibility.Visible;
-            MonitorGrid.Visibility = Visibility.Visible;
+            MonitorSurface.Visibility = Visibility.Visible;
             UpdateMonitorRefresh();
             DesignSurface.UpdateLayout();
             cancellation.Token.ThrowIfCancellationRequested();
@@ -177,11 +179,11 @@ public partial class MicroSurfaceWindow
                 cleanup();
             }
             ControlGrid.BeginAnimation(OpacityProperty, null);
-            MonitorGrid.BeginAnimation(OpacityProperty, null);
-            ControlGrid.Opacity = MonitorGrid.Opacity = 1;
+            MonitorSurface.BeginAnimation(OpacityProperty, null);
+            ControlGrid.Opacity = MonitorSurface.Opacity = 1;
             ControlGrid.Visibility = _monitorPage ? Visibility.Collapsed : Visibility.Visible;
-            MonitorGrid.Visibility = _monitorPage ? Visibility.Visible : Visibility.Collapsed;
-            ControlGrid.IsHitTestVisible = MonitorGrid.IsHitTestVisible = true;
+            MonitorSurface.Visibility = _monitorPage ? Visibility.Visible : Visibility.Collapsed;
+            ControlGrid.IsHitTestVisible = MonitorSurface.IsHitTestVisible = true;
             _sharedPageControls.IsHitTestVisible = true;
             ControlPageButton.IsChecked = !_monitorPage;
             MonitorPageButton.IsChecked = _monitorPage;

@@ -7518,6 +7518,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void UpdateQuotaPresentation()
     {
+        UpdateMonitorQuickControls();
         var english = _localization.IsEnglish;
         var harness = ActiveHarness();
         var deepSeek = IsDeepSeekHarness(harness);

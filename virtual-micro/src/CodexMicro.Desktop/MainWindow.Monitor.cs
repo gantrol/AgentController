@@ -95,6 +95,7 @@ public partial class MicroSurfaceWindow
 
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
+        InitializeMonitorQuickControls();
         RefreshPageHelp();
     }
 
@@ -118,6 +119,7 @@ public partial class MicroSurfaceWindow
         {
             _monitorRefreshTimer.Stop();
             _monitorRefreshCancellation?.Cancel();
+            StopMonitorQuickControls();
             if (_windowClosed || !IsLoaded || !IsVisible)
             {
                 _pageMotionCancellation?.Cancel();
@@ -213,6 +215,7 @@ public partial class MicroSurfaceWindow
 
     private void RefreshMonitorPresentation()
     {
+        UpdateMonitorQuickControls();
         if (!_monitorPage || _windowClosed)
         {
             return;
@@ -463,6 +466,7 @@ public partial class MicroSurfaceWindow
     private void StopMonitorPage()
     {
         _pageMotionCancellation?.Cancel();
+        StopMonitorQuickControls();
         _monitorRefreshTimer.Stop();
         _monitorRefreshTimer.Tick -= MonitorRefreshTimer_Tick;
         _monitorRefreshCancellation?.Cancel();
