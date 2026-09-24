@@ -170,10 +170,10 @@
                                 IsHitTestVisible="False">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#FFD8DED8" Offset="0" />
-                                    <GradientStop Color="#FFD6DED8" Offset="0.5" />
-                                    <GradientStop Color="#FFD3DDD6" Offset="0.82" />
-                                    <GradientStop Color="#FFCFDAD4" Offset="1" />
+                                    <GradientStop Color="#F4FFFFFF" Offset="0" />
+                                    <GradientStop Color="#EEF8FAF8" Offset="0.5" />
+                                    <GradientStop Color="#E9F1F5F2" Offset="0.82" />
+                                    <GradientStop Color="#E3E1EAE8" Offset="1" />
                                 </LinearGradientBrush>
                             </Border.Background>
                         </Border>

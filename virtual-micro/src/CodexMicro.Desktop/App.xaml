@@ -18,8 +18,8 @@
             <GradientStop Color="#FFF9F8F4" Offset="0.52" />
             <GradientStop Color="#F3E8EEEE" Offset="1" />
         </LinearGradientBrush>
-        <SolidColorBrush x:Key="PaperAgentKeyBaseBrush" Color="#FFE1E5DF" />
-        <SolidColorBrush x:Key="PaperCommandKeyBaseBrush" Color="#FFE1E5DF" />
+        <SolidColorBrush x:Key="PaperAgentKeyBaseBrush" Color="#FFF7F8F6" />
+        <SolidColorBrush x:Key="PaperCommandKeyBaseBrush" Color="#FFF7F8F6" />
         <!-- Paper expresses the recessed well with two opposing inset shadows:
              a cool grey lobe on the upper-left and a white return light on the
              lower-right. WPF has no native inset shadow, so the rim carries the
@@ -362,6 +362,8 @@
                                              Width="18"
                                              Height="18"
                                              Fill="White"
+                                             Stroke="#80939A96"
+                                             StrokeThickness="1.2"
                                              Opacity="0"
                                              IsHitTestVisible="False">
                                         <Ellipse.Effect>

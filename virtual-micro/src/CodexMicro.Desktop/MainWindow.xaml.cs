@@ -1069,25 +1069,27 @@ public partial class MicroSurfaceWindow : Window
                 var codexIsForeground =
                     (ShouldActivateCodexForKey(key) || isComposerTextKey) &&
                     IsHarnessForeground(harness);
-                if (isAgentKey && focusAgentAfterTap && !codexIsForeground &&
+                if (isAgentKey && focusAgentAfterTap &&
                     _monitorAvailable &&
                     _latestAgentRoster?.Source == CodexRecentThreadsService.SourceName &&
-                    Guid.TryParse(selectedAgentThreadId, out var threadId))
+                    Guid.TryParse(selectedAgentThreadId, out var threadId) &&
+                    !string.Equals(
+                        selectedAgentThreadId,
+                        CurrentCodexAgentThreadId(),
+                        StringComparison.Ordinal))
                 {
-                    // Shell navigation restores the task directly, including
-                    // when Codex has no window yet. Foreground keys retain the
-                    // native Micro menu/back and double-tap behavior below.
                     agentFocusResolvedBeforeTap = true;
                     try
                     {
                         OpenCodexTask(threadId);
+                        return;
                     }
                     catch (Exception exception) when (exception is
                         Win32Exception or InvalidOperationException)
                     {
+                        agentFocusResolvedBeforeTap = false;
                         SetStatus(exception.Message);
                     }
-                    return;
                 }
 
                 if (isAgentKey && focusAgentAfterTap)
@@ -4269,8 +4271,7 @@ public partial class MicroSurfaceWindow : Window
 
         if (Dispatcher.CheckAccess())
         {
-            ApplyAuthoritativeQuickModelState(
-                _modelToggleService.CurrentThreadState);
+            RefreshCurrentCodexThreadPresentation();
             return;
         }
 
@@ -4287,10 +4288,7 @@ public partial class MicroSurfaceWindow : Window
                 {
                     if (!_windowClosed)
                     {
-                        // Read at dispatch time so an older queued callback
-                        // cannot overwrite a newer task/state notification.
-                        ApplyAuthoritativeQuickModelState(
-                            _modelToggleService.CurrentThreadState);
+                        RefreshCurrentCodexThreadPresentation();
                     }
                 }));
         }
@@ -4301,6 +4299,18 @@ public partial class MicroSurfaceWindow : Window
         {
             // A reader notification can race the WPF dispatcher shutdown.
         }
+    }
+
+    private void RefreshCurrentCodexThreadPresentation()
+    {
+        ApplyAuthoritativeQuickModelState(_modelToggleService.CurrentThreadState);
+        if (!IsCodexHarnessActive())
+        {
+            return;
+        }
+
+        ResolveCurrentAgentSlot();
+        RefreshAgentSlotPresentation();
     }
 
     private async Task<MicroSendResult?> RunCodexKeyActionAsync(
@@ -6715,7 +6725,7 @@ public partial class MicroSurfaceWindow : Window
         SetTemplatePartOpacity(
             key,
             "WhiteAgentGlyph",
-            whiteSelection ? 0.9 * appearance.DisplayOpacity : 0);
+            whiteSelection ? appearance.DisplayOpacity : 0);
         SetTemplatePartOpacity(key, "CurrentSessionRing", 0);
         if (key.Template.FindName("GlowWide", key) is Border wide &&
             key.Template.FindName("Glow", key) is Border near)
@@ -6757,8 +6767,11 @@ public partial class MicroSurfaceWindow : Window
         Brush brush,
         AgentLightingAppearance appearance)
     {
-        wide.Background = brush;
-        near.Background = brush;
+        var glowBrush = appearance.UsesNeutralSelectionRing
+            ? Brushes.White
+            : brush;
+        wide.Background = glowBrush;
+        near.Background = glowBrush;
         wide.Opacity = appearance.WideGlowOpacity;
         near.Opacity = appearance.OuterGlowOpacity;
     }
@@ -7154,10 +7167,10 @@ public partial class MicroSurfaceWindow : Window
                 (Color.FromArgb(0xC8, 0xE4, 0xE9, 0xF4), 0.78),
                 (Color.FromArgb(0xB8, 0xC8, 0xCF, 0xDC), 1));
             PearlLightGuide.Background = CreateVerticalGradient(
-                (Color.FromRgb(0xD8, 0xDE, 0xE7), 0),
-                (Color.FromRgb(0xD6, 0xDC, 0xE6), 0.5),
-                (Color.FromRgb(0xD3, 0xDA, 0xE4), 0.82),
-                (Color.FromRgb(0xCF, 0xD7, 0xE1), 1));
+                (Color.FromArgb(0xF4, 0xFF, 0xFF, 0xFF), 0),
+                (Color.FromArgb(0xEE, 0xF2, 0xF5, 0xFC), 0.5),
+                (Color.FromArgb(0xE9, 0xEA, 0xEF, 0xF9), 0.82),
+                (Color.FromArgb(0xE3, 0xDF, 0xE6, 0xF2), 1));
             CrystalDepthPlate.Background = new SolidColorBrush(
                 Color.FromArgb(0x14, 0x5E, 0x70, 0x94));
             CrystalPrismRim.BorderBrush = CreateDiagonalGradient(

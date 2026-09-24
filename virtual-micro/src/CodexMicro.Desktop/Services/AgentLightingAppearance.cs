@@ -29,11 +29,11 @@ internal readonly record struct AgentLightingAppearance(
         {
             Color = UsesNeutralSelectionRing ? Colors.White : Color,
             DisplayOpacity = IsActive ? DisplayOpacity : 1,
-            WideGlowOpacity = 0.82,
-            OuterGlowOpacity = 0.48,
-            CapWashOpacity = 0.28,
+            WideGlowOpacity = UsesNeutralSelectionRing ? 0.96 : 0.82,
+            OuterGlowOpacity = UsesNeutralSelectionRing ? 0.68 : 0.48,
+            CapWashOpacity = UsesNeutralSelectionRing ? 0.18 : 0.28,
             LightFieldOpacity = 0.52,
-            WellWashOpacity = 0.48,
+            WellWashOpacity = UsesNeutralSelectionRing ? 0.38 : 0.48,
         };
 
     internal static AgentLightingAppearance ManualUnread(bool isCurrentSession) =>

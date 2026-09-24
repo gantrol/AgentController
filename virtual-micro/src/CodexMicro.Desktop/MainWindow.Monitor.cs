@@ -39,7 +39,11 @@ public partial class MicroSurfaceWindow
     private bool _monitorRefreshRequested;
     private bool _pageSwitching;
     private bool _monitorOpening;
+    private string? _openingCodexThreadId;
+    private long _openingCodexThreadTimestamp;
     private (string HarnessId, string Id, string Message)? _monitorOpenFailure;
+    private static readonly TimeSpan CodexTaskOpenProjectionTimeout =
+        TimeSpan.FromSeconds(4);
 
     private void InitializeMonitorPage()
     {
@@ -340,9 +344,31 @@ public partial class MicroSurfaceWindow
         // falling back again here would select another window's task.
         var threadId = _modelToggleService.CurrentForegroundVisibleThreadId(
             CodexWindowActivator.CaptureForegroundWindow());
-        return CodexDraftModelToggleService.IsDraftThreadId(threadId)
+        threadId = CodexDraftModelToggleService.IsDraftThreadId(threadId)
             ? null
             : threadId;
+        if (_openingCodexThreadId is not { } openingThreadId)
+        {
+            return threadId;
+        }
+
+        if (string.Equals(openingThreadId, threadId, StringComparison.Ordinal))
+        {
+            _openingCodexThreadId = null;
+            _openingCodexThreadTimestamp = 0;
+            return threadId;
+        }
+
+        if (_openingCodexThreadTimestamp != 0 &&
+            Stopwatch.GetElapsedTime(_openingCodexThreadTimestamp) <=
+                CodexTaskOpenProjectionTimeout)
+        {
+            return openingThreadId;
+        }
+
+        _openingCodexThreadId = null;
+        _openingCodexThreadTimestamp = 0;
+        return threadId;
     }
 
     private void OpenCodexTask(Guid id)
@@ -353,6 +379,8 @@ public partial class MicroSurfaceWindow
             UseShellExecute = true,
         })?.Dispose();
         var threadId = id.ToString("D");
+        _openingCodexThreadId = threadId;
+        _openingCodexThreadTimestamp = Stopwatch.GetTimestamp();
         _manualUnreadThreads.Clear(threadId);
         _currentAgentSlotId = _latestAgentRoster?.Entries
             .FirstOrDefault(entry => entry.ThreadId == threadId)?.SlotId;
