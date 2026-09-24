@@ -12,6 +12,13 @@ From the repository root:
 dotnet run --project .\virtual-micro\tools\CodexMicro.AssetExporter\CodexMicro.AssetExporter.csproj -- .\virtual-micro\Assets\KeypadExports
 ```
 
+To render only the control and monitor lighting pages from the same XAML at
+77% remaining quota with three blue status LEDs:
+
+```powershell
+dotnet run --project .\virtual-micro\tools\CodexMicro.AssetExporter\CodexMicro.AssetExporter.csproj -- --lighting-pages .\virtual-micro\Assets\LightingPageExports
+```
+
 The exporter writes six single-color 590 x 610 RGBA PNG files, one real-status
 showcase composition, and a palette manifest. The showcase uses Codex's actual
 blue/green/white/amber/red/off Agent lighting states and presents the lower-left

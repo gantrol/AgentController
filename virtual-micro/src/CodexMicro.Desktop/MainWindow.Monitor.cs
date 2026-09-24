@@ -279,13 +279,14 @@ public partial class MicroSurfaceWindow
             key.IsEnabled = fresh && !_monitorOpening &&
                 (codex || !IsHarnessMenuNavigationActive(harness));
             key.Opacity = task is null ? 0.42 : fresh ? 1 : 0.58;
-            ApplyAgentLightingAppearance(key, appearance);
+            appearance = ApplyAgentLightingAppearance(key, appearance);
             SetTemplatePartOpacity(key, "GlowWide", 0);
             SetTemplatePartOpacity(key, "Glow", 0);
-            _monitorWideGlows[index].Background = key.BorderBrush;
-            _monitorNearGlows[index].Background = key.BorderBrush;
-            _monitorWideGlows[index].Opacity = appearance.WideGlowOpacity;
-            _monitorNearGlows[index].Opacity = appearance.OuterGlowOpacity;
+            ApplyAgentGlowAppearance(
+                _monitorWideGlows[index],
+                _monitorNearGlows[index],
+                key.BorderBrush,
+                appearance);
             key.ToolTip = task is null ? state : $"{task.Title}\n{state}";
             if (task is not null && _monitorOpenFailure is { } failure &&
                 failure.HarnessId == task.HarnessId && failure.Id == task.Id)
