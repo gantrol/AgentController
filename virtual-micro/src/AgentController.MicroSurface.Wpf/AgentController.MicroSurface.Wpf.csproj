@@ -20,8 +20,6 @@
              Link="MicroSurfaceWindow.Monitor.cs" />
     <Compile Include="..\CodexMicro.Desktop\MainWindow.Reasoning.cs"
              Link="MicroSurfaceWindow.Reasoning.cs" />
-    <Compile Include="..\CodexMicro.Desktop\MainWindow.QuickControls.cs"
-             Link="MicroSurfaceWindow.QuickControls.cs" />
     <Compile Include="..\CodexMicro.Desktop\MainWindow.PageMotion.cs"
              Link="MicroSurfaceWindow.PageMotion.cs" />
     <Compile Include="..\..\..\app\Services\CodexRolloutStatusReader.cs"

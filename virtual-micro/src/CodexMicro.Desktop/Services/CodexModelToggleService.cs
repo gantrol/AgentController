@@ -1912,11 +1912,6 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
                 return new(false, ownerClientId, visibility);
             }
 
-            if (isTargetCurrent?.Invoke() == false)
-            {
-                return new(false, ownerClientId, "visible-thread-changed");
-            }
-
             JsonElement response;
             try
             {
