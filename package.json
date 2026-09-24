@@ -25,6 +25,8 @@
     "release:verify:all": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify-release.ps1 -IncludeCompact",
     "release:micro": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-micro.ps1 -Preset standard",
     "release:monitor": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/package-micro.ps1 -Preset monitor",
+    "release:monitor:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/deploy-micro-desktop.ps1",
+    "release:monitor:desktop:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/deploy-micro-desktop.ps1 -StopRunning -Launch",
     "release:macos": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/publish-macos.ps1",
     "export:micro:keypads": "dotnet run --project ./virtual-micro/tools/CodexMicro.AssetExporter/CodexMicro.AssetExporter.csproj -c Release -- ./virtual-micro/Assets/KeypadExports",
     "export:micro:lighting-pages": "dotnet run --project ./virtual-micro/tools/CodexMicro.AssetExporter/CodexMicro.AssetExporter.csproj -c Release -- --lighting-pages ./virtual-micro/Assets/LightingPageExports/RequestedScreens"
