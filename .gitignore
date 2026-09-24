@@ -34,7 +34,7 @@
 !/virtual-micro/**
 !/micro-bridge/
 !/micro-bridge/**
-
+!package.json
 # Build and IDE output
 **/bin/
 **/obj/

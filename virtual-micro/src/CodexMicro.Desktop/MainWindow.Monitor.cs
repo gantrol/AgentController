@@ -20,9 +20,17 @@ public partial class MicroSurfaceWindow
     {
         Interval = TimeSpan.FromSeconds(2),
     };
-    private readonly Button[] _monitorKeys = new Button[CodexTaskMonitorService.Capacity];
-    private readonly Border[] _monitorWideGlows = new Border[CodexTaskMonitorService.Capacity];
-    private readonly Border[] _monitorNearGlows = new Border[CodexTaskMonitorService.Capacity];
+    private const int MonitorTaskCapacity = CodexTaskMonitorService.Capacity - 2;
+    private readonly Grid _sharedPageControls = new()
+    {
+        Width = 424,
+        Height = 424,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+    private readonly Button[] _monitorKeys = new Button[MonitorTaskCapacity];
+    private readonly Border[] _monitorWideGlows = new Border[MonitorTaskCapacity];
+    private readonly Border[] _monitorNearGlows = new Border[MonitorTaskCapacity];
     private IReadOnlyList<CodexMonitoredTask>? _monitoredTasks;
     private CancellationTokenSource? _monitorRefreshCancellation;
     private string? _monitorHarnessId;
@@ -31,7 +39,11 @@ public partial class MicroSurfaceWindow
     private bool _monitorRefreshRequested;
     private bool _pageSwitching;
     private bool _monitorOpening;
+    private string? _openingCodexThreadId;
+    private long _openingCodexThreadTimestamp;
     private (string HarnessId, string Id, string Message)? _monitorOpenFailure;
+    private static readonly TimeSpan CodexTaskOpenProjectionTimeout =
+        TimeSpan.FromSeconds(4);
 
     private void InitializeMonitorPage()
     {
@@ -39,6 +51,8 @@ public partial class MicroSurfaceWindow
         {
             MonitorGrid.RowDefinitions.Add(new() { Height = new GridLength(106) });
             MonitorGrid.ColumnDefinitions.Add(new() { Width = new GridLength(106) });
+            _sharedPageControls.RowDefinitions.Add(new() { Height = new GridLength(106) });
+            _sharedPageControls.ColumnDefinitions.Add(new() { Width = new GridLength(106) });
         }
 
         for (var index = 0; index < _monitorKeys.Length; index++)
@@ -59,8 +73,9 @@ public partial class MicroSurfaceWindow
             ToolTipService.SetShowOnDisabled(key, true);
             foreach (var element in new FrameworkElement[] { wide, near, key })
             {
-                Grid.SetRow(element, index / 4);
-                Grid.SetColumn(element, index % 4);
+                var cell = index < 12 ? index : index + 1;
+                Grid.SetRow(element, cell / 4);
+                Grid.SetColumn(element, cell % 4);
                 MonitorGrid.Children.Add(element);
             }
 
@@ -71,6 +86,13 @@ public partial class MicroSurfaceWindow
             _monitorNearGlows[index] = near;
         }
 
+        foreach (var control in new FrameworkElement[] { ModelKnob, ActionKey12 })
+        {
+            ControlGrid.Children.Remove(control);
+            _sharedPageControls.Children.Add(control);
+        }
+        ((Panel)ControlGrid.Parent).Children.Add(_sharedPageControls);
+
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
         InitializeMonitorQuickControls();
@@ -80,7 +102,7 @@ public partial class MicroSurfaceWindow
     private void RefreshPageHelp()
     {
         var controls = _localization.IsEnglish ? "Controls" : "控制页";
-        var monitor = _localization.IsEnglish ? "Tasks and quick controls" : "任务与快捷控制";
+        var monitor = _localization.IsEnglish ? "14 tasks" : "14 个任务";
         ControlPageButton.ToolTip = controls;
         MonitorPageButton.ToolTip = monitor;
         AutomationProperties.SetName(ControlPageButton, controls);
@@ -264,13 +286,14 @@ public partial class MicroSurfaceWindow
             key.IsEnabled = fresh && !_monitorOpening &&
                 (codex || !IsHarnessMenuNavigationActive(harness));
             key.Opacity = task is null ? 0.42 : fresh ? 1 : 0.58;
-            ApplyAgentLightingAppearance(key, appearance);
+            appearance = ApplyAgentLightingAppearance(key, appearance);
             SetTemplatePartOpacity(key, "GlowWide", 0);
             SetTemplatePartOpacity(key, "Glow", 0);
-            _monitorWideGlows[index].Background = key.BorderBrush;
-            _monitorNearGlows[index].Background = key.BorderBrush;
-            _monitorWideGlows[index].Opacity = appearance.WideGlowOpacity;
-            _monitorNearGlows[index].Opacity = appearance.OuterGlowOpacity;
+            ApplyAgentGlowAppearance(
+                _monitorWideGlows[index],
+                _monitorNearGlows[index],
+                key.BorderBrush,
+                appearance);
             key.ToolTip = task is null ? state : $"{task.Title}\n{state}";
             if (task is not null && _monitorOpenFailure is { } failure &&
                 failure.HarnessId == task.HarnessId && failure.Id == task.Id)
@@ -324,9 +347,31 @@ public partial class MicroSurfaceWindow
         // falling back again here would select another window's task.
         var threadId = _modelToggleService.CurrentForegroundVisibleThreadId(
             CodexWindowActivator.CaptureForegroundWindow());
-        return CodexDraftModelToggleService.IsDraftThreadId(threadId)
+        threadId = CodexDraftModelToggleService.IsDraftThreadId(threadId)
             ? null
             : threadId;
+        if (_openingCodexThreadId is not { } openingThreadId)
+        {
+            return threadId;
+        }
+
+        if (string.Equals(openingThreadId, threadId, StringComparison.Ordinal))
+        {
+            _openingCodexThreadId = null;
+            _openingCodexThreadTimestamp = 0;
+            return threadId;
+        }
+
+        if (_openingCodexThreadTimestamp != 0 &&
+            Stopwatch.GetElapsedTime(_openingCodexThreadTimestamp) <=
+                CodexTaskOpenProjectionTimeout)
+        {
+            return openingThreadId;
+        }
+
+        _openingCodexThreadId = null;
+        _openingCodexThreadTimestamp = 0;
+        return threadId;
     }
 
     private void OpenCodexTask(Guid id)
@@ -337,6 +382,8 @@ public partial class MicroSurfaceWindow
             UseShellExecute = true,
         })?.Dispose();
         var threadId = id.ToString("D");
+        _openingCodexThreadId = threadId;
+        _openingCodexThreadTimestamp = Stopwatch.GetTimestamp();
         _manualUnreadThreads.Clear(threadId);
         _currentAgentSlotId = _latestAgentRoster?.Entries
             .FirstOrDefault(entry => entry.ThreadId == threadId)?.SlotId;

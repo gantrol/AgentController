@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.3.6",
+    [string]$Version = "0.3.7-hotfix.1",
     [string]$Runtime = "win-x64",
     [double]$MaximumPackageMiB = 15,
     [ValidateSet("standard", "monitor", "deepseek", "deepseek-full")]
@@ -128,6 +128,8 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
 }
 
 Copy-Item -LiteralPath $executable -Destination $packageRoot
+Copy-Item -LiteralPath (Join-Path $publishRoot "THIRD-PARTY") `
+    -Destination $packageRoot -Recurse
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") `
     -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\README.md") `

@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
@@ -75,7 +76,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        var outputDirectory = ResolveOutputDirectory(args);
+        var lightingPagesOnly = args.Length > 0 && args[0] == "--lighting-pages";
+        var outputDirectory = ResolveOutputDirectory(
+            lightingPagesOnly ? args[1..] : args);
         Directory.CreateDirectory(outputDirectory);
 
         _ = Application.Current ?? new Application
@@ -90,6 +93,13 @@ internal static class Program
             profileSettings: profile);
 
         PrepareSurface(window);
+        if (lightingPagesOnly)
+        {
+            ExportLightingPages(window, outputDirectory);
+            window.CloseForApplicationExit();
+            return 0;
+        }
+
         foreach (var palette in Palettes)
         {
             ApplyPalette(window, palette);
@@ -118,7 +128,7 @@ internal static class Program
         if (args.Length > 1)
         {
             throw new ArgumentException(
-                "Usage: CodexMicro.AssetExporter [output-directory]");
+                "Usage: CodexMicro.AssetExporter [--lighting-pages] [output-directory]");
         }
 
         return Path.GetFullPath(
@@ -205,17 +215,7 @@ internal static class Program
 
     private static void ApplySixColorComposition(MicroSurfaceWindow window)
     {
-        var neutralAccent = Color.FromRgb(0x98, 0xE8, 0xD5);
-        window.HarnessThemeWash.Opacity = 0;
-        window.CrystalLowerRefraction.Background = CreateEdgeBrush(
-            neutralAccent);
-
-        var neutralInk = new SolidColorBrush(
-            Color.FromArgb(0x80, 0x60, 0x6A, 0x70));
-        window.LeftSilkScreen.Foreground = neutralInk;
-        window.RightSilkScreen.Foreground = neutralInk;
-        window.BrandWordmarkText.Foreground = neutralInk;
-        window.BrandCodexIcon.IconBrush = neutralInk;
+        ApplyNeutralPalette(window);
 
         for (var slotId = 0; slotId < SixColorAgents.Length; slotId++)
         {
@@ -240,16 +240,32 @@ internal static class Program
         ApplyReadyQuotaPresentation(window);
     }
 
-    private static void ApplyReadyQuotaPresentation(MicroSurfaceWindow window)
+    private static void ApplyNeutralPalette(MicroSurfaceWindow window)
+    {
+        window.HarnessThemeWash.Opacity = 0;
+        window.CrystalLowerRefraction.Background = CreateEdgeBrush(
+            Color.FromRgb(0x98, 0xE8, 0xD5));
+
+        var neutralInk = new SolidColorBrush(
+            Color.FromArgb(0x80, 0x60, 0x6A, 0x70));
+        window.LeftSilkScreen.Foreground = neutralInk;
+        window.RightSilkScreen.Foreground = neutralInk;
+        window.BrandWordmarkText.Foreground = neutralInk;
+        window.BrandCodexIcon.IconBrush = neutralInk;
+    }
+
+    private static void ApplyReadyQuotaPresentation(
+        MicroSurfaceWindow window,
+        int remainingPercent = 100)
     {
         var quotaAccent = Color.FromRgb(0xA8, 0xC7, 0xFF);
         window.QuotaCaptionText.Visibility = Visibility.Visible;
         window.QuotaCaptionText.Text = "SOL";
-        window.QuotaValueText.Text = "100%";
-        window.QuotaValueText.FontSize = 13.5;
+        window.QuotaValueText.Text = $"{remainingPercent}%";
+        window.QuotaValueText.FontSize = remainingPercent == 100 ? 13.5 : 15;
         window.QuotaGauge.Opacity = 1;
         window.QuotaProgressRing.Data =
-            MicroSurfaceWindow.CreateQuotaArcGeometry(100);
+            MicroSurfaceWindow.CreateQuotaArcGeometry(remainingPercent);
         window.QuotaProgressRing.Stroke = new SolidColorBrush(quotaAccent);
 
         var readyColor = Color.FromRgb(0x9E, 0xBD, 0xFF);
@@ -269,6 +285,153 @@ internal static class Program
                 Opacity = 0.78,
             };
         }
+    }
+
+    private static void ExportLightingPages(
+        MicroSurfaceWindow window,
+        string outputDirectory)
+    {
+        ApplyNeutralPalette(window);
+        ApplyReadyQuotaPresentation(window, 77);
+
+        var firstPage = new (MicroHarnessSessionStatus Status, bool Selected)[]
+        {
+            (MicroHarnessSessionStatus.Idle, true),
+            (MicroHarnessSessionStatus.Running, false),
+            (MicroHarnessSessionStatus.Completed, false),
+            (MicroHarnessSessionStatus.WaitingForInput, false),
+            (MicroHarnessSessionStatus.Error, false),
+            (MicroHarnessSessionStatus.Idle, false),
+        };
+        for (var slotId = 0; slotId < firstPage.Length; slotId++)
+        {
+            var state = firstPage[slotId];
+            window.ApplyAgentLightingAppearance(slotId,
+                AgentLightingAppearance.FromCodexSession(
+                    state.Status, state.Selected));
+        }
+
+        window.ControlPageButton.IsChecked = true;
+        window.MonitorPageButton.IsChecked = false;
+        window.ControlGrid.Visibility = Visibility.Visible;
+        window.MonitorGrid.Visibility = Visibility.Collapsed;
+        window.DesignSurface.UpdateLayout();
+        SavePng(window.DesignSurface, Path.Combine(
+            outputDirectory, "codex-micro-first-screen-xaml.png"));
+
+        var secondPage = new (MicroHarnessSessionStatus? Status, bool Selected)[]
+        {
+            (MicroHarnessSessionStatus.Idle, true),
+            (MicroHarnessSessionStatus.Running, false),
+            (MicroHarnessSessionStatus.Completed, false),
+            (MicroHarnessSessionStatus.WaitingForInput, false),
+            (MicroHarnessSessionStatus.Error, false),
+            (MicroHarnessSessionStatus.Idle, false),
+            (MicroHarnessSessionStatus.Idle, false),
+            (MicroHarnessSessionStatus.WaitingForInput, false),
+            (MicroHarnessSessionStatus.Completed, false),
+            (MicroHarnessSessionStatus.Running, false),
+            (MicroHarnessSessionStatus.Completed, false),
+            (MicroHarnessSessionStatus.Idle, false),
+            (MicroHarnessSessionStatus.Running, false),
+            (MicroHarnessSessionStatus.Idle, false),
+        };
+        var monitorKeys = window.MonitorGrid.Children.OfType<Button>().ToArray();
+        var wideGlows = window.MonitorGrid.Children.OfType<Border>()
+            .Where(border => Panel.GetZIndex(border) == -10).ToArray();
+        var nearGlows = window.MonitorGrid.Children.OfType<Border>()
+            .Where(border => Panel.GetZIndex(border) == -9).ToArray();
+        if (monitorKeys.Length != secondPage.Length ||
+            wideGlows.Length != secondPage.Length ||
+            nearGlows.Length != secondPage.Length)
+        {
+            throw new InvalidOperationException("Monitor XAML layout has changed.");
+        }
+
+        for (var index = 0; index < secondPage.Length; index++)
+        {
+            var state = secondPage[index];
+            var key = monitorKeys[index];
+            key.IsEnabled = state.Status is not null;
+            key.Opacity = state.Status is null ? 0.42 : 1;
+            var appearance = state.Status is { } status
+                ? AgentLightingAppearance.FromCodexSession(status, state.Selected)
+                : AgentLightingAppearance.From(null);
+            appearance = MicroSurfaceWindow.ApplyAgentLightingAppearance(key, appearance);
+            if (key.Template.FindName("GlowWide", key) is FrameworkElement wide)
+            {
+                wide.Opacity = 0;
+            }
+            if (key.Template.FindName("Glow", key) is FrameworkElement near)
+            {
+                near.Opacity = 0;
+            }
+            MicroSurfaceWindow.ApplyAgentGlowAppearance(
+                wideGlows[index], nearGlows[index], key.BorderBrush, appearance);
+        }
+
+        window.ControlPageButton.IsChecked = false;
+        window.MonitorPageButton.IsChecked = true;
+        window.ControlGrid.Visibility = Visibility.Collapsed;
+        window.MonitorGrid.Visibility = Visibility.Visible;
+        window.DesignSurface.UpdateLayout();
+        SavePng(window.DesignSurface, Path.Combine(
+            outputDirectory, "codex-micro-second-screen-xaml.png"));
+    }
+
+    private static void ExportSelectedLightingComparison(
+        MicroSurfaceWindow window,
+        string outputDirectory)
+    {
+        var statuses = new[]
+        {
+            MicroHarnessSessionStatus.Idle,
+            MicroHarnessSessionStatus.Running,
+            MicroHarnessSessionStatus.Completed,
+            MicroHarnessSessionStatus.WaitingForInput,
+            MicroHarnessSessionStatus.Error,
+        };
+        var surface = new Grid
+        {
+            Width = 700,
+            Height = 160,
+            Background = window.PearlLightGuide.Background,
+        };
+        for (var index = 0; index < statuses.Length; index++)
+        {
+            surface.ColumnDefinitions.Add(new ColumnDefinition());
+            var wide = new Border { Style = (Style)window.FindResource("AgentWideHalo") };
+            var near = new Border { Style = (Style)window.FindResource("AgentNearHalo") };
+            var key = new Button
+            {
+                Width = 96,
+                Height = 96,
+                Style = (Style)window.FindResource("AgentKey"),
+                Focusable = false,
+            };
+            foreach (var element in new FrameworkElement[] { wide, near, key })
+            {
+                Grid.SetColumn(element, index);
+                surface.Children.Add(element);
+            }
+            Panel.SetZIndex(wide, -10);
+            Panel.SetZIndex(near, -9);
+            var appearance = MicroSurfaceWindow.ApplyAgentLightingAppearance(
+                key, AgentLightingAppearance.FromCodexSession(statuses[index], true));
+            foreach (var name in new[] { "GlowWide", "Glow" })
+            {
+                if (key.Template.FindName(name, key) is FrameworkElement halo)
+                {
+                    halo.Opacity = 0;
+                }
+            }
+            MicroSurfaceWindow.ApplyAgentGlowAppearance(
+                wide, near, key.BorderBrush, appearance);
+        }
+        surface.Measure(new Size(700, 160));
+        surface.Arrange(new Rect(0, 0, 700, 160));
+        surface.UpdateLayout();
+        SavePng(surface, Path.Combine(outputDirectory, "selected-lighting-comparison.png"), 700, 160);
     }
 
     private static RadialGradientBrush CreateThemeWash(Color color)
@@ -311,11 +474,15 @@ internal static class Program
         return brush;
     }
 
-    private static void SavePng(Visual visual, string filePath)
+    private static void SavePng(
+        Visual visual,
+        string filePath,
+        int width = SurfaceWidth,
+        int height = SurfaceHeight)
     {
         var bitmap = new RenderTargetBitmap(
-            SurfaceWidth,
-            SurfaceHeight,
+            width,
+            height,
             96,
             96,
             PixelFormats.Pbgra32);

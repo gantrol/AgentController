@@ -1920,6 +1920,12 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             JsonElement response;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (isTargetCurrent?.Invoke() == false)
+                {
+                    return new(false, ownerClientId, "visible-thread-changed");
+                }
+
                 response = await SendRequestAsync(
                     "thread-follower-update-thread-settings",
                     version: 1,

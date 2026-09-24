@@ -498,6 +498,7 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _windowClosed = true;
+        CancelReasoningInput();
         StopMonitorPage();
         try
         {
@@ -613,6 +614,7 @@ public partial class MicroSurfaceWindow : Window
         }
         else
         {
+            CancelReasoningInput();
             PauseQuotaRefresh();
             PauseHarnessStateRefresh();
             PauseForegroundRefresh();
@@ -1067,25 +1069,27 @@ public partial class MicroSurfaceWindow : Window
                 var codexIsForeground =
                     (ShouldActivateCodexForKey(key) || isComposerTextKey) &&
                     IsHarnessForeground(harness);
-                if (isAgentKey && focusAgentAfterTap && !codexIsForeground &&
+                if (isAgentKey && focusAgentAfterTap &&
                     _monitorAvailable &&
                     _latestAgentRoster?.Source == CodexRecentThreadsService.SourceName &&
-                    Guid.TryParse(selectedAgentThreadId, out var threadId))
+                    Guid.TryParse(selectedAgentThreadId, out var threadId) &&
+                    !string.Equals(
+                        selectedAgentThreadId,
+                        CurrentCodexAgentThreadId(),
+                        StringComparison.Ordinal))
                 {
-                    // Shell navigation restores the task directly, including
-                    // when Codex has no window yet. Foreground keys retain the
-                    // native Micro menu/back and double-tap behavior below.
                     agentFocusResolvedBeforeTap = true;
                     try
                     {
                         OpenCodexTask(threadId);
+                        return;
                     }
                     catch (Exception exception) when (exception is
                         Win32Exception or InvalidOperationException)
                     {
+                        agentFocusResolvedBeforeTap = false;
                         SetStatus(exception.Message);
                     }
-                    return;
                 }
 
                 if (isAgentKey && focusAgentAfterTap)
@@ -3472,6 +3476,14 @@ public partial class MicroSurfaceWindow : Window
 
     private bool RouteInactiveDialWheel(Point screenPoint, int delta)
     {
+        if (IsScreenPointOverControl(SettingsKey, screenPoint))
+        {
+            _ = Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                new Action(() => QueueReasoningWheelDelta(delta)));
+            return true;
+        }
+
         if (!IsScreenPointOverDial(screenPoint))
         {
             return false;
@@ -3511,14 +3523,18 @@ public partial class MicroSurfaceWindow : Window
         return true;
     }
 
-    private bool IsScreenPointOverDial(Point screenPoint)
+    private bool IsScreenPointOverDial(Point screenPoint) =>
+        IsScreenPointOverControl(DialButton, screenPoint);
+
+    private bool IsScreenPointOverControl(FrameworkElement control, Point screenPoint)
     {
-        if (!Dispatcher.CheckAccess() ||
+        if (!Dispatcher.CheckAccess() || _pageSwitching ||
             !IsVisible ||
             WindowState == WindowState.Minimized ||
-            !DialButton.IsVisible ||
-            DialButton.ActualWidth <= 0 ||
-            DialButton.ActualHeight <= 0)
+            !control.IsVisible ||
+            !control.IsEnabled ||
+            control.ActualWidth <= 0 ||
+            control.ActualHeight <= 0)
         {
             return false;
         }
@@ -3526,7 +3542,7 @@ public partial class MicroSurfaceWindow : Window
         Point localPoint;
         try
         {
-            localPoint = DialButton.PointFromScreen(screenPoint);
+            localPoint = control.PointFromScreen(screenPoint);
         }
         catch (InvalidOperationException)
         {
@@ -3535,8 +3551,8 @@ public partial class MicroSurfaceWindow : Window
 
         return localPoint.X >= 0 &&
             localPoint.Y >= 0 &&
-            localPoint.X < DialButton.ActualWidth &&
-            localPoint.Y < DialButton.ActualHeight;
+            localPoint.X < control.ActualWidth &&
+            localPoint.Y < control.ActualHeight;
     }
 
     private void ProcessInactiveDialPointer(RoutedDialPointerInput input)
@@ -3602,6 +3618,11 @@ public partial class MicroSurfaceWindow : Window
 
     private void QueueDialWheelDelta(int delta)
     {
+        if (_pageSwitching)
+        {
+            return;
+        }
+
         if (RequiresBrokerForDialPress(
                 IsCodexHarnessActive(),
                 _broker.IsReady,
@@ -3776,6 +3797,13 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task SendEncoderStepAsync(EncoderStepIntent intent)
     {
+        var inputGeneration = _reasoningInputGeneration;
+        if (_pageSwitching || _reasoningAdjusting || _quickModelSwitching || _encoderWarningPending)
+        {
+            _encoderSteps.Clear();
+            return;
+        }
+
         if (!IsCodexHarnessActive())
         {
             await StepHarnessDialSelectionAsync(intent.Direction);
@@ -3826,6 +3854,24 @@ public partial class MicroSurfaceWindow : Window
                     .TryCaptureForegroundDraftLeaseForReasoningStep(
                         foregroundCodexWindow)
                 : null;
+            if (_layoutObserver.Current.EncoderMode == "reasoning")
+            {
+                if (!await PrepareEncoderWarningWatchAsync(foregroundCodexWindow, foregroundDraftLease))
+                {
+                    _encoderSteps.Clear();
+                    return;
+                }
+            }
+
+            if (_windowClosed || _pageSwitching || _encoderWarningPending ||
+                inputGeneration != _reasoningInputGeneration ||
+                Stopwatch.GetTimestamp() - intent.InputTimestamp >
+                    ToStopwatchTicks(EncoderIntentMaximumAge))
+            {
+                _encoderSteps.Clear();
+                return;
+            }
+
             var result = await RunActionAsync(
                 () => _broker.StepEncoderAsync(reportedClockwise),
                 reportedClockwise
@@ -3836,6 +3882,10 @@ public partial class MicroSurfaceWindow : Window
                 MicroSendDisposition.OutcomeUnknown)
             {
                 var sequence = ++_dialInputSequence;
+                if (_layoutObserver.Current.EncoderMode == "reasoning")
+                {
+                    _lastEncoderReasoningAt = Stopwatch.GetTimestamp();
+                }
                 if (result.Value.Disposition ==
                         MicroSendDisposition.Accepted &&
                     foregroundDraftLease is { } draftLease)
@@ -3871,6 +3921,11 @@ public partial class MicroSurfaceWindow : Window
     private async Task TapEncoderAsync()
     {
         _encoderSteps.Clear();
+        if (_reasoningAdjusting)
+        {
+            return;
+        }
+
         if (!IsCodexHarnessActive())
         {
             var harness = ActiveHarness();
@@ -4141,6 +4196,7 @@ public partial class MicroSurfaceWindow : Window
         MouseButtonEventArgs e)
     {
         _settingsPointerDownTimestamp = Stopwatch.GetTimestamp();
+        _settingsWheelDuringPress = false;
     }
 
     private void Settings_PreviewMouseRightButtonDown(
@@ -4163,6 +4219,13 @@ public partial class MicroSurfaceWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
+        if (_settingsWheelDuringPress || _reasoningAdjusting || _encoderWarningPending)
+        {
+            _settingsPointerDownTimestamp = 0;
+            _settingsWheelDuringPress = false;
+            return;
+        }
+
         if (!IsCodexHarnessActive())
         {
             _settingsPointerDownTimestamp = 0;
@@ -4208,8 +4271,7 @@ public partial class MicroSurfaceWindow : Window
 
         if (Dispatcher.CheckAccess())
         {
-            ApplyAuthoritativeQuickModelState(
-                _modelToggleService.CurrentThreadState);
+            RefreshCurrentCodexThreadPresentation();
             return;
         }
 
@@ -4226,10 +4288,7 @@ public partial class MicroSurfaceWindow : Window
                 {
                     if (!_windowClosed)
                     {
-                        // Read at dispatch time so an older queued callback
-                        // cannot overwrite a newer task/state notification.
-                        ApplyAuthoritativeQuickModelState(
-                            _modelToggleService.CurrentThreadState);
+                        RefreshCurrentCodexThreadPresentation();
                     }
                 }));
         }
@@ -4240,6 +4299,18 @@ public partial class MicroSurfaceWindow : Window
         {
             // A reader notification can race the WPF dispatcher shutdown.
         }
+    }
+
+    private void RefreshCurrentCodexThreadPresentation()
+    {
+        ApplyAuthoritativeQuickModelState(_modelToggleService.CurrentThreadState);
+        if (!IsCodexHarnessActive())
+        {
+            return;
+        }
+
+        ResolveCurrentAgentSlot();
+        RefreshAgentSlotPresentation();
     }
 
     private async Task<MicroSendResult?> RunCodexKeyActionAsync(
@@ -4401,6 +4472,11 @@ public partial class MicroSurfaceWindow : Window
             _modelToggleService.CurrentForegroundVisibleThreadId(
                 foregroundCodexWindow);
         var next = ReduceQuickModelSnapshot(state, visibleThreadId);
+        if (!QuickModelThreadIdsEqual(_quickModelThreadId, next.ThreadId))
+        {
+            CancelReasoningInput();
+        }
+
         if (_quickModelSwitching &&
             !string.IsNullOrWhiteSpace(_quickModelSwitchingThreadId) &&
             !CodexDraftModelToggleService.IsDraftOperationId(
@@ -4776,7 +4852,7 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task ToggleQuickModelAsync()
     {
-        if (_quickModelSwitching ||
+        if (_quickModelSwitching || _reasoningAdjusting || _encoderWarningPending ||
             _windowClosed ||
             !IsCodexHarnessActive())
         {
@@ -6634,27 +6710,35 @@ public partial class MicroSurfaceWindow : Window
         }
     }
 
-    internal static void ApplyAgentLightingAppearance(
+    internal static AgentLightingAppearance ApplyAgentLightingAppearance(
         Button key,
         AgentLightingAppearance appearance)
     {
+        appearance = appearance.ForDisplay();
+        var whiteSelection = appearance.UsesNeutralSelectionRing;
         key.BorderBrush = new SolidColorBrush(appearance.Color)
         {
-            Opacity = appearance.UsesNeutralSelectionRing ? 0 : appearance.DisplayOpacity,
+            Opacity = appearance.DisplayOpacity,
         };
         key.ApplyTemplate();
+        SetTemplatePartOpacity(key, "AgentGlyph", whiteSelection ? 0 : 0.6);
         SetTemplatePartOpacity(
             key,
-            "CurrentSessionRing",
-            appearance.UsesNeutralSelectionRing ? 1 : 0);
-        SetTemplatePartOpacity(key, "GlowWide", appearance.WideGlowOpacity);
-        SetTemplatePartOpacity(key, "Glow", appearance.OuterGlowOpacity);
+            "WhiteAgentGlyph",
+            whiteSelection ? appearance.DisplayOpacity : 0);
+        SetTemplatePartOpacity(key, "CurrentSessionRing", 0);
+        if (key.Template.FindName("GlowWide", key) is Border wide &&
+            key.Template.FindName("Glow", key) is Border near)
+        {
+            ApplyAgentGlowAppearance(wide, near, key.BorderBrush, appearance);
+        }
         SetTemplatePartOpacity(key, "StatusCapWash", appearance.CapWashOpacity);
         SetTemplatePartOpacity(
             key,
             "StatusLightField",
             appearance.LightFieldOpacity);
         SetTemplatePartOpacity(key, "StatusWellWash", appearance.WellWashOpacity);
+        return appearance;
     }
 
     internal void ApplyAgentLightingAppearance(
@@ -6662,7 +6746,7 @@ public partial class MicroSurfaceWindow : Window
         AgentLightingAppearance appearance)
     {
         var key = _agentKeys[slotId];
-        ApplyAgentLightingAppearance(key, appearance);
+        appearance = ApplyAgentLightingAppearance(key, appearance);
 
         // The window renders all outer light before any physical key. Disable
         // the self-contained template bloom so later siblings cannot paint a
@@ -6670,12 +6754,26 @@ public partial class MicroSurfaceWindow : Window
         SetTemplatePartOpacity(key, "GlowWide", 0);
         SetTemplatePartOpacity(key, "Glow", 0);
 
-        var wideGlow = _agentWideGlows[slotId];
-        var nearGlow = _agentNearGlows[slotId];
-        wideGlow.Background = key.BorderBrush;
-        nearGlow.Background = key.BorderBrush;
-        wideGlow.Opacity = appearance.WideGlowOpacity;
-        nearGlow.Opacity = appearance.OuterGlowOpacity;
+        ApplyAgentGlowAppearance(
+            _agentWideGlows[slotId],
+            _agentNearGlows[slotId],
+            key.BorderBrush,
+            appearance);
+    }
+
+    internal static void ApplyAgentGlowAppearance(
+        Border wide,
+        Border near,
+        Brush brush,
+        AgentLightingAppearance appearance)
+    {
+        var glowBrush = appearance.UsesNeutralSelectionRing
+            ? Brushes.White
+            : brush;
+        wide.Background = glowBrush;
+        near.Background = glowBrush;
+        wide.Opacity = appearance.WideGlowOpacity;
+        near.Opacity = appearance.OuterGlowOpacity;
     }
 
     private static void SetTemplatePartOpacity(
@@ -6826,6 +6924,7 @@ public partial class MicroSurfaceWindow : Window
             _selectedHarnessSessionId = null;
             _currentAgentSlotId = null;
             _encoderSteps.Clear();
+            CancelReasoningInput();
             _joystickReportQueue.Clear();
             _pendingHarnessSetupId = harness.Id != "codex" &&
                 !_harnessRegistry.IsSetupCompleted(harness.Id)
@@ -7567,7 +7666,7 @@ public partial class MicroSurfaceWindow : Window
             QuotaProgressRing.Data = Geometry.Empty;
             QuotaProgressRing.Stroke = new SolidColorBrush(
                 Color.FromRgb(0xA7, 0xAF, 0xB8));
-            ApplyQuickModelLoadingAnimation(quickModelSwitching);
+            ApplyQuickModelLoadingAnimation(quickModelSwitching || _reasoningAdjusting);
             AutomationProperties.SetItemStatus(
                 SettingsKey,
                 english
@@ -7601,7 +7700,7 @@ public partial class MicroSurfaceWindow : Window
         QuotaGauge.Opacity = 1;
         QuotaProgressRing.Data = CreateQuotaArcGeometry(remaining);
         QuotaProgressRing.Stroke = new SolidColorBrush(accent);
-        ApplyQuickModelLoadingAnimation(quickModelSwitching);
+        ApplyQuickModelLoadingAnimation(quickModelSwitching || _reasoningAdjusting);
         AutomationProperties.SetItemStatus(
             SettingsKey,
             english
@@ -7921,6 +8020,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplyProfileSettingsChange()
     {
+        CancelReasoningInput();
         _dialDirectionSettings.InvertDirection =
             _profileSettings.Current.InvertDialDirection;
         ApplyHarnessContext();

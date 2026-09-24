@@ -23,6 +23,19 @@ internal readonly record struct AgentLightingAppearance(
     internal bool UsesNeutralSelectionRing =>
         IsCurrentSession && (!IsActive || UsesWhiteFallback || Color == Colors.White);
 
+    internal AgentLightingAppearance ForDisplay() => !IsCurrentSession
+        ? this
+        : this with
+        {
+            Color = UsesNeutralSelectionRing ? Colors.White : Color,
+            DisplayOpacity = IsActive ? DisplayOpacity : 1,
+            WideGlowOpacity = UsesNeutralSelectionRing ? 0.96 : 0.82,
+            OuterGlowOpacity = UsesNeutralSelectionRing ? 0.68 : 0.48,
+            CapWashOpacity = UsesNeutralSelectionRing ? 0.18 : 0.28,
+            LightFieldOpacity = 0.52,
+            WellWashOpacity = UsesNeutralSelectionRing ? 0.38 : 0.48,
+        };
+
     internal static AgentLightingAppearance ManualUnread(bool isCurrentSession) =>
         FromHarnessSession(MicroHarnessSessionStatus.Completed, isCurrentSession)
             with { StatusName = "未读" };

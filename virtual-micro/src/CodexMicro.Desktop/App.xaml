@@ -221,6 +221,12 @@
             </Setter>
         </Style>
 
+        <DropShadowEffect x:Key="AgentKeyShadow"
+                          BlurRadius="3"
+                          Direction="270"
+                          ShadowDepth="2"
+                          Opacity="0.20"
+                          Color="#3A403D" />
         <Style x:Key="AgentKey" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource PaperAgentKeyBaseBrush}" />
             <Setter Property="BorderBrush" Value="#008DB5FF" />
@@ -310,53 +316,66 @@
                                             <BlurEffect Radius="5.5" />
                                         </Ellipse.Effect>
                                     </Ellipse>
-                                    <Ellipse x:Name="AgentWell"
-                                             Width="76"
-                                             Height="76"
-                                             Fill="{TemplateBinding Background}" />
-                                    <Ellipse x:Name="StatusWellWash"
-                                             Width="76"
-                                             Height="76"
-                                             Fill="{TemplateBinding BorderBrush}"
-                                             Opacity="0.42" />
-                                    <Ellipse x:Name="AgentWellHighlight"
-                                             Width="76"
-                                             Height="76"
-                                             Fill="Transparent"
-                                             Stroke="{StaticResource PaperRecessRingBrush}"
-                                             StrokeThickness="1.6" />
-                                    <Ellipse x:Name="CurrentSessionRing"
-                                             Width="82"
-                                             Height="82"
-                                             Stroke="#AA8F86B8"
-                                             StrokeThickness="1.25"
-                                             Opacity="0"
-                                             IsHitTestVisible="False" />
-                                    <Grid x:Name="AgentGlyph"
-                                          Width="18"
-                                          Height="18"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center"
-                                          Opacity="0.6">
-                                        <Grid.Effect>
-                                            <DropShadowEffect BlurRadius="4"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.38"
-                                                              Color="#685FAE" />
-                                        </Grid.Effect>
-                                        <Ellipse Width="18"
-                                                 Height="18"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
-                                                 Fill="#FF685FAE" />
+                                    <Grid x:Name="AgentWellDetail">
+                                        <Ellipse x:Name="AgentWell"
+                                                 Width="76"
+                                                 Height="76"
+                                                 Fill="{TemplateBinding Background}" />
+                                        <Ellipse x:Name="StatusWellWash"
+                                                 Width="76"
+                                                 Height="76"
+                                                 Fill="{TemplateBinding BorderBrush}"
+                                                 Opacity="0.42" />
+                                        <Ellipse x:Name="AgentWellHighlight"
+                                                 Width="76"
+                                                 Height="76"
+                                                 Fill="Transparent"
+                                                 Stroke="{StaticResource PaperRecessRingBrush}"
+                                                 StrokeThickness="1.6" />
+                                        <Ellipse x:Name="CurrentSessionRing"
+                                                 Width="82"
+                                                 Height="82"
+                                                 Stroke="#AA8F86B8"
+                                                 StrokeThickness="1.25"
+                                                 Opacity="0"
+                                                 IsHitTestVisible="False" />
+                                        <Grid x:Name="AgentGlyph"
+                                              Width="18"
+                                              Height="18"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Opacity="0.6">
+                                            <Grid.Effect>
+                                                <DropShadowEffect BlurRadius="4"
+                                                                  ShadowDepth="0"
+                                                                  Opacity="0.38"
+                                                                  Color="#685FAE" />
+                                            </Grid.Effect>
+                                            <Ellipse Width="18"
+                                                     Height="18"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"
+                                                     Fill="#FF685FAE" />
+                                        </Grid>
                                     </Grid>
+                                    <Ellipse x:Name="WhiteAgentGlyph"
+                                             Width="18"
+                                             Height="18"
+                                             Fill="White"
+                                             Stroke="#80939A96"
+                                             StrokeThickness="1.2"
+                                             Opacity="0"
+                                             IsHitTestVisible="False">
+                                        <Ellipse.Effect>
+                                            <DropShadowEffect Color="White"
+                                                              BlurRadius="4"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.38" />
+                                        </Ellipse.Effect>
+                                    </Ellipse>
                                 </Grid>
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="3"
-                                                      Direction="270"
-                                                      ShadowDepth="2"
-                                                      Opacity="0.20"
-                                                      Color="#3A403D" />
+                                    <StaticResource ResourceKey="AgentKeyShadow" />
                                 </Border.Effect>
                             </Border>
                         </Grid>

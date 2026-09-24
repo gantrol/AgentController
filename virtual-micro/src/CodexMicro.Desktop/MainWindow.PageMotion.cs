@@ -85,6 +85,7 @@ public partial class MicroSurfaceWindow
         MonitorPageButton.IsEnabled = false;
         ControlGrid.IsHitTestVisible = false;
         MonitorSurface.IsHitTestVisible = false;
+        _sharedPageControls.IsHitTestVisible = false;
         var cleanups = new List<Action>();
         using var cancellation = new CancellationTokenSource();
         _pageMotionCancellation = cancellation;
@@ -105,6 +106,7 @@ public partial class MicroSurfaceWindow
                 EndJoystickDrag();
             }
             CancelDialGesture();
+            CancelReasoningInput();
             _encoderSteps.Clear();
             _lastAgentTapKey = null;
 
@@ -182,6 +184,7 @@ public partial class MicroSurfaceWindow
             ControlGrid.Visibility = _monitorPage ? Visibility.Collapsed : Visibility.Visible;
             MonitorSurface.Visibility = _monitorPage ? Visibility.Visible : Visibility.Collapsed;
             ControlGrid.IsHitTestVisible = MonitorSurface.IsHitTestVisible = true;
+            _sharedPageControls.IsHitTestVisible = true;
             ControlPageButton.IsChecked = !_monitorPage;
             MonitorPageButton.IsChecked = _monitorPage;
             ControlPageButton.IsEnabled = MonitorPageButton.IsEnabled = true;
