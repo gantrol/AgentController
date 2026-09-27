@@ -1921,21 +1921,46 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
                     return new(false, ownerClientId, "visible-thread-changed");
                 }
 
+                var parameters = new
+                {
+                    conversationId = threadId,
+                    threadSettings = new
+                    {
+                        model = targetModelId,
+                        effort = targetEffort,
+                    },
+                };
                 response = await SendRequestAsync(
                     "thread-follower-update-thread-settings",
-                    version: 1,
-                    new
-                    {
-                        conversationId = threadId,
-                        threadSettings = new
-                        {
-                            model = targetModelId,
-                            effort = targetEffort,
-                        },
-                    },
+                    version: 2,
+                    parameters,
                     ownerClientId,
                     RequestTimeout,
                     cancellationToken);
+
+                // A version rejection happens before the owner invokes its handler.
+                // Only that explicit rejection permits a retry against older Codex.
+                if (ReadResponseError(response) == "request-version-mismatch")
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (isTargetCurrent?.Invoke() == false)
+                    {
+                        return new(false, ownerClientId, "visible-thread-changed");
+                    }
+                    var legacyVisibility = ValidateSelectedThreadIsStillVisible(
+                        threadId, allowOtherVisibleThreads);
+                    if (legacyVisibility is not null)
+                    {
+                        return new(false, ownerClientId, legacyVisibility);
+                    }
+                    response = await SendRequestAsync(
+                        "thread-follower-update-thread-settings",
+                        version: 1,
+                        parameters,
+                        ownerClientId,
+                        RequestTimeout,
+                        cancellationToken);
+                }
             }
             catch (TimeoutException exception)
             {
@@ -4029,13 +4054,25 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
         }
     }
 
-    private static bool IsSuccessfulUpdate(JsonElement response) =>
-        IsSuccess(response) &&
-        TryReadString(response, "method", out var method) &&
-        method == "thread-follower-update-thread-settings" &&
-        response.TryGetProperty("result", out var result) &&
-        result.TryGetProperty("ok", out var ok) &&
-        ok.ValueKind == JsonValueKind.True;
+    private static bool IsSuccessfulUpdate(JsonElement response)
+    {
+        if (!IsSuccess(response) ||
+            !TryReadString(response, "method", out var method) ||
+            method != "thread-follower-update-thread-settings" ||
+            !response.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        // v2 reports whether the update was applied; v1 returned ok.
+        if (result.TryGetProperty("applied", out var applied))
+        {
+            return applied.ValueKind == JsonValueKind.True;
+        }
+        return result.TryGetProperty("ok", out var ok) &&
+            ok.ValueKind == JsonValueKind.True;
+    }
 
     private static bool IsSuccess(JsonElement response) =>
         TryReadString(response, "resultType", out var resultType) &&

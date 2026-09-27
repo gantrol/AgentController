@@ -249,7 +249,7 @@ public partial class MicroSurfaceWindow
                     if (IsCurrent())
                     {
                         ApplyQuickModelPresentationState(new(threadId,
-                            CodexModelToggleService.ParseModelId(state.ModelId)));
+                            CodexModelToggleService.ParseModelId(state.ModelId)), state.Effort);
                     }
                     return;
                 }
@@ -264,7 +264,7 @@ public partial class MicroSurfaceWindow
                         _modelToggleService.TryPreserveForegroundDraftAfterReasoningStep(captured);
                     }
 
-                    ApplyQuickModelPresentationState(new(threadId, result.Model));
+                    ApplyQuickModelPresentationState(new(threadId, result.Model), result.Effort);
                 }
             }
             finally

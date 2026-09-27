@@ -227,10 +227,10 @@ public partial class MicroSurfaceWindow : Window
     private string _activeHarnessContextId = "codex";
     private bool _quotaRefreshFailed;
     private CodexQuickModel _quickModel;
+    private string? _quickModelEffort;
     private string? _quickModelThreadId;
     private bool _quickModelSwitching;
     private string? _quickModelSwitchingThreadId;
-    private bool _quickModelLoadingAnimationRunning;
 #if DEBUG
     private CodexModelToggleResult? _lastQuickModelResult;
 #endif
@@ -2882,6 +2882,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplySettingsDisplayProgress(SettingsDisplayProgress progress)
     {
+        SettingsKey.UseQuotaReadout = false;
         ApplySettingsDisplayTheme(light: true);
         var step = Math.Clamp(progress.Step, 0, progress.TotalSteps);
         QuotaCaptionText.Visibility = Visibility.Collapsed;
@@ -4491,7 +4492,10 @@ public partial class MicroSurfaceWindow : Window
             _modelActionCancellation?.Cancel();
         }
 
-        ApplyQuickModelPresentationState(next);
+        ApplyQuickModelPresentationState(next,
+            state is not null && QuickModelThreadIdsEqual(state.ThreadId, next.ThreadId)
+                ? state.Effort
+                : null);
         ResolveCurrentAgentSlot();
         RefreshAgentSlotPresentation();
         _ = RefreshMonitorAsync();
@@ -4579,10 +4583,12 @@ public partial class MicroSurfaceWindow : Window
         new(_quickModelThreadId, _quickModel);
 
     private void ApplyQuickModelPresentationState(
-        QuickModelPresentationState state)
+        QuickModelPresentationState state,
+        string? effort = null)
     {
         _quickModelThreadId = state.ThreadId;
         _quickModel = state.Model;
+        _quickModelEffort = effort;
         UpdateQuotaPresentation();
     }
 
@@ -4960,7 +4966,10 @@ public partial class MicroSurfaceWindow : Window
                         _quickModelThreadId,
                         operationThreadId)
                             ? _quickModel
-                            : CodexQuickModel.Unknown));
+                            : CodexQuickModel.Unknown),
+                    QuickModelThreadIdsEqual(_quickModelThreadId, operationThreadId)
+                        ? _quickModelEffort
+                        : null);
             }
 #if DEBUG
             CodexModelToggleDiagnostics.RecordStage(
@@ -5197,7 +5206,7 @@ public partial class MicroSurfaceWindow : Window
 #endif
                 ApplyQuickModelPresentationState(new(
                     result.ThreadId,
-                    result.Current));
+                    result.Current), result.CurrentEffort);
 
                 var name = FormatQuickModelName(result.Current);
                 var effort = FormatReasoningEffort(result.CurrentEffort);
@@ -7522,23 +7531,21 @@ public partial class MicroSurfaceWindow : Window
         var english = _localization.IsEnglish;
         var harness = ActiveHarness();
         var deepSeek = IsDeepSeekHarness(harness);
+        SettingsKey.UseQuotaReadout = harness.Id == "codex" && _voiceSurfaceStatus is null;
         ApplySettingsDisplayTheme(light: deepSeek);
         if (_voiceSurfaceStatus is { } voiceStatus)
         {
-            ApplyQuickModelLoadingAnimation(active: false);
             ApplyVoiceSurfaceStatus(voiceStatus);
             return;
         }
         if (deepSeek && _settingsDisplayProgress is { } progress)
         {
-            ApplyQuickModelLoadingAnimation(active: false);
             ApplySettingsDisplayProgress(progress);
             return;
         }
 
         if (harness.Id != "codex")
         {
-            ApplyQuickModelLoadingAnimation(active: false);
             if (deepSeek)
             {
                 QuotaCaptionText.Visibility = Visibility.Collapsed;
@@ -7627,9 +7634,6 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
-        QuotaCaptionText.Visibility = Visibility.Visible;
-        var quickModels = _profileSettings.Current;
-        var quickModelPair = FormatQuickModelPair(quickModels);
         var quickModelSwitching = _quickModelSwitching &&
             (string.IsNullOrWhiteSpace(_quickModelSwitchingThreadId) ||
                 (CodexModelToggleService.IsForegroundDraftOperationId(
@@ -7638,119 +7642,21 @@ public partial class MicroSurfaceWindow : Window
                     : QuickModelThreadIdsEqual(
                         _quickModelSwitchingThreadId,
                         _quickModelThreadId)));
-        QuotaCaptionText.Text = quickModelSwitching
-            ? "···"
-            : _quickModel == CodexQuickModel.Unknown
-                ? FormatQuickModelPairCaption(quickModels)
-                : FormatQuickModelName(_quickModel).ToUpperInvariant();
-        var modelName = FormatQuickModelName(_quickModel);
-        var modelStatus = _quickModel == CodexQuickModel.Unknown
-            ? english
-                ? $"{quickModelPair} quick switch ready"
-                : $"{quickModelPair} 快速切换已就绪"
-            : english
-                ? $"current model {modelName}"
-                : $"当前模型 {modelName}";
-        if (quickModelSwitching)
-        {
-            modelStatus = english
-                ? $"switching between {quickModelPair}"
-                : $"正在切换 {quickModelPair}";
-        }
-
-        if (_quotaSnapshot is null)
-        {
-            QuotaValueText.Text = "—";
-            QuotaValueText.FontSize = 15;
-            QuotaGauge.Opacity = 0.76;
-            QuotaProgressRing.Data = Geometry.Empty;
-            QuotaProgressRing.Stroke = new SolidColorBrush(
-                Color.FromRgb(0xA7, 0xAF, 0xB8));
-            ApplyQuickModelLoadingAnimation(quickModelSwitching || _reasoningAdjusting);
-            AutomationProperties.SetItemStatus(
-                SettingsKey,
-                english
-                    ? $"Quota unavailable · {modelStatus}"
-                    : $"额度暂不可用 · {modelStatus}");
-
-            var title = english ? "Codex quota" : "Codex 剩余额度";
-            var state = _quotaRefreshFailed
-                ? english
-                    ? "Quota is temporarily unavailable. It remains unknown rather than being shown as 0%, and will retry while the panel is visible."
-                    : "暂时无法读取额度。当前保持未知状态，不会误显示为 0%；面板显示时会自动重试。"
-                : english
-                    ? "Reading the remaining Codex quota."
-                    : "正在读取 Codex 剩余额度。";
-            var controls = english
-                ? $"Click: switch {quickModelPair} for this task's next turn · Hold: open official Micro settings · Right-click: open the current Agent's software settings."
-                : $"短按：为当前任务的下一轮切换 {quickModelPair} · 长按：打开官方 Micro 设置 · 右键：直达右下角当前 Agent 的软件设置。";
-            ApplyHelp(SettingsKey, title, $"{state}\n\n{controls}");
-            return;
-        }
-
-        var displayWindow = _quotaSnapshot.DisplayWindow;
-        var remaining = displayWindow.RemainingPercent;
-        var roundedRemaining = (int)Math.Round(
-            remaining,
-            MidpointRounding.AwayFromZero);
-        var accent = GetQuotaAccent(remaining);
-
-        QuotaValueText.Text = $"{roundedRemaining}%";
-        QuotaValueText.FontSize = roundedRemaining == 100 ? 13.5 : 15;
-        QuotaGauge.Opacity = 1;
-        QuotaProgressRing.Data = CreateQuotaArcGeometry(remaining);
-        QuotaProgressRing.Stroke = new SolidColorBrush(accent);
-        ApplyQuickModelLoadingAnimation(quickModelSwitching || _reasoningAdjusting);
-        AutomationProperties.SetItemStatus(
-            SettingsKey,
-            english
-                ? $"{roundedRemaining}% quota remaining · {modelStatus}"
-                : $"剩余额度 {roundedRemaining}% · {modelStatus}");
-
-        var titleText = english
-            ? $"Codex quota · {roundedRemaining}% left · {modelName}"
-            : $"Codex 剩余额度 · {roundedRemaining}% · {modelName}";
-        ApplyHelp(
-            SettingsKey,
-            titleText,
-            BuildQuotaHelpDetail(_quotaSnapshot, english));
-    }
-
-    private void ApplyQuickModelLoadingAnimation(bool active)
-    {
-        if (!active)
-        {
-            if (_quickModelLoadingAnimationRunning)
-            {
-                QuotaProgressRotate.BeginAnimation(
-                    RotateTransform.AngleProperty,
-                    null);
-                QuotaProgressRotate.Angle = 0;
-                _quickModelLoadingAnimationRunning = false;
-            }
-
-            return;
-        }
-
-        QuotaGauge.Opacity = 1;
-        QuotaProgressRing.Data = CreateQuotaArcGeometry(24);
-        QuotaProgressRing.Stroke = new SolidColorBrush(
-            Color.FromRgb(0x9E, 0xBD, 0xFF));
-        if (_quickModelLoadingAnimationRunning)
-        {
-            return;
-        }
-
-        QuotaProgressRotate.BeginAnimation(
-            RotateTransform.AngleProperty,
-            new DoubleAnimation
-            {
-                From = 0,
-                To = 360,
-                Duration = TimeSpan.FromMilliseconds(820),
-                RepeatBehavior = RepeatBehavior.Forever,
-            });
-        _quickModelLoadingAnimationRunning = true;
+        SettingsKey.ModelId = _quickModel.Id;
+        SettingsKey.ReasoningEffort = _quickModelEffort ?? string.Empty;
+        SettingsKey.IsUpdating = quickModelSwitching || _reasoningAdjusting;
+        SettingsKey.HasFiveHourWindow = _quotaSnapshot?.FiveHourWindow is not null;
+        SettingsKey.HasWeeklyWindow = _quotaSnapshot?.WeeklyWindow is not null;
+        SettingsKey.FiveHourRemaining = _quotaSnapshot?.FiveHourWindow?.RemainingPercent;
+        SettingsKey.WeeklyRemaining = _quotaSnapshot?.WeeklyWindow?.RemainingPercent;
+        AutomationProperties.SetItemStatus(SettingsKey,
+            _quotaRefreshFailed
+                ? english ? "Quota refresh unavailable" : "额度刷新暂不可用"
+                : string.Empty);
+        AutomationProperties.SetHelpText(SettingsKey,
+            _quotaSnapshot is { } snapshot
+                ? BuildQuotaHelpDetail(snapshot, english)
+                : string.Empty);
     }
 
     private static bool IsDeepSeekHarness(MicroHarnessDefinition harness) =>
@@ -7872,8 +7778,8 @@ public partial class MicroSurfaceWindow : Window
         lines.Add(string.Empty);
         var quickModelPair = FormatQuickModelPair(_profileSettings.Current);
         lines.Add(english
-            ? $"The ring shows the tighter window. Click switches {quickModelPair} for this task's next turn; hold opens official Micro settings; right-click opens the current Agent's software settings."
-            : $"圆环显示当前更紧张的额度窗口。短按为当前任务的下一轮切换 {quickModelPair}；长按打开官方 Micro 设置；右键直达右下角当前 Agent 的软件设置。");
+            ? $"The rings show remaining quota. Click switches {quickModelPair} for this task's next turn; hold opens official Micro settings; right-click opens the current Agent's software settings."
+            : $"圆环显示剩余额度。短按为当前任务的下一轮切换 {quickModelPair}；长按打开官方 Micro 设置；右键直达右下角当前 Agent 的软件设置。");
         return string.Join('\n', lines);
     }
 
@@ -7881,14 +7787,6 @@ public partial class MicroSurfaceWindow : Window
         MicroProfileSnapshot snapshot) =>
         $"{FormatQuickModelName(snapshot.QuickModelA)} / " +
         FormatQuickModelName(snapshot.QuickModelB);
-
-    private static string FormatQuickModelPairCaption(
-        MicroProfileSnapshot snapshot) =>
-        $"{QuickModelAbbreviation(snapshot.QuickModelA)}↔" +
-        QuickModelAbbreviation(snapshot.QuickModelB);
-
-    private static string QuickModelAbbreviation(CodexQuickModel model) =>
-        model == CodexQuickModel.Unknown ? "?" : FormatQuickModelName(model)[..1].ToUpperInvariant();
 
     private static string FormatQuotaWindowLabel(
         int durationMinutes,
@@ -7924,13 +7822,6 @@ public partial class MicroSurfaceWindow : Window
             ? $"{durationMinutes}-minute limit"
             : $"{durationMinutes} 分钟额度";
     }
-
-    private static Color GetQuotaAccent(double remainingPercent) =>
-        remainingPercent <= 10
-            ? Color.FromRgb(0xFF, 0x9E, 0x8B)
-            : remainingPercent <= 30
-                ? Color.FromRgb(0xFF, 0xD2, 0x7A)
-                : Color.FromRgb(0xA8, 0xC7, 0xFF);
 
     internal static Geometry CreateQuotaArcGeometry(double remainingPercent)
     {
@@ -8322,6 +8213,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplyVoiceSurfaceStatus(VoiceSurfaceStatus status)
     {
+        SettingsKey.UseQuotaReadout = false;
         ApplySettingsDisplayTheme(light: IsDeepSeekHarness(ActiveHarness()));
         QuotaCaptionText.Visibility = Visibility.Collapsed;
         if (status.Step is { } step && status.TotalSteps is { } totalSteps)

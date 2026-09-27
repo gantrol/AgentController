@@ -29,6 +29,14 @@ internal sealed record CodexQuotaSnapshot(
         ? [Primary]
         : [Primary, Secondary];
 
+    public CodexQuotaWindow? FiveHourWindow =>
+        string.Equals(PlanType, "pro", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : Windows.FirstOrDefault(window => window.WindowDurationMinutes == 300);
+
+    public CodexQuotaWindow? WeeklyWindow =>
+        Windows.FirstOrDefault(window => window.WindowDurationMinutes == 7 * 24 * 60);
+
     public CodexQuotaWindow DisplayWindow => Windows
         .OrderBy(window => window.RemainingPercent)
         .ThenBy(window => window.WindowDurationMinutes)
@@ -251,7 +259,9 @@ internal sealed class CodexQuotaService
         out JsonElement rateLimits,
         out CodexQuotaWindow primary)
     {
-        if (result.TryGetProperty("rateLimits", out rateLimits) &&
+        if (result.TryGetProperty("rateLimitsByLimitId", out var byLimit) &&
+            byLimit.ValueKind == JsonValueKind.Object &&
+            byLimit.TryGetProperty("codex", out rateLimits) &&
             rateLimits.ValueKind == JsonValueKind.Object &&
             rateLimits.TryGetProperty("primary", out var primaryElement) &&
             TryReadWindow(primaryElement, out primary))
@@ -259,9 +269,7 @@ internal sealed class CodexQuotaService
             return true;
         }
 
-        if (result.TryGetProperty("rateLimitsByLimitId", out var byLimit) &&
-            byLimit.ValueKind == JsonValueKind.Object &&
-            byLimit.TryGetProperty("codex", out rateLimits) &&
+        if (result.TryGetProperty("rateLimits", out rateLimits) &&
             rateLimits.ValueKind == JsonValueKind.Object &&
             rateLimits.TryGetProperty("primary", out primaryElement) &&
             TryReadWindow(primaryElement, out primary))

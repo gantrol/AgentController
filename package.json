@@ -12,6 +12,7 @@
     "build:controller:release": "dotnet build ./app/AgentController.csproj -c Release",
     "build:micro:debug": "dotnet build ./virtual-micro/src/CodexMicro.DesktopHost/CodexMicro.DesktopHost.csproj -c Debug",
     "build:micro:release": "dotnet build ./virtual-micro/src/CodexMicro.DesktopHost/CodexMicro.DesktopHost.csproj -c Release",
+    "storybook:micro": "dotnet run --project ./virtual-micro/tools/CodexMicro.Storybook/CodexMicro.Storybook.csproj -c Debug",
     "build:deepseek-bridge": "pnpm --dir ./micro-bridge/DeepSeekHarness run build",
     "debug": "dotnet run --project ./app/AgentController.csproj -c Debug",
     "debug:controller": "dotnet run --project ./app/AgentController.csproj -c Debug",

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>CodexMicro.Storybook</AssemblyName>
+    <RootNamespace>CodexMicro.Storybook</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AgentController.MicroSurface.Wpf/AgentController.MicroSurface.Wpf.csproj" />
+  </ItemGroup>
+</Project>
