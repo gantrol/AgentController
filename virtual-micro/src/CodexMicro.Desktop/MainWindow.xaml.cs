@@ -6518,7 +6518,8 @@ public partial class MicroSurfaceWindow : Window
             _monitoredTasks?.FirstOrDefault(task => task.Id == rosterEntry.ThreadId) is { } task)
         {
             var status = ResolveMonitoredTaskStatus(task.Status);
-            return ResolveMonitoredCodexAppearance(task.Id, status, isCurrentSession);
+            return ResolveMonitoredCodexAppearance(
+                task.Id, status, isCurrentSession, task.HasPendingQuestion);
         }
 
         var canShowUnread = !protocolAppearance.IsActive ||

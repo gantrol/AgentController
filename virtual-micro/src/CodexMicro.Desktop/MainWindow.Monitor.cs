@@ -13,7 +13,8 @@ namespace CodexMicro.Desktop;
 public partial class MicroSurfaceWindow
 {
     private sealed record MonitorTask(
-        string HarnessId, string Id, string Title, MicroHarnessSessionStatus? Status);
+        string HarnessId, string Id, string Title, MicroHarnessSessionStatus? Status,
+        bool HasPendingQuestion = false);
 
     private readonly CodexTaskMonitorService _taskMonitor = new();
     private readonly DispatcherTimer _monitorRefreshTimer = new()
@@ -226,7 +227,8 @@ public partial class MicroSurfaceWindow
             _harnessStateSnapshot?.CurrentSessionId;
         var tasks = codex
             ? (_monitoredTasks ?? []).Select(task => new MonitorTask(
-                harness.Id, task.Id, task.Title, ResolveMonitoredTaskStatus(task.Status))).ToArray()
+                harness.Id, task.Id, task.Title, ResolveMonitoredTaskStatus(task.Status),
+                task.HasPendingQuestion)).ToArray()
             : (_harnessStateSnapshot?.HarnessId == harness.Id
                 ? _harnessStateSnapshot.Sessions : [])
                 .Take(CodexTaskMonitorService.Capacity)
@@ -264,7 +266,8 @@ public partial class MicroSurfaceWindow
             }
 
             var appearance = fresh && codex
-                ? ResolveMonitoredCodexAppearance(task!.Id, status, task.Id == currentId)
+                ? ResolveMonitoredCodexAppearance(
+                    task!.Id, status, task.Id == currentId, task.HasPendingQuestion)
                 : fresh && status is { } knownStatus
                     ? AgentLightingAppearance.FromHarnessSession(knownStatus, task!.Id == currentId)
                     : AgentLightingAppearance.From(null);
@@ -274,7 +277,8 @@ public partial class MicroSurfaceWindow
                     ? (_localization.IsEnglish ? "Unassigned" : "未分配")
                     : !fresh || status is null
                         ? (_localization.IsEnglish ? "Status unknown" : "状态未知")
-                        : codex && status == MicroHarnessSessionStatus.Running
+                        : codex && status == MicroHarnessSessionStatus.Running &&
+                            !task.HasPendingQuestion
                             ? (_localization.IsEnglish ? "Turn open (may be waiting for input)" : "任务进行中（可能在等待输入）")
                             : codex && status == MicroHarnessSessionStatus.Completed
                                 ? (_localization.IsEnglish ? "Unread" : "未读")
@@ -317,7 +321,8 @@ public partial class MicroSurfaceWindow
     private AgentLightingAppearance ResolveMonitoredCodexAppearance(
         string threadId,
         MicroHarnessSessionStatus? status,
-        bool isCurrentSession)
+        bool isCurrentSession,
+        bool hasPendingQuestion = false)
     {
         // The rollout marks an open turn; Micro can additionally identify a
         // pending request. Apply that detail to the same task on either page.
@@ -329,6 +334,12 @@ public partial class MicroSurfaceWindow
             AgentLightingAppearance.From(lighting).IsActive)
         {
             status = MicroHarnessSessionStatus.WaitingForInput;
+        }
+
+        if (hasPendingQuestion && status is not
+            (MicroHarnessSessionStatus.Error or MicroHarnessSessionStatus.WaitingForInput))
+        {
+            return AgentLightingAppearance.Question(isCurrentSession);
         }
 
         return status is null or MicroHarnessSessionStatus.Idle &&

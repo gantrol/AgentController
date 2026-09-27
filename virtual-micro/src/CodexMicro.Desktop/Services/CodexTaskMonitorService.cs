@@ -8,7 +8,8 @@ namespace CodexMicro.Desktop.Services;
 internal sealed record CodexMonitoredTask(
     string Id,
     string Title,
-    ThreadStatus Status);
+    ThreadStatus Status,
+    bool HasPendingQuestion = false);
 
 internal sealed record CodexTaskMonitorSnapshot(
     CodexAgentRosterSnapshot AgentRoster,
@@ -99,6 +100,7 @@ internal sealed class CodexTaskMonitorService
 
                 var path = NormalizeRolloutPath(thread.RolloutPath);
                 var status = ThreadStatus.Unknown;
+                var hasPendingQuestion = false;
                 if (path is not null && File.Exists(path))
                 {
                     if (!_readers.TryGetValue(thread.ThreadId, out var reader))
@@ -106,7 +108,9 @@ internal sealed class CodexTaskMonitorService
                         reader = new CodexRolloutStatusReader();
                         _readers[thread.ThreadId] = reader;
                     }
-                    status = reader.Read(path);
+                    var rollout = reader.ReadSnapshot(path);
+                    status = rollout.Status;
+                    hasPendingQuestion = rollout.HasPendingQuestion;
                 }
 
                 if (status is not ThreadStatus.Thinking and not ThreadStatus.Error &&
@@ -117,7 +121,7 @@ internal sealed class CodexTaskMonitorService
 
                 // A missing rollout affects state only; do not replace a recent
                 // task with an older task because of its path or availability.
-                tasks.Add(new(thread.ThreadId, thread.Title, status));
+                tasks.Add(new(thread.ThreadId, thread.Title, status, hasPendingQuestion));
             }
 
             foreach (var id in _readers.Keys.Where(id => !retained.Contains(id)).ToArray())

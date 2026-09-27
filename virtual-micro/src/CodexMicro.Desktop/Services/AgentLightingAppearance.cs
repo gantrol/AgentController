@@ -40,6 +40,10 @@ internal readonly record struct AgentLightingAppearance(
         FromHarnessSession(MicroHarnessSessionStatus.Completed, isCurrentSession)
             with { StatusName = "未读" };
 
+    internal static AgentLightingAppearance Question(bool isCurrentSession) =>
+        FromHarnessSession(MicroHarnessSessionStatus.WaitingForInput, isCurrentSession)
+            with { Color = Color.FromRgb(0xFF, 0xD5, 0x4F), StatusName = "Question" };
+
     internal static AgentLightingAppearance FromCodexSession(
         MicroHarnessSessionStatus? status,
         bool isCurrentSession) =>
