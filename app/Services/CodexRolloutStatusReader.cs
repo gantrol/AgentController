@@ -5,6 +5,10 @@ using CodexController.Models;
 
 namespace CodexController.Services;
 
+public readonly record struct CodexRolloutStatusSnapshot(
+    ThreadStatus Status,
+    bool HasPendingQuestion);
+
 /// <summary>
 /// Reads the append-only Codex rollout lifecycle without inspecting the UI.
 /// This is the honest local fallback when the optional Virtual Micro status
@@ -21,11 +25,14 @@ public sealed class CodexRolloutStatusReader
     private readonly Dictionary<string, RolloutCursor> _cursors =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public ThreadStatus Read(string? rolloutPath)
+    public ThreadStatus Read(string? rolloutPath) => ReadSnapshot(rolloutPath).Status;
+
+    public CodexRolloutStatusSnapshot ReadSnapshot(string? rolloutPath)
     {
-        if (string.IsNullOrWhiteSpace(rolloutPath))
+        if (string.IsNullOrWhiteSpace(rolloutPath) ||
+            rolloutPath.Contains("trash", StringComparison.OrdinalIgnoreCase))
         {
-            return ThreadStatus.Unknown;
+            return new(ThreadStatus.Unknown, false);
         }
 
         lock (_sync)
@@ -51,7 +58,7 @@ public sealed class CodexRolloutStatusReader
                 var endOffset = stream.Length;
                 if (endOffset == cursor.Offset)
                 {
-                    return cursor.Status;
+                    return cursor.Snapshot;
                 }
 
                 stream.Position = cursor.Offset;
@@ -74,13 +81,15 @@ public sealed class CodexRolloutStatusReader
             {
                 // Codex may rotate or briefly hold a rollout. Keep the last
                 // observed state instead of flashing a false state.
+                return new(cursor.Status, false);
             }
             catch (UnauthorizedAccessException)
             {
                 // Preserve the last observation when the file is unavailable.
+                return new(cursor.Status, false);
             }
 
-            return cursor.Status;
+            return cursor.Snapshot;
         }
     }
 
@@ -139,6 +148,8 @@ public sealed class CodexRolloutStatusReader
             line.Span.IndexOf("task_complete"u8) < 0 &&
             line.Span.IndexOf("turn_aborted"u8) < 0 &&
             line.Span.IndexOf("stream_error"u8) < 0 &&
+            line.Span.IndexOf("\"questions\""u8) < 0 &&
+            line.Span.IndexOf("send_user_message_question_reply"u8) < 0 &&
             line.Span.IndexOf("\"type\":\"error\""u8) < 0)
         {
             return;
@@ -149,16 +160,39 @@ public sealed class CodexRolloutStatusReader
             using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
             if (
+                root.ValueKind != JsonValueKind.Object ||
                 !root.TryGetProperty("type", out var outerType) ||
-                !outerType.ValueEquals("event_msg") ||
+                outerType.ValueKind != JsonValueKind.String ||
                 !root.TryGetProperty("payload", out var payload) ||
-                !payload.TryGetProperty("type", out var payloadType))
+                payload.ValueKind != JsonValueKind.Object ||
+                !payload.TryGetProperty("type", out var payloadType) ||
+                payloadType.ValueKind != JsonValueKind.String)
+            {
+                return;
+            }
+
+            if (outerType.ValueEquals("response_item"))
+            {
+                if (ReadString(payload, "type") == "message" &&
+                    ReadString(payload, "role") == "user")
+                {
+                    ReadQuestionAnswers(cursor, payload);
+                }
+                return;
+            }
+            if (!outerType.ValueEquals("event_msg"))
             {
                 return;
             }
 
             if (payloadType.ValueEquals("task_started"))
             {
+                var turnId = ReadString(payload, "turn_id");
+                if (turnId is null || turnId != cursor.TurnId)
+                {
+                    cursor.ClearQuestions();
+                }
+                cursor.TurnId = turnId;
                 cursor.Status = ThreadStatus.Thinking;
             }
             else if (
@@ -166,12 +200,20 @@ public sealed class CodexRolloutStatusReader
                 payloadType.ValueEquals("turn_aborted"))
             {
                 cursor.Status = ThreadStatus.Idle;
+                cursor.ClearQuestions();
+                cursor.TurnId = null;
             }
             else if (
                 payloadType.ValueEquals("error") ||
                 payloadType.ValueEquals("stream_error"))
             {
                 cursor.Status = ThreadStatus.Error;
+            }
+            else if (payloadType.ValueEquals("item_completed") &&
+                payload.TryGetProperty("item", out var item) &&
+                item.ValueKind == JsonValueKind.Object)
+            {
+                ReadQuestionItem(cursor, payload, item);
             }
         }
         catch (JsonException)
@@ -181,17 +223,126 @@ public sealed class CodexRolloutStatusReader
         }
     }
 
+    private static void ReadQuestionItem(
+        RolloutCursor cursor,
+        JsonElement payload,
+        JsonElement item)
+    {
+        var type = ReadString(item, "type");
+        if (type is "UserMessage" or "userMessage")
+        {
+            ReadQuestionAnswers(cursor, item);
+            return;
+        }
+
+        if (cursor.Status != ThreadStatus.Thinking ||
+            type is not ("AgentMessage" or "agentMessage") ||
+            ReadString(item, "delivery") != "async" ||
+            ReadString(item, "id") is not { Length: > 0 } itemId ||
+            (cursor.TurnId is not null &&
+                ReadString(payload, "turn_id") != cursor.TurnId) ||
+            !item.TryGetProperty("questions", out var questions) ||
+            questions.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        var index = 0;
+        foreach (var question in questions.EnumerateArray())
+        {
+            var key = (itemId, index++);
+            if (ReadString(question, "title") is { Length: > 0 } &&
+                !cursor.AnsweredQuestions.Contains(key))
+            {
+                cursor.PendingQuestions.Add(key);
+            }
+        }
+    }
+
+    private static void ReadQuestionAnswers(RolloutCursor cursor, JsonElement message)
+    {
+        if (!message.TryGetProperty("content", out var content) ||
+            content.ValueKind != JsonValueKind.Array || content.GetArrayLength() != 1 ||
+            ReadString(content[0], "text") is not { } text)
+        {
+            return;
+        }
+
+        const string start = "<send_user_message_question_reply>";
+        const string end = "</send_user_message_question_reply>";
+        text = text.Trim();
+        if (!text.StartsWith(start, StringComparison.Ordinal) ||
+            !text.EndsWith(end, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        using var replies = JsonDocument.Parse(text[start.Length..^end.Length]);
+        if (replies.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var reply in replies.RootElement.EnumerateArray())
+        {
+            if (ReadString(reply, "questionItemId") is not { } questionId ||
+                ReadString(reply, "answer") is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                using var identity = JsonDocument.Parse(questionId);
+                var parts = identity.RootElement;
+                if (parts.ValueKind == JsonValueKind.Array && parts.GetArrayLength() == 3 &&
+                    parts[0].ValueKind == JsonValueKind.String &&
+                    parts[0].ValueEquals("request_user_input_async") &&
+                    parts[1].ValueKind == JsonValueKind.String &&
+                    parts[1].GetString() is { Length: > 0 } itemId &&
+                    parts[2].ValueKind == JsonValueKind.Number &&
+                    parts[2].TryGetInt32(out var index) && index >= 0)
+                {
+                    var key = (itemId, index);
+                    cursor.PendingQuestions.Remove(key);
+                    cursor.AnsweredQuestions.Add(key);
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+    }
+
+    private static string? ReadString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() : null;
+
     private sealed class RolloutCursor
     {
         public long Offset { get; set; }
         public PooledLineBuffer PartialLine { get; } = new();
         public ThreadStatus Status { get; set; } = ThreadStatus.Unknown;
+        public string? TurnId { get; set; }
+        public HashSet<(string ItemId, int Index)> PendingQuestions { get; } = [];
+        public HashSet<(string ItemId, int Index)> AnsweredQuestions { get; } = [];
+        public CodexRolloutStatusSnapshot Snapshot => new(
+            Status, Status == ThreadStatus.Thinking && PendingQuestions.Count > 0);
+
+        public void ClearQuestions()
+        {
+            PendingQuestions.Clear();
+            AnsweredQuestions.Clear();
+        }
 
         public void Reset()
         {
             Offset = 0;
             PartialLine.Clear();
             Status = ThreadStatus.Unknown;
+            TurnId = null;
+            ClearQuestions();
         }
     }
 
