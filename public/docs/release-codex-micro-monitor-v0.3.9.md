@@ -40,6 +40,6 @@ Requires Windows x64 and the .NET 10 Desktop Runtime x64.
 - Windows x64 Release packaging completed without warnings or errors.
 - Executable ProductVersion: `0.3.9`; FileVersion: `0.3.9.0`.
 - Package size: 1,341,363 bytes (1.28 MiB).
-- SHA-256: `27437f49c91ad696a57d8891af1e109b7af3acf264910da81a56057408853d8c`.
+- SHA-256: `4dc4367b56396a81ddb7ff96eadad228abf5c91b86d7da2b3df4251707a2cd3d`.
 - Archive contents, executable identity, version metadata, and checksum were verified. The archive contains no driver, signing, or debug files.
 - No test suite, UI automation, or manual UI test was run during release preparation.
