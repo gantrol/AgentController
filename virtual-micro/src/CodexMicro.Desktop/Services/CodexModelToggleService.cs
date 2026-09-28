@@ -70,6 +70,8 @@ internal sealed class CodexThreadModelStateAccumulator
 
     internal long? Revision { get; private set; }
 
+    internal CodexQuestionAnswerStream QuestionAnswers { get; } = new();
+
     internal CodexThreadStateApplyResult ApplyChange(JsonElement change)
     {
         if (!TryReadString(change, "type", out var changeType))
@@ -178,6 +180,7 @@ internal sealed class CodexThreadModelStateAccumulator
 
     private void ReadConversationState(JsonElement state)
     {
+        QuestionAnswers.ReadState(state);
         _latestModel = ReadOptionalString(state, "latestModel");
         _latestReasoningEffort = ReadOptionalString(
             state,
@@ -215,6 +218,8 @@ internal sealed class CodexThreadModelStateAccumulator
         {
             return;
         }
+
+        QuestionAnswers.ApplyPatch(operation, path, value);
 
         if (path.Length == 0)
         {
@@ -333,6 +338,7 @@ internal sealed class CodexThreadModelStateAccumulator
 
     private void ClearStateFields()
     {
+        QuestionAnswers.Reset();
         _latestModel = null;
         _latestReasoningEffort = null;
         _settingsModel = null;
@@ -449,6 +455,12 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
         string? VisibleThreadId,
         string? SemanticThreadId);
 
+    internal readonly record struct ForegroundDraftPresentationContext(
+        IntPtr Window,
+        string ClientId,
+        long VisibilityGeneration,
+        string? VisibleThreadId);
+
     internal readonly record struct ForegroundDraftLease(
         string ClientId,
         long VisibilityGeneration,
@@ -533,6 +545,8 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
     private const int MaximumFrameBytes = 256 * 1024 * 1024;
     private static readonly TimeSpan ConnectTimeout =
         TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan ConnectionRetryDelay =
+        TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RequestTimeout =
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CurrentThreadTimeout =
@@ -583,6 +597,7 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
     private TaskCompletionSource<bool> _visibleThreadChanged = NewSignal();
     private NamedPipeClientStream? _pipe;
     private Task? _readerTask;
+    private Task? _connectionMonitorTask;
     private string? _clientId;
     private string? _selectedVisibleThreadId;
     private string? _trackedThreadId;
@@ -869,10 +884,21 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
     /// </summary>
     internal event Action<CodexThreadModelState?>? CurrentThreadStateChanged;
 
+    internal event Action<string, IReadOnlyList<string>>? QuestionAnswersAccepted;
+
     internal async Task<bool> StartAsync(CancellationToken cancellationToken = default)
     {
         try
         {
+            lock (_stateSync)
+            {
+                ThrowIfDisposed();
+                var lifetimeToken = _lifetime.Token;
+                _connectionMonitorTask ??= Task.Run(
+                    () => MaintainConnectionAsync(lifetimeToken),
+                    CancellationToken.None);
+            }
+
             await EnsureConnectedAsync(cancellationToken);
             return true;
         }
@@ -884,6 +910,77 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
                 ObjectDisposedException)
         {
             return false;
+        }
+    }
+
+    internal ForegroundDraftPresentationContext? CaptureForegroundDraftPresentationContext()
+    {
+        var window = CodexWindowActivator.CaptureForegroundWindow();
+        if (window == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        lock (_stateSync)
+        {
+            if (_pipe is not { IsConnected: true } || string.IsNullOrWhiteSpace(_clientId))
+            {
+                return null;
+            }
+
+            var selection = ResolveForegroundVisibleThreadSelectionLocked(window);
+            return selection.SemanticThreadId is null
+                ? new(window, _clientId, _visibilityGeneration, selection.VisibleThreadId)
+                : null;
+        }
+    }
+
+    private async Task MaintainConnectionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(ConnectionRetryDelay, cancellationToken)
+                    .ConfigureAwait(false);
+                try
+                {
+                    await EnsureConnectedAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    Task? reader;
+                    lock (_stateSync)
+                    {
+                        reader = _readerTask;
+                    }
+
+                    if (reader is not null)
+                    {
+                        await reader.WaitAsync(cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException) when (
+                    cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return;
+                }
+                catch (Exception exception) when (
+                    exception is IOException or
+                        TimeoutException or
+                        OperationCanceledException or
+                        InvalidDataException or
+                        JsonException)
+                {
+                }
+            }
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
         }
     }
 
@@ -2234,6 +2331,7 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             try
             {
                 await pipe.ConnectAsync(connectTimeout.Token);
+                connectTimeout.CancelAfter(RequestTimeout);
             }
             catch
             {
@@ -2275,24 +2373,29 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             _readerTask = Task.Run(
                 () => ReadLoopAsync(pipe, _lifetime.Token),
                 CancellationToken.None);
-            var initialized = await SendRequestAsync(
-                "initialize",
-                version: 0,
-                new { clientType = "codexmicro-model-settings" },
-                targetClientId: null,
-                RequestTimeout,
-                cancellationToken,
-                InitialClientId);
-            if (!TryReadInitializedClientId(initialized, out var clientId))
+            try
             {
-                throw new InvalidDataException(
-                    "Codex IPC initialize response was not recognized.");
-            }
-
-            lock (_stateSync)
-            {
-                if (ReferenceEquals(_pipe, pipe))
+                var initialized = await SendRequestAsync(
+                    "initialize",
+                    version: 0,
+                    new { clientType = "codexmicro-model-settings" },
+                    targetClientId: null,
+                    RequestTimeout,
+                    connectTimeout.Token,
+                    InitialClientId);
+                if (!TryReadInitializedClientId(initialized, out var clientId))
                 {
+                    throw new InvalidDataException(
+                        "Codex IPC initialize response was not recognized.");
+                }
+
+                lock (_stateSync)
+                {
+                    if (!ReferenceEquals(_pipe, pipe))
+                    {
+                        throw new IOException("Codex IPC connection was replaced.");
+                    }
+
                     _clientId = clientId;
                     InvalidateForegroundDraftLeasesLocked();
                     _trackingGeneration++;
@@ -2301,9 +2404,14 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
                     _trackedStateAccumulator = null;
                     _currentThreadState = null;
                 }
-            }
 
-            RefreshCurrentThreadTracking();
+                RefreshCurrentThreadTracking();
+            }
+            catch (Exception exception)
+            {
+                HandleDisconnect(pipe, exception);
+                throw;
+            }
         }
         finally
         {
@@ -2658,6 +2766,7 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
         var requestTrackedSnapshot = false;
         var trackedGeneration = 0;
         SnapshotWaiter? waiterNeedingSnapshot = null;
+        string[] acceptedQuestionReplies = [];
         lock (_stateSync)
         {
             if (_trackedThreadId == threadId &&
@@ -2665,6 +2774,10 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
                 _trackedStateAccumulator is not null)
             {
                 var result = _trackedStateAccumulator.ApplyChange(change);
+                if (result.Applied)
+                {
+                    acceptedQuestionReplies = _trackedStateAccumulator.QuestionAnswers.DrainAcceptedReplies();
+                }
                 if (result.RequiresSnapshot)
                 {
                     _currentThreadState = null;
@@ -2697,6 +2810,11 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
                     completedState = result.State;
                 }
             }
+        }
+
+        if (acceptedQuestionReplies.Length > 0)
+        {
+            RaiseQuestionAnswersAccepted(threadId, acceptedQuestionReplies);
         }
 
         if (publishState)
@@ -4031,6 +4149,25 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
         }
     }
 
+    private void RaiseQuestionAnswersAccepted(string threadId, IReadOnlyList<string> replies)
+    {
+        if (QuestionAnswersAccepted is not { } handlers)
+        {
+            return;
+        }
+
+        foreach (Action<string, IReadOnlyList<string>> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(threadId, replies);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private void RaiseCurrentThreadStateChanged(
         CodexThreadModelState? state)
     {
@@ -4176,6 +4313,7 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
         _lifetime.Cancel();
         NamedPipeClientStream? pipe;
         Task? reader;
+        Task? connectionMonitor;
         SnapshotWaiter[] snapshotWaiters;
         lock (_stateSync)
         {
@@ -4183,6 +4321,8 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             _pipe = null;
             reader = _readerTask;
             _readerTask = null;
+            connectionMonitor = _connectionMonitorTask;
+            _connectionMonitorTask = null;
             _clientId = null;
             _visibleThreadByClient.Clear();
             _rendererDraftEvidenceByClient.Clear();
@@ -4208,11 +4348,16 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             waiter.Completion.TrySetCanceled();
         }
 
-        if (reader is not null)
+        foreach (var task in new[] { reader, connectionMonitor })
         {
+            if (task is null)
+            {
+                continue;
+            }
+
             try
             {
-                await reader;
+                await task;
             }
             catch
             {

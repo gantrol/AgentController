@@ -1802,64 +1802,7 @@ internal sealed class CodexDraftModelToggleService : IAsyncDisposable
     }
 
     private static string? ResolveCliExecutable()
-    {
-        var localAppData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        var binRoot = Path.Combine(localAppData, "OpenAI", "Codex", "bin");
-        try
-        {
-            if (Directory.Exists(binRoot))
-            {
-                var installed = Directory
-                    .EnumerateFiles(
-                        binRoot,
-                        "codex.exe",
-                        SearchOption.AllDirectories)
-                    .Where(File.Exists)
-                    .OrderByDescending(File.GetLastWriteTimeUtc)
-                    .FirstOrDefault();
-                if (installed is not null)
-                {
-                    return installed;
-                }
-            }
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
-        {
-            // Try a directly installed executable on PATH below.
-        }
-
-        foreach (var pathEntry in (Environment.GetEnvironmentVariable("PATH") ??
-                     string.Empty).Split(Path.PathSeparator))
-        {
-            if (string.IsNullOrWhiteSpace(pathEntry))
-            {
-                continue;
-            }
-
-            try
-            {
-                var candidate = Path.Combine(
-                    pathEntry.Trim().Trim('"'),
-                    "codex.exe");
-                if (Path.IsPathFullyQualified(candidate) &&
-                    File.Exists(candidate))
-                {
-                    return Path.GetFullPath(candidate);
-                }
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or
-                    NotSupportedException or
-                    PathTooLongException)
-            {
-                // Ignore malformed PATH entries.
-            }
-        }
-
-        return null;
-    }
+        => CodexExecutableResolver.Resolve();
 
     private static async Task<string?> ReadGlobalStateAsync(
         string path,

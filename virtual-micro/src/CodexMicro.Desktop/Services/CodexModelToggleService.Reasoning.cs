@@ -2,9 +2,19 @@ namespace CodexMicro.Desktop.Services;
 
 internal sealed partial class CodexModelToggleService
 {
-    internal async Task<CodexThreadModelState> StepCurrentThreadEffortAsync(
+    internal Task<CodexThreadModelState> StepCurrentThreadEffortAsync(
         string threadId, int direction, CodexModelCatalog catalog,
-        Func<bool> isCurrent, CancellationToken cancellationToken)
+        Func<bool> isCurrent, CancellationToken cancellationToken) =>
+        ChangeCurrentThreadEffortAsync(threadId, direction, null, catalog, isCurrent, cancellationToken);
+
+    internal Task<CodexThreadModelState> SetCurrentThreadEffortAsync(
+        CodexThreadModelState target, CodexModelCatalog catalog,
+        Func<bool> isCurrent, CancellationToken cancellationToken) =>
+        ChangeCurrentThreadEffortAsync(target.ThreadId, 0, target, catalog, isCurrent, cancellationToken);
+
+    private async Task<CodexThreadModelState> ChangeCurrentThreadEffortAsync(
+        string threadId, int direction, CodexThreadModelState? requested,
+        CodexModelCatalog catalog, Func<bool> isCurrent, CancellationToken cancellationToken)
     {
         await _toggleGate.WaitAsync(cancellationToken);
         try
@@ -22,17 +32,23 @@ internal sealed partial class CodexModelToggleService
             {
                 throw new InvalidOperationException(context.Error ?? "thread-state-unavailable");
             }
+            if (requested is not null && requested.ModelId != state.ModelId)
+            {
+                throw new InvalidOperationException("visible-thread-changed");
+            }
 
             var model = catalog.Find(state.ModelId);
             var efforts = model?.SupportedEfforts.ToList() ?? [];
             var index = efforts.FindIndex(effort => string.Equals(
                 effort, state.Effort ?? model?.DefaultEffort, StringComparison.OrdinalIgnoreCase));
-            if (!catalog.IsFresh || model is not { Hidden: false } || index < 0)
+            if (!catalog.IsFresh || model is not { Hidden: false } || requested is null && index < 0)
             {
                 throw new InvalidOperationException("model-effort-unavailable");
             }
 
-            var target = efforts[Math.Clamp(index + Math.Sign(direction), 0, efforts.Count - 1)];
+            var target = requested is null
+                ? efforts[Math.Clamp(index + Math.Sign(direction), 0, efforts.Count - 1)]
+                : catalog.ResolveEffort(state.ModelId, requested.Effort);
             bool TargetIsCurrent() => isCurrent() &&
                 CurrentThreadState is { } latest && latest.ThreadId == threadId &&
                 latest.ModelId == state.ModelId;

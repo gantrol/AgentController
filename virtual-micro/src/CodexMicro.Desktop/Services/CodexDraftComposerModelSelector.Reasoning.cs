@@ -30,11 +30,25 @@ internal sealed partial class CodexDraftComposerModelSelector
             return true;
         }, cancellationToken);
 
-    internal async Task<(CodexQuickModel Model, string Effort)> StepReasoningAsync(
+    internal Task<(CodexQuickModel Model, string Effort)> StepReasoningAsync(
         IntPtr foregroundWindow,
         int direction,
         bool autoConfirmUltraFullAccess,
         Func<bool> isCurrent,
+        CancellationToken cancellationToken) =>
+        ChangeReasoningAsync(foregroundWindow, direction, null,
+            autoConfirmUltraFullAccess, isCurrent, cancellationToken);
+
+    internal Task<(CodexQuickModel Model, string Effort)> SetReasoningAsync(
+        IntPtr foregroundWindow, CodexThreadModelState target,
+        bool autoConfirmUltraFullAccess, Func<bool> isCurrent,
+        CancellationToken cancellationToken) =>
+        ChangeReasoningAsync(foregroundWindow, 0, target,
+            autoConfirmUltraFullAccess, isCurrent, cancellationToken);
+
+    private async Task<(CodexQuickModel Model, string Effort)> ChangeReasoningAsync(
+        IntPtr foregroundWindow, int direction, CodexThreadModelState? requested,
+        bool autoConfirmUltraFullAccess, Func<bool> isCurrent,
         CancellationToken cancellationToken)
     {
         var catalog = _reasoningCatalog ?? CodexModelCatalog.Load();
@@ -59,6 +73,10 @@ internal sealed partial class CodexDraftComposerModelSelector
                 EnsureNoUnexpectedDialog(root);
                 var current = ReadVerifiedSelection(
                     foregroundWindow, false, isCurrent, cancellationToken);
+                if (requested is not null && requested.ModelId != current.Model.Id)
+                {
+                    throw new DraftUiException("draft-ui-model-verification-failed");
+                }
                 var efforts = catalog.Find(current.Model.Id)?.SupportedEfforts ?? [];
                 var index = efforts.ToList().FindIndex(effort =>
                     string.Equals(effort, current.Effort, StringComparison.OrdinalIgnoreCase));
@@ -67,7 +85,9 @@ internal sealed partial class CodexDraftComposerModelSelector
                     throw new DraftUiException("draft-ui-power-state-unavailable");
                 }
 
-                var target = efforts[Math.Clamp(index + Math.Sign(direction), 0, efforts.Count - 1)];
+                var target = requested is null
+                    ? efforts[Math.Clamp(index + Math.Sign(direction), 0, efforts.Count - 1)]
+                    : catalog.ResolveEffort(current.Model.Id, requested.Effort);
                 if (!string.Equals(target, current.Effort, StringComparison.OrdinalIgnoreCase))
                 {
                     SelectEffort(foregroundWindow, current.Model, target,

@@ -27,7 +27,9 @@ public sealed class CodexRolloutStatusReader
 
     public ThreadStatus Read(string? rolloutPath) => ReadSnapshot(rolloutPath).Status;
 
-    public CodexRolloutStatusSnapshot ReadSnapshot(string? rolloutPath)
+    public CodexRolloutStatusSnapshot ReadSnapshot(
+        string? rolloutPath,
+        IReadOnlyCollection<string>? acceptedQuestionReplies = null)
     {
         if (string.IsNullOrWhiteSpace(rolloutPath) ||
             rolloutPath.Contains("trash", StringComparison.OrdinalIgnoreCase))
@@ -56,11 +58,6 @@ public sealed class CodexRolloutStatusReader
                 }
 
                 var endOffset = stream.Length;
-                if (endOffset == cursor.Offset)
-                {
-                    return cursor.Snapshot;
-                }
-
                 stream.Position = cursor.Offset;
                 while (cursor.Offset < endOffset)
                 {
@@ -87,6 +84,20 @@ public sealed class CodexRolloutStatusReader
             {
                 // Preserve the last observation when the file is unavailable.
                 return new(cursor.Status, false);
+            }
+
+            if (acceptedQuestionReplies is not null)
+            {
+                foreach (var reply in acceptedQuestionReplies)
+                {
+                    try
+                    {
+                        ReadQuestionAnswers(cursor, reply);
+                    }
+                    catch (JsonException)
+                    {
+                    }
+                }
             }
 
             return cursor.Snapshot;
@@ -268,6 +279,11 @@ public sealed class CodexRolloutStatusReader
             return;
         }
 
+        ReadQuestionAnswers(cursor, text);
+    }
+
+    private static void ReadQuestionAnswers(RolloutCursor cursor, string text)
+    {
         const string start = "<send_user_message_question_reply>";
         const string end = "</send_user_message_question_reply>";
         text = text.Trim();
@@ -278,39 +294,46 @@ public sealed class CodexRolloutStatusReader
         }
 
         using var replies = JsonDocument.Parse(text[start.Length..^end.Length]);
-        if (replies.RootElement.ValueKind != JsonValueKind.Array)
+        if (replies.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            ReadQuestionAnswer(cursor, replies.RootElement);
+        }
+        else if (replies.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var reply in replies.RootElement.EnumerateArray())
+            {
+                ReadQuestionAnswer(cursor, reply);
+            }
+        }
+    }
+
+    private static void ReadQuestionAnswer(RolloutCursor cursor, JsonElement reply)
+    {
+        if (ReadString(reply, "questionItemId") is not { } questionId ||
+            ReadString(reply, "answer") is null)
         {
             return;
         }
 
-        foreach (var reply in replies.RootElement.EnumerateArray())
+        try
         {
-            if (ReadString(reply, "questionItemId") is not { } questionId ||
-                ReadString(reply, "answer") is null)
+            using var identity = JsonDocument.Parse(questionId);
+            var parts = identity.RootElement;
+            if (parts.ValueKind == JsonValueKind.Array && parts.GetArrayLength() == 3 &&
+                parts[0].ValueKind == JsonValueKind.String &&
+                parts[0].ValueEquals("request_user_input_async") &&
+                parts[1].ValueKind == JsonValueKind.String &&
+                parts[1].GetString() is { Length: > 0 } itemId &&
+                parts[2].ValueKind == JsonValueKind.Number &&
+                parts[2].TryGetInt32(out var index) && index >= 0)
             {
-                continue;
+                var key = (itemId, index);
+                cursor.PendingQuestions.Remove(key);
+                cursor.AnsweredQuestions.Add(key);
             }
-
-            try
-            {
-                using var identity = JsonDocument.Parse(questionId);
-                var parts = identity.RootElement;
-                if (parts.ValueKind == JsonValueKind.Array && parts.GetArrayLength() == 3 &&
-                    parts[0].ValueKind == JsonValueKind.String &&
-                    parts[0].ValueEquals("request_user_input_async") &&
-                    parts[1].ValueKind == JsonValueKind.String &&
-                    parts[1].GetString() is { Length: > 0 } itemId &&
-                    parts[2].ValueKind == JsonValueKind.Number &&
-                    parts[2].TryGetInt32(out var index) && index >= 0)
-                {
-                    var key = (itemId, index);
-                    cursor.PendingQuestions.Remove(key);
-                    cursor.AnsweredQuestions.Add(key);
-                }
-            }
-            catch (JsonException)
-            {
-            }
+        }
+        catch (JsonException)
+        {
         }
     }
 

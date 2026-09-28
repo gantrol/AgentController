@@ -53,6 +53,8 @@
     <!-- Request-card cancellation is a shared UIA compatibility shim, not
          part of the keypad UI. Compile the source directly so Agent Controller
          does not load or reference the retired hosted WPF surface assembly. -->
+    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexExecutableResolver.cs"
+             Link="Services\CodexExecutableResolver.cs" />
     <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexModelCatalog.cs"
              Link="Services\CodexModelCatalog.cs" />
     <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexRequestCardCancellation.cs"

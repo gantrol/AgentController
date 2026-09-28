@@ -223,36 +223,7 @@ internal sealed class CodexQuotaService
     }
 
     internal static string ResolveCodexExecutable()
-    {
-        const string executableName = "codex.exe";
-        var candidates = new List<string>();
-        var localAppData = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        if (!string.IsNullOrWhiteSpace(localAppData))
-        {
-            candidates.Add(Path.Combine(
-                localAppData,
-                "Programs",
-                "OpenAI",
-                "Codex",
-                "bin",
-                executableName));
-        }
-
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            foreach (var directory in path.Split(
-                         Path.PathSeparator,
-                         StringSplitOptions.RemoveEmptyEntries |
-                         StringSplitOptions.TrimEntries))
-            {
-                candidates.Add(Path.Combine(directory, executableName));
-            }
-        }
-
-        return candidates.FirstOrDefault(File.Exists) ?? executableName;
-    }
+        => CodexExecutableResolver.Resolve() ?? "codex.exe";
 
     private static bool TryReadRateLimitsWithPrimary(
         JsonElement result,

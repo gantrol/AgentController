@@ -713,6 +713,7 @@ public sealed class MicroBrokerHost : IDisposable
             }
 
             var now = Environment.TickCount64;
+            var expiredClient = false;
             foreach (var pair in _clients)
             {
                 if (!pair.Value.TryExpire(
@@ -723,10 +724,17 @@ public sealed class MicroBrokerHost : IDisposable
                     continue;
                 }
 
+                expiredClient = true;
                 Neutralize(pair.Value);
                 PublishEvent(
                     "client-expired",
                     detail: pair.Value.ClientName);
+            }
+
+            if (expiredClient && _clients.IsEmpty)
+            {
+                lifetime.Cancel();
+                return;
             }
 
             MaintainCodexLink(now);

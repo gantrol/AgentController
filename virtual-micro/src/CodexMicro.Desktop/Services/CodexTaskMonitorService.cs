@@ -13,70 +13,178 @@ internal sealed record CodexMonitoredTask(
 
 internal sealed record CodexTaskMonitorSnapshot(
     CodexAgentRosterSnapshot AgentRoster,
-    IReadOnlyList<CodexMonitoredTask> Tasks);
+    IReadOnlyList<CodexMonitoredTask> Tasks,
+    long Revision);
 
 internal sealed class CodexTaskMonitorService
 {
     internal const int Capacity = 16;
+    private sealed record RolloutReader(string Path, CodexRolloutStatusReader Reader);
+    private sealed record CachedText(long Length, DateTime LastWriteTimeUtc, string Text);
+
+    private readonly object _sync = new();
     private readonly string _codexRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
-    private readonly Dictionary<string, CodexRolloutStatusReader> _readers =
+    private readonly Dictionary<string, RolloutReader> _readers =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CachedText> _sharedText = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _acceptedQuestionReplies =
         new(StringComparer.Ordinal);
 
     private readonly CodexRecentThreadsService _recentThreads = new();
     private readonly CodexUnreadStateReader _unreadState = new();
+    private CodexTaskMonitorSnapshot? _snapshot;
+    private IReadOnlyList<CodexRecentThread>? _rosterThreads;
+    private string? _rosterGlobalState;
+    private string? _rosterConfig;
+    private long _revision;
 
     internal async Task<CodexTaskMonitorSnapshot?> ReadAsync(
         CancellationToken cancellationToken)
     {
-        // App Server owns the source filters and the same recency order used
-        // by the six native keys, including exclusion of internal review tasks.
+        cancellationToken.ThrowIfCancellationRequested();
         var threadsRead = _recentThreads.ReadAsync(cancellationToken, Capacity);
         var unreadRead = _unreadState.ReadAsync(cancellationToken);
         await Task.WhenAll(threadsRead, unreadRead).ConfigureAwait(false);
         var threads = await threadsRead.ConfigureAwait(false);
-        if (threads is null)
-        {
-            return null;
-        }
-
         var unread = await unreadRead.ConfigureAwait(false);
-        if (unread is null)
+        if (threads is null || unread is null)
         {
             return null;
         }
 
         return await Task.Run(() =>
         {
-            var tasks = ReadStatuses(threads, unread.ThreadIds, cancellationToken);
-            if (tasks is null)
+            lock (_sync)
             {
-                return null;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                var tasks = ReadStatuses(threads, unread.ThreadIds, cancellationToken);
+                if (tasks is null)
+                {
+                    return null;
+                }
 
-            // Both pages must assign identities and status from the same query.
-            // Read the source setting last so an in-flight query cannot restore
-            // recent slots after the user switches to another Agent source.
-            var roster = CodexAgentRosterObserver.FromRecentThreads(
-                threads,
-                ReadSharedText(".codex-global-state.json"),
-                ReadSharedText("config.toml"));
-            return new CodexTaskMonitorSnapshot(roster, tasks);
+                // Read source settings after the query so a source change cannot
+                // restore the previous slot assignments while it is in flight.
+                var globalState = ReadSharedText(".codex-global-state.json");
+                var config = ReadSharedText("config.toml");
+                var roster = _snapshot is not null && _rosterThreads is not null &&
+                    ReferenceEquals(_rosterGlobalState, globalState) &&
+                    ReferenceEquals(_rosterConfig, config) &&
+                    _rosterThreads.SequenceEqual(threads)
+                        ? _snapshot.AgentRoster
+                        : CodexAgentRosterObserver.FromRecentThreads(threads, globalState, config);
+                _rosterThreads = threads;
+                _rosterGlobalState = globalState;
+                _rosterConfig = config;
+                return UpdateSnapshot(roster, tasks);
+            }
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal Task<CodexTaskMonitorSnapshot?> ReadPendingQuestionsAsync(
+        CancellationToken cancellationToken) =>
+        ReadPendingQuestionsAsync(cancellationToken, null, null);
+
+    internal Task<CodexTaskMonitorSnapshot?> ObserveAcceptedQuestionRepliesAsync(
+        string threadId,
+        IReadOnlyList<string> replies,
+        CancellationToken cancellationToken) =>
+        ReadPendingQuestionsAsync(cancellationToken, threadId, replies);
+
+    private Task<CodexTaskMonitorSnapshot?> ReadPendingQuestionsAsync(
+        CancellationToken cancellationToken,
+        string? answeredThreadId,
+        IReadOnlyList<string>? replies)
+    {
+        return Task.Run(() =>
+        {
+            lock (_sync)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (answeredThreadId is not null && replies is not null)
+                {
+                    if (!_acceptedQuestionReplies.TryGetValue(answeredThreadId, out var accepted))
+                    {
+                        accepted = new(StringComparer.Ordinal);
+                        _acceptedQuestionReplies[answeredThreadId] = accepted;
+                    }
+                    accepted.UnionWith(replies);
+                }
+
+                if (_snapshot is null)
+                {
+                    return null;
+                }
+
+                CodexMonitoredTask[]? updated = null;
+                for (var index = 0; index < _snapshot.Tasks.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var task = _snapshot.Tasks[index];
+                    if (!task.HasPendingQuestion || !_readers.TryGetValue(task.Id, out var reader))
+                    {
+                        continue;
+                    }
+
+                    _acceptedQuestionReplies.TryGetValue(task.Id, out var acceptedReplies);
+                    var rollout = reader.Reader.ReadSnapshot(reader.Path, acceptedReplies);
+                    if (rollout.HasPendingQuestion == task.HasPendingQuestion &&
+                        rollout.Status == task.Status)
+                    {
+                        continue;
+                    }
+
+                    updated ??= _snapshot.Tasks.ToArray();
+                    updated[index] = task with
+                    {
+                        Status = rollout.Status,
+                        HasPendingQuestion = rollout.HasPendingQuestion,
+                    };
+                }
+
+                return updated is null ? _snapshot : UpdateSnapshot(_snapshot.AgentRoster, updated);
+            }
+        }, cancellationToken);
+    }
+
+    private CodexTaskMonitorSnapshot UpdateSnapshot(
+        CodexAgentRosterSnapshot roster,
+        IReadOnlyList<CodexMonitoredTask> tasks)
+    {
+        if (_snapshot is { } previous &&
+            previous.AgentRoster.Source == roster.Source &&
+            previous.AgentRoster.Entries.SequenceEqual(roster.Entries) &&
+            previous.Tasks.SequenceEqual(tasks))
+        {
+            return previous;
+        }
+
+        return _snapshot = new CodexTaskMonitorSnapshot(roster, tasks, ++_revision);
     }
 
     private string? ReadSharedText(string name)
     {
         var path = Path.Combine(_codexRoot, name);
-        if (!File.Exists(path))
+        var file = new FileInfo(path);
+        if (!file.Exists)
         {
+            _sharedText.Remove(name);
             return null;
+        }
+
+        if (_sharedText.TryGetValue(name, out var cached) &&
+            cached.Length == file.Length && cached.LastWriteTimeUtc == file.LastWriteTimeUtc)
+        {
+            return cached.Text;
         }
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
         using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        var text = reader.ReadToEnd();
+        _sharedText[name] = new CachedText(file.Length, file.LastWriteTimeUtc, text);
+        return text;
     }
 
     private IReadOnlyList<CodexMonitoredTask>? ReadStatuses(
@@ -103,12 +211,14 @@ internal sealed class CodexTaskMonitorService
                 var hasPendingQuestion = false;
                 if (path is not null && File.Exists(path))
                 {
-                    if (!_readers.TryGetValue(thread.ThreadId, out var reader))
+                    if (!_readers.TryGetValue(thread.ThreadId, out var reader) ||
+                        !string.Equals(reader.Path, path, StringComparison.OrdinalIgnoreCase))
                     {
-                        reader = new CodexRolloutStatusReader();
+                        reader = new RolloutReader(path, new CodexRolloutStatusReader());
                         _readers[thread.ThreadId] = reader;
                     }
-                    var rollout = reader.ReadSnapshot(path);
+                    _acceptedQuestionReplies.TryGetValue(thread.ThreadId, out var acceptedReplies);
+                    var rollout = reader.Reader.ReadSnapshot(path, acceptedReplies);
                     status = rollout.Status;
                     hasPendingQuestion = rollout.HasPendingQuestion;
                 }
@@ -127,6 +237,11 @@ internal sealed class CodexTaskMonitorService
             foreach (var id in _readers.Keys.Where(id => !retained.Contains(id)).ToArray())
             {
                 _readers.Remove(id);
+            }
+
+            foreach (var id in _acceptedQuestionReplies.Keys.Where(id => !retained.Contains(id)).ToArray())
+            {
+                _acceptedQuestionReplies.Remove(id);
             }
 
             return tasks;
