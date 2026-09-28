@@ -346,6 +346,7 @@ public partial class MicroSurfaceWindow : Window
             AgentGlowNear4,
             AgentGlowNear5,
         ];
+        InitializeTaskKeyMotion();
         _actionKeys = new Dictionary<string, (Button, KeycapIcon)>(StringComparer.Ordinal)
         {
             ["ACT06"] = (ActionKey06, ActionIcon06),
@@ -645,6 +646,7 @@ public partial class MicroSurfaceWindow : Window
     {
         RefreshActionTargetForegroundState();
         RefreshTopmostContinuity();
+        RefreshDraftQuickModelObservation();
     }
 
     private void RefreshActionTargetForegroundState()
@@ -1004,6 +1006,10 @@ public partial class MicroSurfaceWindow : Window
         if (sender is Button { Tag: string key })
         {
             var isAgentKey = TryParseAgentSlot(key, out var selectedSlot);
+            if (isAgentKey && (_taskKeyMotionActive || _pageSwitching))
+            {
+                return;
+            }
             var selectedAgentThreadId = isAgentKey
                 ? _latestAgentRoster?.GetSlot(selectedSlot)?.ThreadId
                 : null;
@@ -3799,6 +3805,9 @@ public partial class MicroSurfaceWindow : Window
     private async Task SendEncoderStepAsync(EncoderStepIntent intent)
     {
         var inputGeneration = _reasoningInputGeneration;
+        CancellationTokenSource? reasoningFeedback = null;
+        ReasoningPreview? previousReasoningPreview = null;
+        var delivered = false;
         if (_pageSwitching || _reasoningAdjusting || _quickModelSwitching || _encoderWarningPending)
         {
             _encoderSteps.Clear();
@@ -3873,6 +3882,17 @@ public partial class MicroSurfaceWindow : Window
                 return;
             }
 
+            if (_layoutObserver.Current.EncoderMode == "reasoning")
+            {
+                _quickModelPresentationRevision++;
+                previousReasoningPreview = _reasoningPreview;
+                reasoningFeedback = PreviewReasoningStep(
+                    _modelToggleService.CurrentForegroundVisibleThreadId(foregroundCodexWindow),
+                    DialDirectionSettings.ToReasoningStep(reportedClockwise),
+                    awaitObservation: _draftQuickModelContext is { } draftContext &&
+                        _modelToggleService.CaptureForegroundDraftPresentationContext() == draftContext);
+            }
+
             var result = await RunActionAsync(
                 () => _broker.StepEncoderAsync(reportedClockwise),
                 reportedClockwise
@@ -3882,10 +3902,13 @@ public partial class MicroSurfaceWindow : Window
                 MicroSendDisposition.Accepted or
                 MicroSendDisposition.OutcomeUnknown)
             {
+                delivered = true;
                 var sequence = ++_dialInputSequence;
                 if (_layoutObserver.Current.EncoderMode == "reasoning")
                 {
                     _lastEncoderReasoningAt = Stopwatch.GetTimestamp();
+                    _quickModelPresentationRevision++;
+                    _lastDraftQuickModelObservationAt = 0;
                 }
                 if (result.Value.Disposition ==
                         MicroSendDisposition.Accepted &&
@@ -3915,6 +3938,18 @@ public partial class MicroSurfaceWindow : Window
         }
         finally
         {
+            if (!delivered && reasoningFeedback is not null &&
+                ReferenceEquals(reasoningFeedback, _reasoningFeedbackCancellation))
+            {
+                if (previousReasoningPreview is { AwaitingObservation: true })
+                {
+                    ShowReasoningFeedback(previousReasoningPreview);
+                }
+                else
+                {
+                    ClearReasoningFeedback(reasoningFeedback);
+                }
+            }
             _encoderInputGate.Release();
         }
     }
@@ -4312,6 +4347,7 @@ public partial class MicroSurfaceWindow : Window
 
         ResolveCurrentAgentSlot();
         RefreshAgentSlotPresentation();
+        RefreshDraftQuickModelObservation();
     }
 
     private async Task<MicroSendResult?> RunCodexKeyActionAsync(
@@ -4391,6 +4427,10 @@ public partial class MicroSurfaceWindow : Window
         // Right-click belongs to the Agent key even when the requested state
         // change is ineligible. Do not let it open the device-frame menu.
         e.Handled = true;
+        if (_taskKeyMotionActive || _pageSwitching)
+        {
+            return;
+        }
         var rosterEntry = _latestAgentRoster?.GetSlot(slotId);
         if (rosterEntry is null)
         {
@@ -4464,6 +4504,132 @@ public partial class MicroSurfaceWindow : Window
                 "Agent 槽位重排后该状态仍跟随此对话。");
     }
 
+    private CodexModelToggleService.ForegroundDraftPresentationContext? _draftQuickModelContext;
+    private (CodexQuickModel Model, string? Effort)? _draftQuickModelSelection;
+    private bool _draftQuickModelObservationPending;
+    private long _lastDraftQuickModelObservationAt;
+    private int _quickModelPresentationRevision;
+
+    private void RefreshDraftQuickModelObservation()
+    {
+        var context = !_windowClosed && IsVisible && IsCodexHarnessActive()
+            ? _modelToggleService.CaptureForegroundDraftPresentationContext()
+            : null;
+        var changed = context != _draftQuickModelContext;
+        if (changed)
+        {
+            if (_reasoningPreview is { AwaitingObservation: true })
+            {
+                ClearReasoningFeedback();
+            }
+            _draftQuickModelContext = context;
+            _draftQuickModelSelection = null;
+            ApplyAuthoritativeQuickModelState(_modelToggleService.CurrentThreadState);
+        }
+
+        var awaitingReasoning = _reasoningPreview is { AwaitingObservation: true };
+        var feedbackAge = Stopwatch.GetElapsedTime(_draftReasoningFeedbackChangedAt);
+        if (context is not { } draft || _draftQuickModelObservationPending ||
+            _quickModelSwitching || _reasoningAdjusting || _encoderWarningPending || _encoderStepPumpRunning ||
+            (awaitingReasoning && feedbackAge < TimeSpan.FromMilliseconds(600)) ||
+            (!changed && _lastDraftQuickModelObservationAt != 0 &&
+                Stopwatch.GetElapsedTime(_lastDraftQuickModelObservationAt) <
+                    TimeSpan.FromMilliseconds(
+                        awaitingReasoning && feedbackAge < TimeSpan.FromSeconds(3) ? 250 : 1000)))
+        {
+            return;
+        }
+
+        _ = ObserveDraftQuickModelAsync(draft);
+    }
+
+    private async Task ObserveDraftQuickModelAsync(
+        CodexModelToggleService.ForegroundDraftPresentationContext context)
+    {
+        _draftQuickModelObservationPending = true;
+        var revision = _quickModelPresentationRevision;
+        var inputSequence = _dialInputSequence;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            if (_draftQuickModelSelection is null)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), cancellation.Token);
+            }
+            if (_windowClosed || !IsVisible || !IsCodexHarnessActive() ||
+                _quickModelSwitching || _reasoningAdjusting || _encoderWarningPending || _encoderStepPumpRunning ||
+                revision != _quickModelPresentationRevision || _draftQuickModelContext != context)
+            {
+                return;
+            }
+
+            var selection = await _draftComposerModelSelector.ObserveSelectionAsync(
+                context,
+                _reasoningPreview is { AwaitingObservation: true } ||
+                    (_lastEncoderReasoningAt != 0 &&
+                        Stopwatch.GetElapsedTime(_lastEncoderReasoningAt) < TimeSpan.FromSeconds(2)),
+                () => _modelToggleService.CaptureForegroundDraftPresentationContext() == context,
+                cancellation.Token);
+            if (_windowClosed || !IsVisible || !IsCodexHarnessActive() ||
+                _quickModelSwitching || _reasoningAdjusting || _encoderWarningPending || _encoderStepPumpRunning ||
+                revision != _quickModelPresentationRevision ||
+                _draftQuickModelContext != context ||
+                _modelToggleService.CaptureForegroundDraftPresentationContext() != context)
+            {
+                return;
+            }
+            if (selection is not { } observed)
+            {
+                _draftReasoningObservationCandidate = null;
+                return;
+            }
+
+            var confirmsReasoning = false;
+            if (_reasoningPreview is { AwaitingObservation: true } preview)
+            {
+                if (observed.Effort is null)
+                {
+                    _draftReasoningObservationCandidate = null;
+                    return;
+                }
+
+                // A differing snapshot can be an intermediate render. Require it
+                // to repeat after input settles before replacing the latest preview.
+                if ((preview.ModelId != observed.Model.Id ||
+                        !string.Equals(preview.Effort, observed.Effort,
+                            StringComparison.OrdinalIgnoreCase)) &&
+                    _draftReasoningObservationCandidate != observed)
+                {
+                    _draftReasoningObservationCandidate = observed;
+                    return;
+                }
+
+                _reasoningPreview = null;
+                _draftReasoningObservationCandidate = null;
+                confirmsReasoning = true;
+            }
+
+            if (confirmsReasoning || _draftQuickModelSelection != observed)
+            {
+                _draftQuickModelSelection = observed;
+                ApplyQuickModelPresentationState(new(context.VisibleThreadId, observed.Model), observed.Effort);
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Draft model observation: {exception.Message}");
+        }
+        finally
+        {
+            _lastDraftQuickModelObservationAt = inputSequence == _dialInputSequence &&
+                _draftQuickModelContext == context ? Stopwatch.GetTimestamp() : 0;
+            _draftQuickModelObservationPending = false;
+        }
+    }
+
     private void ApplyAuthoritativeQuickModelState(
         CodexThreadModelState? state)
     {
@@ -4473,6 +4639,17 @@ public partial class MicroSurfaceWindow : Window
             _modelToggleService.CurrentForegroundVisibleThreadId(
                 foregroundCodexWindow);
         var next = ReduceQuickModelSnapshot(state, visibleThreadId);
+        var effort = state is not null && QuickModelThreadIdsEqual(state.ThreadId, next.ThreadId)
+            ? state.Effort
+            : null;
+        if (_draftQuickModelContext is { } draft &&
+            _modelToggleService.CaptureForegroundDraftPresentationContext() == draft &&
+            QuickModelThreadIdsEqual(draft.VisibleThreadId, visibleThreadId) &&
+            _draftQuickModelSelection is { } observed)
+        {
+            next = new(visibleThreadId, observed.Model);
+            effort = observed.Effort;
+        }
         if (!QuickModelThreadIdsEqual(_quickModelThreadId, next.ThreadId))
         {
             CancelReasoningInput();
@@ -4492,10 +4669,7 @@ public partial class MicroSurfaceWindow : Window
             _modelActionCancellation?.Cancel();
         }
 
-        ApplyQuickModelPresentationState(next,
-            state is not null && QuickModelThreadIdsEqual(state.ThreadId, next.ThreadId)
-                ? state.Effort
-                : null);
+        ApplyQuickModelPresentationState(next, effort);
         ResolveCurrentAgentSlot();
         RefreshAgentSlotPresentation();
         _ = RefreshMonitorAsync();
@@ -4586,6 +4760,25 @@ public partial class MicroSurfaceWindow : Window
         QuickModelPresentationState state,
         string? effort = null)
     {
+        _quickModelPresentationRevision++;
+        if (state.Model != CodexQuickModel.Unknown &&
+            _draftQuickModelContext is { } draft &&
+            QuickModelThreadIdsEqual(state.ThreadId, draft.VisibleThreadId) &&
+            _modelToggleService.CaptureForegroundDraftPresentationContext() == draft)
+        {
+            _draftQuickModelSelection = (state.Model, effort);
+        }
+
+        if (!QuickModelThreadIdsEqual(_quickModelThreadId, state.ThreadId) ||
+            !string.Equals(_quickModel.Id, state.Model.Id, StringComparison.Ordinal))
+        {
+            CancelReasoningInput();
+        }
+        else if (_reasoningTarget is null && _reasoningPreview is { AwaitingObservation: false } preview &&
+            string.Equals(preview.Effort, effort, StringComparison.OrdinalIgnoreCase))
+        {
+            _reasoningPreview = null;
+        }
         _quickModelThreadId = state.ThreadId;
         _quickModel = state.Model;
         _quickModelEffort = effort;
@@ -6575,6 +6768,7 @@ public partial class MicroSurfaceWindow : Window
         if (!IsCodexHarnessActive())
         {
             RefreshHarnessSessionPresentation();
+            UpdateTaskKeyMotion(monitor: false);
             return;
         }
 
@@ -6622,6 +6816,7 @@ public partial class MicroSurfaceWindow : Window
                     : "。") +
                 localMatch);
         }
+        UpdateTaskKeyMotion(monitor: false);
     }
 
     private void RefreshHarnessSessionPresentation()
@@ -6725,17 +6920,21 @@ public partial class MicroSurfaceWindow : Window
         AgentLightingAppearance appearance)
     {
         appearance = appearance.ForDisplay();
-        var whiteSelection = appearance.UsesNeutralSelectionRing;
+        var mintSelectionLight = appearance.UsesMintSelectionLight;
+        var whiteLight = appearance.Color == Colors.White && appearance.DisplayOpacity > 0;
         key.BorderBrush = new SolidColorBrush(appearance.Color)
         {
             Opacity = appearance.DisplayOpacity,
         };
         key.ApplyTemplate();
-        SetTemplatePartOpacity(key, "AgentGlyph", whiteSelection ? 0 : 0.6);
-        SetTemplatePartOpacity(
-            key,
-            "WhiteAgentGlyph",
-            whiteSelection ? appearance.DisplayOpacity : 0);
+        ApplyAgentShadowAppearance(key, whiteLight);
+        SetTemplatePartOpacity(key, "AgentGlyph", whiteLight || mintSelectionLight ? 0 : 0.6);
+        SetTemplatePartOpacity(key, "WhiteAgentGlyph", whiteLight && !mintSelectionLight ? 1 : 0);
+        SetTemplatePartOpacity(key, "MintAgentGlyph", mintSelectionLight ? 1 : 0);
+        SetTemplatePartOpacity(key, "MintSeamLight", mintSelectionLight ? 1 : 0);
+        SetTemplatePartOpacity(key, "MintCapReturn", mintSelectionLight ? 1 : 0);
+        SetTemplatePartOpacity(key, "MintWellLight", mintSelectionLight ? 1 : 0);
+        SetTemplatePartOpacity(key, "MintWellReturn", mintSelectionLight ? 1 : 0);
         SetTemplatePartOpacity(key, "CurrentSessionRing", 0);
         if (key.Template.FindName("GlowWide", key) is Border wide &&
             key.Template.FindName("Glow", key) is Border near)
@@ -6749,6 +6948,26 @@ public partial class MicroSurfaceWindow : Window
             appearance.LightFieldOpacity);
         SetTemplatePartOpacity(key, "StatusWellWash", appearance.WellWashOpacity);
         return appearance;
+    }
+
+    private static void ApplyAgentShadowAppearance(Button key, bool whiteLight)
+    {
+        SetTemplatePartOpacity(key, "CapInsetShadow", whiteLight ? 0.25 : 1);
+        if (key.Template.FindName("FarShadow", key) is Border farShadow)
+        {
+            farShadow.Background = (Brush)key.FindResource(
+                whiteLight ? "AgentWhiteLightFarShadowBrush" : "AgentFarShadowBrush");
+        }
+        if (key.Template.FindName("Cap", key) is Border cap)
+        {
+            cap.Effect = (Effect)key.FindResource(
+                whiteLight ? "AgentWhiteLightKeyShadow" : "AgentKeyShadow");
+        }
+        if (key.Template.FindName("AgentWellHighlight", key) is Ellipse wellHighlight)
+        {
+            wellHighlight.Stroke = (Brush)key.FindResource(
+                whiteLight ? "PaperWhiteLightRecessRingBrush" : "PaperRecessRingBrush");
+        }
     }
 
     internal void ApplyAgentLightingAppearance(
@@ -7643,8 +7862,11 @@ public partial class MicroSurfaceWindow : Window
                         _quickModelSwitchingThreadId,
                         _quickModelThreadId)));
         SettingsKey.ModelId = _quickModel.Id;
-        SettingsKey.ReasoningEffort = _quickModelEffort ?? string.Empty;
-        SettingsKey.IsUpdating = quickModelSwitching || _reasoningAdjusting;
+        SettingsKey.DisplayMode = _reasoningFeedbackCancellation is not null || _reasoningAdjusting
+            ? QuotaKnobDisplayMode.Model
+            : QuotaKnobDisplayMode.Auto;
+        SettingsKey.ReasoningEffort = _reasoningPreview?.Effort ?? _quickModelEffort ?? string.Empty;
+        SettingsKey.IsUpdating = quickModelSwitching;
         SettingsKey.HasFiveHourWindow = _quotaSnapshot?.FiveHourWindow is not null;
         SettingsKey.HasWeeklyWindow = _quotaSnapshot?.WeeklyWindow is not null;
         SettingsKey.FiveHourRemaining = _quotaSnapshot?.FiveHourWindow?.RemainingPercent;

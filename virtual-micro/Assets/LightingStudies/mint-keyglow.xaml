@@ -1,0 +1,505 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:sys="clr-namespace:System;assembly=mscorlib" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="497" Height="271" Background="White" ClipToBounds="True" IsHitTestVisible="False" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Grid.Resources>
+        <ResourceDictionary>
+            <sys:Double x:Key="MintPreviewIntensity">1</sys:Double>
+            <sys:Double x:Key="OriginalCurrentDotOpacity">0</sys:Double>
+            <sys:Double x:Key="MintCurrentDotOpacity">1</sys:Double>
+            <Color x:Key="CurrentSessionDotColor">#B9EFD2</Color>
+            <SolidColorBrush x:Key="CurrentSessionDotBrush" Color="{StaticResource CurrentSessionDotColor}" />
+            <SolidColorBrush x:Key="InkBrush" Color="#2F3438" />
+            <SolidColorBrush x:Key="PaperAgentKeyBaseBrush" Color="#FFF7F8F6" />
+            <LinearGradientBrush x:Key="PaperRecessRingBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#28747B77" Offset="0" />
+                <GradientStop Color="#14747B77" Offset="0.42" />
+                <GradientStop Color="#8CFFFFFF" Offset="0.58" />
+                <GradientStop Color="#CCFFFFFF" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="PaperWhiteLightRecessRingBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#0A747B77" Offset="0" />
+                <GradientStop Color="#05747B77" Offset="0.42" />
+                <GradientStop Color="#8CFFFFFF" Offset="0.58" />
+                <GradientStop Color="#CCFFFFFF" Offset="1" />
+            </LinearGradientBrush>
+            <Geometry x:Key="JoystickChevronGeometry">M 1,7 L 6,2 L 11,7</Geometry>
+            <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                <Setter Property="FontFamily" Value="Segoe UI Variable Text" />
+            </Style>
+            <Style x:Key="AgentWideHalo" TargetType="Border">
+                <Setter Property="Width" Value="106" />
+                <Setter Property="Height" Value="106" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="CornerRadius" Value="21" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+                <Setter Property="Opacity" Value="0" />
+                <Setter Property="Effect">
+                    <Setter.Value>
+                        <BlurEffect Radius="28" RenderingBias="Quality" />
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="AgentNearHalo" TargetType="Border">
+                <Setter Property="Width" Value="100" />
+                <Setter Property="Height" Value="100" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+                <Setter Property="Opacity" Value="0" />
+                <Setter Property="Effect">
+                    <Setter.Value>
+                        <BlurEffect Radius="16" RenderingBias="Quality" />
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <DropShadowEffect x:Key="AgentKeyShadow" BlurRadius="3" Direction="270" ShadowDepth="2" Opacity="0.20" Color="#3A403D" />
+            <DropShadowEffect x:Key="AgentWhiteLightKeyShadow" BlurRadius="3" Direction="270" ShadowDepth="2" Opacity="0.05" Color="#3A403D" />
+            <SolidColorBrush x:Key="AgentFarShadowBrush" Color="#243A403D" />
+            <SolidColorBrush x:Key="AgentWhiteLightFarShadowBrush" Color="#093A403D" />
+            <Style x:Key="AgentKey" TargetType="Button">
+                <Setter Property="Background" Value="{StaticResource PaperAgentKeyBaseBrush}" />
+                <Setter Property="BorderBrush" Value="#008DB5FF" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid Margin="0.5">
+                                <Border x:Name="FarShadow" Width="92" Height="92" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{StaticResource AgentFarShadowBrush}" CornerRadius="14" Opacity="1">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform Y="3" />
+                                    </Border.RenderTransform>
+                                    <Border.Effect>
+                                        <BlurEffect Radius="8" />
+                                    </Border.Effect>
+                                </Border>
+                                <Border x:Name="GlowWide" Style="{StaticResource AgentWideHalo}" Background="{TemplateBinding BorderBrush}" Opacity="0" />
+                                <Border x:Name="Glow" Style="{StaticResource AgentNearHalo}" Background="{TemplateBinding BorderBrush}" Opacity="0" />
+                                <Border x:Name="MintSeamLight" Width="98" Height="98" CornerRadius="15" HorizontalAlignment="Center" VerticalAlignment="Center" BorderBrush="#756EF0B0" BorderThickness="1.6" Opacity="0">
+                                    <Border.Effect>
+                                        <BlurEffect Radius="5" RenderingBias="Quality" />
+                                    </Border.Effect>
+                                </Border>
+                                <Border x:Name="Cap" Width="96" Height="96" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0" Background="{TemplateBinding Background}" BorderBrush="#99FFFFFF" BorderThickness="1" CornerRadius="14">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform />
+                                    </Border.RenderTransform>
+                                    <Grid>
+                                        <Border x:Name="StatusCapWash" Margin="4" Background="{TemplateBinding BorderBrush}" CornerRadius="10" Opacity="0.12">
+                                            <Border.Effect>
+                                                <BlurEffect Radius="6.5" />
+                                            </Border.Effect>
+                                        </Border>
+                                        <Border x:Name="MintCapReturn" Margin="2" CornerRadius="11" BorderThickness="1.5" Opacity="0">
+                                            <Border.BorderBrush>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#008CECB4" Offset="0" />
+                                                    <GradientStop Color="#128CECB4" Offset="0.42" />
+                                                    <GradientStop Color="#668CECB4" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Border.BorderBrush>
+                                            <Border.Effect>
+                                                <BlurEffect Radius="1.8" RenderingBias="Quality" />
+                                            </Border.Effect>
+                                        </Border>
+                                        <Border x:Name="CapInsetShadow" Margin="1,1,0,0" BorderBrush="#334E5451" BorderThickness="0,0,2,2" CornerRadius="13" />
+                                        <Border Margin="0,0,1,1" BorderBrush="#B8FFFFFF" BorderThickness="2,2,0,0" CornerRadius="13" />
+                                        <Ellipse x:Name="StatusLightField" Width="82" Height="82" Fill="{TemplateBinding BorderBrush}" Opacity="0.43">
+                                            <Ellipse.Effect>
+                                                <BlurEffect Radius="5.5" />
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                        <Ellipse x:Name="MintWellLight" Width="81" Height="81" Stroke="#6874E7AD" StrokeThickness="3" Opacity="0">
+                                            <Ellipse.Effect>
+                                                <BlurEffect Radius="3.2" RenderingBias="Quality" />
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                        <Grid x:Name="AgentWellDetail">
+                                            <Ellipse x:Name="AgentWell" Width="76" Height="76" Fill="{TemplateBinding Background}" />
+                                            <Ellipse x:Name="MintWellReturn" Width="76" Height="76" Opacity="0">
+                                                <Ellipse.Fill>
+                                                    <RadialGradientBrush Center="0.46,0.4" GradientOrigin="0.46,0.4" RadiusX="0.54" RadiusY="0.57">
+                                                        <GradientStop Color="#00FAFFFC" Offset="0" />
+                                                        <GradientStop Color="#08C8FBDD" Offset="0.4" />
+                                                        <GradientStop Color="#2698EDC1" Offset="0.74" />
+                                                        <GradientStop Color="#4481E9B2" Offset="1" />
+                                                    </RadialGradientBrush>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                            <Ellipse x:Name="StatusWellWash" Width="76" Height="76" Fill="{TemplateBinding BorderBrush}" Opacity="0.40" />
+                                            <Ellipse x:Name="AgentWellHighlight" Width="76" Height="76" Fill="Transparent" Stroke="{StaticResource PaperRecessRingBrush}" StrokeThickness="1.6" />
+                                            <Ellipse x:Name="CurrentSessionRing" Width="82" Height="82" Stroke="#AA8F86B8" StrokeThickness="1.25" Opacity="0" IsHitTestVisible="False" />
+                                            <Grid x:Name="AgentGlyph" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6">
+                                                <Grid.Effect>
+                                                    <DropShadowEffect BlurRadius="4" ShadowDepth="0" Opacity="0.38" Color="#685FAE" />
+                                                </Grid.Effect>
+                                                <Ellipse Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="#FF685FAE" />
+                                            </Grid>
+                                            <Ellipse x:Name="CurrentSessionGlyph" Width="18" Height="18" Fill="{StaticResource CurrentSessionDotBrush}" Stroke="#28939A96" StrokeThickness="0.8" Opacity="0" IsHitTestVisible="False">
+                                                <Ellipse.Effect>
+                                                    <DropShadowEffect Color="{StaticResource CurrentSessionDotColor}" BlurRadius="4" ShadowDepth="0" Opacity="0.38" />
+                                                </Ellipse.Effect>
+                                            </Ellipse>
+                                        </Grid>
+                                    </Grid>
+                                    <Border.Effect>
+                                        <StaticResource ResourceKey="AgentKeyShadow" />
+                                    </Border.Effect>
+                                </Border>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="Tag" Value="CurrentNoLight">
+                                    <Setter TargetName="MintSeamLight" Property="Opacity" Value="{StaticResource MintPreviewIntensity}" />
+                                    <Setter TargetName="MintCapReturn" Property="Opacity" Value="{StaticResource MintPreviewIntensity}" />
+                                    <Setter TargetName="MintWellLight" Property="Opacity" Value="{StaticResource MintPreviewIntensity}" />
+                                    <Setter TargetName="MintWellReturn" Property="Opacity" Value="{StaticResource MintPreviewIntensity}" />
+                                    <Setter TargetName="CapInsetShadow" Property="Opacity" Value="0.25" />
+                                    <Setter TargetName="FarShadow" Property="Background" Value="{StaticResource AgentWhiteLightFarShadowBrush}" />
+                                    <Setter TargetName="Cap" Property="Effect" Value="{StaticResource AgentWhiteLightKeyShadow}" />
+                                    <Setter TargetName="AgentWellHighlight" Property="Stroke" Value="{StaticResource PaperWhiteLightRecessRingBrush}" />
+                                    <Setter TargetName="AgentGlyph" Property="Opacity" Value="{StaticResource OriginalCurrentDotOpacity}" />
+                                    <Setter TargetName="CurrentSessionGlyph" Property="Opacity" Value="{StaticResource MintCurrentDotOpacity}" />
+                                    <Setter TargetName="StatusCapWash" Property="Opacity" Value="0.18" />
+                                    <Setter TargetName="StatusLightField" Property="Opacity" Value="0.52" />
+                                    <Setter TargetName="StatusWellWash" Property="Opacity" Value="0.38" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="DialButton" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Ellipse Margin="3,9,3,0" Fill="#8B8E9DA3" />
+                                <Ellipse Margin="5,4,5,4" Stroke="#8AFFFFFF" StrokeThickness="1" Fill="#55DDE9EC" />
+                                <Ellipse x:Name="DialFace" Margin="3,0,3,7">
+                                    <Ellipse.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                            <GradientStop Color="#FFF4F9F9" Offset="0.38" />
+                                            <GradientStop Color="#FFE3EDF0" Offset="0.7" />
+                                            <GradientStop Color="#FFB4C2C8" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Ellipse.Fill>
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect BlurRadius="8" Direction="285" ShadowDepth="3" Opacity="0.3" />
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                                <Border x:Name="DialIndicator" Width="6" Height="30" Margin="0,9,0,0" Background="#FF6A7379" CornerRadius="3" HorizontalAlignment="Center" VerticalAlignment="Top" RenderTransformOrigin="0.5,1">
+                                    <Border.RenderTransform>
+                                        <RotateTransform Angle="-12" />
+                                    </Border.RenderTransform>
+                                </Border>
+                                <ContentPresenter />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="DialFace" Property="Stroke" Value="#99BDEFF2" />
+                                    <Setter TargetName="DialFace" Property="StrokeThickness" Value="2" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="DialFace" Property="Margin" Value="3,4,3,3" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="JoystickDirectionButton" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid Background="Transparent">
+                                <Grid x:Name="DirectionGlyph" Width="14" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Opacity="0.88">
+                                    <Path Data="{StaticResource JoystickChevronGeometry}" Stretch="Uniform" Stroke="#D8FFFFFF" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                                        <Path.RenderTransform>
+                                            <TranslateTransform Y="1" />
+                                        </Path.RenderTransform>
+                                    </Path>
+                                    <Path Data="{StaticResource JoystickChevronGeometry}" Stretch="Uniform" Stroke="#B347403B" StrokeThickness="1.65" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                </Grid>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="DirectionGlyph" Property="Opacity" Value="0.94" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="DirectionGlyph" Property="Margin" Value="0,1,0,-1" />
+                                    <Setter TargetName="DirectionGlyph" Property="Opacity" Value="1" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="PageDot" TargetType="{x:Type RadioButton}">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type RadioButton}">
+                            <Grid Background="Transparent">
+                                <Border x:Name="Dot" Width="7" Height="7" CornerRadius="4" Background="#55718592" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Dot" Property="Width" Value="20" />
+                                    <Setter TargetName="Dot" Property="Background" Value="#FF7185EA" />
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Dot" Property="Opacity" Value="0.65" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Grid.Resources>
+    <Canvas ClipToBounds="True">
+        <Grid x:Name="DesignSurface" Width="590" Height="610" Background="Transparent" Canvas.Left="-32" Canvas.Top="-44">
+            <Border x:Name="DeviceFrame" Margin="23" CornerRadius="66" BorderBrush="#D9FFFFFF" BorderThickness="2">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#E4FFFFFF" Offset="0" />
+                        <GradientStop Color="#D6F7FAF9" Offset="0.48" />
+                        <GradientStop Color="#C8E8F0EF" Offset="0.78" />
+                        <GradientStop Color="#B8C7D3D3" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.Effect>
+                    <DropShadowEffect Color="#526E7B80" BlurRadius="30" ShadowDepth="7" Direction="270" Opacity="0.29" />
+                </Border.Effect>
+                <Grid x:Name="CrystalLightClip" ClipToBounds="True">
+                    <Border x:Name="CrystalPrismRim" Margin="4,4,4,5" CornerRadius="61" BorderThickness="2" Opacity="0.94" IsHitTestVisible="False">
+                        <Border.BorderBrush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                <GradientStop Color="#B8DFF8F3" Offset="0.16" />
+                                <GradientStop Color="#76FFFFFF" Offset="0.46" />
+                                <GradientStop Color="#8BC6EEE5" Offset="0.78" />
+                                <GradientStop Color="#D6FFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.BorderBrush>
+                    </Border>
+                    <Border x:Name="CrystalDepthPlate" Margin="10" CornerRadius="56" BorderThickness="1" Background="#14748788" IsHitTestVisible="False">
+                        <Border.BorderBrush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#78FFFFFF" Offset="0" />
+                                <GradientStop Color="#5EACBDBB" Offset="0.58" />
+                                <GradientStop Color="#75859498" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.BorderBrush>
+                    </Border>
+                    <Border x:Name="PearlLightGuide" Margin="18" CornerRadius="50" BorderBrush="#A8FFFFFF" BorderThickness="1" IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#F4FFFFFF" Offset="0" />
+                                <GradientStop Color="#EEF8FAF8" Offset="0.5" />
+                                <GradientStop Color="#E9F1F5F2" Offset="0.82" />
+                                <GradientStop Color="#E3E1EAE8" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Border x:Name="HarnessThemeWash" Margin="18" CornerRadius="50" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="1">
+                        <Border.Background>
+                            <RadialGradientBrush Center="0.52,0.44" GradientOrigin="0.52,0.44" RadiusX="0.78" RadiusY="0.72">
+                                <GradientStop Color="#0047D9FF" Offset="0" />
+                                <GradientStop Color="#003A8DFF" Offset="0.62" />
+                                <GradientStop Color="#000D4EFF" Offset="1" />
+                            </RadialGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Border x:Name="CrystalLowerRefraction" Height="5" Margin="88,0,88,18" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" CornerRadius="3" Opacity="0.15" IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#0098E8D5" Offset="0" />
+                                <GradientStop Color="#A598E8D5" Offset="0.48" />
+                                <GradientStop Color="#0098E8D5" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <TextBlock x:Name="LeftSilkScreen" Text="CODEX  /  MICRO  /  CRYSTAL HID" FontSize="8" FontWeight="Bold" Foreground="#6A5A6368" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="39,0,0,0" IsHitTestVisible="False" Panel.ZIndex="2">
+                        <TextBlock.LayoutTransform>
+                            <RotateTransform Angle="-90" />
+                        </TextBlock.LayoutTransform>
+                    </TextBlock>
+                    <TextBlock x:Name="RightSilkScreen" Text="OPTICAL INPUT  /  PROJECT 2077" FontSize="8" FontWeight="SemiBold" Foreground="#6A5A6368" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,39,0" IsHitTestVisible="False" Panel.ZIndex="2">
+                        <TextBlock.LayoutTransform>
+                            <RotateTransform Angle="90" />
+                        </TextBlock.LayoutTransform>
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,28,0,0" Panel.ZIndex="35">
+                        <RadioButton x:Name="ControlPageButton" GroupName="KeypadPage" Style="{StaticResource PageDot}" IsChecked="True" Tag="0" />
+                        <RadioButton x:Name="MonitorPageButton" GroupName="KeypadPage" Style="{StaticResource PageDot}" Tag="1" />
+                    </StackPanel>
+                    <Grid x:Name="ControlGrid" Width="424" Height="424" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="106" />
+                            <ColumnDefinition Width="106" />
+                            <ColumnDefinition Width="106" />
+                            <ColumnDefinition Width="106" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="106" />
+                            <RowDefinition Height="106" />
+                            <RowDefinition Height="106" />
+                            <RowDefinition Height="106" />
+                        </Grid.RowDefinitions>
+                        <Border x:Name="AgentGlowWide0" Grid.Row="0" Grid.Column="1" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" Opacity="0.42">
+                            <Border.Background>
+                                <SolidColorBrush Color="#304FFE" Opacity="0.94" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowWide1" Grid.Row="0" Grid.Column="2" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" Opacity="0.42">
+                            <Border.Background>
+                                <SolidColorBrush Color="#00FF4C" Opacity="0.94" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowWide2" Grid.Row="1" Grid.Column="0" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" Opacity="0.96">
+                            <Border.Background>
+                                <SolidColorBrush Color="#FFFFFF" Opacity="1" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowWide3" Grid.Row="1" Grid.Column="1" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" Opacity="0">
+                            <Border.Background>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowWide4" Grid.Row="1" Grid.Column="2" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" Opacity="0">
+                            <Border.Background>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowWide5" Grid.Row="1" Grid.Column="3" Style="{StaticResource AgentWideHalo}" Panel.ZIndex="-10" Opacity="0">
+                            <Border.Background>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowNear0" Grid.Row="0" Grid.Column="1" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" Opacity="0.22">
+                            <Border.Background>
+                                <SolidColorBrush Color="#304FFE" Opacity="0.94" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowNear1" Grid.Row="0" Grid.Column="2" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" Opacity="0.22">
+                            <Border.Background>
+                                <SolidColorBrush Color="#00FF4C" Opacity="0.94" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowNear2" Grid.Row="1" Grid.Column="0" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" Opacity="0.68">
+                            <Border.Background>
+                                <SolidColorBrush Color="#FFFFFF" Opacity="1" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowNear3" Grid.Row="1" Grid.Column="1" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" Opacity="0">
+                            <Border.Background>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowNear4" Grid.Row="1" Grid.Column="2" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" Opacity="0">
+                            <Border.Background>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Border.Background>
+                        </Border>
+                        <Border x:Name="AgentGlowNear5" Grid.Row="1" Grid.Column="3" Style="{StaticResource AgentNearHalo}" Panel.ZIndex="-9" Opacity="0">
+                            <Border.Background>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Border.Background>
+                        </Border>
+                        <Button x:Name="DialButton" Grid.Row="0" Grid.Column="0" Width="88" Height="88" Margin="4" Style="{StaticResource DialButton}" />
+                        <Button x:Name="AgentKey0" Grid.Row="0" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="Running" Style="{StaticResource AgentKey}">
+                            <Button.BorderBrush>
+                                <SolidColorBrush Color="#304FFE" Opacity="0.94" />
+                            </Button.BorderBrush>
+                        </Button>
+                        <Button x:Name="AgentKey1" Grid.Row="0" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="Completed" Style="{StaticResource AgentKey}">
+                            <Button.BorderBrush>
+                                <SolidColorBrush Color="#00FF4C" Opacity="0.94" />
+                            </Button.BorderBrush>
+                        </Button>
+                        <Grid x:Name="JoystickSurface" Grid.Row="0" Grid.Column="3" Width="96" Height="96" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border x:Name="JoystickSeat" Margin="4" Background="Transparent" BorderThickness="0" CornerRadius="18">
+                                <Grid>
+                                    <Grid x:Name="JoystickCap" Width="67" Height="67" Background="Transparent" Cursor="SizeAll" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Grid.Effect>
+                                            <DropShadowEffect BlurRadius="5" Direction="270" ShadowDepth="3" Opacity="0.42" Color="#232624" />
+                                        </Grid.Effect>
+                                        <Grid.RenderTransform>
+                                            <TransformGroup>
+                                                <ScaleTransform x:Name="JoystickScale" CenterX="33.5" CenterY="33.5" />
+                                                <TranslateTransform x:Name="JoystickTranslate" />
+                                            </TransformGroup>
+                                        </Grid.RenderTransform>
+                                        <Ellipse Stroke="#CC000000" StrokeThickness="1">
+                                            <Ellipse.Fill>
+                                                <RadialGradientBrush Center="0.34,0.27" GradientOrigin="0.34,0.27" RadiusX="0.76" RadiusY="0.76">
+                                                    <GradientStop Color="#FF50524F" Offset="0" />
+                                                    <GradientStop Color="#FF363936" Offset="0.44" />
+                                                    <GradientStop Color="#FF222422" Offset="1" />
+                                                </RadialGradientBrush>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <Ellipse Margin="1" Fill="Transparent" Stroke="#1AFFFFFF" StrokeThickness="1" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                            <Button x:Name="JoystickUp" Width="24" Height="24" Margin="0,-6,0,0" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="3" Style="{StaticResource JoystickDirectionButton}" Tag="0.75|up" />
+                            <Button x:Name="JoystickLeft" Width="24" Height="24" Margin="-6,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Panel.ZIndex="3" Style="{StaticResource JoystickDirectionButton}" Tag="0.50|left" RenderTransformOrigin="0.5,0.5">
+                                <Button.RenderTransform>
+                                    <RotateTransform Angle="-90" />
+                                </Button.RenderTransform>
+                            </Button>
+                            <Button x:Name="JoystickRight" Width="24" Height="24" Margin="0,0,-6,0" HorizontalAlignment="Right" VerticalAlignment="Center" Panel.ZIndex="3" Style="{StaticResource JoystickDirectionButton}" Tag="0.00|right" RenderTransformOrigin="0.5,0.5">
+                                <Button.RenderTransform>
+                                    <RotateTransform Angle="90" />
+                                </Button.RenderTransform>
+                            </Button>
+                            <Button x:Name="JoystickDown" Width="24" Height="24" Margin="0,0,0,-6" HorizontalAlignment="Center" VerticalAlignment="Bottom" Panel.ZIndex="3" Style="{StaticResource JoystickDirectionButton}" Tag="0.25|down" RenderTransformOrigin="0.5,0.5">
+                                <Button.RenderTransform>
+                                    <RotateTransform Angle="180" />
+                                </Button.RenderTransform>
+                            </Button>
+                        </Grid>
+                        <Button x:Name="AgentKey2" Grid.Row="1" Grid.Column="0" Width="96" Height="96" Margin="5" Tag="CurrentNoLight" Style="{StaticResource AgentKey}">
+                            <Button.BorderBrush>
+                                <SolidColorBrush Color="#FFFFFF" Opacity="1" />
+                            </Button.BorderBrush>
+                        </Button>
+                        <Button x:Name="AgentKey3" Grid.Row="1" Grid.Column="1" Width="96" Height="96" Margin="5" Tag="Off" Style="{StaticResource AgentKey}">
+                            <Button.BorderBrush>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Button.BorderBrush>
+                        </Button>
+                        <Button x:Name="AgentKey4" Grid.Row="1" Grid.Column="2" Width="96" Height="96" Margin="5" Tag="Off" Style="{StaticResource AgentKey}">
+                            <Button.BorderBrush>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Button.BorderBrush>
+                        </Button>
+                        <Button x:Name="AgentKey5" Grid.Row="1" Grid.Column="3" Width="96" Height="96" Margin="5" Tag="Off" Style="{StaticResource AgentKey}">
+                            <Button.BorderBrush>
+                                <SolidColorBrush Color="#8DB5FF" Opacity="0" />
+                            </Button.BorderBrush>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Canvas>
+</Grid>

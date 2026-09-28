@@ -23,6 +23,9 @@ internal readonly record struct AgentLightingAppearance(
     internal bool UsesNeutralSelectionRing =>
         IsCurrentSession && (!IsActive || UsesWhiteFallback || Color == Colors.White);
 
+    internal bool UsesMintSelectionLight =>
+        IsCurrentSession && (!IsActive || UsesWhiteFallback);
+
     internal AgentLightingAppearance ForDisplay() => !IsCurrentSession
         ? this
         : this with

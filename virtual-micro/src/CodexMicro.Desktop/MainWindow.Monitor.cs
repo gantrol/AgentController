@@ -21,6 +21,10 @@ public partial class MicroSurfaceWindow
     {
         Interval = TimeSpan.FromSeconds(2),
     };
+    private readonly DispatcherTimer _pendingQuestionRefreshTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(250),
+    };
     private const int MonitorTaskCapacity = CodexTaskMonitorService.Capacity - 2;
     private readonly Grid _sharedPageControls = new()
     {
@@ -34,6 +38,8 @@ public partial class MicroSurfaceWindow
     private readonly Border[] _monitorNearGlows = new Border[MonitorTaskCapacity];
     private IReadOnlyList<CodexMonitoredTask>? _monitoredTasks;
     private CancellationTokenSource? _monitorRefreshCancellation;
+    private CancellationTokenSource? _pendingQuestionRefreshCancellation;
+    private long _monitorSnapshotRevision;
     private string? _monitorHarnessId;
     private bool _monitorPage;
     private bool _monitorAvailable;
@@ -95,6 +101,8 @@ public partial class MicroSurfaceWindow
         ((Panel)ControlGrid.Parent).Children.Add(_sharedPageControls);
 
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
+        _pendingQuestionRefreshTimer.Tick += PendingQuestionRefreshTimer_Tick;
+        _modelToggleService.QuestionAnswersAccepted += ModelToggleService_QuestionAnswersAccepted;
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
         RefreshPageHelp();
     }
@@ -112,6 +120,52 @@ public partial class MicroSurfaceWindow
     private void MonitorRefreshTimer_Tick(object? sender, EventArgs e) =>
         _ = RefreshMonitorAsync();
 
+    private void PendingQuestionRefreshTimer_Tick(object? sender, EventArgs e) =>
+        _ = RefreshPendingQuestionsAsync();
+
+    private void ModelToggleService_QuestionAnswersAccepted(
+        string threadId,
+        IReadOnlyList<string> replies)
+    {
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (_windowClosed)
+            {
+                return;
+            }
+
+            try
+            {
+                var snapshot = await _taskMonitor.ObserveAcceptedQuestionRepliesAsync(
+                    threadId, replies, CancellationToken.None);
+                if (!_windowClosed && IsVisible && IsCodexHarnessActive() &&
+                    _monitorAvailable && snapshot is not null)
+                {
+                    ApplyMonitorSnapshot(snapshot);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Codex question answer: {exception.Message}");
+            }
+        });
+    }
+
+    private void UpdatePendingQuestionRefresh()
+    {
+        if (!_windowClosed && IsLoaded && IsVisible && IsCodexHarnessActive() &&
+            _monitorRefreshTimer.IsEnabled && _monitorAvailable &&
+            _monitoredTasks?.Any(task => task.HasPendingQuestion) == true)
+        {
+            _pendingQuestionRefreshTimer.Start();
+        }
+        else
+        {
+            _pendingQuestionRefreshTimer.Stop();
+            _pendingQuestionRefreshCancellation?.Cancel();
+        }
+    }
+
     private void UpdateMonitorRefresh()
     {
         if (_windowClosed || !IsLoaded || !IsVisible ||
@@ -119,9 +173,11 @@ public partial class MicroSurfaceWindow
         {
             _monitorRefreshTimer.Stop();
             _monitorRefreshCancellation?.Cancel();
+            UpdatePendingQuestionRefresh();
             if (_windowClosed || !IsLoaded || !IsVisible)
             {
                 _pageMotionCancellation?.Cancel();
+                ResetTaskKeyMotion();
             }
             return;
         }
@@ -130,6 +186,7 @@ public partial class MicroSurfaceWindow
         if (_monitorHarnessId != harnessId)
         {
             _monitorRefreshCancellation?.Cancel();
+            _pendingQuestionRefreshCancellation?.Cancel();
             _monitorHarnessId = harnessId;
             _monitorAvailable = false;
             foreach (var key in _monitorKeys)
@@ -141,6 +198,7 @@ public partial class MicroSurfaceWindow
         RefreshPageHelp();
         RefreshMonitorPresentation();
         _monitorRefreshTimer.Start();
+        UpdatePendingQuestionRefresh();
         _ = RefreshMonitorAsync();
     }
 
@@ -175,31 +233,15 @@ public partial class MicroSurfaceWindow
                 return;
             }
 
-            _monitorAvailable = snapshot is not null;
-            if (snapshot is not null)
-            {
-                _monitoredTasks = snapshot.Tasks;
-                _latestAgentRoster = snapshot.AgentRoster;
-                foreach (var task in snapshot.Tasks)
-                {
-                    if (task.Status == ThreadStatus.CompleteUnread)
-                    {
-                        _manualUnreadThreads.ClearConfirmed(task.Id);
-                    }
-                }
-            }
-
-            ResolveCurrentAgentSlot();
-            RefreshAgentSlotPresentation();
+            ApplyMonitorSnapshot(snapshot);
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception exception)
         {
-            _monitorAvailable = false;
             Debug.WriteLine($"Codex task monitor: {exception.Message}");
-            RefreshAgentSlotPresentation();
+            ApplyMonitorSnapshot(null);
         }
         finally
         {
@@ -210,6 +252,74 @@ public partial class MicroSurfaceWindow
                 _ = RefreshMonitorAsync();
             }
         }
+    }
+
+    private async Task RefreshPendingQuestionsAsync()
+    {
+        if (_windowClosed || !IsLoaded || !IsVisible || !IsCodexHarnessActive() ||
+            !_monitorAvailable || !_pendingQuestionRefreshTimer.IsEnabled ||
+            _pendingQuestionRefreshCancellation is not null)
+        {
+            return;
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        _pendingQuestionRefreshCancellation = cancellation;
+        try
+        {
+            var snapshot = await _taskMonitor.ReadPendingQuestionsAsync(cancellation.Token);
+            if (!_windowClosed && !cancellation.IsCancellationRequested &&
+                IsVisible && IsCodexHarnessActive() && _monitorAvailable && snapshot is not null)
+            {
+                ApplyMonitorSnapshot(snapshot);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Codex question monitor: {exception.Message}");
+        }
+        finally
+        {
+            _pendingQuestionRefreshCancellation = null;
+        }
+    }
+
+    private void ApplyMonitorSnapshot(CodexTaskMonitorSnapshot? snapshot)
+    {
+        // The answer poll can finish after a newer full refresh (or vice versa).
+        if (snapshot is not null && snapshot.Revision < _monitorSnapshotRevision)
+        {
+            return;
+        }
+
+        var changed = _monitorAvailable != (snapshot is not null);
+        _monitorAvailable = snapshot is not null;
+        if (snapshot is not null)
+        {
+            changed |= !ReferenceEquals(_monitoredTasks, snapshot.Tasks) ||
+                !ReferenceEquals(_latestAgentRoster, snapshot.AgentRoster);
+            _monitorSnapshotRevision = snapshot.Revision;
+            _monitoredTasks = snapshot.Tasks;
+            _latestAgentRoster = snapshot.AgentRoster;
+            foreach (var task in snapshot.Tasks)
+            {
+                if (task.Status == ThreadStatus.CompleteUnread)
+                {
+                    _manualUnreadThreads.ClearConfirmed(task.Id);
+                }
+            }
+        }
+
+        var previousSlot = _currentAgentSlotId;
+        ResolveCurrentAgentSlot();
+        if (changed || previousSlot != _currentAgentSlotId)
+        {
+            RefreshAgentSlotPresentation();
+        }
+        UpdatePendingQuestionRefresh();
     }
 
     private void RefreshMonitorPresentation()
@@ -239,8 +349,8 @@ public partial class MicroSurfaceWindow
         // Restore row-major recency order when the pointer leaves the keys.
         // Never replace the identity of a hovered or captured key.
         var freezeAssignments = _pageMotionActive || _monitorOpening ||
-            _monitorKeys.Any(key => key.Tag is not null &&
-                (key.IsMouseOver || key.IsMouseCaptured));
+            (!_taskKeyMotionActive && _monitorKeys.Any(key => key.Tag is not null &&
+                (key.IsMouseOver || key.IsMouseCaptured)));
         for (var index = 0; index < _monitorKeys.Length; index++)
         {
             var key = _monitorKeys[index];
@@ -305,6 +415,7 @@ public partial class MicroSurfaceWindow
             AutomationProperties.SetName(key, task?.Title ?? $"{index + 1}");
             AutomationProperties.SetItemStatus(key, state);
         }
+        UpdateTaskKeyMotion(monitor: true);
     }
 
     private static MicroHarnessSessionStatus? ResolveMonitoredTaskStatus(ThreadStatus status) =>
@@ -409,7 +520,7 @@ public partial class MicroSurfaceWindow
         }
 
         e.Handled = true;
-        if (_monitorOpening || !_monitorAvailable)
+        if (_monitorOpening || !_monitorAvailable || _taskKeyMotionActive || _pageSwitching)
         {
             return;
         }
@@ -422,7 +533,8 @@ public partial class MicroSurfaceWindow
 
     private async void MonitorKey_Click(object sender, RoutedEventArgs e)
     {
-        if (_monitorOpening || sender is not Button { Tag: MonitorTask task } ||
+        if (_monitorOpening || _taskKeyMotionActive || _pageSwitching ||
+            sender is not Button { Tag: MonitorTask task } ||
             task.HarnessId != ActiveHarness().Id)
         {
             return;
@@ -473,9 +585,14 @@ public partial class MicroSurfaceWindow
 
     private void StopMonitorPage()
     {
+        _modelToggleService.QuestionAnswersAccepted -= ModelToggleService_QuestionAnswersAccepted;
         _pageMotionCancellation?.Cancel();
+        ResetTaskKeyMotion();
         _monitorRefreshTimer.Stop();
         _monitorRefreshTimer.Tick -= MonitorRefreshTimer_Tick;
         _monitorRefreshCancellation?.Cancel();
+        _pendingQuestionRefreshTimer.Stop();
+        _pendingQuestionRefreshTimer.Tick -= PendingQuestionRefreshTimer_Tick;
+        _pendingQuestionRefreshCancellation?.Cancel();
     }
 }

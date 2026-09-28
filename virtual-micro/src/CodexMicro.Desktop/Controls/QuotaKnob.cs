@@ -54,7 +54,9 @@ public sealed class QuotaKnob : Button
     private readonly TextBlock _modelVersion = new()
     {
         FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI"),
-        FontSize = 13,
+        FontSize = 16,
+        LineHeight = 18,
+        LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
         FontWeight = FontWeights.SemiBold,
         Foreground = new SolidColorBrush(Color.FromRgb(0xF7, 0xFA, 0xFF)),
         HorizontalAlignment = HorizontalAlignment.Center,
@@ -62,7 +64,10 @@ public sealed class QuotaKnob : Button
     private readonly TextBlock _modelFamily = new()
     {
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"),
-        FontSize = 11,
+        FontSize = 14,
+        FontWeight = FontWeights.SemiBold,
+        LineHeight = 16,
+        LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
         Foreground = new SolidColorBrush(Color.FromRgb(0xDD, 0xE7, 0xF2)),
         HorizontalAlignment = HorizontalAlignment.Center,
     };

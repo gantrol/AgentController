@@ -109,6 +109,7 @@ public partial class MicroSurfaceWindow
             _lastAgentTapKey = null;
 
             var frames = CapturePageKeyFrames(_monitorPage);
+            ResetTaskKeyMotion();
             FrameworkElement outgoing = _monitorPage ? MonitorGrid : ControlGrid;
             FrameworkElement incoming = next ? MonitorGrid : ControlGrid;
             _monitorPage = next;

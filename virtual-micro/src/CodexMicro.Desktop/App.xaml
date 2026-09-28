@@ -32,6 +32,14 @@
             <GradientStop Color="#8CFFFFFF" Offset="0.58" />
             <GradientStop Color="#CCFFFFFF" Offset="1" />
         </LinearGradientBrush>
+        <LinearGradientBrush x:Key="PaperWhiteLightRecessRingBrush"
+                             StartPoint="0,0"
+                             EndPoint="1,1">
+            <GradientStop Color="#0A747B77" Offset="0" />
+            <GradientStop Color="#05747B77" Offset="0.42" />
+            <GradientStop Color="#8CFFFFFF" Offset="0.58" />
+            <GradientStop Color="#CCFFFFFF" Offset="1" />
+        </LinearGradientBrush>
         <Geometry x:Key="JoystickChevronGeometry">M 1,7 L 6,2 L 11,7</Geometry>
 
         <Style TargetType="TextBlock">
@@ -227,6 +235,14 @@
                           ShadowDepth="2"
                           Opacity="0.20"
                           Color="#3A403D" />
+        <DropShadowEffect x:Key="AgentWhiteLightKeyShadow"
+                          BlurRadius="3"
+                          Direction="270"
+                          ShadowDepth="2"
+                          Opacity="0.05"
+                          Color="#3A403D" />
+        <SolidColorBrush x:Key="AgentFarShadowBrush" Color="#243A403D" />
+        <SolidColorBrush x:Key="AgentWhiteLightFarShadowBrush" Color="#093A403D" />
         <Style x:Key="AgentKey" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource PaperAgentKeyBaseBrush}" />
             <Setter Property="BorderBrush" Value="#008DB5FF" />
@@ -242,7 +258,7 @@
                                     Height="92"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    Background="#243A403D"
+                                    Background="{StaticResource AgentFarShadowBrush}"
                                     CornerRadius="14"
                                     Opacity="1">
                                 <Border.RenderTransform>
@@ -263,6 +279,20 @@
                                     Style="{StaticResource AgentNearHalo}"
                                     Background="{TemplateBinding BorderBrush}"
                                     Opacity="0" />
+                            <Border x:Name="MintSeamLight"
+                                    Width="98"
+                                    Height="98"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="15"
+                                    BorderBrush="#756EF0B0"
+                                    BorderThickness="1.6"
+                                    Opacity="0"
+                                    IsHitTestVisible="False">
+                                <Border.Effect>
+                                    <BlurEffect Radius="5" RenderingBias="Quality" />
+                                </Border.Effect>
+                            </Border>
                             <Border x:Name="Cap"
                                     Width="96"
                                     Height="96"
@@ -290,8 +320,26 @@
                                             <BlurEffect Radius="6.5" />
                                         </Border.Effect>
                                     </Border>
+                                    <Border x:Name="MintCapReturn"
+                                            Margin="2"
+                                            CornerRadius="11"
+                                            BorderThickness="1.5"
+                                            Opacity="0"
+                                            IsHitTestVisible="False">
+                                        <Border.BorderBrush>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#008CECB4" Offset="0" />
+                                                <GradientStop Color="#128CECB4" Offset="0.42" />
+                                                <GradientStop Color="#668CECB4" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.BorderBrush>
+                                        <Border.Effect>
+                                            <BlurEffect Radius="1.8" RenderingBias="Quality" />
+                                        </Border.Effect>
+                                    </Border>
                                     <!-- Paper inset dark: #4E545133 -2px -2px 3px inset -->
-                                    <Border Margin="1,1,0,0"
+                                    <Border x:Name="CapInsetShadow"
+                                            Margin="1,1,0,0"
                                             BorderBrush="#334E5451"
                                             BorderThickness="0,0,2,2"
                                             CornerRadius="13" />
@@ -316,11 +364,39 @@
                                             <BlurEffect Radius="5.5" />
                                         </Ellipse.Effect>
                                     </Ellipse>
+                                    <Ellipse x:Name="MintWellLight"
+                                             Width="81"
+                                             Height="81"
+                                             Stroke="#6874E7AD"
+                                             StrokeThickness="3"
+                                             Opacity="0"
+                                             IsHitTestVisible="False">
+                                        <Ellipse.Effect>
+                                            <BlurEffect Radius="3.2" RenderingBias="Quality" />
+                                        </Ellipse.Effect>
+                                    </Ellipse>
                                     <Grid x:Name="AgentWellDetail">
                                         <Ellipse x:Name="AgentWell"
                                                  Width="76"
                                                  Height="76"
                                                  Fill="{TemplateBinding Background}" />
+                                        <Ellipse x:Name="MintWellReturn"
+                                                 Width="76"
+                                                 Height="76"
+                                                 Opacity="0"
+                                                 IsHitTestVisible="False">
+                                            <Ellipse.Fill>
+                                                <RadialGradientBrush Center="0.46,0.4"
+                                                                     GradientOrigin="0.46,0.4"
+                                                                     RadiusX="0.54"
+                                                                     RadiusY="0.57">
+                                                    <GradientStop Color="#00FAFFFC" Offset="0" />
+                                                    <GradientStop Color="#08C8FBDD" Offset="0.4" />
+                                                    <GradientStop Color="#2698EDC1" Offset="0.74" />
+                                                    <GradientStop Color="#4481E9B2" Offset="1" />
+                                                </RadialGradientBrush>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
                                         <Ellipse x:Name="StatusWellWash"
                                                  Width="76"
                                                  Height="76"
@@ -357,22 +433,37 @@
                                                      VerticalAlignment="Center"
                                                      Fill="#FF685FAE" />
                                         </Grid>
+                                        <Ellipse x:Name="WhiteAgentGlyph"
+                                                 Width="18"
+                                                 Height="18"
+                                                 Fill="White"
+                                                 Stroke="#28939A96"
+                                                 StrokeThickness="0.8"
+                                                 Opacity="0"
+                                                 IsHitTestVisible="False">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect Color="White"
+                                                                  BlurRadius="4"
+                                                                  ShadowDepth="0"
+                                                                  Opacity="0.38" />
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                        <Ellipse x:Name="MintAgentGlyph"
+                                                 Width="18"
+                                                 Height="18"
+                                                 Fill="#B9EFD2"
+                                                 Stroke="#28939A96"
+                                                 StrokeThickness="0.8"
+                                                 Opacity="0"
+                                                 IsHitTestVisible="False">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect Color="#B9EFD2"
+                                                                  BlurRadius="4"
+                                                                  ShadowDepth="0"
+                                                                  Opacity="0.38" />
+                                            </Ellipse.Effect>
+                                        </Ellipse>
                                     </Grid>
-                                    <Ellipse x:Name="WhiteAgentGlyph"
-                                             Width="18"
-                                             Height="18"
-                                             Fill="White"
-                                             Stroke="#80939A96"
-                                             StrokeThickness="1.2"
-                                             Opacity="0"
-                                             IsHitTestVisible="False">
-                                        <Ellipse.Effect>
-                                            <DropShadowEffect Color="White"
-                                                              BlurRadius="4"
-                                                              ShadowDepth="0"
-                                                              Opacity="0.38" />
-                                        </Ellipse.Effect>
-                                    </Ellipse>
                                 </Grid>
                                 <Border.Effect>
                                     <StaticResource ResourceKey="AgentKeyShadow" />

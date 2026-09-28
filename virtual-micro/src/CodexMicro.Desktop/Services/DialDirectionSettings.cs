@@ -11,4 +11,11 @@ public sealed class DialDirectionSettings
 
     internal bool ToReportedClockwise(bool physicalClockwise) =>
         InvertDirection ? !physicalClockwise : physicalClockwise;
+
+    internal static int ToReasoningStep(bool reportedClockwise) =>
+        reportedClockwise ? -1 : 1;
+
+    internal int ToReasoningSteps(int physicalSteps) =>
+        physicalSteps == 0 ? 0 :
+            ToReasoningStep(ToReportedClockwise(physicalSteps > 0)) * Math.Abs(physicalSteps);
 }
