@@ -351,6 +351,8 @@ public partial class MicroSurfaceWindow
         var freezeAssignments = _pageMotionActive || _monitorOpening ||
             (!_taskKeyMotionActive && _monitorKeys.Any(key => key.Tag is not null &&
                 (key.IsMouseOver || key.IsMouseCaptured)));
+        var departures = freezeAssignments ? [] : CaptureDepartingTaskKeys(monitor: true,
+            tasks.Take(_monitorKeys.Length).Select(task => $"{task.HarnessId}:{task.Id}"));
         for (var index = 0; index < _monitorKeys.Length; index++)
         {
             var key = _monitorKeys[index];
@@ -415,7 +417,7 @@ public partial class MicroSurfaceWindow
             AutomationProperties.SetName(key, task?.Title ?? $"{index + 1}");
             AutomationProperties.SetItemStatus(key, state);
         }
-        UpdateTaskKeyMotion(monitor: true);
+        UpdateTaskKeyMotion(monitor: true, departures);
     }
 
     private static MicroHarnessSessionStatus? ResolveMonitoredTaskStatus(ThreadStatus status) =>

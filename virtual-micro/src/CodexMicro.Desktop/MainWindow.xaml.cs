@@ -1076,26 +1076,22 @@ public partial class MicroSurfaceWindow : Window
                     (ShouldActivateCodexForKey(key) || isComposerTextKey) &&
                     IsHarnessForeground(harness);
                 if (isAgentKey && focusAgentAfterTap &&
-                    _monitorAvailable &&
                     _latestAgentRoster?.Source == CodexRecentThreadsService.SourceName &&
-                    Guid.TryParse(selectedAgentThreadId, out var threadId) &&
-                    !string.Equals(
-                        selectedAgentThreadId,
-                        CurrentCodexAgentThreadId(),
-                        StringComparison.Ordinal))
+                    Guid.TryParse(selectedAgentThreadId, out var threadId))
                 {
+                    // The displayed roster owns this target, including the
+                    // current thread. Native AGxx slots can have another order.
                     agentFocusResolvedBeforeTap = true;
                     try
                     {
                         OpenCodexTask(threadId);
-                        return;
                     }
                     catch (Exception exception) when (exception is
                         Win32Exception or InvalidOperationException)
                     {
-                        agentFocusResolvedBeforeTap = false;
                         SetStatus(exception.Message);
                     }
+                    return;
                 }
 
                 if (isAgentKey && focusAgentAfterTap)
@@ -1208,6 +1204,17 @@ public partial class MicroSurfaceWindow : Window
                             ? MicroHarnessDispatchStage.Foreground
                             : MicroHarnessDispatchStage.Failed,
                         autoHide: true);
+                    return;
+                }
+
+                // In double-tap mode, the first tap on the current thread
+                // must also leave its selection intact.
+                if (isAgentKey && selectedAgentThreadId is not null &&
+                    string.Equals(
+                        selectedAgentThreadId,
+                        CurrentCodexAgentThreadId(),
+                        StringComparison.Ordinal))
+                {
                     return;
                 }
 
@@ -6765,10 +6772,12 @@ public partial class MicroSurfaceWindow : Window
         {
             return;
         }
+        var departures = CaptureDepartingTaskKeys(monitor: false,
+            PageKeyVisuals(monitor: false).Select(visual => visual.Identity));
         if (!IsCodexHarnessActive())
         {
             RefreshHarnessSessionPresentation();
-            UpdateTaskKeyMotion(monitor: false);
+            UpdateTaskKeyMotion(monitor: false, departures);
             return;
         }
 
@@ -6816,7 +6825,7 @@ public partial class MicroSurfaceWindow : Window
                     : "。") +
                 localMatch);
         }
-        UpdateTaskKeyMotion(monitor: false);
+        UpdateTaskKeyMotion(monitor: false, departures);
     }
 
     private void RefreshHarnessSessionPresentation()
@@ -7875,10 +7884,12 @@ public partial class MicroSurfaceWindow : Window
             _quotaRefreshFailed
                 ? english ? "Quota refresh unavailable" : "额度刷新暂不可用"
                 : string.Empty);
-        AutomationProperties.SetHelpText(SettingsKey,
+        ApplyHelp(SettingsKey, "Codex 剩余额度",
             _quotaSnapshot is { } snapshot
                 ? BuildQuotaHelpDetail(snapshot, english)
-                : string.Empty);
+                : _quotaRefreshFailed
+                    ? "额度暂不可用"
+                    : "正在读取 Codex 剩余额度。");
     }
 
     private static bool IsDeepSeekHarness(MicroHarnessDefinition harness) =>

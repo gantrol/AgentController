@@ -300,7 +300,6 @@ public sealed class QuotaKnob : Button
     private void UpdateContent()
     {
         Content = UseQuotaReadout ? _quotaContent : FallbackContent;
-        ToolTipService.SetIsEnabled(this, !UseQuotaReadout);
         UpdateReadout();
     }
 

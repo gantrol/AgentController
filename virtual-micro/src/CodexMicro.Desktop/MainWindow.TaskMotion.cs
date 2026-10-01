@@ -1,7 +1,9 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace CodexMicro.Desktop;
@@ -9,6 +11,8 @@ namespace CodexMicro.Desktop;
 public partial class MicroSurfaceWindow
 {
     private static readonly TimeSpan TaskKeyMotionDuration = TimeSpan.FromMilliseconds(240);
+    private static readonly TimeSpan TaskKeyDepartureDuration = TimeSpan.FromMilliseconds(360);
+    private sealed record TaskKeyDeparture(Rect Bounds, BitmapSource Snapshot);
     private PageKeyVisual[] _presentedTaskKeys = [];
     private string? _taskMotionHarnessId;
     private readonly List<Action> _taskMotionCleanups = [];
@@ -41,7 +45,60 @@ public partial class MicroSurfaceWindow
         }
     }
 
-    private void UpdateTaskKeyMotion(bool monitor)
+    private TaskKeyDeparture[] CaptureDepartingTaskKeys(bool monitor, IEnumerable<string> nextIdentities)
+    {
+        if (monitor != _monitorPage || _windowClosed || !IsLoaded || !IsVisible ||
+            WindowState == WindowState.Minimized || _pageSwitching ||
+            !SystemParameters.ClientAreaAnimation || _taskMotionHarnessId != ActiveHarness().Id)
+        {
+            return [];
+        }
+
+        var retained = nextIdentities.ToHashSet(StringComparer.Ordinal);
+        var departures = new List<TaskKeyDeparture>();
+        var grid = monitor ? MonitorGrid : ControlGrid;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        foreach (var visual in _presentedTaskKeys)
+        {
+            if (retained.Contains(visual.Identity) || !visual.Key.IsVisible ||
+                visual.Key.ActualWidth <= 0 || visual.Key.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            // Freeze the old key and its light before the slot is reused.
+            var bounds = visual.Key.TransformToAncestor(grid)
+                .TransformBounds(new Rect(visual.Key.RenderSize));
+            bounds.Inflate(40, 40);
+            var drawing = new DrawingVisual();
+            using (var context = drawing.RenderOpen())
+            {
+                foreach (var part in visual.Parts.OrderBy(Panel.GetZIndex))
+                {
+                    var source = new Rect(part.RenderSize);
+                    source.Inflate(40, 40);
+                    var target = part.TransformToAncestor(grid).TransformBounds(source);
+                    target.Offset(-bounds.X, -bounds.Y);
+                    context.DrawRectangle(new VisualBrush(part)
+                    {
+                        ViewboxUnits = BrushMappingMode.Absolute,
+                        Viewbox = source,
+                        Stretch = Stretch.Fill,
+                    }, null, target);
+                }
+            }
+            var snapshot = new RenderTargetBitmap(
+                (int)Math.Ceiling(bounds.Width * dpi.DpiScaleX),
+                (int)Math.Ceiling(bounds.Height * dpi.DpiScaleY),
+                dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            snapshot.Render(drawing);
+            snapshot.Freeze();
+            departures.Add(new(bounds, snapshot));
+        }
+        return departures.ToArray();
+    }
+
+    private void UpdateTaskKeyMotion(bool monitor, TaskKeyDeparture[] departures)
     {
         if (monitor != _monitorPage)
         {
@@ -104,7 +161,7 @@ public partial class MicroSurfaceWindow
         }
         FinishTaskKeyMotion();
 
-        if (frames.Count == 0 || next.Length == 0)
+        if (frames.Count == 0 && departures.Length == 0)
         {
             return;
         }
@@ -112,6 +169,10 @@ public partial class MicroSurfaceWindow
         _taskKeyMotionActive = true;
         try
         {
+            foreach (var departure in departures)
+            {
+                _taskMotionCleanups.Add(AnimateDepartingTaskKey(grid, departure));
+            }
             foreach (var visual in next)
             {
                 if (!visual.Key.IsVisible || visual.Key.ActualWidth <= 0)
@@ -160,12 +221,11 @@ public partial class MicroSurfaceWindow
             // needed to restore interaction or release animation clocks.
             if (_taskMotionTimer is null)
             {
-                _taskMotionTimer = new DispatcherTimer
-                {
-                    Interval = TaskKeyMotionDuration + TimeSpan.FromMilliseconds(40),
-                };
+                _taskMotionTimer = new DispatcherTimer();
                 _taskMotionTimer.Tick += (_, _) => FinishTaskKeyMotion();
             }
+            _taskMotionTimer.Interval = (departures.Length > 0
+                ? TaskKeyDepartureDuration : TaskKeyMotionDuration) + TimeSpan.FromMilliseconds(40);
             _taskMotionTimer.Start();
         }
         catch
@@ -173,6 +233,55 @@ public partial class MicroSurfaceWindow
             FinishTaskKeyMotion();
             throw;
         }
+    }
+
+    private static Action AnimateDepartingTaskKey(Grid grid, TaskKeyDeparture departure)
+    {
+        var scale = new ScaleTransform(1, 1);
+        var translation = new TranslateTransform();
+        var image = new Image
+        {
+            Source = departure.Snapshot,
+            Width = departure.Bounds.Width,
+            Height = departure.Bounds.Height,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(departure.Bounds.X, departure.Bounds.Y, 0, 0),
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = new TransformGroup { Children = { scale, translation } },
+        };
+        Grid.SetRowSpan(image, grid.RowDefinitions.Count);
+        Grid.SetColumnSpan(image, grid.ColumnDefinitions.Count);
+        Panel.SetZIndex(image, 20);
+        grid.Children.Add(image);
+
+        DoubleAnimation Motion(double from, double to) => new(from, to, TaskKeyDepartureDuration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion(1, 0.68));
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion(1, 0.68));
+        translation.BeginAnimation(TranslateTransform.YProperty, Motion(0, 32));
+        image.BeginAnimation(OpacityProperty, new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TaskKeyDepartureDuration,
+            KeyFrames =
+            {
+                new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90))),
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TaskKeyDepartureDuration),
+                    new QuadraticEase { EasingMode = EasingMode.EaseIn }),
+            },
+        });
+        return () =>
+        {
+            image.BeginAnimation(OpacityProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            translation.BeginAnimation(TranslateTransform.YProperty, null);
+            grid.Children.Remove(image);
+        };
     }
 
     private static Action AnimateTaskKeyPart(FrameworkElement element, Vector offset, Vector bend)
