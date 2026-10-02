@@ -16,6 +16,8 @@ internal sealed record CodexTaskMonitorSnapshot(
     IReadOnlyList<CodexMonitoredTask> Tasks,
     long Revision);
 
+internal sealed record CodexMonitoredQuestion(string ThreadId, CodexPendingQuestion Question);
+
 internal sealed class CodexTaskMonitorService
 {
     internal const int Capacity = 16;
@@ -85,6 +87,32 @@ internal sealed class CodexTaskMonitorService
     internal Task<CodexTaskMonitorSnapshot?> ReadPendingQuestionsAsync(
         CancellationToken cancellationToken) =>
         ReadPendingQuestionsAsync(cancellationToken, null, null);
+
+    internal IReadOnlyList<CodexMonitoredQuestion> GetPendingQuestions()
+    {
+        lock (_sync)
+        {
+            return _readers.SelectMany(pair => pair.Value.Reader
+                .GetPendingQuestions(pair.Value.Path)
+                .Select(question => new CodexMonitoredQuestion(pair.Key, question))).ToArray();
+        }
+    }
+
+    internal Task<CodexTaskMonitorSnapshot?> ObserveSkippedQuestionAsync(
+        CodexMonitoredQuestion question,
+        CancellationToken cancellationToken)
+    {
+        lock (_sync)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_readers.TryGetValue(question.ThreadId, out var reader))
+            {
+                reader.Reader.ObserveSkippedQuestion(reader.Path, question.Question);
+            }
+        }
+
+        return ReadPendingQuestionsAsync(cancellationToken);
+    }
 
     internal Task<CodexTaskMonitorSnapshot?> ObserveAcceptedQuestionRepliesAsync(
         string threadId,
