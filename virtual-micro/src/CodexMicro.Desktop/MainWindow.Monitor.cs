@@ -17,6 +17,7 @@ public partial class MicroSurfaceWindow
         bool HasPendingQuestion = false);
 
     private readonly CodexTaskMonitorService _taskMonitor = new();
+    private readonly CodexQuestionSkipObserver _questionSkipObserver = new();
     private readonly DispatcherTimer _monitorRefreshTimer = new()
     {
         Interval = TimeSpan.FromSeconds(2),
@@ -103,6 +104,7 @@ public partial class MicroSurfaceWindow
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
         _pendingQuestionRefreshTimer.Tick += PendingQuestionRefreshTimer_Tick;
         _modelToggleService.QuestionAnswersAccepted += ModelToggleService_QuestionAnswersAccepted;
+        _questionSkipObserver.QuestionSkipped += QuestionSkipObserver_QuestionSkipped;
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
         RefreshPageHelp();
     }
@@ -151,6 +153,30 @@ public partial class MicroSurfaceWindow
         });
     }
 
+    private void QuestionSkipObserver_QuestionSkipped(CodexMonitoredQuestion question)
+    {
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (_windowClosed)
+            {
+                return;
+            }
+            try
+            {
+                var snapshot = await _taskMonitor.ObserveSkippedQuestionAsync(question, CancellationToken.None);
+                if (!_windowClosed && IsVisible && IsCodexHarnessActive() &&
+                    _monitorAvailable && snapshot is not null)
+                {
+                    ApplyMonitorSnapshot(snapshot);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Codex question skip: {exception.Message}");
+            }
+        });
+    }
+
     private void UpdatePendingQuestionRefresh()
     {
         if (!_windowClosed && IsLoaded && IsVisible && IsCodexHarnessActive() &&
@@ -163,6 +189,7 @@ public partial class MicroSurfaceWindow
         {
             _pendingQuestionRefreshTimer.Stop();
             _pendingQuestionRefreshCancellation?.Cancel();
+            _ = _questionSkipObserver.RefreshAsync([]);
         }
     }
 
@@ -272,6 +299,10 @@ public partial class MicroSurfaceWindow
                 IsVisible && IsCodexHarnessActive() && _monitorAvailable && snapshot is not null)
             {
                 ApplyMonitorSnapshot(snapshot);
+                if (!cancellation.IsCancellationRequested)
+                {
+                    await _questionSkipObserver.RefreshAsync(_taskMonitor.GetPendingQuestions());
+                }
             }
         }
         catch (OperationCanceledException)
@@ -587,6 +618,8 @@ public partial class MicroSurfaceWindow
 
     private void StopMonitorPage()
     {
+        _questionSkipObserver.QuestionSkipped -= QuestionSkipObserver_QuestionSkipped;
+        _questionSkipObserver.Dispose();
         _modelToggleService.QuestionAnswersAccepted -= ModelToggleService_QuestionAnswersAccepted;
         _pageMotionCancellation?.Cancel();
         ResetTaskKeyMotion();
