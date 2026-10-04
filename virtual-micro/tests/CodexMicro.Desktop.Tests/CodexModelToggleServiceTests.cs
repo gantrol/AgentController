@@ -9,34 +9,34 @@ namespace CodexMicro.Desktop.Tests;
 public sealed class CodexModelToggleServiceTests
 {
     [Theory]
-    [InlineData("gpt-5.6-sol", 1)]
-    [InlineData("GPT-5.6-SOL", 1)]
-    [InlineData("gpt-5.6-terra", 2)]
-    [InlineData("gpt-5.6-luna", 3)]
-    [InlineData("gpt-5.5", 0)]
-    [InlineData("", 0)]
-    public void ParseModelIdRecognizesOnlyQuickToggleModels(
+    [InlineData("gpt-5.6-sol", "gpt-5.6-sol")]
+    [InlineData("GPT-5.6-SOL", "GPT-5.6-SOL")]
+    [InlineData("gpt-5.6-terra", "gpt-5.6-terra")]
+    [InlineData("gpt-5.6-luna", "gpt-5.6-luna")]
+    [InlineData("gpt-5.5", "gpt-5.5")]
+    [InlineData("", "")]
+    public void ParseModelIdPreservesCatalogIdentity(
         string value,
-        int expected)
+        string expected)
     {
         Assert.Equal(
-            (CodexQuickModel)expected,
-            CodexModelToggleService.ParseModelId(value));
+            expected,
+            CodexModelToggleService.ParseModelId(value).Id);
     }
 
     [Theory]
-    [InlineData(1, 3)]
-    [InlineData(3, 1)]
-    [InlineData(2, 1)]
-    [InlineData(0, 1)]
+    [InlineData("sol", "luna")]
+    [InlineData("luna", "sol")]
+    [InlineData("terra", "sol")]
+    [InlineData("", "sol")]
     public void ResolveToggleTargetTogglesConfiguredPairAndDefaultsToA(
-        int current,
-        int expected)
+        string current,
+        string expected)
     {
         Assert.Equal(
-            (CodexQuickModel)expected,
+            CodexQuickModel.FromSetting(expected),
             CodexModelToggleService.ResolveToggleTarget(
-                (CodexQuickModel)current,
+                CodexQuickModel.FromSetting(current),
                 CodexQuickModel.Sol,
                 CodexQuickModel.Luna));
     }
@@ -572,6 +572,7 @@ public sealed class CodexModelToggleServiceTests
                   "models": [
                     {
                       "slug": "gpt-5.6-sol",
+                      "visibility": "list",
                       "default_reasoning_level": "low",
                       "supported_reasoning_levels": [
                         { "effort": "low" },
@@ -580,6 +581,7 @@ public sealed class CodexModelToggleServiceTests
                     },
                     {
                       "slug": "gpt-5.6-luna",
+                      "visibility": "list",
                       "default_reasoning_level": "medium",
                       "supported_reasoning_levels": [
                         { "effort": "low" },
@@ -597,8 +599,7 @@ public sealed class CodexModelToggleServiceTests
                     "gpt-5.6-sol",
                     "ultra",
                     path));
-            Assert.Equal(
-                "medium",
+            Assert.Throws<CodexModelCapabilityException>(() =>
                 CodexModelToggleService.ResolveTargetEffort(
                     "gpt-5.6-luna",
                     "ultra",
@@ -623,7 +624,7 @@ public sealed class CodexModelToggleServiceTests
     }
 
     [Fact]
-    public void TargetEffortPreservesKnownSelectionWhenModelCacheIsUnavailable()
+    public void TargetEffortRejectsUnverifiedCapabilitiesWhenModelCacheIsUnavailable()
     {
         var missingPath = Path.Combine(
             Path.GetTempPath(),
@@ -635,20 +636,17 @@ public sealed class CodexModelToggleServiceTests
         {
             File.WriteAllText(malformedPath, "{ not valid json");
 
-            Assert.Equal(
-                "ultra",
+            Assert.Throws<CodexModelCapabilityException>(() =>
                 CodexModelToggleService.ResolveTargetEffort(
                     "gpt-5.6-sol",
                     "Ultra",
                     missingPath));
-            Assert.Equal(
-                "max",
+            Assert.Throws<CodexModelCapabilityException>(() =>
                 CodexModelToggleService.ResolveTargetEffort(
                     "gpt-5.6-luna",
                     "max",
                     malformedPath));
-            Assert.Equal(
-                "low",
+            Assert.Throws<CodexModelCapabilityException>(() =>
                 CodexModelToggleService.ResolveTargetEffort(
                     "gpt-5.6-sol",
                     "not-a-real-effort",
@@ -677,6 +675,7 @@ public sealed class CodexModelToggleServiceTests
                   "models": [
                     {
                       "slug": "gpt-5.6-sol",
+                      "visibility": "list",
                       "default_reasoning_level": "ultra",
                       "supported_reasoning_levels": [
                         { "effort": "low" },

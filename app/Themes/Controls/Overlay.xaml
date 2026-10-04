@@ -76,9 +76,9 @@
     <LinearGradientBrush x:Key="Brush.Overlay.ToastCrystalFace"
                          StartPoint="0,0"
                          EndPoint="0,1">
-        <GradientStop Offset="0" Color="#F9FFFFFF" />
-        <GradientStop Offset="0.62" Color="#F4FAFCFB" />
-        <GradientStop Offset="1" Color="#EDF0F8F5" />
+        <GradientStop Offset="0" Color="#FFFFFFFF" />
+        <GradientStop Offset="0.62" Color="#FFFAFCFB" />
+        <GradientStop Offset="1" Color="#FFF0F8F5" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="Brush.Overlay.ToastCrystalEdge"
@@ -100,10 +100,11 @@
     </LinearGradientBrush>
 
     <DropShadowEffect x:Key="Shadow.Overlay.ToastCrystal"
-                      BlurRadius="30"
-                      ShadowDepth="7"
-                      Opacity="0.15"
-                      Color="#3D514B" />
+                      BlurRadius="18"
+                      ShadowDepth="4"
+                      Direction="270"
+                      Opacity="0.12"
+                      Color="#1A1C1D" />
 
     <DropShadowEffect x:Key="Shadow.Overlay.CrystalPanel"
                       BlurRadius="30"

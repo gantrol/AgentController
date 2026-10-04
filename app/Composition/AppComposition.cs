@@ -1,3 +1,6 @@
+using CodexMicro.Codex;
+using AgentController.Adapters.Codex.Software;
+using AgentController.Adapters.Codex.Windows;
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
 using CodexController.Agents;
@@ -7,18 +10,21 @@ using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Services;
-using CodexController.Services.Micro;
 
 namespace CodexController.Composition;
 
 internal sealed class AppComposition : IDisposable
 {
+    private readonly CodexSoftwareClient _codexSoftware;
+    private readonly CodexUiController _codexUi;
     private bool _disposed;
 
-    private AppComposition(MainWindowDependencies desktop)
+    private AppComposition(MainWindowDependencies desktop, CodexSoftwareClient codexSoftware, CodexUiController codexUi)
     {
         Desktop = desktop ??
             throw new ArgumentNullException(nameof(desktop));
+        _codexSoftware = codexSoftware;
+        _codexUi = codexUi;
     }
 
     internal MainWindowDependencies Desktop { get; }
@@ -33,10 +39,10 @@ internal sealed class AppComposition : IDisposable
         var localization = new LocalizationService();
         var codexData = new CodexDataService(localization);
         var codexCommand = new CodexCommandService();
+        var codexSoftware = new CodexSoftwareClient();
+        var codexUi = new CodexUiController();
         var codexKeybindings = new CodexKeybindingService();
-        var microInput = new MicroInputService(
-            new VhfMicroReportTransport());
-        var codexComposer = new CodexComposerService(microInput);
+        var codexComposer = new CodexComposerService();
         var codexSidebar = new CodexSidebarService();
         var controllerProfiles = ControllerProfileRegistry.BuiltIn;
         var codexAgent = new CodexAgentTarget(
@@ -73,9 +79,10 @@ internal sealed class AppComposition : IDisposable
                     : null;
         IActionExecutor[] codexExecutors =
         [
+            new CodexUiActionExecutor(codexUi, codexActionBlockReason),
             new CodexForkThreadActionExecutor(
                 codexActionBlockReason,
-                microInput.TryForkThread,
+                tryMicro: null,
                 () => codexCommand.ExecuteShortcut(
                     currentSettings.ForkShortcut,
                     currentSettings),
@@ -101,51 +108,18 @@ internal sealed class AppComposition : IDisposable
                 codexActionBlockReason,
                 actionNames => codexComposer.InvokeComposerAction(
                     currentSettings,
-                    actionNames),
-                tryMicro: actionId => actionId ==
-                    ApprovalActionContract.AcceptId
-                        ? microInput.SendApprove()
-                        : actionId == ApprovalActionContract.DeclineId
-                            ? microInput.SendDecline()
-                            : MicroReportSendResult.NotSent),
+                    actionNames)),
             new CodexComposerActionExecutor(
-                () =>
-                {
-                    if (codexActionBlockReason() is null)
-                    {
-                        var micro = microInput.SendSubmit();
-                        if (micro is
-                            MicroReportSendResult.Accepted or
-                            MicroReportSendResult.OutcomeUnknown)
-                        {
-                            return new ComposerAutomationResult(
-                                true,
-                                Channel:
-                                    ComposerAutomationChannel.MicroHid);
-                        }
-
-                        if (micro == MicroReportSendResult.Rejected)
-                        {
-                            return new ComposerAutomationResult(
-                                false,
-                                AgentAutomationErrorCodes.Unexpected,
-                                "micro.input-rejected");
-                        }
-                    }
-
-                    return codexComposer.SubmitComposer(currentSettings);
-                },
+                submit: null,
                 () => codexComposer.ClearComposer(currentSettings),
                 () => codexComposer.StopCurrentTurn(currentSettings)),
-            new CodexCreateThreadActionExecutor(
-                actionNames => codexComposer.InvokeComposerAction(
-                    currentSettings,
-                    actionNames),
-                shortcut => codexCommand.ExecuteShortcut(
-                    shortcut,
-                    currentSettings)),
-            new CodexOpenThreadActionExecutor(
-                CodexCommandService.OpenThread),
+            new CodexThreadNavigationExecutor(
+                codexSoftware,
+                request => agentSelection.Active.Id != CodexAgentTarget.CodexId
+                    ? "agent.not-selected"
+                    : request.ActionId == OpenThreadActionContract.Id
+                        ? null
+                        : codexActionBlockReason()),
         ];
         var actionRouter = new ActionRouter(
             codexExecutors
@@ -181,7 +155,6 @@ internal sealed class AppComposition : IDisposable
             foregroundApplication,
             settings,
             currentSettings,
-            microInput,
             new XInputService(controllerProfiles),
             new ControllerInteractionCoordinator(),
             new ControllerHoldCoordinator(),
@@ -189,7 +162,7 @@ internal sealed class AppComposition : IDisposable
             actionDispatcher,
             threadNavigation,
             new CodexRateLimitResetService());
-        return new AppComposition(desktop);
+        return new AppComposition(desktop, codexSoftware, codexUi);
     }
 
     public void Dispose()
@@ -203,7 +176,8 @@ internal sealed class AppComposition : IDisposable
         Desktop.ControllerHolds.Dispose();
         Desktop.RadialLayers.Dispose();
         Desktop.ThreadNavigation.Dispose();
-        Desktop.MicroInput.Dispose();
+        _codexSoftware.Dispose();
+        _codexUi.Dispose();
         Desktop.BridgeEvents.Dispose();
         _disposed = true;
     }

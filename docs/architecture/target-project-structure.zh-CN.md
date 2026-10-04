@@ -3,6 +3,10 @@
 > Status: Architecture baseline
 > Migration style: Modular monolith, incremental strangler
 
+> 2026-10-03 平台更新：下文 Avalonia 共享桌面与 AgentController macOS Foundation Preview 路线已废弃；相关源码仅保留为历史参考。Micro 当前目标为独立 macOS 桌面版，见[平台方向](platform-direction.zh-CN.md)。
+
+> 2026-10-03：免驱软件版本的增量边界见 [AgentController 免驱版 UML](agent-controller-driverless-uml.zh-CN.md)。下文的 Broker / VHF 目录保留为原生 Micro 兼容路线，不是软件版本的必备运行依赖。
+
 ## 目的
 
 项目保持单仓库和单进程优先，但把业务契约、用例、Agent 适配器、平台能力与桌面 UI 分开。目录边界必须能由项目引用测试验证，而不是只依赖命名约定。

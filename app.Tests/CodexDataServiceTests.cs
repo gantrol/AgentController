@@ -12,6 +12,99 @@ public sealed class CodexDataServiceTests
     private readonly CodexDataService _service = new();
 
     [Fact]
+    public void NativeSectionsPreserveMixedProjectAndChatOrderWithoutRecencyFallback()
+    {
+        var fixture = CreateSnapshot();
+        var snapshot = new CodexSnapshot
+        {
+            Threads = fixture.Snapshot.Threads,
+            PinnedThreads = fixture.Snapshot.PinnedThreads,
+            Projects = fixture.Snapshot.Projects,
+            ProjectlessThreads = fixture.Snapshot.ProjectlessThreads,
+            SidebarLayout = new([
+                new("custom:work", "Work", [fixture.RegularProject.Path, fixture.ProjectlessTask.Id]),
+                new("custom:other", "Other", [])],
+                ["custom:other", "custom:work"],
+                [fixture.PinnedProject.Path, fixture.PinnedRegularProjectTask.Id, fixture.PinnedPinnedProjectTask.Id],
+                [], [], false, true),
+        };
+        var roots = _service.BuildUnifiedEntries(snapshot);
+        Assert.Equal(fixture.PinnedProject.Path, roots[0].Id);
+        Assert.Equal([fixture.RegularProject.Path, fixture.ProjectlessTask.Id],
+            roots.Where(entry => entry.SectionId == "custom:work").Select(entry => entry.Id));
+        Assert.Single(roots, entry => entry.Id == fixture.RegularProject.Path);
+        Assert.Equal("Work", roots.First(entry => entry.SectionId == "custom:work").SectionHeader);
+        var tasks = SidebarTaskOrder.Flatten(roots, path =>
+            _service.BuildEntries(snapshot, SidebarScope.ProjectTasks, path));
+        Assert.Equal([fixture.PinnedPinnedProjectTask.Id, fixture.RegularPinnedProjectTask.Id,
+            fixture.PinnedRegularProjectTask.Id, fixture.RegularRegularProjectTask.Id, fixture.ProjectlessTask.Id],
+            tasks.Select(entry => entry.ThreadId));
+        Assert.Equal("custom:work", SidebarTaskOrder.NextSection(roots, roots[0].Id)?.SectionId);
+        Assert.Equal("custom:work", SidebarTaskOrder.NextSection(roots, roots[1].Id)?.SectionId);
+    }
+
+    [Fact]
+    public void NativeSectionReaderUsesActiveAccountAndOnlyResolvableLocalItems()
+    {
+        const string threadId = "01a101ab-171d-7c40-bf60-f4e5a05d98e1";
+        using var document = JsonDocument.Parse("""
+            {"electron-persisted-atom-state":{
+              "flat-project-sidebar-preferences-v1":{"chatSortMode":"updated_at","projectSortMode":"manual","manualSortVersion":1},
+              "sidebar-custom-sections-v3":{
+                "active":{"sections":[{"id":"s","name":"Work","itemKeys":[
+                  "codex:project:p", "codex:thread:local:01a101ab-171d-7c40-bf60-f4e5a05d98e1",
+                  "codex:project:missing", "chatgpt:project:foreign", "codex:thread:remote:01a101ab-171d-7c40-bf60-f4e5a05d98e1"]}],
+                  "sectionOrder":["chats","custom:s","pinned","threads"]},
+                "other":{"sections":[{"id":"other","name":"Other","itemKeys":[]}]}}
+            }}
+            """);
+        var projects = new Dictionary<string, string> { ["p"] = @"D:\work" };
+        var layout = CodexSidebarLayoutReader.Read(document.RootElement, projects, "active")!;
+        Assert.Equal([@"D:\work", threadId], Assert.Single(layout.Sections).ItemIds);
+        Assert.Equal(["chats", "custom:s", "pinned", "threads"], layout.SectionOrder);
+        Assert.False(layout.ManualChatOrder);
+        Assert.True(layout.ManualProjectThreadOrder);
+        Assert.Empty(CodexSidebarLayoutReader.Read(document.RootElement, projects, "signed-out")!.Sections);
+        Assert.Empty(CodexSidebarLayoutReader.Read(document.RootElement, projects, null)!.Sections);
+    }
+
+    [Fact]
+    public void NativeSectionRefreshFollowsReorderingAndRetainsSelectedIdentity()
+    {
+        var first = new SidebarEntry("first", "First", "", SidebarLayer.Projects,
+            SectionId: "custom:a", SectionName: "A");
+        var second = new SidebarEntry("second", "Second", "", SidebarLayer.Tasks,
+            NavigationScope: SidebarScope.ProjectlessTasks, SectionId: "custom:b", SectionName: "B");
+        var state = new SidebarNavigationState();
+        state.Synchronize([first, second], first.Id);
+        state.Synchronize([second, first with { SectionName = "Renamed" }], null);
+        Assert.Equal([second.Id, first.Id], state.FrozenEntries.Select(entry => entry.Id));
+        Assert.Equal(first.Id, state.SelectedEntry(state.FrozenEntries)!.Id);
+        var menu = SidebarNavigationMenuProjector.Project(state.FrozenEntries, first.Id, scope => scope.ToString());
+        Assert.Equal(["B", "Renamed"], menu.Root.Sections.Select(section => section.Title));
+    }
+
+    [Fact]
+    public void ModernSidebarExcludesRetiredWorkspaceRootsAndNormalizesLegacyManualSort()
+    {
+        var directory = Directory.CreateTempSubdirectory("agent-controller-layout-");
+        try
+        {
+            File.WriteAllText(Path.Combine(directory.FullName, ".codex-global-state.json"), """
+                {"local-projects":{"p":{"rootPaths":["D:/current"],"name":"Current"}},
+                 "electron-saved-workspace-roots":["D:/retired"],
+                 "electron-persisted-atom-state":{
+                   "flat-project-sidebar-preferences-v1":{"projectSortMode":"manual","chatSortMode":"manual"}}}
+                """);
+            var snapshot = CreateServiceForCodexHome(directory.FullName).LoadSnapshot();
+            Assert.Equal("D:/current", Assert.Single(snapshot.Projects).Path);
+            Assert.False(snapshot.SidebarLayout!.ManualProjectThreadOrder);
+            Assert.False(snapshot.SidebarLayout.ManualChatOrder);
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    [Fact]
     public void BuildEntries_ProjectsEachRootDomainWithoutOverlap()
     {
         var fixture = CreateSnapshot();

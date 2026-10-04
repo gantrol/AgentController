@@ -2,6 +2,8 @@
 
 本目录按“大任务”组织未来工作。数字前缀表示建议阅读和实施顺序，不代表所有任务必须串行完成。
 
+2026-10-03 平台更新：AgentController 的 Avalonia Foundation Preview 已废弃；Micro 当前目标为 macOS 桌面版，iOS 仅保留历史原型。见[平台方向](../docs/architecture/platform-direction.zh-CN.md)。
+
 ## 工作原则
 
 - 产品定位是“任意控制器驱动的 Agent 控制面”，不是只复制某一款硬件。
@@ -21,8 +23,8 @@
 | 02 | [Codex App Server 集成](02-codex-app-server.md) | Planned | 01 的 Action/State 契约 |
 | 03 | [Codex Micro 兼容层](03-codex-micro-compatibility.md) | Accepted / Planned | 01、02；身份与驱动发行 Gate |
 | 04 | [自定义按键与设备 Profile](04-custom-bindings-and-device-profiles.md) | Planned | 01 的输入和 Action 契约 |
-| 05 | [桌面 UI/UX 与 Avalonia](05-desktop-ui-ux-and-avalonia.md) | In Progress | 01、04 |
-| 06 | [macOS 平台](06-macos-platform.md) | In Progress / Foundation Preview | 01、02、05 |
+| 05 | [桌面 UI/UX](05-desktop-ui-ux-and-avalonia.md) | In Progress / Windows WPF | 01、04 |
+| 06 | [旧 macOS 平台预览](06-macos-platform.md) | Retired | 历史记录 |
 | 07 | [安全、发行与商业化](07-security-packaging-and-commercialization.md) | Planned | 全局 |
 | 08 | [测试、诊断与发布工程](08-testing-observability-and-release.md) | Planned | 全局 |
 | 09 | [渐进迁移与兼容策略](09-migration-and-compatibility.md) | In Progress | 01–08 |
@@ -45,8 +47,8 @@
 
 ### Phase C：重做产品体验
 
-- 按 05 的流程先完成信息架构、原型和设计系统，再实施 Avalonia。
-- Windows 新客户端达到功能等价后，才进入 06 的 macOS 垂直切片。
+- 按 05 改善 Windows WPF 的信息架构、图标和交互。
+- 06 的旧预览路线已废弃；Micro macOS 在独立产品中推进。
 
 ### Phase D：发行与可持续维护
 

@@ -1,0 +1,39 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Geometry x:Key="Icon.Configuration">M 3,5 H 5 M 9,5 H 21 M 3,12 H 15 M 19,12 H 21 M 3,19 H 5 M 9,19 H 21 M 9,5 A 2,2 0 1 1 5,5 A 2,2 0 1 1 9,5 M 19,12 A 2,2 0 1 1 15,12 A 2,2 0 1 1 19,12 M 9,19 A 2,2 0 1 1 5,19 A 2,2 0 1 1 9,19</Geometry>
+    <Geometry x:Key="Icon.Settings">M 10.007,4.562 L 10.436,2.123 L 13.564,2.123 L 13.993,4.562 L 15.850,5.332 L 17.878,3.910 L 20.090,6.122 L 18.668,8.150 L 19.438,10.007 L 21.877,10.436 L 21.877,13.564 L 19.438,13.993 L 18.668,15.850 L 20.090,17.878 L 17.878,20.090 L 15.850,18.668 L 13.993,19.438 L 13.564,21.877 L 10.436,21.877 L 10.007,19.438 L 8.150,18.668 L 6.122,20.090 L 3.910,17.878 L 5.332,15.850 L 4.562,13.993 L 2.123,13.564 L 2.123,10.436 L 4.562,10.007 L 5.332,8.150 L 3.910,6.122 L 6.122,3.910 L 8.150,5.332 Z M 15.25,12 A 3.25,3.25 0 1 1 8.75,12 A 3.25,3.25 0 1 1 15.25,12</Geometry>
+    <Geometry x:Key="Icon.Help">M 12,3 A 9,9 0 1 1 12,21 A 9,9 0 1 1 12,3 M 9.5,9 A 2.5,2.5 0 0 1 14.5,9 C 14.5,11 12,11 12,13 M 12,16 L 12,16.2</Geometry>
+    <Geometry x:Key="Icon.Info">M 12,3 A 9,9 0 1 1 12,21 A 9,9 0 1 1 12,3 M 12,11 V 16 M 12,8 V 8.2</Geometry>
+    <Geometry x:Key="Icon.Reset">M 4,10 A 8,8 0 1 1 4,15 M 4,4 V 10 H 10</Geometry>
+    <Geometry x:Key="Icon.External">M 14,3 H 21 V 10 M 21,3 L 10,14 M 10,4 H 4 V 20 H 20 V 14</Geometry>
+    <Geometry x:Key="Icon.Controller">M 8,4 C 5,4 4,6 3.5,8.5 L 2,16 C 1.4,19 3.4,21 5.5,18.5 L 8,15.5 H 16 L 18.5,18.5 C 20.6,21 22.6,19 22,16 L 20.5,8.5 C 20,6 19,4 16,4 L 14.5,5.5 H 9.5 Z M 7,10 C 7,6.7 9.5,6.7 12,10 C 14.5,13.3 17,13.3 17,10 C 17,6.7 14.5,6.7 12,10 C 9.5,13.3 7,13.3 7,10 Z</Geometry>
+
+    <Geometry x:Key="Icon.Window.Minimize">M 7,12 H 17</Geometry>
+    <Geometry x:Key="Icon.Window.Maximize">M 7,7 H 17 V 17 H 7 Z</Geometry>
+    <Geometry x:Key="Icon.Window.Restore">M 9,7 V 5 H 19 V 15 H 17 M 5,9 H 15 V 19 H 5 Z</Geometry>
+    <Geometry x:Key="Icon.Window.Close">M 7,7 L 17,17 M 17,7 L 7,17</Geometry>
+    <Geometry x:Key="Icon.ArrowLeft">M 19,12 H 5 M 11,6 L 5,12 L 11,18</Geometry>
+    <Geometry x:Key="Icon.ArrowRight">M 5,12 H 19 M 13,6 L 19,12 L 13,18</Geometry>
+
+    <Style x:Key="Icon" TargetType="ContentControl">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContentControl">
+                    <Viewbox Stretch="Uniform">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="{TemplateBinding Content}" Stroke="{TemplateBinding Foreground}"
+                                  StrokeThickness="1.75" StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -1,12 +1,12 @@
-# 05 — 桌面 UI/UX 与 Avalonia
+# 05 — 桌面 UI/UX
 
-> Status: In Progress — Foundation Preview shell
+> Status: In Progress — Windows WPF；Avalonia Foundation Preview 已废弃
 > Priority: P1
 > Depends on: 01-core-architecture, 04-custom-bindings-and-device-profiles
 
 ## 目标
 
-采用正式的产品设计流程重做桌面体验，并以 Avalonia 共享 Windows/macOS UI，同时保留平台原生菜单、托盘、权限和窗口行为。
+继续改善 Windows WPF 的桌面体验。Avalonia 共享桌面与 Foundation Preview 路线已废弃；下文涉及 Avalonia / macOS shell 的条目仅保留为历史记录，不再执行。Micro 的 macOS 方向见[平台方向](../docs/architecture/platform-direction.zh-CN.md)。
 
 ## 信息架构
 

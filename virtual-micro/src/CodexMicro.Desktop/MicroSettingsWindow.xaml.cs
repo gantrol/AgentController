@@ -31,6 +31,7 @@ public partial class MicroSettingsWindow : Window
     private readonly MicroHarnessRegistry _harnessRegistry;
     private readonly MicroVoiceInputService _voiceInput;
     private readonly bool _ownsVoiceInput;
+    private readonly bool _coreOnly;
     private readonly Func<Task>? _openOfficialSettings;
     private readonly Func<Task>? _reconnect;
     private readonly Func<bool> _isConnected;
@@ -52,8 +53,10 @@ public partial class MicroSettingsWindow : Window
         Func<Task>? openOfficialSettings = null,
         Func<Task>? reconnect = null,
         Func<bool>? isConnected = null,
-        Func<Task>? codexConfigChanged = null)
+        Func<Task>? codexConfigChanged = null,
+        bool coreOnly = false)
     {
+        _coreOnly = coreOnly;
         _localization = localization ??
             throw new ArgumentNullException(nameof(localization));
         _profileSettings = profileSettings ??
@@ -71,6 +74,7 @@ public partial class MicroSettingsWindow : Window
         _codexConfigChanged = codexConfigChanged;
 
         InitializeComponent();
+        Loaded += (_, _) => MicroWindowLayout.FitDialog(this);
         LiveMicroPreviewBrush.Visual = previewVisual;
         _localization.LanguageChanged += Localization_LanguageChanged;
         _profileSettings.Changed += ProfileSettings_Changed;
@@ -105,6 +109,8 @@ public partial class MicroSettingsWindow : Window
         _syncing = true;
         try
         {
+            KeypadSizeSlider.Value = profile.WindowScale * 100;
+            KeypadSizeValue.Text = $"{profile.WindowScale:P0}";
             var models = _profileSettings.GetModels()
                 .Select(model => new ModelChoice(CodexQuickModel.FromId(model.Id), model.Label))
                 .ToArray();
@@ -220,6 +226,7 @@ public partial class MicroSettingsWindow : Window
                 ? "Codex Micro · Software settings"
                 : "Codex Micro · 软件设置"
             : $"{harness.DisplayName} · Micro settings";
+        KeypadSizeTitle.Text = english ? "Size" : "大小";
         WindowTitleText.Text = isCodex
             ? english ? "Micro software settings" : "Micro 软件设置"
             : $"{harness.DisplayName} · Micro";
@@ -473,6 +480,18 @@ public partial class MicroSettingsWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         ReconnectButton.Visibility = OpenOfficialSettingsButton.Visibility;
+        if (_coreOnly)
+        {
+            HarnessOptionRow.Visibility = Visibility.Collapsed;
+            HarnessManagementHeadingText.Visibility = Visibility.Collapsed;
+            HarnessManagementCard.Visibility = Visibility.Collapsed;
+            HarnessAdapterHeadingText.Visibility = Visibility.Collapsed;
+            HarnessAdapterCard.Visibility = Visibility.Collapsed;
+            MicrophoneOptionRow.Visibility = Visibility.Collapsed;
+            AutoConfirmUltraRow.Visibility = Visibility.Collapsed;
+            AutoConfirmUltraSeparator.Visibility = Visibility.Collapsed;
+            OpenOfficialSettingsButton.Visibility = Visibility.Collapsed;
+        }
     }
 
     private static void SetChoices(
@@ -590,6 +609,11 @@ public partial class MicroSettingsWindow : Window
 
     internal void FocusHarnessOptions()
     {
+        if (_coreOnly)
+        {
+            FocusActiveAgentSettings();
+            return;
+        }
         Show();
         Activate();
         var harness = _harnessRegistry.Resolve(
@@ -660,6 +684,7 @@ public partial class MicroSettingsWindow : Window
 
     internal void FocusHarnessVoiceSettings()
     {
+        if (_coreOnly) return;
         Show();
         Activate();
         HarnessManagementCard.BringIntoView();
@@ -675,6 +700,7 @@ public partial class MicroSettingsWindow : Window
 
     private void OpenVoiceSettingsWindow()
     {
+        if (_coreOnly) return;
         if (_voiceSettingsWindow is not null)
         {
             if (_voiceSettingsWindow.WindowState == WindowState.Minimized)
@@ -727,7 +753,7 @@ public partial class MicroSettingsWindow : Window
             connected
                 ? Color.FromRgb(0x79, 0xA5, 0xFF)
                 : Color.FromRgb(0xD2, 0xB8, 0x72));
-        ConnectionStatusText.Text = connected
+        ConnectionStatusText.Text = _coreOnly ? "Codex Plugin" : connected
             ? _localization.IsEnglish
                 ? "Virtual HID connected"
                 : "虚拟 HID 已连接"
@@ -1012,7 +1038,8 @@ public partial class MicroSettingsWindow : Window
                     _layoutObserver.Current.GetSlot(slotId),
                     _localization,
                     _configWriter,
-                    _layoutObserver)
+                    _layoutObserver,
+                    softwareProfile: _coreOnly ? _profileSettings : null)
                 : new KeycapEditorWindow(
                     slotId,
                     harness.Id,
@@ -1083,6 +1110,7 @@ public partial class MicroSettingsWindow : Window
         if (harness.Id == "codex")
         {
             SaveLayoutChange(_configWriter.ResetLayout);
+            if (_lastConfigSaveSucceeded) _profileSettings.ResetKeycapIcons();
         }
         else
         {
@@ -1231,11 +1259,17 @@ public partial class MicroSettingsWindow : Window
         object sender,
         MouseButtonEventArgs e)
     {
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            DragMove();
-        }
+        MicroWindowLayout.DragTitle(this, e);
     }
+
+    private void KeypadSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncing || KeypadSizeValue is null) return;
+        KeypadSizeValue.Text = $"{e.NewValue / 100:P0}";
+        _profileSettings.SetWindowScale(e.NewValue / 100);
+    }
+
+    private void ResetSizeButton_Click(object sender, RoutedEventArgs e) => _profileSettings.SetWindowScale(1);
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {

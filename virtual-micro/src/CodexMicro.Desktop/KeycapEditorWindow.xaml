@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:CodexMicro.Desktop.Controls"
         Title="Edit keycap"
-        Width="940"
-        Height="820"
+        Width="780"
+        Height="700"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -50,8 +50,8 @@
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style x:Key="KeycapItem" TargetType="ListBoxItem">
-            <Setter Property="Height" Value="128" />
-            <Setter Property="Margin" Value="7" />
+            <Setter Property="Height" Value="88" />
+            <Setter Property="Margin" Value="5" />
             <Setter Property="Padding" Value="8" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
@@ -104,26 +104,26 @@
             </Border.Effect>
             <Grid Margin="28,24,28,22">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="78" />
-                    <RowDefinition Height="64" />
+                    <RowDefinition Height="60" />
+                    <RowDefinition Height="58" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="92" />
+                    <RowDefinition Height="72" />
                     <RowDefinition Height="62" />
                 </Grid.RowDefinitions>
 
-                <Grid MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                     <StackPanel VerticalAlignment="Top">
                         <TextBlock x:Name="EditorTitleText"
                                    FontFamily="Segoe UI Variable Display, Segoe UI"
-                                   FontSize="28"
+                                   FontSize="22"
                                    FontWeight="SemiBold"
                                    Foreground="#FF202224"
                                    Text="Edit keycap" />
                         <TextBlock x:Name="EditorSubtitleText"
-                                   Margin="0,8,0,0"
-                                   FontSize="16"
+                                   Margin="0,4,0,0"
+                                   FontSize="12"
                                    Foreground="{StaticResource EditorMuted}"
-                                   Text="Choose what appears on ACT07" />
+                                   Text="ACT07" />
                     </StackPanel>
                     <Button Width="38"
                             Height="38"
@@ -195,15 +195,15 @@
                             <StackPanel HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         ToolTip="{Binding Label}">
-                                <controls:KeycapIcon Width="26"
-                                                     Height="26"
+                                <controls:KeycapIcon Width="30"
+                                                     Height="30"
                                                      HorizontalAlignment="Center"
                                                      KeycapId="{Binding IconId}"
                                                      IconBrush="#FF202224" />
-                                <TextBlock Margin="0,11,0,0"
+                                <TextBlock Margin="0,8,0,0"
                                            HorizontalAlignment="Center"
                                            FontFamily="Cascadia Mono, Consolas"
-                                           FontSize="13"
+                                           FontSize="11"
                                            Foreground="#FF17191B"
                                            Text="{Binding DisplayText}"
                                            TextAlignment="Center"
@@ -215,23 +215,24 @@
 
                 <Border Grid.Row="3"
                         Margin="0,4,0,0"
-                        Padding="20,14"
+                        Padding="14,10"
                         Background="#FFFFFFFF"
                         BorderBrush="{StaticResource EditorLine}"
                         BorderThickness="1"
                         CornerRadius="16">
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock x:Name="AssignedTitleText"
                                        FontSize="15"
                                        FontWeight="SemiBold"
                                        Foreground="#FF24272A"
-                                       Text="Assigned shortcut or skill" />
+                                       Text="Action" />
                             <TextBlock x:Name="AssignedDetailText"
+                                       Visibility="Collapsed"
                                        Margin="0,5,0,0"
                                        FontSize="12.5"
                                        Foreground="{StaticResource EditorMuted}"
@@ -239,14 +240,35 @@
                         </StackPanel>
                         <ComboBox x:Name="ActionCombo"
                                   Grid.Column="1"
-                                  Width="310"
                                   Height="44"
                                   Margin="24,0,0,0"
                                   Padding="12,0"
                                   VerticalContentAlignment="Center"
                                   Background="#FFFAF9F7"
                                   BorderBrush="{StaticResource EditorLine}"
-                                  FontSize="13" />
+                                  MaxDropDownHeight="330"
+                                  FontSize="13">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+                                    <Setter Property="Padding" Value="8" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Opacity" Value="0.4" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:KeycapIcon Width="20" Height="20" Margin="0,0,10,0"
+                                                             KeycapId="{Binding IconId}" />
+                                        <TextBlock VerticalAlignment="Center" Text="{Binding DisplayName}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
                 </Border>
 

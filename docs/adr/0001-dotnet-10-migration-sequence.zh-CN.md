@@ -61,3 +61,11 @@
 - 曾短暂锁回 net9，以证明 VS 失败只来自 SDK/MSBuild 兼容性；VS 2022 的 Debug/Release Rebuild 随即通过。该诊断回退已撤销，不作为最终项目基线。
 - 项目决定保留 .NET 10，开发者应安装 Visual Studio Community 2026（winget ID `Microsoft.VisualStudio.Community`，当前稳定版 18.8.0）或其他带 MSBuild 18 的兼容工具链。
 - 升级 VS 后仍需在 IDE 内复验 Debug/Release；在此之前 CLI 是已验证的构建入口。
+
+### 2026-10-03：补齐 Micro 协议与 Broker 的目标框架
+
+- 主程序完成 .NET 10 迁移后，提交 `b4ed9ed` 新增的 `CodexMicro.Protocol` 及测试、提交 `38b42f8` 新增的 `AgentController.MicroBroker` 及测试仍使用 .NET 9。四个项目现统一为 `net10.0` 及对应 Windows TFM，保留原有 Windows 最低版本。
+- 继续使用 `global.json` 中的 SDK `10.0.302` 与 `latestPatch`；本次不调整 NuGet 包版本或业务代码。中英文驱动构建说明的托管项目 SDK 要求同步为 .NET 10。
+- `dotnet build app/AgentController.csproj -c Release --no-restore --disable-build-servers`：通过，0 warning、0 error。
+- Release 下现有 `AgentController.MicroBroker.Tests`：24/24 通过；`CodexMicro.Protocol.Tests`：5/5 通过。后者未纳入 solution，单独运行验证；两个测试宿主均以 .NET 10 运行。
+- `dotnet build AgentController.sln -c Release --disable-build-servers` 未全通过：`app.Tests/ControllerTutorialViewDesignTests.cs` 引用 `ControllerTutorialView` 中不存在的 Halo/Arrow 成员，产生 11 个 CS1061 错误。提交 `55360df` 已删除这些 XAML 成员但未同步旧测试，属于本次升级前的问题；主程序与本次升级的库和测试项目均已编译通过。未运行真实 UI 或驱动实机验收。

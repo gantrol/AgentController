@@ -8,6 +8,16 @@ using CodexController.Presentation.Feedback;
 
 namespace CodexController.ViewModels;
 
+public enum VoicePresentationState
+{
+    Idle,
+    Starting,
+    Recording,
+    Stopping,
+    StartFailed,
+    StopFailed,
+}
+
 /// <summary>
 /// Bindable presentation state for the device dashboard. Controller polling,
 /// WPF animation, Agent automation, and UI-thread dispatch remain owned by the
@@ -55,6 +65,9 @@ public sealed class DevicePageViewModel : ObservableObject
     private string _rightModeValue = string.Empty;
     private string _rightModeSourceValue = string.Empty;
     private bool _usesConnectionAwareRightModePrompt = true;
+    private string _rightModeStatusText = string.Empty;
+    private bool _isRightModeError;
+    private VoicePresentationState _voiceState;
     private SidebarScope _sidebarScope = SidebarScope.Projects;
     private SidebarScope _activeRootScope = SidebarScope.Projects;
     private string? _selectedProjectName;
@@ -64,6 +77,7 @@ public sealed class DevicePageViewModel : ObservableObject
     private string _sidebarProjectFilterText = string.Empty;
     private string _fullResetExpirationText = string.Empty;
     private string _fullResetExpirationToolTip = string.Empty;
+    private IReadOnlyList<SidebarSectionTab> _sidebarSections = [];
 
     public DevicePageViewModel(
         ObservableCollection<SidebarEntry> sidebarEntries,
@@ -109,6 +123,12 @@ public sealed class DevicePageViewModel : ObservableObject
     public ICommand SelectProjectsCommand { get; }
 
     public ICommand SelectProjectlessTasksCommand { get; }
+
+    public IReadOnlyList<SidebarSectionTab> SidebarSections
+    {
+        get => _sidebarSections;
+        private set => SetProperty(ref _sidebarSections, value);
+    }
 
     public string FullResetExpirationText
     {
@@ -197,6 +217,24 @@ public sealed class DevicePageViewModel : ObservableObject
     {
         get => _voiceActionTitle;
         private set => SetProperty(ref _voiceActionTitle, value);
+    }
+
+    public VoicePresentationState VoiceState => _voiceState;
+
+    public bool HasVoiceError => VoiceState is
+        VoicePresentationState.StartFailed or VoicePresentationState.StopFailed;
+
+    public bool IsVoiceRecording => VoiceState == VoicePresentationState.Recording;
+
+    public bool HasVoiceFeedback => VoiceState != VoicePresentationState.Idle;
+
+    public void UpdateVoiceState(VoicePresentationState state)
+    {
+        if (!SetProperty(ref _voiceState, state, nameof(VoiceState))) return;
+        OnPropertyChanged(nameof(HasVoiceError));
+        OnPropertyChanged(nameof(IsVoiceRecording));
+        OnPropertyChanged(nameof(HasVoiceFeedback));
+        RefreshVoiceActionTitle();
     }
 
     public string SendGlyph
@@ -363,6 +401,45 @@ public sealed class DevicePageViewModel : ObservableObject
         private set => SetProperty(ref _rightModeValue, value);
     }
 
+    public bool HasRightModeValue => !_usesConnectionAwareRightModePrompt &&
+        !string.IsNullOrWhiteSpace(_rightModeSourceValue);
+
+    public string RightModeStatusText
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_rightModeStatusText)) return _rightModeStatusText;
+            if (!_isVirtualDialMenuOpen || _strings is null) return string.Empty;
+            return _strings.Get(_isVirtualDialConfirmationPending
+                ? StringKeys.ControlPendingConfirmation
+                : StringKeys.ComposerMenuOpen);
+        }
+    }
+
+    public bool IsRightModeWarning => _isRightModeError || _isVirtualDialConfirmationPending;
+
+    public void UpdateRightModeStatus(string text, bool isError = false)
+    {
+        if (_rightModeStatusText == text && _isRightModeError == isError) return;
+        _rightModeStatusText = text;
+        _isRightModeError = isError;
+        RefreshRightModeStatus();
+    }
+
+    public void InvalidateRightModeValue()
+    {
+        if (_usesConnectionAwareRightModePrompt && _rightModeSourceValue.Length == 0) return;
+        _rightModeSourceValue = string.Empty;
+        _usesConnectionAwareRightModePrompt = true;
+        RefreshRightModeValue();
+    }
+
+    private void RefreshRightModeStatus()
+    {
+        OnPropertyChanged(nameof(RightModeStatusText));
+        OnPropertyChanged(nameof(IsRightModeWarning));
+    }
+
     public SidebarScope CurrentSidebarScope
     {
         get => _sidebarScope;
@@ -435,8 +512,7 @@ public sealed class DevicePageViewModel : ObservableObject
         RefreshRightStickHint();
         PrimaryActionTitle = CompactActionTitle(
             strings.ControlPrimary(PrimaryGlyph));
-        VoiceActionTitle = CompactActionTitle(
-            strings.ControlHoldToTalk(VoiceGlyph));
+        RefreshVoiceActionTitle();
         SendActionTitle = CompactActionTitle(
             strings.ControlSend(SendGlyph));
         CancelActionTitle =
@@ -473,6 +549,22 @@ public sealed class DevicePageViewModel : ObservableObject
         return detailSeparator < 0
             ? compact
             : compact[..detailSeparator].Trim();
+    }
+
+    private void RefreshVoiceActionTitle()
+    {
+        if (_strings is null) return;
+        VoiceActionTitle = VoiceState == VoicePresentationState.Idle
+            ? CompactActionTitle(_strings.ControlHoldToTalk(VoiceGlyph))
+            : _strings.Get(VoiceState switch
+            {
+                VoicePresentationState.Starting => StringKeys.ControlVoiceStarting,
+                VoicePresentationState.Recording => StringKeys.ControlVoiceRecording,
+                VoicePresentationState.Stopping => StringKeys.ControlVoiceStopping,
+                VoicePresentationState.StartFailed => StringKeys.ControlVoiceStartFailed,
+                VoicePresentationState.StopFailed => StringKeys.ControlVoiceStopFailed,
+                _ => throw new ArgumentOutOfRangeException(),
+            });
     }
 
     public void UpdateControllerState(ControllerState state)
@@ -516,6 +608,7 @@ public sealed class DevicePageViewModel : ObservableObject
         _rightModeSourceValue = displayValue;
         _usesConnectionAwareRightModePrompt =
             IsConnectionAwareRightModePrompt(mode, displayValue);
+        UpdateRightModeStatus(string.Empty);
         RefreshRightModeValue();
     }
 
@@ -527,6 +620,7 @@ public sealed class DevicePageViewModel : ObservableObject
             IsConnectionAwareRightModePrompt(
                 RightMode,
                 displayValue);
+        UpdateRightModeStatus(string.Empty);
         RefreshRightModeValue();
     }
 
@@ -537,6 +631,7 @@ public sealed class DevicePageViewModel : ObservableObject
         _isVirtualDialMenuOpen = isOpen;
         _isVirtualDialConfirmationPending =
             isOpen && requiresConfirmation;
+        RefreshRightModeStatus();
         RefreshRightStickHint();
         if (_strings is not null)
         {
@@ -591,6 +686,41 @@ public sealed class DevicePageViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(text);
         SidebarContextText = text;
+    }
+
+    public void UpdateSidebarSections(
+        IReadOnlyList<SidebarEntry> roots,
+        CodexSidebarLayout? layout,
+        string? selectedId)
+    {
+        if (_strings is null) return;
+
+        var selected = roots.FirstOrDefault(entry => entry.Id.Equals(
+            selectedId, StringComparison.OrdinalIgnoreCase));
+        var groups = roots.GroupBy(entry => entry.SectionKey)
+            .ToDictionary(group => group.Key, group => group.First());
+        var names = new Dictionary<string, string>
+        {
+            ["pinned"] = _strings.SidebarPinnedBadge,
+            ["threads"] = _strings.SidebarProjects,
+            ["chats"] = _strings.SidebarProjectlessTasks,
+        };
+        if (layout is not null)
+            foreach (var section in layout.Sections)
+                names[section.Id] = section.Name;
+
+        var order = layout?.OrderedSectionIds ?? groups.Keys.ToArray();
+        var sections = order.Select(id =>
+        {
+            var entry = selected?.SectionKey == id ? selected : groups.GetValueOrDefault(id);
+            return new SidebarSectionTab(
+                id,
+                names.GetValueOrDefault(id) ?? _strings.ScopeValue(entry!.NavigationScope.ToString()),
+                entry?.NavigationScope ?? SidebarScope.ProjectlessTasks,
+                entry?.Id,
+                selected?.SectionKey == id);
+        }).ToArray();
+        if (!SidebarSections.SequenceEqual(sections)) SidebarSections = sections;
     }
 
     private string Glyph(LogicalInput input)
@@ -664,6 +794,8 @@ public sealed class DevicePageViewModel : ObservableObject
                     ? _strings.ComposerDialReady
                     : _strings.ComposerConnectController
                 : _rightModeSourceValue;
+        OnPropertyChanged(nameof(HasRightModeValue));
+        RefreshRightModeStatus();
     }
 
     private bool IsConnectionAwareRightModePrompt(

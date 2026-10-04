@@ -1,7 +1,6 @@
 using System.Windows.Automation;
 using CodexController.Agents;
 using CodexController.Native;
-using CodexController.Services.Micro;
 using static CodexController.Services.CodexAutomationLocator;
 
 namespace CodexController.Services;
@@ -86,7 +85,7 @@ internal static class CurrentControlActionPolicy
 
 /// <summary>
 /// Executes the gamepad-only horizontal axis against the last verified
-/// official-Micro selection. UI Automation is used only to verify that the
+/// composer selection. UI Automation is used to verify that the
 /// focused target is still the same control and to read back range changes.
 /// </summary>
 internal sealed class CodexCurrentControlExecutor
@@ -94,15 +93,15 @@ internal sealed class CodexCurrentControlExecutor
     private const int ValueReadbackTimeoutMs = 180;
     private const int ValueReadbackPollMs = 18;
 
-    private readonly MicroInputService _microInput;
+    private readonly Func<ComposerDialResult> _activate;
     private readonly Func<ushort, bool> _sendKey;
 
     internal CodexCurrentControlExecutor(
-        MicroInputService microInput,
+        Func<ComposerDialResult> activate,
         Func<ushort, bool>? sendKey = null)
     {
-        _microInput = microInput ??
-            throw new ArgumentNullException(nameof(microInput));
+        _activate = activate ??
+            throw new ArgumentNullException(nameof(activate));
         _sendKey = sendKey ?? Win32Input.SendKey;
     }
 
@@ -122,32 +121,7 @@ internal sealed class CodexCurrentControlExecutor
 
         if (action == CurrentControlAction.EncoderPress)
         {
-            var micro = _microInput.SendEncoderPress();
-            if (micro is
-                MicroReportSendResult.Accepted or
-                MicroReportSendResult.OutcomeUnknown)
-            {
-                return new(
-                    true,
-                    readback.ItemName,
-                    IsMenuOpen: readback.IsMenuOpen,
-                    MenuWasPresent: readback.IsMenuOpen,
-                    StateVerified: false);
-            }
-
-            if (micro == MicroReportSendResult.Rejected)
-            {
-                return new(
-                    false,
-                    readback.ItemName,
-                    IsMenuOpen: readback.IsMenuOpen,
-                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
-                    ErrorDetail: "micro.encoder-rejected",
-                    MenuWasPresent: readback.IsMenuOpen);
-            }
-
-            // Right-arrow fallback is allowed only after confirmed NotSent.
-            action = CurrentControlAction.NativeRight;
+            return _activate();
         }
 
         return ExecuteNative(readback, action);

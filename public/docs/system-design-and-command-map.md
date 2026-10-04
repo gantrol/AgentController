@@ -5,6 +5,8 @@
 > Updated: 2026-07-19
 > Scope: Agent Controller WPF 客户端、Application/Domain 骨架、Micro Broker 与 Codex 适配器
 
+> 2026-10-03：本文保留手柄 / HID 路线映射；免驱版设计与实施状态见 [AgentController 免驱版 UML](../../docs/architecture/agent-controller-driverless-uml.zh-CN.md)。共享后端及 `thread.open` / `thread.create` 已接入，其他动作仍待迁移。
+
 本文回答四个问题：系统由哪些部分组成、一次操作如何流转、物理输入最终映射成什么指令、各类结果如何判定。用户操作以[手柄操作列表](controller-operations.md)为准；Micro wire 细节以[Codex Micro 指令参考](codex-micro-command-reference.md)为准；历史 v0.7 差异只在[旧版指令清单](controller-command-reference-v0.7.md)中维护。
 
 实体 Codex Micro 通过 USB-C 或 Bluetooth 直接连接电脑，不经过本仓库的 Broker/VHF 路径；部署和时序见[Codex Micro 实体键盘接入与 UML](codex-micro-physical-connection.md)。

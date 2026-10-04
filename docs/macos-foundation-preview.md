@@ -1,5 +1,7 @@
 # macOS Foundation Preview
 
+> Retired on 2026-10-03. This page preserves historical implementation and acceptance notes; the build instructions below are no longer active. The preview projects are excluded from the default solution and packaging is disabled. See the current [platform direction (简体中文)](architecture/platform-direction.zh-CN.md) for Micro on macOS.
+
 [简体中文](./macos-foundation-preview.zh-CN.md)
 
 This is the roadmap's runnable macOS foundation, not a port claiming parity

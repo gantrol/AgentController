@@ -29,7 +29,7 @@ To locally re-sign and install the prebuilt package:
 To rebuild the binaries instead, install Visual Studio/Build Tools 2022 with
 Desktop development with C++, MSVC v143 x64/x86 tools, x64/x86
 Spectre-mitigated libraries, Windows SDK `10.0.26100.0`, and MSBuild. The .NET
-9 SDK is needed for the simulator app and tests, not for the UMDF2 driver alone.
+10 SDK is needed for the simulator app and tests, not for the UMDF2 driver alone.
 
 ## Restore signing tools without compiling
 

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AgentController.Adapters.Codex.Software</AssemblyName>
+    <RootNamespace>AgentController.Adapters.Codex.Software</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentController.Application\AgentController.Application.csproj" />
+    <PackageReference Include="CodexControl" />
+    <InternalsVisibleTo Include="AgentController" />
+    <InternalsVisibleTo Include="AgentController.Tests" />
+    <InternalsVisibleTo Include="AgentController.MicroSurface.Wpf" />
+    <InternalsVisibleTo Include="CodexMicro.Plugin" />
+    <InternalsVisibleTo Include="CodexMicro.Desktop.Tests" />
+  </ItemGroup>
+</Project>

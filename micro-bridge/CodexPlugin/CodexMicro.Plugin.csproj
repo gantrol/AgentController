@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <GenerateSupportedOSPlatformAttribute>false</GenerateSupportedOSPlatformAttribute>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>CodexMicro.Plugin</AssemblyName>
+    <Version>0.3.2</Version>
+    <ApplicationIcon>../../virtual-micro/Assets/CodexMicro.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <DebugType>None</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../virtual-micro/src/AgentController.MicroSurface.Wpf/AgentController.MicroSurface.Wpf.csproj" />
+    <Compile Include="../../virtual-micro/src/CodexMicro.DesktopHost/MicroTrayIcon.cs" Link="Original/MicroTrayIcon.cs" />
+    <Compile Include="../../virtual-micro/src/CodexMicro.DesktopHost/MicroLanguageSettings.cs" Link="Original/MicroLanguageSettings.cs" />
+    <Compile Include="../../virtual-micro/src/CodexMicro.DesktopHost/MicroStartupRegistration.cs" Link="Original/MicroStartupRegistration.cs" />
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>windows10.0.19041.0</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <Target Name="ExcludeVoiceAssets" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Filename)' == 'start-qwen3-asr-stream' Or '%(Filename)' == 'qwen3-asr-stream-server' Or '%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+</Project>

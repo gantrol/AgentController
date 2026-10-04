@@ -18,6 +18,7 @@
         AllowsTransparency="True"
         ResizeMode="CanResize"
         Background="Transparent"
+        FontFamily="{StaticResource Font.Ui}"
         KeyboardNavigation.TabNavigation="Cycle"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
@@ -44,14 +45,14 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="58" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="26" />
+                        <RowDefinition Height="Auto" MinHeight="26" />
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0"
                           Margin="14,0,10,0"
                           MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -64,10 +65,8 @@
                                     Background="Transparent"
                                     BorderThickness="0"
                                     CornerRadius="0">
-                                <Image Margin="4"
-                                       Source="Assets/AgentController.png"
-                                       Stretch="Uniform"
-                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                                <views:ControllerIconView Margin="2"
+                                                          Foreground="{StaticResource Brush.Text.Accent}" />
                             </Border>
                             <TextBlock Margin="10,0,0,0"
                                        Text="AGENT CONTROLLER"
@@ -95,20 +94,9 @@
                                              ToolTip="{loc:Loc nav.device}"
                                              AutomationProperties.Name="{loc:Loc nav.device}"
                                              Click="DeviceNavButton_Click">
-                                    <Viewbox Width="18" Height="18">
-                                        <Canvas Width="24" Height="24">
-                                            <Path Data="M5,8 C3.3,8 2,10.2 2,13.3 C2,16.2 3.1,18 4.7,18 C5.8,18 6.7,16.6 7.6,15.7 C8.4,14.9 9.1,15 12,15 C14.9,15 15.6,14.9 16.4,15.7 C17.3,16.6 18.2,18 19.3,18 C20.9,18 22,16.2 22,13.3 C22,10.2 20.7,8 19,8 C16.5,8 15.8,9 12,9 C8.2,9 7.5,8 5,8 Z"
-                                                  Fill="Transparent"
-                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                  StrokeThickness="1.8"
-                                                  StrokeLineJoin="Round" />
-                                            <Path Data="M6,11 L6,15 M4,13 L8,13 M17,11.8 L17.01,11.8 M19,14.2 L19.01,14.2"
-                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                  StrokeThickness="1.8"
-                                                  StrokeStartLineCap="Round"
-                                                  StrokeEndLineCap="Round" />
-                                        </Canvas>
-                                    </Viewbox>
+                                    <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Controller}"
+                                                    Width="24" Height="24"
+                                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
                                 </RadioButton>
                                 <RadioButton x:Name="ConfigNavButton"
                                              GroupName="PrimaryNavigation"
@@ -116,26 +104,10 @@
                                              ToolTip="{loc:Loc nav.configuration}"
                                              AutomationProperties.Name="{loc:Loc nav.configuration}"
                                              Click="ConfigNavButton_Click">
-                                    <Viewbox Width="18" Height="18">
-                                        <Canvas Width="24" Height="24">
-                                            <Path Data="M5,7 L19,7 M5,12 L19,12 M5,17 L19,17"
-                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                  StrokeThickness="1.8"
-                                                  StrokeStartLineCap="Round" />
-                                            <Ellipse Canvas.Left="7" Canvas.Top="5" Width="4" Height="4"
-                                                     Fill="{StaticResource Brush.Shell.WorkSurface}"
-                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                     StrokeThickness="1.6" />
-                                            <Ellipse Canvas.Left="14" Canvas.Top="10" Width="4" Height="4"
-                                                     Fill="{StaticResource Brush.Shell.WorkSurface}"
-                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                     StrokeThickness="1.6" />
-                                            <Ellipse Canvas.Left="9" Canvas.Top="15" Width="4" Height="4"
-                                                     Fill="{StaticResource Brush.Shell.WorkSurface}"
-                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                     StrokeThickness="1.6" />
-                                        </Canvas>
-                                    </Viewbox>
+                                    <Image Width="24" Height="24"
+                                           Source="{Binding AgentLogo, ElementName=ConfigPage}"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
                                 </RadioButton>
                                 <RadioButton x:Name="SettingsNavButton"
                                              GroupName="PrimaryNavigation"
@@ -143,19 +115,9 @@
                                              ToolTip="{loc:Loc nav.settings}"
                                              AutomationProperties.Name="{loc:Loc nav.settings}"
                                              Click="SettingsNavButton_Click">
-                                    <Viewbox Width="18" Height="18">
-                                        <Canvas Width="24" Height="24">
-                                            <Path Data="M12,3.8 L13.4,5.5 L15.6,5.3 L16.2,7.4 L18.2,8.4 L17.6,10.5 L18.7,12.4 L17.1,13.9 L17.2,16.1 L15.1,16.7 L13.9,18.5 L12,17.7 L10.1,18.5 L8.9,16.7 L6.8,16.1 L6.9,13.9 L5.3,12.4 L6.4,10.5 L5.8,8.4 L7.8,7.4 L8.4,5.3 L10.6,5.5 Z"
-                                                  Fill="Transparent"
-                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                  StrokeThickness="1.5"
-                                                  StrokeLineJoin="Round" />
-                                            <Ellipse Canvas.Left="9" Canvas.Top="9" Width="6" Height="6"
-                                                     Fill="Transparent"
-                                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                                     StrokeThickness="1.6" />
-                                        </Canvas>
-                                    </Viewbox>
+                                    <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Settings}"
+                                                    Width="24" Height="24"
+                                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
                                 </RadioButton>
                             </StackPanel>
                         </Border>
@@ -188,20 +150,15 @@
                                       IsChecked="True"
                                       Checked="BridgeEnabledCheckBox_Changed"
                                       Unchecked="BridgeEnabledCheckBox_Changed" />
-                            <Button Style="{StaticResource Shell.CaptionButton}"
-                                    Content="—"
-                                    ToolTip="Minimize"
-                                    AutomationProperties.Name="Minimize"
+                            <Button Style="{StaticResource Shell.WindowButton}"
+                                    Content="{StaticResource Icon.Window.Minimize}"
+                                    ToolTip="{loc:Loc window.minimize}"
                                     Click="MinimizeButton_Click" />
-                            <Button Style="{StaticResource Shell.CaptionButton}"
-                                    Content="□"
-                                    ToolTip="Maximize"
-                                    AutomationProperties.Name="Maximize"
+                            <Button Style="{StaticResource Shell.WindowButton.Maximize}"
                                     Click="MaximizeButton_Click" />
                             <Button Style="{StaticResource Shell.CaptionButton.Close}"
-                                    Content="×"
-                                    ToolTip="Close"
-                                    AutomationProperties.Name="Close"
+                                    Content="{StaticResource Icon.Window.Close}"
+                                    ToolTip="{loc:Loc window.close}"
                                     Click="CloseButton_Click" />
                         </StackPanel>
                     </Grid>
@@ -213,13 +170,22 @@
                                               SidebarPreviewKeyDown="SidebarList_PreviewKeyDown" />
 
                         <views:ConfigPageView x:Name="ConfigPage"
-                                              Visibility="Collapsed" />
+                                              Visibility="Collapsed"
+                                              AgentSettings="{Binding DataContext, ElementName=SettingsPage}"
+                                              FullResetText="{Binding DataContext.FullResetExpirationText, ElementName=DevicePage}"
+                                              FullResetToolTip="{Binding DataContext.FullResetExpirationToolTip, ElementName=DevicePage}"
+                                              AgentTargetRequested="AgentTargetButton_Click" />
 
                         <views:SettingsPageView x:Name="SettingsPage"
                                                 Visibility="Collapsed" />
                     </Grid>
 
                     <Grid Grid.Row="2" Margin="18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal"
                                     VerticalAlignment="Top">
                             <Ellipse x:Name="FooterPulse"
@@ -268,18 +234,19 @@
                                        Text="{loc:Loc status.loading-agent-data, Arg0=Codex}"
                                        Visibility="Collapsed" />
                         </StackPanel>
-                        <views:FullResetStatusView
-                            Text="{Binding DataContext.FullResetExpirationText, ElementName=DevicePage}"
-                            ToolTipText="{Binding DataContext.FullResetExpirationToolTip, ElementName=DevicePage}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Top" />
                         <TextBlock x:Name="FooterVersionText"
-                                   Text="v1.1"
+                                   Grid.Column="2"
+                                   Margin="0,0,20,0"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Top"
                                    Foreground="{StaticResource Brush.Text.Tertiary}"
                                    FontSize="{StaticResource Font.Size.Caption}" />
                     </Grid>
+                    <ResizeGrip Grid.Row="2" Width="20" Height="20"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6"
+                                Foreground="{StaticResource Brush.Text.Secondary}"
+                                shell:WindowChrome.ResizeGripDirection="BottomRight"
+                                AutomationProperties.Name="{loc:Loc window.resize}" />
         </Grid>
     </Border>
 </Window>

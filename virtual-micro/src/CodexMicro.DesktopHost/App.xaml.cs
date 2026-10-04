@@ -36,12 +36,14 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
+#if !MICRO_SOFTWARE_CONTROL
         if (MicroBrokerHost.IsBrokerArgument(e.Args))
         {
             var exitCode = MicroBrokerHost.RunFromCommandLine();
             Shutdown(exitCode);
             return;
         }
+#endif
 
 #if DEBUG
         Console.CancelKeyPress += Console_CancelKeyPress;
@@ -105,9 +107,11 @@ public partial class App : System.Windows.Application
         _languageSettings = new MicroLanguageSettings();
         _localization = _languageSettings.CreateLocalization();
         _startupRegistration = new MicroStartupRegistration();
-        _surface = new MicroSurfaceController(
-            _localization);
-        _surface.StartBackgroundServices();
+#if MICRO_SOFTWARE_CONTROL
+        _surface = MicroSurfaceController.CreateSoftwareControlled(_localization);
+#else
+        _surface = new MicroSurfaceController(_localization);
+#endif
         _trayIcon = new MicroTrayIcon(
             _surface,
             _localization,
@@ -125,6 +129,8 @@ public partial class App : System.Windows.Application
         {
             _surface.Show();
         }
+
+        _surface.StartBackgroundServices();
 
         _controlServer = new MicroKeypadControlServer(
             HandleControlCommandAsync,

@@ -1,8 +1,10 @@
 # 06 — macOS 平台
 
-> Status: In Progress — Foundation Preview
+> Status: Retired — Foundation Preview（2026-10-03）
 > Priority: P1
 > Depends on: 01-core-architecture, 02-codex-app-server, 05-desktop-ui-ux-and-avalonia
+
+本文件保留旧 AgentController macOS 路线的历史清单，不再执行下列待办。预览已退出默认构建与发布；Micro 的 macOS 桌面方向独立推进，见[平台方向](../docs/architecture/platform-direction.zh-CN.md)。
 
 ## Foundation Preview 范围
 

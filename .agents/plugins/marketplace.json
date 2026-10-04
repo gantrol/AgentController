@@ -1,0 +1,12 @@
+{
+  "name": "agent-controller",
+  "interface": { "displayName": "Agent Controller" },
+  "plugins": [
+    {
+      "name": "codex-micro-keypad",
+      "source": { "source": "local", "path": "./plugins/codex-micro-keypad" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

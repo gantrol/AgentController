@@ -35,6 +35,9 @@ internal sealed class ManualUnreadThreadTracker
             _confirmedThreadIds.Add(normalizedThreadId);
     }
 
+    internal bool IsConfirmed(string? threadId) =>
+        Normalize(threadId) is { } id && _confirmedThreadIds.Contains(id);
+
     internal bool ClearConfirmed(string? threadId)
     {
         var normalizedThreadId = Normalize(threadId);

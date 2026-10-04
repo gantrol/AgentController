@@ -1,9 +1,12 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CodexControlVersion>0.1.0-local.2</CodexControlVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageVersion Include="CodexControl" Version="[$(CodexControlVersion)]" />
+    <PackageVersion Include="CodexControl.Windows" Version="[$(CodexControlVersion)]" />
     <PackageVersion Include="Avalonia" Version="12.1.0" />
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.0" />

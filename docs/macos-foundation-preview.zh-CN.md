@@ -1,5 +1,7 @@
 # macOS Foundation Preview
 
+> 已废弃（2026-10-03）。本页仅保留历史实现与验收记录，以下构建步骤不再适用。源码已退出默认解决方案，发布入口已停用。当前 Micro 的 macOS 方向见[平台方向](architecture/platform-direction.zh-CN.md)。
+
 [English](./macos-foundation-preview.md)
 
 这是按路线图新增的 macOS 可运行基础版本，不是 Windows Full Micro 的等价移植。

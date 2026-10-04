@@ -8,6 +8,23 @@ internal sealed record CodexSkillDefinition(string Name, string SkillPath);
 internal static class CodexSkillCatalog
 {
     private const int MaximumSkills = 400;
+    private static readonly object CacheGate = new();
+    private static Task<IReadOnlyList<CodexSkillDefinition>>? _cachedRead;
+    private static DateTime _cachedAt;
+
+    internal static Task<IReadOnlyList<CodexSkillDefinition>> ReadInstalledAsync(CancellationToken token = default)
+    {
+        lock (CacheGate)
+        {
+            if (_cachedRead is null || _cachedRead.IsFaulted ||
+                _cachedRead.IsCompleted && DateTime.UtcNow - _cachedAt > TimeSpan.FromSeconds(30))
+            {
+                _cachedAt = DateTime.UtcNow;
+                _cachedRead = Task.Run(ReadInstalled);
+            }
+            return _cachedRead.WaitAsync(token);
+        }
+    }
 
     internal static IReadOnlyList<CodexSkillDefinition> ReadInstalled()
     {
@@ -53,7 +70,7 @@ internal static class CodexSkillCatalog
 
     private static IEnumerable<string> EnumerateSkillFiles(string root)
     {
-        if (!Directory.Exists(root))
+        if (root.Contains("trash", StringComparison.OrdinalIgnoreCase) || !Directory.Exists(root))
         {
             yield break;
         }
@@ -82,6 +99,8 @@ internal static class CodexSkillCatalog
 
             foreach (var child in directories)
             {
+                if (child.Contains("trash", StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileName(child) is "node_modules" or ".git" or "bin" or "obj" or ".venv" or "venv" or "__pycache__") continue;
                 try
                 {
                     if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) == 0)

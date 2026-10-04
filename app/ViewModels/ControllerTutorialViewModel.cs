@@ -10,8 +10,17 @@ namespace CodexController.ViewModels;
 public sealed record ControllerTutorialItem(
     string Glyph,
     string Title,
-    string Description)
+    string Description,
+    LogicalInput Input = LogicalInput.Guide)
 {
+    public string ActionId { get; init; } = string.Empty;
+    public string Shortcut { get; init; } = Glyph;
+    public string ToolTip => HasDescription
+        ? $"{Shortcut} · {Title}\n{Description}"
+        : $"{Shortcut} · {Title}";
+    public bool IsStick => Input is LogicalInput.LeftStick or LogicalInput.RightStick;
+    public LogicalInput StickPressInput => Input == LogicalInput.LeftStick
+        ? LogicalInput.LeftStickPress : LogicalInput.RightStickPress;
     public bool HasDescription =>
         !string.IsNullOrWhiteSpace(Description);
 
@@ -22,8 +31,7 @@ public sealed record ControllerTutorialItem(
 }
 
 /// <summary>
-/// Interactive, read-only controller guide for the dashboard. It follows
-/// physical layer inputs but never executes an action itself.
+/// Controller guide sharing logical inputs with the physical controller.
 /// </summary>
 public sealed class ControllerTutorialViewModel : ObservableObject
 {
@@ -36,6 +44,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
         ControllerTutorialMode.Overview;
     private ControllerButtons _observedButtons;
     private DispatchDisplay? _dispatchDisplay;
+    private RadialMenuLayerKind? _activeLayer;
     private string _heading = string.Empty;
     private string _subheading = string.Empty;
     private string _overviewTabLabel = string.Empty;
@@ -125,6 +134,19 @@ public sealed class ControllerTutorialViewModel : ObservableObject
 
     public bool IsStickPressMode =>
         Mode == ControllerTutorialMode.StickPress;
+
+    public bool IsLayerActive => _activeLayer is not null;
+
+    public string ActiveLayerText => _activeLayer is { } layer && _strings is not null
+        ? _strings.Format(StringKeys.ControlLayerActive, Glyph(layer switch
+        {
+            RadialMenuLayerKind.Action => LogicalInput.FaceNorth,
+            RadialMenuLayerKind.Agent => LogicalInput.LeftShoulder,
+            RadialMenuLayerKind.Turn => LogicalInput.RightTrigger,
+            RadialMenuLayerKind.Command => LogicalInput.RightShoulder,
+            _ => throw new ArgumentOutOfRangeException(nameof(layer)),
+        }))
+        : string.Empty;
 
     public bool HighlightDPad =>
         IsActionMode || IsAgentMode;
@@ -362,6 +384,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             $"Hold {RightShoulderGlyph}");
         StickPressTabLabel = Text("按下摇杆", "Press sticks");
         RaiseTabToolTips();
+        OnPropertyChanged(nameof(ActiveLayerText));
         StickPressGuideTitle = Text(
             "L3 / R3 指的是把摇杆帽垂直按下",
             "L3 / R3 mean pressing the stick caps straight down");
@@ -427,6 +450,9 @@ public sealed class ControllerTutorialViewModel : ObservableObject
         bool isEngaged,
         bool isCancelled)
     {
+        var activeLayer = isEngaged && !isCancelled ? layer : null;
+        if (SetProperty(ref _activeLayer, activeLayer, nameof(IsLayerActive)))
+            OnPropertyChanged(nameof(ActiveLayerText));
         if (layer is null || !isEngaged || isCancelled)
         {
             return;
@@ -554,7 +580,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
                 ? Text(
                 "上下移动，左右进入或退出项目",
                 "Move vertically; enter or leave projects horizontally")
-                : _leftStickHint),
+                : _leftStickHint, LogicalInput.LeftStick),
         new(
             Glyph(LogicalInput.RightStick),
             Text("右摇杆：Micro 控制", "Right stick: Micro control"),
@@ -562,39 +588,39 @@ public sealed class ControllerTutorialViewModel : ObservableObject
                 ? Text(
                 "上或左选上一项，下或右选下一项；按 R3 进入或确认",
                 "Up/left selects previous; down/right selects next; press R3 to enter or confirm")
-                : _rightStickHint),
+                : _rightStickHint, LogicalInput.RightStick),
         new(
             LeftStickPressGlyph,
             Text("切换任务根区域", "Change task roots"),
-            LeftStickPressGuide),
+            LeftStickPressGuide, LogicalInput.LeftStickPress),
         new(
             RightStickPressGlyph,
             Text("确认 / 控制设置", "Confirm / control settings"),
-            RightStickPressGuide),
+            RightStickPressGuide, LogicalInput.RightStickPress),
         new(
-            "↑↓",
-            Text("十字键：遍历对话", "D-pad: browse turns"),
-            Text(
-                "长按上回到顶部，长按下回到底部",
-                "Hold up for the top; hold down for the bottom")),
+            "↑", Text("上一条用户消息", "Previous user message"),
+            string.Empty, LogicalInput.DPadUp),
+        new(
+            "↓", Text("下一条用户消息", "Next user message"),
+            string.Empty, LogicalInput.DPadDown),
         new(
             LeftTriggerGlyph,
             Text("按住说话", "Hold to talk"),
-            Text("松开结束录音", "Release to stop recording")),
+            Text("松开结束录音", "Release to stop recording"), LogicalInput.LeftTrigger),
         new(
             Glyph(LogicalInput.FaceWest),
             Text("发送当前输入", "Send current input"),
-            string.Empty),
+            string.Empty, LogicalInput.FaceWest),
         new(
             ViewGlyph,
             Text("View：切换 Agent", "View: switch Agent"),
             Text(
                 "在 Codex 与 DeepSeek Harness 间切换当前控制目标",
-                "Switch the current control target between Codex and DeepSeek Harness")),
+                "Switch the current control target between Codex and DeepSeek Harness"), LogicalInput.View),
         new(
             MenuGlyph,
             Text("Menu：唤醒当前 Agent", "Menu: wake current Agent"),
-            Text("需要时将当前 Agent 置于前台", "Bring the current Agent to the foreground when needed")),
+            Text("需要时将当前 Agent 置于前台", "Bring the current Agent to the foreground when needed"), LogicalInput.Menu),
     ];
 
     private IReadOnlyList<ControllerTutorialItem> AgentItems()
@@ -610,7 +636,8 @@ public sealed class ControllerTutorialViewModel : ObservableObject
                         ? Text("十字键槽位", "D-pad slot")
                         : binding.Input == LogicalInput.View
                             ? Text("View / 双窗口键", "View button")
-                            : Text("Menu / 三横线键", "Menu button")))
+                            : Text("Menu / 三横线键", "Menu button"), binding.Input)
+                { ActionId = $"agent-slot-{index + 1}", Shortcut = $"{LeftShoulderGlyph} + {Glyph(binding.Input)}" })
             .ToArray();
     }
 
@@ -621,13 +648,13 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             Text("按下左摇杆", "Press the left stick"),
             Text(
                 "切换置顶任务、置顶项目、项目和游离任务",
-                "Cycle pinned tasks, pinned projects, projects, and projectless tasks")),
+                "Cycle pinned tasks, pinned projects, projects, and projectless tasks"), LogicalInput.LeftStickPress),
         new(
             $"{RightStickPressGlyph} / R3",
             Text("按下右摇杆", "Press the right stick"),
             Text(
                 "短按 Micro 旋钮；按住 500ms 打开 Agent Controller 设置",
-                "Tap the Micro encoder; hold 500ms for Agent Controller settings")),
+                "Tap the Micro encoder; hold 500ms for Agent Controller settings"), LogicalInput.RightStickPress),
     ];
 
     private IReadOnlyList<ControllerTutorialItem> LayerItems(
@@ -636,11 +663,15 @@ public sealed class ControllerTutorialViewModel : ObservableObject
                 new ControllerTutorialItem(
                     Glyph(item.Input),
                     item.Title,
-                    item.Description ?? string.Empty))
+                    item.Description ?? string.Empty, item.Input)
+                { ActionId = item.Id, Shortcut = $"{GestureGlyph} + {Glyph(item.Input)}" })
             .ToArray();
 
     private string Glyph(LogicalInput input) =>
         _profile.GetGlyph(input);
+
+    public string InputName(LogicalInput input) =>
+        Items.FirstOrDefault(item => item.Input == input)?.ToolTip ?? Glyph(input);
 
     private string Text(string zhCn, string enUs) =>
         ControllerLayerPresentationFactory.Text(

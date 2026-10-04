@@ -35,6 +35,15 @@
 !/micro-bridge/
 !/micro-bridge/**
 !package.json
+!/plugins/
+!/plugins/**
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+!/.agents/plugins/**
+!/.codex/
+/.codex/*
+!/.codex/config.toml
 # Build and IDE output
 **/bin/
 **/obj/

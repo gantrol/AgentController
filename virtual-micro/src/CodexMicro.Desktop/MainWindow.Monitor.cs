@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CodexController.Models;
 using CodexMicro.Desktop.Services;
+using AgentController.MicroSurface.Wpf.SoftwareControl;
 
 namespace CodexMicro.Desktop;
 
@@ -17,6 +18,8 @@ public partial class MicroSurfaceWindow
         bool HasPendingQuestion = false);
 
     private readonly CodexTaskMonitorService _taskMonitor = new();
+    private readonly CodexQuestionSkipObserver _questionSkipObserver = new();
+    private SoftwareQuestionObserver? _softwareQuestionObserver;
     private readonly DispatcherTimer _monitorRefreshTimer = new()
     {
         Interval = TimeSpan.FromSeconds(2),
@@ -103,6 +106,12 @@ public partial class MicroSurfaceWindow
         _monitorRefreshTimer.Tick += MonitorRefreshTimer_Tick;
         _pendingQuestionRefreshTimer.Tick += PendingQuestionRefreshTimer_Tick;
         _modelToggleService.QuestionAnswersAccepted += ModelToggleService_QuestionAnswersAccepted;
+        _questionSkipObserver.QuestionSkipped += QuestionSkipObserver_QuestionSkipped;
+        if (_broker.UsesSoftwareControl)
+        {
+            _softwareQuestionObserver = new();
+            _softwareQuestionObserver.AnswersAccepted += ModelToggleService_QuestionAnswersAccepted;
+        }
         MonitorGrid.MouseLeave += (_, _) => RefreshMonitorPresentation();
         RefreshPageHelp();
     }
@@ -151,8 +160,37 @@ public partial class MicroSurfaceWindow
         });
     }
 
+    private void QuestionSkipObserver_QuestionSkipped(CodexMonitoredQuestion question)
+    {
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (_windowClosed)
+            {
+                return;
+            }
+            try
+            {
+                var snapshot = await _taskMonitor.ObserveSkippedQuestionAsync(question, CancellationToken.None);
+                if (!_windowClosed && IsVisible && IsCodexHarnessActive() &&
+                    _monitorAvailable && snapshot is not null)
+                {
+                    ApplyMonitorSnapshot(snapshot);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Codex question skip: {exception.Message}");
+            }
+        });
+    }
+
     private void UpdatePendingQuestionRefresh()
     {
+        if (_softwareQuestionObserver is not null)
+            _ = _softwareQuestionObserver.RefreshAsync(
+                !_windowClosed && IsVisible && _monitorAvailable
+                    ? _monitoredTasks?.Where(task => task.HasPendingQuestion).Select(task => task.Id) ?? []
+                    : []);
         if (!_windowClosed && IsLoaded && IsVisible && IsCodexHarnessActive() &&
             _monitorRefreshTimer.IsEnabled && _monitorAvailable &&
             _monitoredTasks?.Any(task => task.HasPendingQuestion) == true)
@@ -163,6 +201,7 @@ public partial class MicroSurfaceWindow
         {
             _pendingQuestionRefreshTimer.Stop();
             _pendingQuestionRefreshCancellation?.Cancel();
+            _ = _questionSkipObserver.RefreshAsync([]);
         }
     }
 
@@ -272,6 +311,19 @@ public partial class MicroSurfaceWindow
                 IsVisible && IsCodexHarnessActive() && _monitorAvailable && snapshot is not null)
             {
                 ApplyMonitorSnapshot(snapshot);
+                if (!cancellation.IsCancellationRequested)
+                {
+                    var questions = _taskMonitor.GetPendingQuestions();
+                    if (_broker.UsesSoftwareControl)
+                    {
+                        var selected = CurrentCodexAgentThreadId();
+                        questions = questions.Where(question => question.ThreadId == selected).ToArray();
+                    }
+                    await _questionSkipObserver.RefreshAsync(questions);
+                    if (_softwareQuestionObserver is not null)
+                        await _softwareQuestionObserver.RefreshAsync(
+                            snapshot.Tasks.Where(task => task.HasPendingQuestion).Select(task => task.Id));
+                }
             }
         }
         catch (OperationCanceledException)
@@ -306,7 +358,7 @@ public partial class MicroSurfaceWindow
             _latestAgentRoster = snapshot.AgentRoster;
             foreach (var task in snapshot.Tasks)
             {
-                if (task.Status == ThreadStatus.CompleteUnread)
+                if (_broker.UsesSoftwareControl || task.Status == ThreadStatus.CompleteUnread)
                 {
                     _manualUnreadThreads.ClearConfirmed(task.Id);
                 }
@@ -372,7 +424,9 @@ public partial class MicroSurfaceWindow
             var status = task?.Status;
             if (fresh && codex &&
                 status is null or MicroHarnessSessionStatus.Idle &&
-                _manualUnreadThreads.IsUnread(task!.Id))
+                (_broker.UsesSoftwareControl
+                    ? _manualUnreadThreads.IsConfirmed(task!.Id)
+                    : _manualUnreadThreads.IsUnread(task!.Id)))
             {
                 status = MicroHarnessSessionStatus.Completed;
             }
@@ -456,7 +510,7 @@ public partial class MicroSurfaceWindow
         }
 
         return status is null or MicroHarnessSessionStatus.Idle &&
-            _manualUnreadThreads.IsUnread(threadId)
+            (_broker.UsesSoftwareControl ? _manualUnreadThreads.IsConfirmed(threadId) : _manualUnreadThreads.IsUnread(threadId))
             ? AgentLightingAppearance.ManualUnread(isCurrentSession)
             : AgentLightingAppearance.FromCodexSession(status, isCurrentSession);
     }
@@ -468,6 +522,11 @@ public partial class MicroSurfaceWindow
         // falling back again here would select another window's task.
         var threadId = _modelToggleService.CurrentForegroundVisibleThreadId(
             CodexWindowActivator.CaptureForegroundWindow());
+        if (_broker.UsesSoftwareControl)
+        {
+            threadId = ResolveSoftwareThreadId(threadId);
+            return CodexDraftModelToggleService.IsDraftThreadId(threadId) ? null : threadId;
+        }
         threadId = CodexDraftModelToggleService.IsDraftThreadId(threadId)
             ? null
             : threadId;
@@ -503,8 +562,12 @@ public partial class MicroSurfaceWindow
             UseShellExecute = true,
         })?.Dispose();
         var threadId = id.ToString("D");
-        _openingCodexThreadId = threadId;
-        _openingCodexThreadTimestamp = Stopwatch.GetTimestamp();
+        if (_broker.UsesSoftwareControl) SelectSoftwareThread(threadId);
+        else
+        {
+            _openingCodexThreadId = threadId;
+            _openingCodexThreadTimestamp = Stopwatch.GetTimestamp();
+        }
         _manualUnreadThreads.Clear(threadId);
         _currentAgentSlotId = _latestAgentRoster?.Entries
             .FirstOrDefault(entry => entry.ThreadId == threadId)?.SlotId;
@@ -587,6 +650,9 @@ public partial class MicroSurfaceWindow
 
     private void StopMonitorPage()
     {
+        _questionSkipObserver.QuestionSkipped -= QuestionSkipObserver_QuestionSkipped;
+        _questionSkipObserver.Dispose();
+        _softwareQuestionObserver?.Dispose();
         _modelToggleService.QuestionAnswersAccepted -= ModelToggleService_QuestionAnswersAccepted;
         _pageMotionCancellation?.Cancel();
         ResetTaskKeyMotion();

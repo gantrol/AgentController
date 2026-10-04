@@ -13,7 +13,7 @@
 | Windows Agent Controller | `app/AgentController.csproj` | `scripts/package-release.ps1`、`scripts/publish-release.ps1` | `dist/AgentController-版本-win-x64[-compact].zip` 及 `.sha256` |
 | 独立 Micro 小键盘／Monitor | `virtual-micro/src/CodexMicro.DesktopHost/`；发布版本还由脚本参数指定 | `scripts/package-micro.ps1`，选择 `standard` 或 `monitor` | `dist/` |
 | DeepSeek 小键盘在线包 | 上述 Host、`micro-bridge/DeepSeekHarness/` | `scripts/package-micro.ps1 -Preset deepseek`、`scripts/publish-deepseek-release.ps1` | `dist/Deepseek-Harness-Keypad-v版本-win-x64.zip` |
-| macOS Foundation Preview | `src/AgentController.Desktop/`、`src/AgentController.Platform.MacOS/` | `scripts/publish-macos.ps1` | `artifacts/macos/` 下两个架构的 `.app` |
+| 旧 macOS Foundation Preview（已废弃） | `src/AgentController.Desktop/`、`src/AgentController.Platform.MacOS/`，仅保留历史源码 | 发布入口已停用 | 历史产物不再分发 |
 | Windows 虚拟设备驱动 | `virtual-micro/driver/` | 按[驱动说明](../virtual-micro/UNSIGNED-DRIVER.zh-CN.md)单独处理 | 与应用 zip 分开交付 |
 
 这些产品的版本分别维护，不能把 Windows 主程序的版本号套给所有子项目。主程序包含 DeepSeek 控制能力，并不代表发布主程序时也需要重发小键盘或驱动。
@@ -314,15 +314,7 @@ standard 与 monitor 没有专用上传脚本，人工用 GitHub CLI 建立各�
 
 DeepSeek 在线发布使用 `publish-deepseek-release.ps1`，先读取它的参数并准备对应 `release-deepseek-keypad-v版本.md`、远程标签，再用 `-SkipBuild -Draft -WhatIf` 预览。其当前默认标签为 `codex-micro-v版本`，只上传用户在线 zip：已有 Release 若包含其他附件会被拒绝，同名 zip 会直接覆盖；省略 `-Draft` 或 `-Prerelease` 还会清除对应状态。它检查的是 `origin` 标签存在性，没有主程序的目标仓库标签与 HEAD 比对。执行前审查脚本，不套用第 5 节的覆盖策略。完整 WSL payload、一键 EXE 属于另一路径，分别见 `build-deepseek-full-payload.ps1`、`package-deepseek-oneclick.ps1`，不得混入在线版附件。
 
-macOS 脚本的 `publish` 指本地生成 `.app`，不会上传 GitHub。它使用 `--no-restore`，所以必须先还原；当前 bundle 版本在脚本中另设，更新时与 Desktop 项目一并核对：
-
-```powershell
-dotnet restore .\AgentController.sln
-if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
-.\scripts\publish-macos.ps1
-```
-
-后续 Mac 真机验收、签名公证及分发要求见 [macOS Foundation Preview](macos-foundation-preview.zh-CN.md)。Windows 交叉构建结果只表明本地包已生成。
+旧 macOS Foundation Preview 已废弃。默认解决方案不再包含其桌面壳、平台实现与平台测试，`release:macos` 命令已移除，`publish-macos.ps1` 会直接报废弃错误，不生成或覆盖产物。Micro 的 macOS 桌面方向见[平台方向](architecture/platform-direction.zh-CN.md)。
 
 ## 8. 脚本速查
 

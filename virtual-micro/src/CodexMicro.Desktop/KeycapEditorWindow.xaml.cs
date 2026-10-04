@@ -21,7 +21,9 @@ public partial class KeycapEditorWindow : Window
         string Kind,
         string DisplayName,
         string? Id = null,
-        string? Path = null)
+        string? Path = null,
+        string IconId = "EMPT1",
+        bool IsAvailable = true)
     {
         public override string ToString() => DisplayName;
     }
@@ -32,23 +34,29 @@ public partial class KeycapEditorWindow : Window
     private readonly CodexMicroConfigWriter? _configWriter;
     private readonly CodexMicroLayoutObserver? _layoutObserver;
     private readonly IReadOnlyList<CodexKeycapDefinition> _keycaps = [];
-    private readonly IReadOnlyList<CodexSkillDefinition> _skills;
+    private IReadOnlyList<CodexSkillDefinition> _skills = [];
+    private readonly CancellationTokenSource _loadLifetime = new();
+    private readonly Func<CancellationToken, Task<IReadOnlyList<CodexSkillDefinition>>> _readSkills;
     private readonly MicroHarnessRegistry? _harnessRegistry;
     private readonly string? _harnessId;
     private IReadOnlyList<HarnessKeycap> _harnessKeycaps = [];
     private bool _initialBindingApplied;
+    private readonly MicroProfileSettings? _softwareProfile;
 
     internal KeycapEditorWindow(
         string slotId,
         CodexMicroSlotBinding binding,
         MicroLocalization localization,
         CodexMicroConfigWriter configWriter,
-        CodexMicroLayoutObserver layoutObserver)
+        CodexMicroLayoutObserver layoutObserver,
+        Func<CancellationToken, Task<IReadOnlyList<CodexSkillDefinition>>>? readSkills = null,
+        MicroProfileSettings? softwareProfile = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(slotId);
         _slotId = slotId;
         _initialBinding = binding ??
             throw new ArgumentNullException(nameof(binding));
+        _softwareProfile = softwareProfile;
         _localization = localization ??
             throw new ArgumentNullException(nameof(localization));
         _configWriter = configWriter ??
@@ -56,14 +64,16 @@ public partial class KeycapEditorWindow : Window
         _layoutObserver = layoutObserver ??
             throw new ArgumentNullException(nameof(layoutObserver));
         _keycaps = CodexKeycapCatalog.ForSlot(slotId);
-        _skills = CodexSkillCatalog.ReadInstalled();
+        _readSkills = readSkills ?? CodexSkillCatalog.ReadInstalledAsync;
 
         InitializeComponent();
+        Loaded += (_, _) => MicroWindowLayout.FitDialog(this);
         _localization.LanguageChanged += Localization_LanguageChanged;
         Closed += Window_Closed;
+        ContentRendered += LoadSkills;
         KeycapList.ItemsSource = _keycaps;
         KeycapList.SelectedItem = _keycaps.FirstOrDefault(keycap =>
-            keycap.Id == binding.KeycapId) ?? _keycaps[0];
+            keycap.Id == (_softwareProfile?.ResolveKeycapIcon(slotId, binding.KeycapId) ?? binding.KeycapId)) ?? _keycaps[0];
         RefreshLocalizedText();
     }
 
@@ -82,6 +92,7 @@ public partial class KeycapEditorWindow : Window
         _harnessRegistry = harnessRegistry ??
             throw new ArgumentNullException(nameof(harnessRegistry));
         _skills = [];
+        _readSkills = CodexSkillCatalog.ReadInstalledAsync;
         _harnessKeycaps = CreateHarnessKeycaps(
             MicroHarnessControlIds.IsVoice(controlId));
 
@@ -97,6 +108,25 @@ public partial class KeycapEditorWindow : Window
     }
 
     internal string SlotId => _slotId;
+
+    private async void LoadSkills(object? sender, EventArgs e)
+    {
+        ContentRendered -= LoadSkills;
+        var token = _loadLifetime.Token;
+        try
+        {
+            _skills = await _readSkills(token);
+            if (token.IsCancellationRequested || KeycapList.SelectedItem is not CodexKeycapDefinition keycap) return;
+            var selected = ActionCombo.SelectedItem as ActionChoice;
+            PopulateActionChoices(keycap, selected is { Kind: "skill" or "command", Id: { } id }
+                ? new(selected.Kind, id, selected.Path) : null);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(error.Message);
+        }
+    }
 
     private bool IsHarnessEditor => _harnessRegistry is not null;
 
@@ -152,21 +182,22 @@ public partial class KeycapEditorWindow : Window
         string? legacyCommandId = null)
     {
         var english = _localization.IsEnglish;
-        var choices = new List<ActionChoice>
-        {
-            new(
-                "default",
-                english ? "Keycap default" : "使用键帽默认动作"),
-        };
+        var originalKeycap = CodexKeycapCatalog.Get(_initialBinding?.KeycapId ?? keycap.Id);
+        var choices = new List<ActionChoice>();
+        if (_softwareProfile is not null || !CodexActionCatalog.All.Any(c => c.Id == originalKeycap.DefaultAction))
+            choices.Add(new("default", originalKeycap.Label, IconId: originalKeycap.Id,
+                IsAvailable: _softwareProfile is null || CodexActionCatalog.SoftwareRoute(originalKeycap.DefaultAction) is not null));
 
-        var commands = CodexKeycapCatalog.All
-            .GroupBy(item => item.DefaultAction, StringComparer.Ordinal)
-            .Select(group => group.First())
-            .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase);
+        var commands = CodexActionCatalog.All
+            .Where(item => _softwareProfile is null || item.Id != "codexMicroSettings")
+            .OrderByDescending(item => item.SoftwareSupported)
+            .ThenBy(item => item.Label, StringComparer.OrdinalIgnoreCase);
         choices.AddRange(commands.Select(command => new ActionChoice(
             "command",
-            $"{(english ? "Command" : "命令")} · {command.Label}",
-            command.DefaultAction)));
+            english ? command.Label : command.LabelZh ?? command.Label,
+            command.Id,
+            IconId: command.IconId,
+            IsAvailable: _softwareProfile is null || command.SoftwareSupported)));
 
         var existingCommand = selectedAction is { Type: "command" }
             ? selectedAction.Id
@@ -177,7 +208,8 @@ public partial class KeycapEditorWindow : Window
             choices.Add(new(
                 "command",
                 $"{(english ? "Command" : "命令")} · {existingCommand}",
-                existingCommand));
+                existingCommand,
+                IsAvailable: _softwareProfile is null || CodexActionCatalog.SoftwareRoute(existingCommand) is not null));
         }
 
         foreach (var skill in _skills)
@@ -188,6 +220,11 @@ public partial class KeycapEditorWindow : Window
                 skill.Name,
                 skill.SkillPath));
         }
+
+        // Keep the saved skill intact even before the background catalog has arrived.
+        if (selectedAction is { Type: "skill" } && !choices.Any(choice =>
+            choice.Kind == "skill" && choice.Id == selectedAction.Id && choice.Path == selectedAction.SkillPath))
+            choices.Add(new("skill", $"Skill · {selectedAction.Id}", selectedAction.Id, selectedAction.SkillPath));
 
         ActionCombo.ItemsSource = choices;
         ActionCombo.SelectedItem = selectedAction switch
@@ -201,7 +238,8 @@ public partial class KeycapEditorWindow : Window
             _ when !string.IsNullOrWhiteSpace(legacyCommandId) =>
                 choices.FirstOrDefault(choice =>
                     choice.Kind == "command" && choice.Id == legacyCommandId),
-            _ => choices[0],
+            _ => choices.FirstOrDefault(choice => choice.Kind == "default") ??
+                choices.First(choice => choice.Id == originalKeycap.DefaultAction),
         } ?? choices[0];
         AssignedDetailText.Text = english
             ? $"Keycap default: {keycap.Label}"
@@ -232,7 +270,7 @@ public partial class KeycapEditorWindow : Window
             return;
         }
 
-        if (!_initialBindingApplied && keycap.Id == initialBinding.KeycapId)
+        if (!_initialBindingApplied)
         {
             _initialBindingApplied = true;
             PopulateActionChoices(
@@ -242,8 +280,9 @@ public partial class KeycapEditorWindow : Window
         }
         else
         {
-            _initialBindingApplied = true;
-            PopulateActionChoices(keycap);
+            // Appearance never changes the selected action, including a default
+            // microphone/empty key whose behavior is tied to its original keycap.
+            return;
         }
     }
 
@@ -313,7 +352,8 @@ public partial class KeycapEditorWindow : Window
             _ => null,
         };
         if (_configWriter is null ||
-            !_configWriter.SetSlot(_slotId, keycap.Id, action))
+            !_configWriter.SetSlot(_slotId,
+                _softwareProfile is not null ? _initialBinding!.KeycapId : keycap.Id, action))
         {
             EditorStatusText.Text = _localization.IsEnglish
                 ? "Could not save the Codex configuration."
@@ -323,6 +363,15 @@ public partial class KeycapEditorWindow : Window
             return;
         }
 
+        if (_softwareProfile is not null)
+        {
+            _softwareProfile.SetKeycapIcon(_slotId, keycap.Id);
+            if (!_softwareProfile.LastSaveSucceeded)
+            {
+                EditorStatusText.Text = _localization.IsEnglish ? "Could not save icon." : "图标保存失败。";
+                return;
+            }
+        }
         _layoutObserver?.ReloadNow();
         DialogResult = true;
     }
@@ -344,17 +393,9 @@ public partial class KeycapEditorWindow : Window
 
         Title = english ? "Edit keycap" : "编辑键帽";
         EditorTitleText.Text = Title;
-        EditorSubtitleText.Text = IsHarnessEditor
-            ? english
-                ? $"Choose the native Harness action on {_slotId}"
-                : $"选择 {_slotId} 的 Harness 原生动作"
-            : english
-                ? $"Choose what appears on {_slotId}"
-                : $"选择 {_slotId} 上显示的内容";
+        EditorSubtitleText.Text = _slotId;
         SearchPlaceholderText.Text = english ? "Search keycaps" : "搜索键帽";
-        AssignedTitleText.Text = IsHarnessEditor
-            ? english ? "Assigned Harness action" : "已分配的 Harness 动作"
-            : english ? "Assigned shortcut or skill" : "已分配的快捷操作或 Skill";
+        AssignedTitleText.Text = english ? "Action" : "动作";
         CancelButton.Content = english ? "Cancel" : "取消";
         SaveButton.Content = english ? "Save" : "保存";
         if (KeycapList.SelectedItem is HarnessKeycap harnessKeycap)
@@ -364,10 +405,12 @@ public partial class KeycapEditorWindow : Window
         else if (KeycapList.SelectedItem is CodexKeycapDefinition keycap &&
             _initialBinding is not null)
         {
+            var selected = ActionCombo.SelectedItem as ActionChoice;
             PopulateActionChoices(
                 keycap,
-                _initialBinding.Action,
-                _initialBinding.CommandId);
+                selected is { Kind: "command" or "skill", Id: { } id }
+                    ? new(selected.Kind, id, selected.Path) : selected is null ? _initialBinding.Action : null,
+                selected is null ? _initialBinding.CommandId : null);
         }
     }
 
@@ -375,10 +418,7 @@ public partial class KeycapEditorWindow : Window
         object sender,
         MouseButtonEventArgs e)
     {
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            DragMove();
-        }
+        MicroWindowLayout.DragTitle(this, e);
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -397,6 +437,9 @@ public partial class KeycapEditorWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _loadLifetime.Cancel();
+        _loadLifetime.Dispose();
+        ContentRendered -= LoadSkills;
         _localization.LanguageChanged -= Localization_LanguageChanged;
         Closed -= Window_Closed;
     }

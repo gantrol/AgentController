@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows.Automation;
+using AgentController.Adapters.Codex.Windows;
 using CodexController.Agents;
 using CodexController.Models;
 using CodexController.Native;
@@ -30,14 +31,17 @@ public sealed class ProjectDisclosureLease
 {
     public ProjectDisclosureLease(
         string projectName,
-        bool projectIsPinned)
+        bool projectIsPinned,
+        string? sectionName = null)
     {
         ProjectName = projectName;
         ProjectIsPinned = projectIsPinned;
+        SectionName = sectionName ?? (projectIsPinned ? "Pinned" : "Projects");
     }
 
     public string ProjectName { get; }
     public bool ProjectIsPinned { get; }
+    public string SectionName { get; }
     internal bool PinnedSectionInspected { get; set; }
     internal bool PinnedSectionExpandedByController { get; set; }
     internal bool ProjectSectionInspected { get; set; }
@@ -195,6 +199,9 @@ public sealed class CodexSidebarService
                 return null;
             }
 
+            var selectedTitle = CodexUiController.ReadSelectedThreadTitle(window.Current.NativeWindowHandle);
+            if (selectedTitle is not null) return selectedTitle;
+
             var texts = window.FindAll(
                 TreeScope.Descendants,
                 new PropertyCondition(
@@ -312,7 +319,7 @@ public sealed class CodexSidebarService
             }
 
             var projectSection =
-                lease.ProjectIsPinned ? "Pinned" : "Projects";
+                lease.SectionName;
             if (
                 lease.ProjectSectionExpandedByController &&
                 !(projectSection == "Pinned" &&
@@ -348,48 +355,9 @@ public sealed class CodexSidebarService
         }
     }
 
-    private static AutomationElement? FindCodexWindow()
-    {
-        nint selectedHandle = nint.Zero;
-        var selectedStart = DateTime.MinValue;
-        foreach (var process in Process.GetProcessesByName("ChatGPT"))
-        {
-            try
-            {
-                var handle = process.MainWindowHandle;
-                if (handle == nint.Zero)
-                {
-                    continue;
-                }
-
-                DateTime start;
-                try
-                {
-                    start = process.StartTime;
-                }
-                catch
-                {
-                    start = DateTime.MinValue;
-                }
-
-                if (
-                    selectedHandle == nint.Zero ||
-                    start >= selectedStart)
-                {
-                    selectedHandle = handle;
-                    selectedStart = start;
-                }
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-
-        return selectedHandle == nint.Zero
-            ? null
-            : AutomationElement.FromHandle(selectedHandle);
-    }
+    private static AutomationElement? FindCodexWindow() =>
+        CodexWindowActivator.TryFindMainWindow(out var candidate)
+            ? AutomationElement.FromHandle(candidate.Handle) : null;
 
     private static AutomationElement? FindProjectButton(
         AutomationElement window,
@@ -398,7 +366,7 @@ public sealed class CodexSidebarService
         CancellationToken cancellationToken,
         ProjectDisclosureLease? disclosureLease)
     {
-        var sectionName = projectIsPinned ? "Pinned" : "Projects";
+        var sectionName = disclosureLease?.SectionName ?? (projectIsPinned ? "Pinned" : "Projects");
         EnsureSectionExpanded(
             window,
             sectionName,
@@ -439,7 +407,7 @@ public sealed class CodexSidebarService
         var title = entry.NativeTitle ?? entry.Title;
         if (!string.IsNullOrWhiteSpace(projectName))
         {
-            var sectionName = projectIsPinned ? "Pinned" : "Projects";
+            var sectionName = entry.SectionName ?? disclosureLease?.SectionName ?? (projectIsPinned ? "Pinned" : "Projects");
             EnsureSectionExpanded(
                 window,
                 sectionName,

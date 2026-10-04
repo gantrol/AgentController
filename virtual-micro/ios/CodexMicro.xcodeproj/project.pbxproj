@@ -1,0 +1,55 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		E89CC0832D9A18036BDDB3B3 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppDelegate.swift"; path = "CodexMicro/App/AppDelegate.swift"; sourceTree = "<group>"; };
+		ABDE9A6BB927F7D527C91408 = { isa = PBXBuildFile; fileRef = E89CC0832D9A18036BDDB3B3; };
+		C2562F0A0CCC98318ED61E5B = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DemoTransport.swift"; path = "CodexMicro/Connection/DemoTransport.swift"; sourceTree = "<group>"; };
+		04A88B2137ED1916DE9CFD00 = { isa = PBXBuildFile; fileRef = C2562F0A0CCC98318ED61E5B; };
+		B7813C2163133F483C137BF3 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "HostCredentials.swift"; path = "CodexMicro/Connection/HostCredentials.swift"; sourceTree = "<group>"; };
+		9FFA5C4A1A862265FF095865 = { isa = PBXBuildFile; fileRef = B7813C2163133F483C137BF3; };
+		C1CCAB432A8C7405B2FCD5EF = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "WebSocketTransport.swift"; path = "CodexMicro/Connection/WebSocketTransport.swift"; sourceTree = "<group>"; };
+		AFFF42FD6A1B48076BFAD7E0 = { isa = PBXBuildFile; fileRef = C1CCAB432A8C7405B2FCD5EF; };
+		0C54BBCE9BB7B4366C741CDA = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MicroModels.swift"; path = "CodexMicro/Core/MicroModels.swift"; sourceTree = "<group>"; };
+		8045786E6A765D3963236B16 = { isa = PBXBuildFile; fileRef = 0C54BBCE9BB7B4366C741CDA; };
+		3046170F1F5603A4930DEDB9 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MicroStore.swift"; path = "CodexMicro/Core/MicroStore.swift"; sourceTree = "<group>"; };
+		4999127E5A892E571D9BBA91 = { isa = PBXBuildFile; fileRef = 3046170F1F5603A4930DEDB9; };
+		3BA320FB4055F37D5C9CF3A4 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConnectionViewController.swift"; path = "CodexMicro/UI/ConnectionViewController.swift"; sourceTree = "<group>"; };
+		68B4347F3168CD39A8E0E400 = { isa = PBXBuildFile; fileRef = 3BA320FB4055F37D5C9CF3A4; };
+		6B5CD37A1B9C1524F43E0676 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "EncoderControl.swift"; path = "CodexMicro/UI/EncoderControl.swift"; sourceTree = "<group>"; };
+		EE67B7DFFEFAA9B99FE2C4F1 = { isa = PBXBuildFile; fileRef = 6B5CD37A1B9C1524F43E0676; };
+		D21DED5B3DEEC2897CB0CD27 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "JoystickControl.swift"; path = "CodexMicro/UI/JoystickControl.swift"; sourceTree = "<group>"; };
+		2C99540A30FB9ED6BF62F874 = { isa = PBXBuildFile; fileRef = D21DED5B3DEEC2897CB0CD27; };
+		C35716EE2DEABF54C727C564 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KeycapControl.swift"; path = "CodexMicro/UI/KeycapControl.swift"; sourceTree = "<group>"; };
+		B14591BC147A72ECAA890D1E = { isa = PBXBuildFile; fileRef = C35716EE2DEABF54C727C564; };
+		1E9FDAA968E6A793D7D19598 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MicroDeviceView.swift"; path = "CodexMicro/UI/MicroDeviceView.swift"; sourceTree = "<group>"; };
+		638D9D615B657FAEC5D3C00B = { isa = PBXBuildFile; fileRef = 1E9FDAA968E6A793D7D19598; };
+		64E38E48DCA0D673B4ED94A1 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MicroTheme.swift"; path = "CodexMicro/UI/MicroTheme.swift"; sourceTree = "<group>"; };
+		6D6EEECAF3ED1A931B6E87BF = { isa = PBXBuildFile; fileRef = 64E38E48DCA0D673B4ED94A1; };
+		BBDF9833A4E51CBCEDD7159A = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MicroViewController.swift"; path = "CodexMicro/UI/MicroViewController.swift"; sourceTree = "<group>"; };
+		AD5AF17952CFC4AD5E841372 = { isa = PBXBuildFile; fileRef = BBDF9833A4E51CBCEDD7159A; };
+		814F74989E55D0FB705563DE = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "QuotaControl.swift"; path = "CodexMicro/UI/QuotaControl.swift"; sourceTree = "<group>"; };
+		9BD06335ABB9D2B1E22F8AA5 = { isa = PBXBuildFile; fileRef = 814F74989E55D0FB705563DE; };
+		BBEEE3F6AEB7196D75A1D04F = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "CodexMicro/Assets.xcassets"; sourceTree = "<group>"; };
+		067041770DECE5D36CC91480 = { isa = PBXBuildFile; fileRef = BBEEE3F6AEB7196D75A1D04F; };
+		3CD16401A231FE91AA82C106 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "CodexMicro/Info.plist"; sourceTree = "<group>"; };
+		F827B7C8A9B252F0956F52ED = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CodexMicro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4ED697C5E5402460D7F57DC7 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (ABDE9A6BB927F7D527C91408, 04A88B2137ED1916DE9CFD00, 9FFA5C4A1A862265FF095865, AFFF42FD6A1B48076BFAD7E0, 8045786E6A765D3963236B16, 4999127E5A892E571D9BBA91, 68B4347F3168CD39A8E0E400, EE67B7DFFEFAA9B99FE2C4F1, 2C99540A30FB9ED6BF62F874, B14591BC147A72ECAA890D1E, 638D9D615B657FAEC5D3C00B, 6D6EEECAF3ED1A931B6E87BF, AD5AF17952CFC4AD5E841372, 9BD06335ABB9D2B1E22F8AA5,); runOnlyForDeploymentPostprocessing = 0; };
+		1C0E2692CCAC2332781A2809 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (067041770DECE5D36CC91480,); runOnlyForDeploymentPostprocessing = 0; };
+		7D032FF5C975EBF4E52E8C06 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FC707FE8858DADA0909ADF42 = { isa = PBXGroup; name = CodexMicro; children = (E89CC0832D9A18036BDDB3B3, C2562F0A0CCC98318ED61E5B, B7813C2163133F483C137BF3, C1CCAB432A8C7405B2FCD5EF, 0C54BBCE9BB7B4366C741CDA, 3046170F1F5603A4930DEDB9, 3BA320FB4055F37D5C9CF3A4, 6B5CD37A1B9C1524F43E0676, D21DED5B3DEEC2897CB0CD27, C35716EE2DEABF54C727C564, 1E9FDAA968E6A793D7D19598, 64E38E48DCA0D673B4ED94A1, BBDF9833A4E51CBCEDD7159A, 814F74989E55D0FB705563DE, BBEEE3F6AEB7196D75A1D04F, 3CD16401A231FE91AA82C106,); sourceTree = "<group>"; };
+		5973A191059AD6F0A3C40F73 = { isa = PBXGroup; name = Products; children = (F827B7C8A9B252F0956F52ED,); sourceTree = "<group>"; };
+		4F73961E667B97A68404B059 = { isa = PBXGroup; children = (FC707FE8858DADA0909ADF42, 5973A191059AD6F0A3C40F73,); sourceTree = "<group>"; };
+		D7379B47A0997ED6B6B7FC2E = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = "YES"; CLANG_ENABLE_OBJC_ARC = "YES"; CLANG_WARN_DOCUMENTATION_COMMENTS = "YES"; CLANG_WARN_UNGUARDED_AVAILABILITY = "YES_AGGRESSIVE"; SDKROOT = "iphoneos"; IPHONEOS_DEPLOYMENT_TARGET = "17.0"; SWIFT_VERSION = "5.0"; GCC_C_LANGUAGE_STANDARD = "gnu17"; ENABLE_STRICT_OBJC_MSGSEND = "YES"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; DEBUG_INFORMATION_FORMAT = "dwarf"; ENABLE_TESTABILITY = "NO"; ONLY_ACTIVE_ARCH = "YES"; }; name = Debug; };
+		31C919F5E2B640DEEAF31696 = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = "YES"; CLANG_ENABLE_OBJC_ARC = "YES"; CLANG_WARN_DOCUMENTATION_COMMENTS = "YES"; CLANG_WARN_UNGUARDED_AVAILABILITY = "YES_AGGRESSIVE"; SDKROOT = "iphoneos"; IPHONEOS_DEPLOYMENT_TARGET = "17.0"; SWIFT_VERSION = "5.0"; GCC_C_LANGUAGE_STANDARD = "gnu17"; ENABLE_STRICT_OBJC_MSGSEND = "YES"; SWIFT_COMPILATION_MODE = "wholemodule"; SWIFT_OPTIMIZATION_LEVEL = "-O"; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; VALIDATE_PRODUCT = "YES"; }; name = Release; };
+		FE1D818CD23CDE62AAF293C1 = { isa = XCConfigurationList; buildConfigurations = (D7379B47A0997ED6B6B7FC2E, 31C919F5E2B640DEEAF31696,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		FF7A97F1B93C0486B1B6767C = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_STYLE = "Automatic"; CURRENT_PROJECT_VERSION = "1"; MARKETING_VERSION = "0.1.0"; GENERATE_INFOPLIST_FILE = "NO"; INFOPLIST_FILE = "CodexMicro/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.gantrol.codexmicro.ios"; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = "NO"; SWIFT_EMIT_LOC_STRINGS = "YES"; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; }; name = Debug; };
+		AEE885359BE77D0329348B49 = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_STYLE = "Automatic"; CURRENT_PROJECT_VERSION = "1"; MARKETING_VERSION = "0.1.0"; GENERATE_INFOPLIST_FILE = "NO"; INFOPLIST_FILE = "CodexMicro/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.gantrol.codexmicro.ios"; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = "NO"; SWIFT_EMIT_LOC_STRINGS = "YES"; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; }; name = Release; };
+		3C36609D8A841CDDC4D433E7 = { isa = XCConfigurationList; buildConfigurations = (FF7A97F1B93C0486B1B6767C, AEE885359BE77D0329348B49,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		39926C89697F5FFDA3918F5F = { isa = PBXNativeTarget; buildConfigurationList = 3C36609D8A841CDDC4D433E7; buildPhases = (4ED697C5E5402460D7F57DC7, 7D032FF5C975EBF4E52E8C06, 1C0E2692CCAC2332781A2809,); buildRules = (); dependencies = (); name = CodexMicro; productName = CodexMicro; productReference = F827B7C8A9B252F0956F52ED; productType = "com.apple.product-type.application"; };
+		81C041F36A1DAB037147AF5B = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1500; TargetAttributes = { 39926C89697F5FFDA3918F5F = { CreatedOnToolsVersion = 15.0; }; }; }; buildConfigurationList = FE1D818CD23CDE62AAF293C1; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh_CN; hasScannedForEncodings = 0; knownRegions = (zh_CN, en, Base,); mainGroup = 4F73961E667B97A68404B059; productRefGroup = 5973A191059AD6F0A3C40F73; projectDirPath = ""; projectRoot = ""; targets = (39926C89697F5FFDA3918F5F,); };
+	};
+	rootObject = 81C041F36A1DAB037147AF5B;
+}

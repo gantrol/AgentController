@@ -18,6 +18,11 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.NavDevice] = "Device",
             [StringKeys.NavConfiguration] = "Configuration",
             [StringKeys.NavSettings] = "Settings",
+            [StringKeys.WindowMinimize] = "Minimize",
+            [StringKeys.WindowMaximize] = "Maximize",
+            [StringKeys.WindowRestore] = "Restore",
+            [StringKeys.WindowClose] = "Close",
+            [StringKeys.WindowResize] = "Resize window",
             [StringKeys.OverlayNotificationName] =
                 "Agent Controller notification",
 
@@ -30,6 +35,24 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.DeviceGamepadBridge] = "Gamepad bridge",
             [StringKeys.DeviceLiveInput] = "Live input",
             [StringKeys.DeviceIdle] = "Idle",
+            [StringKeys.StatusControlDisabled] = "Controller input off",
+            [StringKeys.StatusControlDisconnected] = "Controller disconnected",
+            [StringKeys.StatusControlLocked] = "Controller locked",
+            [StringKeys.StatusControlNeutral] = "Waiting for neutral input",
+            [StringKeys.StatusControlActive] = "Controller ready",
+            [StringKeys.StatusControlBackground] = "Background control ready",
+            [StringKeys.StatusControlPaused] = "Controller input paused",
+            [StringKeys.StatusControlAwaitingAgent] = "Waiting for {0} foreground",
+            [StringKeys.ControlVoiceStarting] = "Starting recording",
+            [StringKeys.ControlVoiceRecording] = "Recording",
+            [StringKeys.ControlVoiceStopping] = "Stopping recording",
+            [StringKeys.ControlVoiceStartFailed] = "Recording failed to start",
+            [StringKeys.ControlVoiceStopFailed] = "Recording failed to stop",
+            [StringKeys.ControlLayerActive] = "{0} active",
+            [StringKeys.ControlPendingConfirmation] = "Awaiting confirmation",
+            [StringKeys.ComposerMenuOpen] = "Menu open",
+            [StringKeys.ComposerValueUnknown] = "Not read",
+            [StringKeys.ComposerSelectionUnverified] = "Selection unverified",
 
             [StringKeys.ControlLeftStick] = "Left stick",
             [StringKeys.ControlLeftStickHint] =
@@ -150,6 +173,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Restore defaults",
 
             [StringKeys.SettingsTitle] = "Settings",
+            [StringKeys.SettingsComponents] = "Components",
             [StringKeys.SettingsDescription] =
                 "Control bridge scope, stick feel, and background behavior. Changes save automatically.",
             [StringKeys.SettingsBehavior] = "Behavior",

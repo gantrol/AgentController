@@ -5,6 +5,31 @@ namespace CodexController.Views;
 
 public partial class SettingsPageView : System.Windows.Controls.UserControl
 {
+    private ComponentGalleryWindow? _componentGallery;
+
+    private void HelpButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement button) HelpTip.Toggle(button);
+    }
+
+    private void ComponentsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (System.Windows.Application.Current is not App { IsDevelopmentMode: true })
+            return;
+
+        if (_componentGallery is not null)
+        {
+            if (_componentGallery.WindowState == WindowState.Minimized)
+                _componentGallery.WindowState = WindowState.Normal;
+            _componentGallery.Activate();
+            return;
+        }
+
+        _componentGallery = new ComponentGalleryWindow { Owner = Window.GetWindow(this) };
+        _componentGallery.Closed += (_, _) => _componentGallery = null;
+        _componentGallery.Show();
+    }
+
     public static readonly DependencyProperty StringsProperty =
         DependencyProperty.Register(
             nameof(Strings),
@@ -22,6 +47,9 @@ public partial class SettingsPageView : System.Windows.Controls.UserControl
     public SettingsPageView()
     {
         InitializeComponent();
+        ComponentsButton.Visibility = System.Windows.Application.Current is App { IsDevelopmentMode: true }
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     public LocalizedStrings? Strings

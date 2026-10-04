@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "codex-micro-keypad": {
+      "type": "stdio",
+      "command": "${PLUGIN_ROOT}/bin/CodexMicro.Plugin.exe",
+      "args": ["--mcp"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

@@ -21,9 +21,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="Assets\controller.png" />
+    <Resource Include="Assets\controller.svg" />
     <Resource Include="Assets\AgentController.ico" />
     <Resource Include="Assets\AgentController.png" />
+    <Resource Include="Assets\Codex.png" />
+    <Content Include="ThirdParty\InputOverlay-Xbox\LICENSE.txt"
+             Link="THIRD-PARTY\InputOverlay-Xbox-LICENSE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <Content Include="ThirdParty\CREATRBOI-White-XBOX-Controller\ATTRIBUTION.md"
              Link="THIRD-PARTY\CREATRBOI-White-XBOX-Controller-ATTRIBUTION.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -45,22 +51,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\src\AgentController.Application\AgentController.Application.csproj" />
+    <ProjectReference Include="..\src\AgentController.Adapters.Codex.Software\AgentController.Adapters.Codex.Software.csproj" />
+    <ProjectReference Include="..\src\AgentController.Adapters.Codex.Windows\AgentController.Adapters.Codex.Windows.csproj" />
     <ProjectReference Include="..\src\AgentController.Platform.Abstractions\AgentController.Platform.Abstractions.csproj" />
-    <ProjectReference Include="..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Request-card cancellation is a shared UIA compatibility shim, not
-         part of the keypad UI. Compile the source directly so Agent Controller
-         does not load or reference the retired hosted WPF surface assembly. -->
-    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexExecutableResolver.cs"
-             Link="Services\CodexExecutableResolver.cs" />
-    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexModelCatalog.cs"
-             Link="Services\CodexModelCatalog.cs" />
-    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\CodexRequestCardCancellation.cs"
-             Link="Services\Micro\CodexRequestCardCancellation.cs" />
-    <Compile Include="..\virtual-micro\src\CodexMicro.Desktop\Services\WindowsProcessImage.cs"
-             Link="Services\Micro\WindowsProcessImage.cs" />
-  </ItemGroup>
 
 </Project>

@@ -6,6 +6,8 @@ param(
     [switch]$Launch
 )
 
+throw 'Codex Micro moved to the standalone codex-micro-monitor repository. Use its scripts/package.ps1.'
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 

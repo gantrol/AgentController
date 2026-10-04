@@ -9,16 +9,16 @@ namespace CodexMicro.Desktop.Services;
 /// retaining an independent client id and held-input lease, so either product
 /// can disappear without releasing the other's state.
 /// </summary>
-internal sealed class VirtualMicroBroker : IDisposable
+internal sealed class VirtualMicroBroker : IMicroTransport
 {
-    private readonly MicroBrokerClient _driver =
-        new("Codex Micro Keypad");
+    private readonly MicroBrokerClient _driver;
     private readonly object _heldSync = new();
     private readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
     private bool _disposed;
 
-    public VirtualMicroBroker()
+    public VirtualMicroBroker(MicroBrokerClient? driver = null)
     {
+        _driver = driver ?? new("Codex Micro Keypad");
         _driver.SlotLightingObserved += Driver_SlotLightingObserved;
         _driver.StateChanged += Driver_StateChanged;
         _driver.CodexLinkObservedChanged +=

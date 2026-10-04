@@ -20,4 +20,8 @@
     <sys:Double x:Key="Control.H.SM">28</sys:Double>
     <sys:Double x:Key="Control.H.MD">32</sys:Double>
     <sys:Double x:Key="Control.H.LG">36</sys:Double>
+    <sys:Double x:Key="ScrollBar.HitSize">12</sys:Double>
+    <sys:Double x:Key="ScrollBar.ThumbMinLength">24</sys:Double>
+    <Thickness x:Key="ScrollBar.ThumbInset.Vertical">4,2</Thickness>
+    <Thickness x:Key="ScrollBar.ThumbInset.Horizontal">2,4</Thickness>
 </ResourceDictionary>

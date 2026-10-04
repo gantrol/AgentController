@@ -55,7 +55,8 @@ public sealed class MicroDriverOwnershipRulesTests
             "CodexMicro.DesktopHost.csproj"));
         Assert.Equal(
             "WinExe",
-            hostProject.Descendants("OutputType").Single().Value);
+            hostProject.Descendants("OutputType")
+                .Single(element => element.Attribute("Condition") is null).Value);
         Assert.Equal(
             "true",
             hostProject.Descendants("UseWPF").Single().Value);

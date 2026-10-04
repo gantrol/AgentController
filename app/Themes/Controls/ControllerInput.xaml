@@ -1,0 +1,120 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:views="clr-namespace:CodexController.Views">
+    <Style x:Key="Controller.Input" TargetType="{x:Type views:ControllerInputButton}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+        <Setter Property="ToolTipService.Placement" Value="Bottom" />
+        <Setter Property="ToolTipService.VerticalOffset" Value="8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type views:ControllerInputButton}">
+                    <Grid>
+                        <Border x:Name="Face" CornerRadius="{StaticResource Radius.MD}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <Border Height="3" Margin="5,0,5,2" VerticalAlignment="Bottom"
+                                Background="{StaticResource Brush.Text.Accent}" CornerRadius="1"
+                                RenderTransformOrigin="0,0.5" IsHitTestVisible="False">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="{Binding HoldProgress, RelativeSource={RelativeSource TemplatedParent}}" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Brush.Text.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsLinkedHighlighted" Value="True">
+                            <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Brush.Border.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsInputPressed" Value="True">
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource Brush.Accent.Soft}" />
+                            <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsConfirmationPending" Value="True">
+                            <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Brush.Status.Warning}" />
+                            <Setter TargetName="Face" Property="Background" Value="{StaticResource Brush.Bg.Sunken}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="Controller.Joystick" TargetType="{x:Type views:ControllerJoystick}"
+           BasedOn="{StaticResource Controller.Input}">
+        <Setter Property="Width" Value="84" />
+        <Setter Property="Height" Value="84" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text.Accent}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type views:ControllerJoystick}">
+                    <Grid Background="Transparent">
+                        <Ellipse Margin="3" Fill="{StaticResource Brush.Bg.Sunken}"
+                                 Stroke="{StaticResource Brush.Border.Strong}" StrokeThickness="1" />
+                        <Ellipse Margin="12" Stroke="{StaticResource Brush.Border.Subtle}" StrokeThickness="1" />
+                        <Path Data="M 42,7 V 12 M 77,42 H 72 M 42,77 V 72 M 7,42 H 12"
+                              Stroke="{StaticResource Brush.Text.Tertiary}" StrokeThickness="1.5"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False" />
+                        <Grid Width="42" Height="42">
+                            <Grid.RenderTransform>
+                                <TranslateTransform X="{Binding OffsetX, RelativeSource={RelativeSource TemplatedParent}}"
+                                                    Y="{Binding OffsetY, RelativeSource={RelativeSource TemplatedParent}}" />
+                            </Grid.RenderTransform>
+                            <Ellipse Margin="0,3,0,-3" Fill="{StaticResource Brush.Border.Strong}" />
+                            <Ellipse x:Name="Cap" Fill="{StaticResource Brush.Bg.Surface}"
+                                     Stroke="{StaticResource Brush.Text.Secondary}" StrokeThickness="1.5" />
+                            <Ellipse Margin="4" Stroke="{StaticResource Brush.Border.Subtle}" StrokeThickness="1" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                        <Border Width="32" Height="2" Margin="0,0,0,1" VerticalAlignment="Bottom"
+                                Background="{StaticResource Brush.Text.Accent}" CornerRadius="1"
+                                RenderTransformOrigin="0,0.5" IsHitTestVisible="False">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="{Binding HoldProgress, RelativeSource={RelativeSource TemplatedParent}}" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Cap" Property="Stroke" Value="{StaticResource Brush.Text.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsLinkedHighlighted" Value="True">
+                            <Setter TargetName="Cap" Property="Fill" Value="{StaticResource Brush.Accent.Soft}" />
+                        </Trigger>
+                        <Trigger Property="IsInputPressed" Value="True">
+                            <Setter TargetName="Cap" Property="Fill" Value="{StaticResource Brush.Accent.Soft}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="Controller.Hotspot" TargetType="{x:Type views:ControllerInputButton}"
+           BasedOn="{StaticResource Controller.Input}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="5" />
+    </Style>
+</ResourceDictionary>

@@ -21,10 +21,12 @@
     <AssemblyTitle>Codex Micro Keypad</AssemblyTitle>
     <Product>Codex Micro Keypad</Product>
     <Description>Standalone Codex Micro keypad using the original WPF XAML.</Description>
-    <Version>0.3.10</Version>
-    <AssemblyVersion>0.3.10.0</AssemblyVersion>
-    <FileVersion>0.3.10.0</FileVersion>
+    <Version>0.3.13</Version>
+    <AssemblyVersion>0.3.13.0</AssemblyVersion>
+    <FileVersion>0.3.13.0</FileVersion>
     <ApplicationIcon>..\..\Assets\CodexMicro.ico</ApplicationIcon>
+    <MicroSoftwareControl Condition="'$(MicroSoftwareControl)' == ''">true</MicroSoftwareControl>
+    <DefineConstants Condition="'$(MicroSoftwareControl)' == 'true'">$(DefineConstants);MICRO_SOFTWARE_CONTROL</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,12 +37,11 @@
     <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="..\..\voice\start-qwen3-asr-stream.ps1;..\..\voice\qwen3-asr-stream-server.py"
-             Link="voice\%(RecursiveDir)%(Filename)%(Extension)">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-  </ItemGroup>
+  <Target Name="ExcludeVoiceAssets" AfterTargets="ComputeFilesToPublish" Condition="'$(MicroSoftwareControl)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Filename)' == 'start-qwen3-asr-stream' Or '%(Filename)' == 'qwen3-asr-stream-server' Or '%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 
 </Project>

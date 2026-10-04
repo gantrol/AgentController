@@ -1,7 +1,6 @@
 <Application x:Class="CodexController.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
@@ -11,66 +10,30 @@
                 <ResourceDictionary Source="Themes/Tokens.Metrics.xaml" />
                 <ResourceDictionary Source="Themes/Tokens.Elevation.xaml" />
                 <ResourceDictionary Source="Themes/Tokens.Motion.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Icons.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Buttons.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Tooltips.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Scrolling.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Segments.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Cards.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Inputs.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Lists.xaml" />
+                <ResourceDictionary Source="Themes/Controls/Sidebar.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Status.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Overlay.xaml" />
+                <ResourceDictionary Source="Themes/Controls/ControllerInput.xaml" />
                 <ResourceDictionary Source="Themes/Controls/Shell.xaml" />
+                <ResourceDictionary Source="Assets/AgentLogos.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <Style TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+            </Style>
             <Style TargetType="Window">
                 <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
                 <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
                 <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
                 <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
-            </Style>
-
-            <Style TargetType="ToolTip">
-                <Setter Property="Background" Value="#F51A1C1D" />
-                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Inverse}" />
-                <Setter Property="BorderBrush" Value="#28FFFFFF" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="Padding" Value="11,8" />
-                <Setter Property="FontSize" Value="{DynamicResource Font.Size.Caption}" />
-                <Setter Property="MaxWidth" Value="340" />
-                <Setter Property="HasDropShadow" Value="True" />
-                <Setter Property="Placement" Value="Mouse" />
-                <Setter Property="StaysOpen" Value="True" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="ToolTip">
-                            <Border Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    Padding="{TemplateBinding Padding}"
-                                    SnapsToDevicePixels="True">
-                                <Border.Resources>
-                                    <DataTemplate DataType="{x:Type sys:String}">
-                                        <TextBlock MaxWidth="300"
-                                                   Text="{Binding}"
-                                                   TextWrapping="Wrap"
-                                                   TextTrimming="None" />
-                                    </DataTemplate>
-                                </Border.Resources>
-                                <ContentPresenter Content="{TemplateBinding Content}"
-                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                                  ContentStringFormat="{TemplateBinding ContentStringFormat}"
-                                                  RecognizesAccessKey="False" />
-                            </Border>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-            <Style x:Key="Tooltip.HitRegion"
-                   TargetType="{x:Type FrameworkElement}">
-                <Setter Property="ToolTipService.InitialShowDelay" Value="180" />
-                <Setter Property="ToolTipService.BetweenShowDelay" Value="0" />
-                <Setter Property="ToolTipService.ShowDuration" Value="30000" />
-                <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

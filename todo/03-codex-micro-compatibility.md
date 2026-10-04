@@ -5,6 +5,8 @@
 > Depends on: 01-core-architecture, 02-codex-app-server
 > Decisions: [ADR-0002](../docs/adr/0002-codex-micro-native-compatibility.zh-CN.md), [ADR-0003](../docs/adr/0003-codex-blank-draft-model-switch.zh-CN.md)
 
+> 2026-10-03：本清单保留原生 HID 兼容路线。免驱软件版本按 [AgentController 免驱版 UML](../docs/architecture/agent-controller-driverless-uml.zh-CN.md) 的能力矩阵与迁移顺序准备，不以前述驱动 Gate 作为启动前提。
+
 ## 产品结论
 
 Windows 完整模式必须暴露一个会被 ChatGPT/Codex Desktop 原生识别的双向 Micro 类 HID 设备。UIA、快捷键和 App Server 都不能冒充这项完成度：

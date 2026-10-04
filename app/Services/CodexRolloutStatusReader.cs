@@ -9,6 +9,8 @@ public readonly record struct CodexRolloutStatusSnapshot(
     ThreadStatus Status,
     bool HasPendingQuestion);
 
+public sealed record CodexPendingQuestion(string ItemId, int Index, string Title);
+
 /// <summary>
 /// Reads the append-only Codex rollout lifecycle without inspecting the UI.
 /// This is the honest local fallback when the optional Virtual Micro status
@@ -26,6 +28,32 @@ public sealed class CodexRolloutStatusReader
         new(StringComparer.OrdinalIgnoreCase);
 
     public ThreadStatus Read(string? rolloutPath) => ReadSnapshot(rolloutPath).Status;
+
+    public IReadOnlyList<CodexPendingQuestion> GetPendingQuestions(string rolloutPath)
+    {
+        lock (_sync)
+        {
+            return _cursors.TryGetValue(rolloutPath, out var cursor) &&
+                cursor.Status == ThreadStatus.Thinking
+                    ? cursor.PendingQuestions.Select(question => new CodexPendingQuestion(
+                        question.Key.ItemId, question.Key.Index, question.Value)).ToArray()
+                    : [];
+        }
+    }
+
+    public void ObserveSkippedQuestion(string rolloutPath, CodexPendingQuestion question)
+    {
+        lock (_sync)
+        {
+            var key = (question.ItemId, question.Index);
+            if (_cursors.TryGetValue(rolloutPath, out var cursor) &&
+                cursor.PendingQuestions.TryGetValue(key, out var title) && title == question.Title)
+            {
+                cursor.PendingQuestions.Remove(key);
+                cursor.ResolvedQuestions.Add(key);
+            }
+        }
+    }
 
     public CodexRolloutStatusSnapshot ReadSnapshot(
         string? rolloutPath,
@@ -262,10 +290,10 @@ public sealed class CodexRolloutStatusReader
         foreach (var question in questions.EnumerateArray())
         {
             var key = (itemId, index++);
-            if (ReadString(question, "title") is { Length: > 0 } &&
-                !cursor.AnsweredQuestions.Contains(key))
+            if (ReadString(question, "title") is { Length: > 0 } title &&
+                !cursor.ResolvedQuestions.Contains(key))
             {
-                cursor.PendingQuestions.Add(key);
+                cursor.PendingQuestions[key] = title;
             }
         }
     }
@@ -329,7 +357,7 @@ public sealed class CodexRolloutStatusReader
             {
                 var key = (itemId, index);
                 cursor.PendingQuestions.Remove(key);
-                cursor.AnsweredQuestions.Add(key);
+                cursor.ResolvedQuestions.Add(key);
             }
         }
         catch (JsonException)
@@ -348,15 +376,15 @@ public sealed class CodexRolloutStatusReader
         public PooledLineBuffer PartialLine { get; } = new();
         public ThreadStatus Status { get; set; } = ThreadStatus.Unknown;
         public string? TurnId { get; set; }
-        public HashSet<(string ItemId, int Index)> PendingQuestions { get; } = [];
-        public HashSet<(string ItemId, int Index)> AnsweredQuestions { get; } = [];
+        public Dictionary<(string ItemId, int Index), string> PendingQuestions { get; } = [];
+        public HashSet<(string ItemId, int Index)> ResolvedQuestions { get; } = [];
         public CodexRolloutStatusSnapshot Snapshot => new(
             Status, Status == ThreadStatus.Thinking && PendingQuestions.Count > 0);
 
         public void ClearQuestions()
         {
             PendingQuestions.Clear();
-            AnsweredQuestions.Clear();
+            ResolvedQuestions.Clear();
         }
 
         public void Reset()

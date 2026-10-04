@@ -18,6 +18,11 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.NavDevice] = "设备",
             [StringKeys.NavConfiguration] = "配置",
             [StringKeys.NavSettings] = "设置",
+            [StringKeys.WindowMinimize] = "最小化",
+            [StringKeys.WindowMaximize] = "最大化",
+            [StringKeys.WindowRestore] = "还原",
+            [StringKeys.WindowClose] = "关闭",
+            [StringKeys.WindowResize] = "调整窗口大小",
             [StringKeys.OverlayNotificationName] =
                 "Agent Controller 通知",
 
@@ -29,6 +34,24 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.DeviceGamepadBridge] = "手柄桥接",
             [StringKeys.DeviceLiveInput] = "实时输入",
             [StringKeys.DeviceIdle] = "空闲",
+            [StringKeys.StatusControlDisabled] = "手柄控制已关闭",
+            [StringKeys.StatusControlDisconnected] = "手柄未连接",
+            [StringKeys.StatusControlLocked] = "手柄待解锁",
+            [StringKeys.StatusControlNeutral] = "等待按键回中",
+            [StringKeys.StatusControlActive] = "手柄控制就绪",
+            [StringKeys.StatusControlBackground] = "后台控制就绪",
+            [StringKeys.StatusControlPaused] = "手柄控制已暂停",
+            [StringKeys.StatusControlAwaitingAgent] = "等待 {0} 前台",
+            [StringKeys.ControlVoiceStarting] = "正在启动录音",
+            [StringKeys.ControlVoiceRecording] = "录音中",
+            [StringKeys.ControlVoiceStopping] = "正在结束录音",
+            [StringKeys.ControlVoiceStartFailed] = "录音启动失败",
+            [StringKeys.ControlVoiceStopFailed] = "录音停止失败",
+            [StringKeys.ControlLayerActive] = "{0} 生效中",
+            [StringKeys.ControlPendingConfirmation] = "待确认",
+            [StringKeys.ComposerMenuOpen] = "菜单已打开",
+            [StringKeys.ComposerValueUnknown] = "未读取",
+            [StringKeys.ComposerSelectionUnverified] = "当前选项未确认",
 
             [StringKeys.ControlLeftStick] = "左摇杆",
             [StringKeys.ControlLeftStickHint] =
@@ -141,11 +164,12 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ConfigRestoreDefaults] = "恢复默认值",
 
             [StringKeys.SettingsTitle] = "设置",
+            [StringKeys.SettingsComponents] = "组件库",
             [StringKeys.SettingsDescription] =
                 "控制桥接生效范围、摇杆手感和后台运行方式；修改后自动保存。",
             [StringKeys.SettingsBehavior] = "行为",
             [StringKeys.SettingsOnlyForeground] =
-                "仅前台时控制 {0}",
+                "仅{0}前台时控制",
             [StringKeys.SettingsOnlyForegroundDescription] =
                 "推荐保持开启。{1} 位于前台且手柄回中时会自动启用控制；仅在需要将 {1} 置于前台时按 {0}。离开前台会暂停，返回或休眠重连后回中即恢复。",
             [StringKeys.SettingsHaptic] =

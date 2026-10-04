@@ -22,7 +22,8 @@ internal sealed record CodexModelToggleResult(
 internal sealed record CodexThreadModelState(
     string ThreadId,
     string ModelId,
-    string? Effort);
+    string? Effort,
+    string? ServiceTier = null);
 
 internal readonly record struct CodexThreadUnreadResult(
     string ThreadId,
@@ -48,6 +49,7 @@ internal sealed class CodexThreadModelStateAccumulator
     private string? _latestReasoningEffort;
     private string? _settingsModel;
     private string? _settingsEffort;
+    private string? _serviceTier;
     private bool _hasSettingsEffort;
     private bool _hasSnapshot;
     private bool _hasUnrevisionedConfirmation;
@@ -175,7 +177,13 @@ internal sealed class CodexThreadModelStateAccumulator
         _unrevisionedConfirmedEffort = _hasUnrevisionedConfirmation
             ? effort
             : null;
-        return new(ThreadId, modelId, effort);
+        return new(ThreadId, modelId, effort, _serviceTier);
+    }
+
+    internal CodexThreadModelState? ConfirmServiceTier(string? serviceTier)
+    {
+        _serviceTier = serviceTier;
+        return BuildState();
     }
 
     private void ReadConversationState(JsonElement state)
@@ -187,11 +195,13 @@ internal sealed class CodexThreadModelStateAccumulator
             "latestReasoningEffort");
         _settingsModel = null;
         _settingsEffort = null;
+        _serviceTier = null;
         _hasSettingsEffort = false;
         if (state.TryGetProperty("latestThreadSettings", out var settings) &&
             settings.ValueKind == JsonValueKind.Object)
         {
             _settingsModel = ReadOptionalString(settings, "model");
+            _serviceTier = ReadOptionalString(settings, "serviceTier");
             _hasSettingsEffort = settings.TryGetProperty(
                 "effort",
                 out var effort);
@@ -252,10 +262,12 @@ internal sealed class CodexThreadModelStateAccumulator
                 case "latestThreadSettings":
                     _settingsModel = null;
                     _settingsEffort = null;
+                    _serviceTier = null;
                     _hasSettingsEffort = false;
                     if (!removesValue && value.ValueKind == JsonValueKind.Object)
                     {
                         _settingsModel = ReadOptionalString(value, "model");
+                        _serviceTier = ReadOptionalString(value, "serviceTier");
                         _hasSettingsEffort = value.TryGetProperty(
                             "effort",
                             out var effort);
@@ -272,6 +284,9 @@ internal sealed class CodexThreadModelStateAccumulator
         {
             switch (path[1])
             {
+                case "serviceTier":
+                    _serviceTier = removesValue ? null : ReadOptionalString(value);
+                    return;
                 case "model":
                     _settingsModel = removesValue
                         ? null
@@ -300,7 +315,7 @@ internal sealed class CodexThreadModelStateAccumulator
         var effort = _hasSettingsEffort
             ? _settingsEffort
             : _latestReasoningEffort;
-        return new(ThreadId, modelId, effort);
+        return new(ThreadId, modelId, effort, _serviceTier);
     }
 
     private static bool StateMatches(
@@ -344,6 +359,7 @@ internal sealed class CodexThreadModelStateAccumulator
         _settingsModel = null;
         _settingsEffort = null;
         _hasSettingsEffort = false;
+        _serviceTier = null;
     }
 
     private static bool TryReadPatchPath(
@@ -611,6 +627,30 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
     private long _visibilityGeneration;
     private long _rendererDraftEvidenceGeneration;
     private int _disposed;
+    private bool _useObservedSelection;
+    private string? _observedSelection;
+
+    internal void ObserveSelectedThread(string? threadId)
+    {
+        lock (_stateSync)
+        {
+            _useObservedSelection = true;
+            _observedSelection = threadId;
+        }
+        RefreshCurrentThreadTracking();
+    }
+
+    internal void ObserveServiceTierAcknowledged(string threadId, string? serviceTier)
+    {
+        CodexThreadModelState? state;
+        lock (_stateSync)
+        {
+            if (_currentThreadState?.ThreadId != threadId || _trackedStateAccumulator is null) return;
+            state = _trackedStateAccumulator.ConfirmServiceTier(serviceTier);
+            _currentThreadState = state;
+        }
+        RaiseCurrentThreadStateChanged(state);
+    }
 
     internal CodexModelToggleService(
         CodexThreadModelEffortStore? effortStore = null,
@@ -647,6 +687,7 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
         {
             lock (_stateSync)
             {
+                if (_useObservedSelection) return _observedSelection;
                 return ResolveVisibleThreadSelection(
                     _visibleThreadByClient.Values).VisibleThreadId;
             }
@@ -658,6 +699,7 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
     {
         lock (_stateSync)
         {
+            if (_useObservedSelection) return _observedSelection;
             return ResolveForegroundVisibleThreadSelectionLocked(
                 foregroundWindow).VisibleThreadId;
         }
@@ -2976,7 +3018,9 @@ internal sealed partial class CodexModelToggleService : IAsyncDisposable
             }
 
             var selection = ResolveVisibleThreadSelection(
-                _visibleThreadByClient.Values);
+                _useObservedSelection
+                    ? _observedSelection is null ? [] : [_observedSelection]
+                    : _visibleThreadByClient.Values);
             nextVisibleThreadId = selection.VisibleThreadId;
             nextThreadId = selection.SemanticThreadId;
             if (nextVisibleThreadId == _selectedVisibleThreadId &&

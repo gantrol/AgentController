@@ -4,6 +4,8 @@
 > Date: 2026-07-18
 > Scope: Windows first, macOS parity research follows
 
+> 2026-10-03 范围补充：本 ADR 保留原生 Micro / HID 兼容路线的历史决策。软件版本见 [AgentController 免驱版 UML](../architecture/agent-controller-driverless-uml.zh-CN.md)；本文的 Full / Limited 与驱动前置要求不作为该软件版本的完成标准。共享后端与导航切片已接入，整体迁移尚未完成。
+
 ## 决策摘要
 
 Agent Controller 的完整产品模式必须让 ChatGPT/Codex Desktop 看到一个真正的、双向的 Micro 类 HID 设备，并发送与真实 Codex Micro 同类的 Agent Key、Command Key、Analog、Dial、状态和灯光协议。单纯用 UI Automation、快捷键或 App Server 模拟最终动作，不算完成这项能力。

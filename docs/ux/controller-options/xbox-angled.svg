@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="864" height="560" viewBox="10 25 432 280" fill="none">
+  <defs>
+    <path id="face-shell" d="M70 113 C106 103 165 101 226 104 C287 101 346 103 382 113 C397 147 410 186 417 214 C424 244 416 268 395 278 C370 291 343 278 311 269 C302 266 296 267 287 267 H165 C156 267 150 266 141 269 C109 278 82 291 61 278 C40 268 32 244 35 214 C42 186 55 147 70 113 Z"/>
+    <linearGradient id="shell" x1="180" y1="105" x2="258" y2="291" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDFEFF"/><stop offset=".55" stop-color="#F2F4F8"/><stop offset="1" stop-color="#D7DEE9"/>
+    </linearGradient>
+    <linearGradient id="top-deck" x1="226" y1="79" x2="226" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8EDF5"/><stop offset="1" stop-color="#A9B5C8"/>
+    </linearGradient>
+    <linearGradient id="shoulder" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#616C7E"/><stop offset=".55" stop-color="#3A4557"/><stop offset="1" stop-color="#202B3D"/>
+    </linearGradient>
+    <linearGradient id="trigger" x1="0" y1="0" x2="1" y2=".7">
+      <stop stop-color="#536073"/><stop offset="1" stop-color="#1D293B"/>
+    </linearGradient>
+    <linearGradient id="well" x1="0" y1="0" x2=".7" y2="1">
+      <stop stop-color="#AFBACC"/><stop offset=".42" stop-color="#DDE4EE"/><stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="0" y1="0" x2="1" y2=".3">
+      <stop stop-color="#202B3A"/><stop offset=".4" stop-color="#58657A"/><stop offset="1" stop-color="#263244"/>
+    </linearGradient>
+    <linearGradient id="cap" x1=".1" y1="0" x2=".8" y2="1">
+      <stop stop-color="#5C697C"/><stop offset=".48" stop-color="#344256"/><stop offset="1" stop-color="#253247"/>
+    </linearGradient>
+    <linearGradient id="button" x1=".15" y1="0" x2=".8" y2="1">
+      <stop stop-color="#48576D"/><stop offset="1" stop-color="#1B293E"/>
+    </linearGradient>
+    <radialGradient id="shadow">
+      <stop stop-color="#223B62" stop-opacity=".18"/><stop offset="1" stop-color="#223B62" stop-opacity="0"/>
+    </radialGradient>
+    <g id="stick">
+      <ellipse rx="40" ry="33" fill="url(#well)" stroke="#A6B4C8" stroke-width=".65"/>
+      <ellipse cy="1" rx="35" ry="28" fill="#233349"/>
+      <ellipse cy="2" rx="31" ry="25" fill="#45546A"/>
+      <path d="M-24 4 C-24 -7 -15 -16 0 -16 C15 -16 24 -7 24 4 L24 21 C21 33 -21 33 -24 21 Z"
+            fill="url(#stem)" stroke="#1C293E" stroke-width=".9"/>
+      <path d="M-20 1 C-19 -7 -11 -12 0 -12 C11 -12 19 -7 20 1"
+            stroke="#ABB8CB" stroke-opacity=".55" stroke-width=".8"/>
+      <ellipse cy="22" rx="24" ry="22" fill="#202E44" stroke="#A0ADC2" stroke-width=".7"/>
+      <ellipse cy="21.5" rx="20.5" ry="18.5" fill="url(#cap)" stroke="#8492A9" stroke-width=".7"/>
+      <ellipse cy="21.5" rx="17.5" ry="15.5" stroke="#172840" stroke-opacity=".5" stroke-width=".6"/>
+      <ellipse cy="21.5" rx="22" ry="20" stroke="#B4C0D3" stroke-opacity=".48" stroke-width="1.5" stroke-dasharray=".6 2.4"/>
+    </g>
+    <g id="face-button">
+      <ellipse cy="1.4" rx="15" ry="13.8" fill="#8F9DB4"/>
+      <ellipse rx="14.2" ry="12.8" fill="url(#button)" stroke="#202F45" stroke-width=".6"/>
+      <path d="M-10 -8 C-5 -12 5 -12 10 -8" stroke="#CBD4E3" stroke-opacity=".4" stroke-width=".7"/>
+    </g>
+    <path id="glyph-l" d="M-3 -4 V4 H3"/>
+    <path id="glyph-t" d="M-3.5 -4 H3.5 M0 -4 V4"/>
+    <path id="glyph-r" d="M-3 4 V-4 H.5 C4 -4 4 0 .5 0 H-3 M0 0 L3.5 4"/>
+    <path id="glyph-b" d="M-3 -4 V4 H.5 C4.5 4 4.5 0 .5 0 H-3 M-3 -4 H.5 C4 -4 4 0 .5 0"/>
+  </defs>
+
+  <ellipse cx="226" cy="277" rx="193" ry="21" fill="url(#shadow)"/>
+
+  <g id="button-lt">
+    <path d="M87 89 L94 61 C95 53 99 49 106 49 C113 49 117 53 118 61 L122 82 Z"
+          fill="url(#trigger)" stroke="#1C2D45" stroke-width=".9"/>
+    <path d="M97 62 C98 54 101 52 106 52 C111 52 114 55 114 62 L117 79"
+          stroke="#9EABC0" stroke-width=".8"/>
+    <g transform="translate(106 67) scale(.8)" stroke="#F1F5FF" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <use xlink:href="#glyph-l" x="-4.5"/><use xlink:href="#glyph-t" x="4.5"/>
+    </g>
+  </g>
+  <g id="button-rt">
+    <path d="M365 89 L358 61 C357 53 353 49 346 49 C339 49 335 53 334 61 L330 82 Z"
+          fill="url(#trigger)" stroke="#1C2D45" stroke-width=".9"/>
+    <path d="M355 62 C354 54 351 52 346 52 C341 52 338 55 338 62 L335 79"
+          stroke="#9EABC0" stroke-width=".8"/>
+    <g transform="translate(346 67) scale(.8)" stroke="#F1F5FF" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <use xlink:href="#glyph-r" x="-4.5"/><use xlink:href="#glyph-t" x="4.5"/>
+    </g>
+  </g>
+
+  <use xlink:href="#face-shell" y="2" fill="#9AA8BD"/>
+  <use xlink:href="#face-shell" fill="url(#shell)" stroke="#A3B0C4" stroke-width=".8"/>
+
+  <g id="top-deck">
+    <path d="M70 113 C74 100 87 89 103 83 C116 78 132 76 143 79 C150 81 154 84 157 88 H295 C298 84 302 81 309 79 C320 76 336 78 349 83 C365 89 378 100 382 113 C346 104 287 102 226 104 C165 102 106 104 70 113 Z"
+          fill="url(#top-deck)" stroke="#72829B" stroke-width=".8"/>
+    <path d="M164 88 H288 V102 H164 Z" fill="#354258" stroke="#6B7C97" stroke-width=".6"/>
+    <path d="M172 91 H280" stroke="#9AA9C0" stroke-opacity=".6" stroke-width=".7"/>
+    <rect x="218" y="91" width="16" height="5" rx="2.5" fill="#111E34" stroke="#A4B2C9" stroke-width=".7"/>
+    <path d="M222 93.5 H230" stroke="#71829D" stroke-width=".6"/>
+  </g>
+
+  <g id="button-lb">
+    <path d="M73 105 C84 94 105 84 128 83 C135 82 141 82 145 84 C149 86 148 95 155 96 L164 96 V104 C134 104 103 108 76 114 C71 115 69 110 73 105 Z"
+          fill="url(#shoulder)" stroke="#253750" stroke-width=".85"/>
+    <path d="M80 104 C96 95 115 89 137 88" stroke="#B8C5D9" stroke-opacity=".6" stroke-width=".9" stroke-linecap="round"/>
+    <g transform="translate(118 99) scale(.8)" stroke="#F5F8FF" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+      <use xlink:href="#glyph-l" x="-4.5"/><use xlink:href="#glyph-b" x="4.5"/>
+    </g>
+  </g>
+  <g id="button-rb">
+    <path d="M379 105 C368 94 347 84 324 83 C317 82 311 82 307 84 C303 86 304 95 297 96 L288 96 V104 C318 104 349 108 376 114 C381 115 383 110 379 105 Z"
+          fill="url(#shoulder)" stroke="#253750" stroke-width=".85"/>
+    <path d="M372 104 C356 95 337 89 315 88" stroke="#B8C5D9" stroke-opacity=".6" stroke-width=".9" stroke-linecap="round"/>
+    <g transform="translate(334 99) scale(.8)" stroke="#F5F8FF" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+      <use xlink:href="#glyph-r" x="-4.5"/><use xlink:href="#glyph-b" x="4.5"/>
+    </g>
+  </g>
+
+  <path d="M76 120 C120 110 174 109 226 111 C278 109 332 110 376 120"
+        stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round"/>
+
+  <g id="button-home" transform="translate(226 133)">
+    <ellipse cy="1" rx="18.5" ry="17.2" fill="#AAB5C7"/>
+    <ellipse rx="18" ry="16.5" fill="url(#button)"/>
+    <path d="M-12 -11 C-8 -12 -4 -10 0 -7 C4 -10 8 -12 12 -11 C7 -8 5 -7 3.5 -5 C8 1 12 7 13 12 C9 8 4 1 0 -2 C-4 1 -9 8 -13 12 C-12 7 -8 1 -3.5 -5 C-5 -7 -7 -8 -12 -11 Z" fill="#F9FBFF"/>
+  </g>
+
+  <g id="stick-left" transform="translate(110 165)"><use xlink:href="#stick"/></g>
+  <g id="stick-right" transform="translate(279 222) scale(.94)"><use xlink:href="#stick"/></g>
+
+  <g id="direction-pad" transform="translate(171 228) scale(1 .84)">
+    <circle cy="1.5" r="32.5" fill="#A8B5C8"/>
+    <circle r="31.5" fill="#24344B" stroke="#566781" stroke-width=".6"/>
+    <path d="M-10 -29 C-4 -32 4 -32 10 -29 L10 -10 H-10 Z M29 -10 C32 -4 32 4 29 10 H10 V-10 Z M10 29 C4 32 -4 32 -10 29 V10 H10 Z M-29 10 C-32 4 -32 -4 -29 -10 H-10 V10 Z" fill="#42516A"/>
+    <path d="M-10 -28 V-10 H-28 M28 -10 H10 V-28 M10 28 V10 H28 M-28 10 H-10 V28"
+          stroke="#8594AF" stroke-opacity=".4" stroke-width=".6"/>
+    <rect x="-10" y="-10" width="20" height="20" rx="1" fill="#34435B"/>
+    <path d="M-7 -27 H7" stroke="#A6B4CB" stroke-opacity=".4" stroke-width=".8" stroke-linecap="round"/>
+  </g>
+
+  <g id="button-y" transform="translate(339 148)">
+    <use xlink:href="#face-button"/>
+    <path d="M-5 -6 L0 0 L5 -6 M0 0 V6" stroke="#E8CE66" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="button-x" transform="translate(307 172)">
+    <use xlink:href="#face-button"/>
+    <path d="M-4.5 -6 L4.5 6 M4.5 -6 L-4.5 6" stroke="#72C3F0" stroke-width="1.8" stroke-linecap="round"/>
+  </g>
+  <g id="button-b" transform="translate(368 171)">
+    <use xlink:href="#face-button"/>
+    <path d="M-3.5 -6 V6 H.5 C6 6 6 0 .5 0 H-3.5 M-3.5 -6 H.5 C5.5 -6 5.5 0 .5 0" stroke="#EF9CA8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="button-a" transform="translate(337 195)">
+    <use xlink:href="#face-button"/>
+    <path d="M-5 6 L0 -6 L5 6 M-3.3 2 H3.3" stroke="#AED689" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g id="button-view" transform="translate(197 172)">
+    <ellipse cy="1" rx="10" ry="8.6" fill="#AAB6C9"/>
+    <ellipse rx="9.5" ry="8.1" fill="#FDFEFF" stroke="#B8C4D6" stroke-width=".5"/>
+    <path d="M-5 -3.5 H1.5 V1 H-5 Z M-1.5 -1 H5 V3.5 H-1.5 Z" stroke="#7688A2" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+  <g id="button-menu" transform="translate(255 172)">
+    <ellipse cy="1" rx="10" ry="8.6" fill="#AAB6C9"/>
+    <ellipse rx="9.5" ry="8.1" fill="#FDFEFF" stroke="#B8C4D6" stroke-width=".5"/>
+    <path d="M-4 -3 H4 M-4 0 H4 M-4 3 H4" stroke="#7688A2" stroke-width="1" stroke-linecap="round"/>
+  </g>
+  <g id="button-share" transform="translate(226 193)">
+    <rect x="-10.5" y="-5.4" width="21" height="12" rx="6" fill="#AAB6C9"/>
+    <rect x="-10.5" y="-6.4" width="21" height="12" rx="6" fill="#FDFEFF" stroke="#B8C4D6" stroke-width=".5"/>
+    <path d="M-4 0 V3 H4 V0 M0 0 V-4 M-2 -2 L0 -4 L2 -2" stroke="#7688A2" stroke-width=".9" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

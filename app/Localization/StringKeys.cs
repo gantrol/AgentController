@@ -11,6 +11,11 @@ public static class StringKeys
     public const string NavDevice = "nav.device";
     public const string NavConfiguration = "nav.configuration";
     public const string NavSettings = "nav.settings";
+    public const string WindowMinimize = "window.minimize";
+    public const string WindowMaximize = "window.maximize";
+    public const string WindowRestore = "window.restore";
+    public const string WindowClose = "window.close";
+    public const string WindowResize = "window.resize";
     public const string OverlayNotificationName =
         "overlay.notification-name";
 
@@ -21,6 +26,24 @@ public static class StringKeys
     public const string DeviceGamepadBridge = "device.gamepad-bridge";
     public const string DeviceLiveInput = "device.live-input";
     public const string DeviceIdle = "device.idle";
+    public const string StatusControlDisabled = "status.control-disabled";
+    public const string StatusControlDisconnected = "status.control-disconnected";
+    public const string StatusControlLocked = "status.control-locked";
+    public const string StatusControlNeutral = "status.control-neutral";
+    public const string StatusControlActive = "status.control-active";
+    public const string StatusControlBackground = "status.control-background";
+    public const string StatusControlPaused = "status.control-paused";
+    public const string StatusControlAwaitingAgent = "status.control-awaiting-agent";
+    public const string ControlVoiceStarting = "control.voice-starting";
+    public const string ControlVoiceRecording = "control.voice-recording";
+    public const string ControlVoiceStopping = "control.voice-stopping";
+    public const string ControlVoiceStartFailed = "control.voice-start-failed";
+    public const string ControlVoiceStopFailed = "control.voice-stop-failed";
+    public const string ControlLayerActive = "control.layer-active";
+    public const string ControlPendingConfirmation = "control.pending-confirmation";
+    public const string ComposerMenuOpen = "composer.menu-open";
+    public const string ComposerValueUnknown = "composer.value-unknown";
+    public const string ComposerSelectionUnverified = "composer.selection-unverified";
 
     public const string ControlLeftStick = "control.left-stick";
     public const string ControlLeftStickHint = "control.left-stick-hint";
@@ -156,6 +179,7 @@ public static class StringKeys
         "config.restore-defaults";
 
     public const string SettingsTitle = "settings.title";
+    public const string SettingsComponents = "settings.components";
     public const string SettingsDescription =
         "settings.description";
     public const string SettingsBehavior = "settings.behavior";
@@ -547,6 +571,11 @@ public static class StringKeys
         NavDevice,
         NavConfiguration,
         NavSettings,
+        WindowMinimize,
+        WindowMaximize,
+        WindowRestore,
+        WindowClose,
+        WindowResize,
         OverlayNotificationName,
         DeviceWaiting,
         DeviceConnected,
@@ -555,6 +584,24 @@ public static class StringKeys
         DeviceGamepadBridge,
         DeviceLiveInput,
         DeviceIdle,
+        StatusControlDisabled,
+        StatusControlDisconnected,
+        StatusControlLocked,
+        StatusControlNeutral,
+        StatusControlActive,
+        StatusControlBackground,
+        StatusControlPaused,
+        StatusControlAwaitingAgent,
+        ControlVoiceStarting,
+        ControlVoiceRecording,
+        ControlVoiceStopping,
+        ControlVoiceStartFailed,
+        ControlVoiceStopFailed,
+        ControlLayerActive,
+        ControlPendingConfirmation,
+        ComposerMenuOpen,
+        ComposerValueUnknown,
+        ComposerSelectionUnverified,
         ControlLeftStick,
         ControlLeftStickHint,
         ControlRightStick,
@@ -632,6 +679,7 @@ public static class StringKeys
         ConfigModelPicker,
         ConfigRestoreDefaults,
         SettingsTitle,
+        SettingsComponents,
         SettingsDescription,
         SettingsBehavior,
         SettingsOnlyForeground,

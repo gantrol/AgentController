@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:CodexController.Localization"
-        MinWidth="320"
-        MaxWidth="480"
+        MinWidth="344"
+        MaxWidth="504"
         SizeToContent="WidthAndHeight"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -15,9 +15,10 @@
         Focusable="False"
         AutomationProperties.LiveSetting="Polite"
         AutomationProperties.Name="{loc:Loc overlay.notification-name}"
+        UseLayoutRounding="True"
         WindowStartupLocation="Manual">
     <Border x:Name="RootBorder"
-            Margin="12"
+            Margin="24"
             Style="{StaticResource Overlay.Toast}"
             SnapsToDevicePixels="True">
         <Grid>

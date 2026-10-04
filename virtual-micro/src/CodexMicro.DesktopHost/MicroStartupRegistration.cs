@@ -2,11 +2,10 @@ using Microsoft.Win32;
 
 namespace CodexMicro.DesktopHost;
 
-internal sealed class MicroStartupRegistration
+internal sealed class MicroStartupRegistration(string valueName = "CodexMicroKeypad")
 {
     private const string RunKeyPath =
         @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "CodexMicroKeypad";
 
     internal bool IsEnabled
     {
@@ -15,7 +14,7 @@ internal sealed class MicroStartupRegistration
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-                return key?.GetValue(ValueName) is string value &&
+                return key?.GetValue(valueName) is string value &&
                     !string.IsNullOrWhiteSpace(value);
             }
             catch (Exception exception) when (
@@ -34,7 +33,7 @@ internal sealed class MicroStartupRegistration
                 "Could not open the current-user startup registry key.");
         if (!enabled)
         {
-            key.DeleteValue(ValueName, throwOnMissingValue: false);
+            key.DeleteValue(valueName, throwOnMissingValue: false);
             return;
         }
 
@@ -46,7 +45,7 @@ internal sealed class MicroStartupRegistration
         }
 
         key.SetValue(
-            ValueName,
+            valueName,
             $"\"{executable}\" --background",
             RegistryValueKind.String);
     }

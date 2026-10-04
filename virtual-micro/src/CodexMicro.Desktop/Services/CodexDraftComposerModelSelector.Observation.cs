@@ -197,6 +197,9 @@ internal sealed partial class CodexDraftComposerModelSelector
         var candidates = new List<TriggerCandidate>();
         foreach (AutomationElement button in buttons)
         {
+            var rectangle = button.Cached.BoundingRectangle;
+            if (rectangle.IsEmpty || rectangle.Width <= 0 || rectangle.Height <= 0) continue;
+
             var text = ReadObservationText(button);
             var selection = ParseSelection(text);
             var knownLabel = text.Contains("Select model", StringComparison.OrdinalIgnoreCase) ||
@@ -207,7 +210,6 @@ internal sealed partial class CodexDraftComposerModelSelector
                 continue;
             }
 
-            var rectangle = button.Cached.BoundingRectangle;
             var score = selection.Model == CodexQuickModel.Unknown ? 50 : 100;
             if (!rootRectangle.IsEmpty && rectangle.Top >= rootRectangle.Top + rootRectangle.Height * 0.45)
             {

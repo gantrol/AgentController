@@ -37,9 +37,9 @@ internal static class CodexKeycapCatalog
             ["DIFF"] = new("DIFF", "Review", "toggleReviewTab"),
             ["PLAY"] = new("PLAY", "Environment action", "environmentAction1"),
             ["GIT"] = new("GIT", "Commit", "git.commit"),
-            ["BRCH"] = new("BRCH", "Branch", "toggleReviewTab"),
-            ["BRANCH"] = new("BRANCH", "Branch", "toggleReviewTab"),
-            ["MRG"] = new("MRG", "Merge", "toggleReviewTab"),
+            ["BRCH"] = new("BRCH", "Create draft pull request", "git.createDraftPullRequest"),
+            ["BRANCH"] = new("BRANCH", "Create branch", "git.createBranch"),
+            ["MRG"] = new("MRG", "Merge pull request", "git.mergePullRequest"),
             ["PR"] = new("PR", "Create pull request", "git.createPullRequest"),
             ["PAINT"] = new("PAINT", "Add photos", "composer.addPhotos"),
             ["LAB"] = new("LAB", "Settings", "settings"),
@@ -57,7 +57,7 @@ internal static class CodexKeycapCatalog
             ["APPS"] = new("APPS", "Skills", "openSkills"),
             ["YOLO"] = new("YOLO", ":yolo:", "custom"),
             ["YEET"] = new("YEET", ":yeet:", "custom"),
-            ["EMPT5"] = new("EMPT5", "Custom shortcut", "unassigned"),
+            ["EMPT5"] = new("EMPT5", "Custom shortcut", "unassigned", "double"),
         };
 
     public static bool IsKnown(string id) => Definitions.ContainsKey(id);

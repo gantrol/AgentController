@@ -3,7 +3,15 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-1.2.1-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
+![version](https://img.shields.io/badge/version-1.2.1-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+
+Agent Controller is a Windows app for navigating and controlling Codex with an XInput gamepad.
+
+> **Codex Micro has moved to a separate project:** [gantrol/codex-micro-monitor](https://github.com/gantrol/codex-micro-monitor).
+> The standalone desktop keypad and plugin are maintained separately from Agent Controller.
+> As of October 4, 2026, the new public repository is empty; source code and new release packages have not been uploaded yet.
+
+[Download Agent Controller 1.2.1](https://github.com/gantrol/AgentController/releases/tag/v1.2.1) · [Installation](#install-from-releases) · [Micro repository](https://github.com/gantrol/codex-micro-monitor)
 
 Codex Micro sold out quickly. It is a tiny keyboard made specifically for Codex, and perhaps you wanted one. But consider the evidence:
 
@@ -52,28 +60,33 @@ And the six Agent keys from Codex Micro? Hold **LB**, then use the four D-pad di
 
 If the controller shorthand is unfamiliar, the dashboard now includes an interactive guide for Basics, Tap Y, Hold LB, Hold RT, Hold RB, and stick presses. Click a tab or press the matching control to switch the lesson. L3/R3 are also labeled as LS/RS and animated as vertical stick-cap presses—not downward stick movement.
 
-### Standalone Codex Micro keypad
+### Codex Micro repository migration
 
-![Codex Micro keypad](public/images/codex-micro-simulator.png)
+The standalone keypad, task monitor, keycap settings and plugin now belong to
+[codex-micro-monitor](https://github.com/gantrol/codex-micro-monitor). Future Micro
+source updates and releases will be published there. The public repository has
+been created, but is currently empty; it is not yet a download or source-build entry point.
 
-The [Codex Micro keypad](virtual-micro/README.md) now runs independently of
-`AgentController.exe` while directly reusing the original WPF XAML, templates,
-and animations for pixel-accurate transparency and styling. Its
-framework-dependent single-file zip is about 6.4 MiB and requires the
-[official Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
-The keypad is an optional companion with its own executable and notification-area
-commands. Agent Controller no longer launches, restarts, or depends on the keypad
-process. The fixed-size keypad window uses app-owned movement, so it cannot trigger
-Windows Snap or automatic resizing; its own notification-area icon provides Show/Hide,
-Restart, and Exit commands.
+The independent software-interface version in development does not require a
+virtual HID driver or AgentController. Its current desktop ZIP packaging requires
+the [Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
+This version has not been publicly released. The
+[older Micro Monitor 0.3.10 release](https://github.com/gantrol/AgentController/releases/tag/codex-micro-monitor-v0.3.10)
+remains here for existing users and still requires a separate virtual HID driver
+for full functionality; follow that release's instructions.
 
-Unfortunately, it also depends on an **unsigned developer driver package**. The package saves the C/C++ compilation step, but it is not a production installer: [sign it locally and install it](virtual-micro/UNSIGNED-DRIVER.md), or build the driver from source.
+This repository continues to maintain Agent Controller's gamepad input, mappings,
+overlay and Agent routing. Its old Micro desktop and plugin sources are retained
+for historical reference, not as the entry point for new Micro development.
+Both products consume pinned `codex-control` packages; users do not need to install
+those components separately. See the
+[repository boundaries](docs/architecture/micro-component-dependency.zh-CN.md).
 
 > ⚠️ **Security notice — read before use**
 >
 > v1 remains experimental software, continuously rebuilt from an early one-day prototype, and has not received an independent human code or security audit. A Codex update can change its Micro bridge, shortcuts, or accessibility tree, causing features to fail or perform the wrong action. The app and developer driver are unsigned. Review the source, test only with non-critical tasks, and use it entirely at your own risk. What the app does on your machine:
 >
-> - sends HID reports to the optional Micro-compatible device through a local Broker, with limited keyboard-shortcut or UI Automation fallbacks only when delivery is explicitly unavailable; controller input is normally gated to Codex being in the foreground, and turning the Bridge off blocks controller actions;
+> - the published Controller 1.2.1 sends HID reports through a local Broker, with limited keyboard-shortcut or UI Automation fallbacks only when delivery is explicitly unavailable; the current development branch uses software interfaces instead, with [physical-controller validation still pending](docs/architecture/agent-controller-driverless-uml.zh-CN.md). Controller input is normally gated to Codex being in the foreground, and turning the Bridge off blocks controller actions;
 > - reads local Codex task data under `~/.codex`; if fallback bindings are enabled, it can append F17/F18/F20/F22 bindings to Codex's keybindings file;
 > - writes its own settings under `%LOCALAPPDATA%`;
 > - can register itself to start with Windows (off by default);
@@ -83,32 +96,34 @@ Unfortunately, it also depends on an **unsigned developer driver package**. The 
 
 ### Requirements
 
-- Windows 10 (build 19041+) or Windows 11
+- Windows 10 (build 19041+) or Windows 11, x64
 - The Codex desktop app
 - An XInput-compatible controller
 - A microphone if you want to use push-to-talk dictation
 
 The tested controllers are the 8BitDo Ultimate 2, Xbox Series controller, and Flydigi Vader 4 Pro. Compatibility with other XInput devices depends on their XInput implementation and still needs physical validation.
 
-### macOS Foundation Preview
+### macOS direction
 
-The repository now contains an unsigned, read-only macOS 14+ Foundation
-Preview. Its Avalonia shell observes Apple Game Controller input, separates
-platform permissions, detects the Codex CLI, provides native menu/Dock entries,
-and can be cross-published for Apple Silicon and Intel. It does not yet send
-Codex actions and does not claim virtual Micro parity. Build and validation
-instructions are in the [macOS Foundation Preview guide](docs/macos-foundation-preview.md).
+AgentController's Avalonia Foundation Preview is retired and excluded from the
+default build and release flow. Codex Micro now targets a separate macOS desktop
+client, which is not yet implemented. The earlier iOS / UIKit code is retained
+as a historical prototype. See the [platform direction (简体中文)](docs/architecture/platform-direction.zh-CN.md).
 
 ### Install from Releases
 
-1. Download the latest zip from [Releases](../../releases).
-2. Extract it anywhere and run `AgentController.exe`.
+1. Open the [Agent Controller 1.2.1 release](https://github.com/gantrol/AgentController/releases/tag/v1.2.1) and download `AgentController-1.2.1-win-x64.zip`, which includes the runtime. Choose the Controller application asset, not a Micro package or GitHub's `Source code` archive.
+2. Check the matching `.sha256` file, extract the entire ZIP to a folder you intend to keep, and run `AgentController.exe` as a normal user.
 3. Because the binary is unsigned, Windows SmartScreen may warn you. Choose **More info → Run anyway** only after reviewing the security notice above; alternatively, build from source.
 4. Connect the controller in XInput mode, launch Codex, and make sure the Bridge is enabled. When connected, the Device page shows the controller name and a localized **Live input** / **实时输入** badge.
-5. Some features may require restarting the Codex desktop app (**ChatGPT**), especially after Agent Controller first provisions or updates Codex keybindings.
-6. For the complete Micro-first HID path, separately install the repository's only supported device component: `CodexMicroVhfUm` (UMDF2/VHF). The current release provides an unsigned developer workflow only; read the [local installation guide](docs/CodexMicroSimulator-installation.md) and [unsigned-driver guide](virtual-micro/UNSIGNED-DRIVER.md) first.
+5. Press **Menu** to foreground Codex, return the pad to neutral, then select an idle task with the left stick and press **A**. Confirm that Codex opens the selected task. Restart Codex if newly provisioned or updated keybindings have not taken effect.
+6. For the complete Micro-first HID path in published Controller 1.2.1, separately install `CodexMicroVhfUm` (UMDF2/VHF). This is an unsigned developer workflow; read the [local installation guide](docs/CodexMicroSimulator-installation.md) and [unsigned-driver guide](virtual-micro/UNSIGNED-DRIVER.md) first. This requirement belongs to the old release, not the new independent Micro software-interface version.
 
 The v1.2.1 release provides both a self-contained Windows package and a much smaller `-compact` package. The compact package requires the [official Microsoft .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0); the self-contained package does not. Agent Controller still launches without the driver, but its limited `NotSent` fallbacks are not full Micro compatibility.
+
+The development branch's driverless changes are not included in that public ZIP.
+See the [first-install routes and release status (简体中文)](docs/distribution/first-install-route.zh-CN.md)
+for the differences between existing downloads and upcoming versions.
 
 ### Control reference
 
@@ -158,13 +173,13 @@ For implementation status and edge cases, see the [v1 control reference](public/
 
 ### Known limitations
 
-- The Micro-first path depends on Codex's current private HID contract, `codex-micro-service`, and `codex-micro-bridge`; OpenAI does not promise this as a stable public ABI.
-- The full Micro path requires users to review, build, or locally sign `CodexMicroVhfUm`. Do not disable Windows driver-signing enforcement or import untrusted certificates.
+- Published Controller 1.2.1's Micro-first path depends on Codex's private HID contract, `codex-micro-service`, and `codex-micro-bridge`; OpenAI does not promise this as a stable public ABI.
+- Full Micro functionality in that release requires users to review, build, or locally sign `CodexMicroVhfUm`. Do not disable Windows driver-signing enforcement or import untrusted certificates.
 - Fallback actions may still depend on Codex's current shortcuts and accessibility tree. A Codex UI update can break them.
 - The Simple model list uses the official command shortcut; conflicts are blocked. Restart Codex once if it does not hot-load a newly written binding.
 - Unit tests and a successful Release build do not replace physical end-to-end testing against the current Codex app, account, and model options.
 - Agent slots currently use the first six tasks in the live snapshot; Agent and Command slots are not yet user-configurable.
-- macOS currently provides only the unsigned, read-only Foundation Preview; App Server actions, voice, native Micro, signing/notarization, and physical Mac acceptance remain open.
+- AgentController no longer provides the macOS Foundation Preview; the Micro macOS client is not yet implemented.
 - v1 does not yet provide a commercially signed driver installer, configurable Agent/Command slots, or complete Plan-mode controller routing.
 
 ### Codex and DeepSeek Harness
@@ -177,34 +192,17 @@ Target selection is a hard input boundary: Codex-only keyboard, accessibility, a
 
 See the [maintainer handbook (简体中文)](docs/maintainer-handbook.zh-CN.md) for environment checks, settings backups, version preparation, package verification, draft releases, and rollback.
 
-Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 18 or newer; Visual Studio 2022 cannot load the SDK selected by `global.json`. Then run:
+Install .NET SDK 10.0.302. For IDE builds, use Visual Studio 2026 with MSBuild 18 or newer; Visual Studio 2022 cannot load the SDK selected by `global.json`. The current branch also requires the pinned `codex-control` packages, which are not yet published to a public feed. Follow the [package import instructions](docs/architecture/micro-component-dependency.zh-CN.md) before building; creating the empty Micro repository does not provide those packages. Once they are available locally, run:
 
 ```powershell
 dotnet build AgentController.sln -c Release
 dotnet test AgentController.sln -c Release
-./scripts/package-release.ps1 -Version 1.2.1
-./scripts/package-release.ps1 -Version 1.2.1 -Compact
 ```
 
-Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`. The first packaging command creates a self-contained Windows x64 zip; `-Compact` creates the framework-dependent variant. Each archive and SHA-256 checksum is written under `dist/`.
-
-To cross-build the unsigned macOS Foundation Preview for Apple Silicon and
-Intel, run:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
-```
-
-See the
-[preview guide](docs/macos-foundation-preview.md) before testing it on a Mac.
-
-To create or update the GitHub Release and upload both artifacts, install and authenticate GitHub CLI, push the matching tag, then run:
-
-```powershell
-./scripts/publish-release.ps1 -Version 1.2.1 -IncludeCompact
-```
-
-The command rebuilds both packages and verifies their SHA-256 checksums and contents. It requires a clean worktree and a tag in the target repository pointing to HEAD before creating or updating the Release. Pass `-SkipBuild` to upload existing artifacts and `-Draft` to start with a draft. Existing assets are not overwritten unless you explicitly pass `-ReplaceAssets`. See the maintainer handbook for the full workflow.
+Build output is written to `app/bin/Release/net10.0-windows10.0.19041.0/`.
+For packaging and publishing, follow the maintainer handbook. A new release from
+the development branch needs its own version; do not reuse the published 1.2.1
+tag or replace its archives with the new driverless implementation.
 
 ### If you want to modify the source
 
@@ -217,9 +215,11 @@ This morning I finally lost patience and called it out, because right-stick mode
 Key paths in the repository are:
 
 - `app/` — the Windows WPF application and source of truth for runtime behavior;
+- `src/` — Agent Controller's domain, application and platform adapters;
 - `app.Tests/` — regression tests for controller input, localization, navigation, bridge safety, and Codex integration policies;
 - `scripts/` — reproducible Release packaging;
-- `virtual-micro/` — the standalone original-XAML WPF Micro keypad, shared protocol, `CodexMicroVhfUm` device support, and runtime-capability tests;
+- `virtual-micro/` — historical Micro sources and retained HID / DeepSeek code; current Micro desktop development has moved to [codex-micro-monitor](https://github.com/gantrol/codex-micro-monitor);
+- `micro-bridge/CodexPlugin/` — historical Micro plugin sources; new plugin development belongs to the separate Micro project;
 - `docs/` — interaction specifications and active design/consultation notes;
 - `public/docs/` — user-facing command references, release notes, and experimental plans;
 - `todo/` — roadmap organized by major workstream; start with [`todo/README.md`](todo/README.md).

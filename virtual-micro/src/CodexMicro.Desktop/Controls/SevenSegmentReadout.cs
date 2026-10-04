@@ -12,6 +12,7 @@ internal sealed class SevenSegmentReadout : FrameworkElement
 
     private const double GlyphHeight = 14;
     private const double GlyphGap = 1.5;
+    private const double PercentGap = 4;
     private static readonly int[] DigitSegments =
         [0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F];
     private static readonly Geometry[] Segments =
@@ -38,9 +39,13 @@ internal sealed class SevenSegmentReadout : FrameworkElement
         var width = 0d;
         foreach (var character in Text)
         {
-            width += GlyphWidth(character) + GlyphGap;
+            if (width > 0)
+            {
+                width += character == '%' ? PercentGap : GlyphGap;
+            }
+            width += GlyphWidth(character);
         }
-        return new Size(Math.Max(0, width - GlyphGap), GlyphHeight);
+        return new Size(width, GlyphHeight);
     }
 
     protected override void OnRender(DrawingContext drawingContext)
@@ -49,6 +54,10 @@ internal sealed class SevenSegmentReadout : FrameworkElement
         var offset = 0d;
         foreach (var character in Text)
         {
+            if (offset > 0)
+            {
+                offset += character == '%' ? PercentGap : GlyphGap;
+            }
             drawingContext.PushTransform(new TranslateTransform(offset, 0));
             if (character == '%')
             {
@@ -68,7 +77,7 @@ internal sealed class SevenSegmentReadout : FrameworkElement
                 }
             }
             drawingContext.Pop();
-            offset += GlyphWidth(character) + GlyphGap;
+            offset += GlyphWidth(character);
         }
     }
 

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CodexControl.Windows" />
+    <ProjectReference Include="..\AgentController.Application\AgentController.Application.csproj" />
+    <InternalsVisibleTo Include="CodexMicro.Desktop.Tests" />
+    <InternalsVisibleTo Include="AgentController.Tests" />
+  </ItemGroup>
+</Project>

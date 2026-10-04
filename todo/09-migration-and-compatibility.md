@@ -35,13 +35,17 @@
 - [ ] 提供 dry-run 迁移报告和可回滚备份。
 - [ ] 新设置成功保存后才提高 schema version。
 
-### M4：Avalonia Windows 等价
+### M4：Avalonia Windows 等价（已废弃）
+
+以下为历史清单，不再执行。Windows WPF 继续维护，见[平台方向](../docs/architecture/platform-direction.zh-CN.md)。
 
 - [ ] 新旧客户端可并行安装但不同时占用控制器/Bridge。
 - [ ] 建立页面、动作、托盘、Overlay、权限和设置等价矩阵。
 - [ ] 达到等价后将 WPF 进入只读维护期。
 
-### M5：macOS MVP
+### M5：AgentController macOS Foundation Preview（已废弃）
+
+以下为历史清单，不再执行；Micro macOS 桌面版属于独立产品方向。
 
 - [ ] 先交付无虚拟 HID 的核心工作流。
 - [ ] 平台差异通过 ports 解决，不向 Domain 加 `if macOS`。

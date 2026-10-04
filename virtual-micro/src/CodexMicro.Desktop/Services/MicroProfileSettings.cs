@@ -59,7 +59,9 @@ internal sealed record MicroProfileSnapshot(
     MicroVoiceProfile? Voice = null,
     string? QuickModelAEffort = null,
     string? QuickModelBEffort = null,
-    bool AutoConfirmUltraFullAccess = false)
+    bool AutoConfirmUltraFullAccess = false,
+    double WindowScale = 1,
+    IReadOnlyDictionary<string, string>? KeycapIcons = null)
 {
     internal MicroVoiceProfile VoiceSettings =>
         Voice ?? MicroVoiceProfile.Default;
@@ -342,6 +344,22 @@ internal sealed class MicroProfileSettings
         });
     }
 
+    internal void SetWindowScale(double value) =>
+        Update(Current with { WindowScale = MicroWindowLayout.NormalizeScale(value) });
+
+    internal string ResolveKeycapIcon(string slot, string fallback) =>
+        Current.KeycapIcons?.GetValueOrDefault(slot) is { } icon && CodexKeycapCatalog.IsKnown(icon)
+            ? icon : fallback;
+
+    internal void SetKeycapIcon(string slot, string icon)
+    {
+        var icons = new Dictionary<string, string>(Current.KeycapIcons ?? new Dictionary<string, string>());
+        icons[slot] = icon;
+        Update(Current with { KeycapIcons = icons });
+    }
+
+    internal void ResetKeycapIcons() => Update(Current with { KeycapIcons = null });
+
     internal bool DeletePersistentKeypad()
     {
         if (PersistentKeypadId is null || _settingsPath is null)
@@ -406,6 +424,8 @@ internal sealed class MicroProfileSettings
                     WindowLeft = snapshot.WindowLeft,
                     WindowTop = snapshot.WindowTop,
                     WindowTopmost = snapshot.WindowTopmost,
+                    WindowScale = snapshot.WindowScale,
+                    KeycapIcons = snapshot.KeycapIcons,
                     TapToToggleVoice = snapshot.TapToToggleVoice,
                     InvertDialDirection = snapshot.InvertDialDirection,
                     Voice = StoredVoice.From(snapshot.VoiceSettings),
@@ -457,7 +477,9 @@ internal sealed class MicroProfileSettings
                 stored.Voice?.ToProfile(),
                 stored.QuickModelAEffort,
                 stored.QuickModelBEffort,
-                stored.AutoConfirmUltraFullAccess));
+                stored.AutoConfirmUltraFullAccess,
+                stored.WindowScale,
+                stored.KeycapIcons));
         }
         catch
         {
@@ -516,7 +538,9 @@ internal sealed class MicroProfileSettings
             NormalizeReasoningEffortForModel(
                 second,
                 snapshot.QuickModelBEffort),
-            snapshot.AutoConfirmUltraFullAccess);
+            snapshot.AutoConfirmUltraFullAccess,
+            MicroWindowLayout.NormalizeScale(snapshot.WindowScale),
+            snapshot.KeycapIcons);
     }
 
     private static MicroVoiceProfile NormalizeVoice(MicroVoiceProfile value)
@@ -657,6 +681,10 @@ internal sealed class MicroProfileSettings
         public double? WindowTop { get; set; }
 
         public bool WindowTopmost { get; set; } = true;
+
+        public double WindowScale { get; set; } = 1;
+
+        public IReadOnlyDictionary<string, string>? KeycapIcons { get; set; }
 
         public bool TapToToggleVoice { get; set; }
 

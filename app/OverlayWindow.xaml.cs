@@ -9,7 +9,7 @@ namespace CodexController;
 public partial class OverlayWindow : Window
 {
     private static readonly TimeSpan VisibleDuration = TimeSpan.FromMilliseconds(1050);
-    private const double BottomMargin = 52;
+    private const double BottomMargin = 40;
 
     private readonly DispatcherTimer _hideTimer;
     private int _animationVersion;

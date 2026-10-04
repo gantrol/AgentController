@@ -7,7 +7,6 @@ using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Models;
 using CodexController.Services;
-using CodexController.Services.Micro;
 
 namespace CodexController.Composition;
 
@@ -19,7 +18,6 @@ internal sealed record MainWindowDependencies(
     IForegroundApplication ForegroundApplication,
     SettingsService Settings,
     AppSettings CurrentSettings,
-    MicroInputService MicroInput,
     XInputService Controller,
     ControllerInteractionCoordinator ControllerInteraction,
     ControllerHoldCoordinator ControllerHolds,

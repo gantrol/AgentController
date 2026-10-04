@@ -150,7 +150,7 @@ public sealed class CodexCommandService
     {
         Process.Start(new ProcessStartInfo
         {
-            FileName = "codex://settings",
+            FileName = "codex://settings/usage",
             UseShellExecute = true,
         });
     }

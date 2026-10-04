@@ -103,6 +103,13 @@
                      Color="#4753675A"
                      po:Freeze="True" />
 
+    <SolidColorBrush x:Key="Brush.ScrollBar.Thumb"
+                     Color="{StaticResource Color.Gray.500}" po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.ScrollBar.Hover"
+                     Color="{StaticResource Color.Sage.600}" po:Freeze="True" />
+    <SolidColorBrush x:Key="Brush.ScrollBar.Drag"
+                     Color="{StaticResource Color.Sage.700}" po:Freeze="True" />
+
     <!-- Overlay surfaces stay neutral and legible above both light and dark apps. -->
     <SolidColorBrush x:Key="Brush.Overlay.Surface.Frosted"
                      Color="#F7FBFCFC"

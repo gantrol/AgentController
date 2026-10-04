@@ -16,6 +16,8 @@ internal sealed record CodexTaskMonitorSnapshot(
     IReadOnlyList<CodexMonitoredTask> Tasks,
     long Revision);
 
+internal sealed record CodexMonitoredQuestion(string ThreadId, CodexPendingQuestion Question);
+
 internal sealed class CodexTaskMonitorService
 {
     internal const int Capacity = 16;
@@ -23,28 +25,54 @@ internal sealed class CodexTaskMonitorService
     private sealed record CachedText(long Length, DateTime LastWriteTimeUtc, string Text);
 
     private readonly object _sync = new();
-    private readonly string _codexRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+    private readonly string _codexRoot;
     private readonly Dictionary<string, RolloutReader> _readers =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, CachedText> _sharedText = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> _acceptedQuestionReplies =
         new(StringComparer.Ordinal);
 
-    private readonly CodexRecentThreadsService _recentThreads = new();
-    private readonly CodexUnreadStateReader _unreadState = new();
+    private readonly Func<CancellationToken, Task<IReadOnlyList<CodexRecentThread>?>> _readThreads;
+    private readonly Func<CancellationToken, Task<CodexUnreadStateSnapshot?>> _readUnread;
     private CodexTaskMonitorSnapshot? _snapshot;
     private IReadOnlyList<CodexRecentThread>? _rosterThreads;
     private string? _rosterGlobalState;
     private string? _rosterConfig;
     private long _revision;
+    private long _unreadConfirmationRevision;
+
+    internal CodexTaskMonitorService(
+        string? codexRoot = null,
+        Func<CancellationToken, Task<IReadOnlyList<CodexRecentThread>?>>? readThreads = null,
+        Func<CancellationToken, Task<CodexUnreadStateSnapshot?>>? readUnread = null)
+    {
+        _codexRoot = codexRoot ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+        _readThreads = readThreads ?? (token => new CodexRecentThreadsService().ReadAsync(token, Capacity));
+        _readUnread = readUnread ?? new CodexUnreadStateReader().ReadAsync;
+    }
+
+    internal CodexTaskMonitorSnapshot? ObserveUnreadConfirmed(string threadId)
+    {
+        lock (_sync)
+        {
+            ++_unreadConfirmationRevision;
+            if (_snapshot is null) return null;
+            var tasks = _snapshot.Tasks.Select(task => task.Id == threadId &&
+                task.Status is ThreadStatus.Idle or ThreadStatus.Unknown
+                    ? task with { Status = ThreadStatus.CompleteUnread } : task).ToArray();
+            return UpdateSnapshot(_snapshot.AgentRoster, tasks);
+        }
+    }
 
     internal async Task<CodexTaskMonitorSnapshot?> ReadAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var threadsRead = _recentThreads.ReadAsync(cancellationToken, Capacity);
-        var unreadRead = _unreadState.ReadAsync(cancellationToken);
+        long confirmationRevision;
+        lock (_sync) confirmationRevision = _unreadConfirmationRevision;
+        var threadsRead = _readThreads(cancellationToken);
+        var unreadRead = _readUnread(cancellationToken);
         await Task.WhenAll(threadsRead, unreadRead).ConfigureAwait(false);
         var threads = await threadsRead.ConfigureAwait(false);
         var unread = await unreadRead.ConfigureAwait(false);
@@ -58,6 +86,8 @@ internal sealed class CodexTaskMonitorService
             lock (_sync)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                // A read started before a confirmed user action cannot undo it.
+                if (confirmationRevision != _unreadConfirmationRevision) return _snapshot;
                 var tasks = ReadStatuses(threads, unread.ThreadIds, cancellationToken);
                 if (tasks is null)
                 {
@@ -85,6 +115,32 @@ internal sealed class CodexTaskMonitorService
     internal Task<CodexTaskMonitorSnapshot?> ReadPendingQuestionsAsync(
         CancellationToken cancellationToken) =>
         ReadPendingQuestionsAsync(cancellationToken, null, null);
+
+    internal IReadOnlyList<CodexMonitoredQuestion> GetPendingQuestions()
+    {
+        lock (_sync)
+        {
+            return _readers.SelectMany(pair => pair.Value.Reader
+                .GetPendingQuestions(pair.Value.Path)
+                .Select(question => new CodexMonitoredQuestion(pair.Key, question))).ToArray();
+        }
+    }
+
+    internal Task<CodexTaskMonitorSnapshot?> ObserveSkippedQuestionAsync(
+        CodexMonitoredQuestion question,
+        CancellationToken cancellationToken)
+    {
+        lock (_sync)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_readers.TryGetValue(question.ThreadId, out var reader))
+            {
+                reader.Reader.ObserveSkippedQuestion(reader.Path, question.Question);
+            }
+        }
+
+        return ReadPendingQuestionsAsync(cancellationToken);
+    }
 
     internal Task<CodexTaskMonitorSnapshot?> ObserveAcceptedQuestionRepliesAsync(
         string threadId,

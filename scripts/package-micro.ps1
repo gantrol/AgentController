@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.3.10",
+    [string]$Version = "0.3.13",
     [string]$Runtime = "win-x64",
     [double]$MaximumPackageMiB = 15,
     [ValidateSet("standard", "monitor", "deepseek", "deepseek-full")]
@@ -8,6 +8,10 @@ param(
     [string]$BundledWslPayload,
     [switch]$FrameworkDependent
 )
+
+if ($Preset -in @('standard', 'monitor')) {
+    throw 'Codex Micro moved to the standalone codex-micro-monitor repository. Use its scripts/package.ps1.'
+}
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -104,6 +108,7 @@ New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 $project = Join-Path $repoRoot `
     "virtual-micro\src\CodexMicro.DesktopHost\CodexMicro.DesktopHost.csproj"
 $selfContained = if ($isSelfContained) { "true" } else { "false" }
+$softwareControl = if ($isDeepSeek) { "false" } else { "true" }
 & dotnet publish $project `
     -c Release `
     -r $Runtime `
@@ -112,6 +117,7 @@ $selfContained = if ($isSelfContained) { "true" } else { "false" }
     -p:Version=$Version `
     -p:InformationalVersion=$Version `
     -p:IncludeSourceRevisionInInformationalVersion=false `
+    -p:MicroSoftwareControl=$softwareControl `
     "-p:Product=$productName" `
     "-p:AssemblyTitle=$productName" `
     -p:PublishSingleFile=true `
@@ -132,30 +138,23 @@ Copy-Item -LiteralPath (Join-Path $publishRoot "THIRD-PARTY") `
     -Destination $packageRoot -Recurse
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") `
     -Destination $packageRoot
-Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\README.md") `
-    -Destination $packageRoot
-Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\README.zh-CN.md") `
-    -Destination $packageRoot
-Copy-Item -LiteralPath (Join-Path $repoRoot `
-    "virtual-micro\DEEPSEEK-WINDOWS-SETUP.zh-CN.md") `
-    -Destination $packageRoot
-$voiceSource = Join-Path $repoRoot "virtual-micro\voice"
-$voiceTarget = Join-Path $packageRoot "voice"
-if (-not (Test-Path -LiteralPath $voiceSource -PathType Container)) {
-    throw "Keypad-owned voice runtime is missing: $voiceSource"
-}
-New-Item -ItemType Directory -Path $voiceTarget -Force | Out-Null
-foreach ($voiceFile in @(
-        "start-qwen3-asr-stream.ps1",
-        "qwen3-asr-stream-server.py")) {
-    $voicePath = Join-Path $voiceSource $voiceFile
-    if (-not (Test-Path -LiteralPath $voicePath -PathType Leaf)) {
-        throw "Keypad-owned voice file is missing: $voicePath"
+if ($isMonitor) {
+    foreach ($guide in @("README.md", "README.zh-CN.md")) {
+        Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\monitor\$guide") `
+            -Destination $packageRoot
     }
-    Copy-Item -LiteralPath $voicePath -Destination $voiceTarget
 }
-
 if ($isDeepSeek) {
+    foreach ($guide in @("README.md", "README.zh-CN.md", "DEEPSEEK-WINDOWS-SETUP.zh-CN.md")) {
+        Copy-Item -LiteralPath (Join-Path $repoRoot "virtual-micro\$guide") -Destination $packageRoot
+    }
+    $voiceSource = Join-Path $repoRoot "virtual-micro\voice"
+    $voiceTarget = Join-Path $packageRoot "voice"
+    New-Item -ItemType Directory -Path $voiceTarget -Force | Out-Null
+    foreach ($voiceFile in @("start-qwen3-asr-stream.ps1", "qwen3-asr-stream-server.py")) {
+        Copy-Item -LiteralPath (Join-Path $voiceSource $voiceFile) -Destination $voiceTarget
+    }
+
     $presetPath = Join-Path $repoRoot `
         "virtual-micro\distribution-presets\deepseek.json"
     if (-not (Test-Path -LiteralPath $presetPath -PathType Leaf)) {

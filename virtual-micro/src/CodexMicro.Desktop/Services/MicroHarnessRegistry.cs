@@ -310,9 +310,21 @@ internal sealed class MicroHarnessRegistry
         string? manifestDirectory = null,
         string? settingsPath = null,
         Func<MicroHarnessDefinition, DeepSeekSurfaceLaunchResult>?
-            surfaceLauncher = null)
+            surfaceLauncher = null,
+        bool codexOnly = false)
     {
         _surfaceLauncher = surfaceLauncher ?? DeepSeekSurfaceLauncher.TryLaunch;
+        if (codexOnly)
+        {
+            _settingsPath = null;
+            _diagnosticsPath = null;
+            _lastTimeouts = new(StringComparer.OrdinalIgnoreCase);
+            _definitions = [CodexDefinition()];
+            _keyMaps = new(StringComparer.OrdinalIgnoreCase);
+            _knobModes = new(StringComparer.OrdinalIgnoreCase);
+            _setupCompleted = new(StringComparer.OrdinalIgnoreCase) { "codex" };
+            return;
+        }
         _settingsPath = settingsPath ?? GetDefaultSettingsPath();
         _diagnosticsPath = GetDiagnosticsPath(_settingsPath);
         _lastTimeouts = ReadTimeoutDiagnostics(_diagnosticsPath);

@@ -2,8 +2,6 @@ namespace CodexMicro.Desktop.Services;
 
 internal sealed partial class CodexDraftComposerModelSelector
 {
-    private CodexModelCatalog? _reasoningCatalog;
-
     internal Task<bool> CanWatchNativeUltraAsync(
         IntPtr window, Func<bool> isCurrent, CancellationToken cancellationToken) =>
         Task.Run(() =>
@@ -51,12 +49,8 @@ internal sealed partial class CodexDraftComposerModelSelector
         bool autoConfirmUltraFullAccess, Func<bool> isCurrent,
         CancellationToken cancellationToken)
     {
-        var catalog = _reasoningCatalog ?? CodexModelCatalog.Load();
-        if (!catalog.IsFresh)
-        {
-            catalog = await CodexDraftModelToggleService.FetchModelCatalogAsync(cancellationToken);
-        }
-        _reasoningCatalog = catalog;
+        var catalog = await GetSelectionCatalogAsync(cancellationToken,
+            requested is null ? [] : [requested.ModelId]);
         return await Task.Run(() =>
         {
             var previousCatalog = _operationCatalog;

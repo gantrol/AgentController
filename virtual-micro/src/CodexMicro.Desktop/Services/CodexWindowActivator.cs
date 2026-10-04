@@ -31,6 +31,17 @@ internal static class CodexWindowActivator
     internal static bool IsForeground(string? packageRoot = null)
         => CaptureForegroundWindow(packageRoot) != IntPtr.Zero;
 
+    internal static nint FindSelectionWindow(nint previous)
+    {
+        var foreground = CaptureForegroundWindow();
+        if (foreground != nint.Zero) return foreground;
+        var candidates = FindCandidates(null).Where(candidate =>
+            !candidate.IsToolWindow && !candidate.HasOwner && !IsIconic(candidate.Handle) &&
+            candidate.ClassName == "Chrome_WidgetWin_1").ToArray();
+        if (candidates.Any(candidate => candidate.Handle == previous)) return previous;
+        return candidates.Length == 1 ? candidates[0].Handle : nint.Zero;
+    }
+
     internal static IntPtr CaptureForegroundWindow(
         string? packageRoot = null)
     {

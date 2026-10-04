@@ -3,8 +3,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
-    <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
-    <FontFamily x:Key="Font.Mono">Cascadia Mono, Consolas</FontFamily>
+    <FontFamily x:Key="Font.Ui">Microsoft YaHei UI, Microsoft YaHei, Segoe UI</FontFamily>
+    <FontFamily x:Key="Font.Mono">Cascadia Mono, Consolas, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
 
     <!-- Medium is the default. Presets scale the full hierarchy together. -->
     <sys:Double x:Key="Font.Size.Caption">14</sys:Double>

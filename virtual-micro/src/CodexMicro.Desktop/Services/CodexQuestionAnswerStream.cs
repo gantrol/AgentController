@@ -112,6 +112,13 @@ internal sealed class CodexQuestionAnswerStream
         if (value.ValueKind == JsonValueKind.Object)
         {
             if (path.Length > 0 && IsItemsPath(path[..^1]) &&
+                value.TryGetProperty("type", out var messageType) && ReadString(messageType) == "userMessage" &&
+                value.TryGetProperty("content", out var content) && ReadReply(content) is { } persistedReply)
+            {
+                _accepted.Add(persistedReply);
+                return;
+            }
+            if (path.Length > 0 && IsItemsPath(path[..^1]) &&
                 value.TryGetProperty("type", out var type) &&
                 ReadString(type) == "steeringUserMessage")
             {

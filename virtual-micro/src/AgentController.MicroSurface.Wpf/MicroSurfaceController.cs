@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CodexMicro.Desktop;
 using CodexMicro.Desktop.Services;
+using AgentController.MicroSurface.Wpf.SoftwareControl;
 
 namespace AgentController.MicroSurface.Wpf;
 
@@ -20,6 +21,8 @@ public sealed class MicroSurfaceController : IDisposable
 
     private readonly Dispatcher _dispatcher;
     private readonly MicroLocalization _localization;
+    private readonly Func<IMicroTransport> _createTransport;
+    private readonly bool _allowAdditionalSurfaces;
     private readonly Dictionary<string, SurfaceEntry> _surfaces =
         new(StringComparer.OrdinalIgnoreCase);
     private int _nextOrdinal = 1;
@@ -28,14 +31,28 @@ public sealed class MicroSurfaceController : IDisposable
 
     public MicroSurfaceController(
         MicroLocalization? localization = null)
+        : this(localization, () => new VirtualMicroBroker())
     {
+    }
+
+    public static MicroSurfaceController CreateSoftwareControlled(
+        MicroLocalization? localization = null) =>
+        new(localization, () => new SoftwareMicroTransport(), restoreAdditionalSurfaces: false);
+
+    internal MicroSurfaceController(
+        MicroLocalization? localization,
+        Func<IMicroTransport> createTransport,
+        bool restoreAdditionalSurfaces = true)
+    {
+        _createTransport = createTransport;
+        _allowAdditionalSurfaces = restoreAdditionalSurfaces;
         _dispatcher = Dispatcher.CurrentDispatcher;
         _localization = localization ?? new MicroLocalization();
         CreateSurface(
             "primary",
             new MicroProfileSettings(),
             isPrimary: true);
-        foreach (var settings in MicroProfileSettings.LoadAdditionalKeypads())
+        foreach (var settings in restoreAdditionalSurfaces ? MicroProfileSettings.LoadAdditionalKeypads() : [])
         {
             var id = settings.PersistentKeypadId;
             if (id is not null)
@@ -52,6 +69,9 @@ public sealed class MicroSurfaceController : IDisposable
         _surfaces.Values.Any(entry => entry.Window.IsVisible);
 
     public int SurfaceCount => _disposed ? 0 : _surfaces.Count;
+
+    internal void SelectThread(string threadId) => Dispatch(() =>
+        _surfaces.Values.Single(entry => entry.IsPrimary).Window.SelectSoftwareThread(threadId));
 
     public void StartBackgroundServices() => Dispatch(() =>
     {
@@ -156,10 +176,11 @@ public sealed class MicroSurfaceController : IDisposable
         var window = new MicroSurfaceWindow(
             _localization,
             settings,
-            harnessId => OpenHarnessInNewSurface(id, harnessId),
+            _allowAdditionalSurfaces ? harnessId => OpenHarnessInNewSurface(id, harnessId) : null,
             () => CloseSurface(id),
             displayName,
-            canCloseKeypad: !isPrimary);
+            canCloseKeypad: !isPrimary,
+            transport: _createTransport());
         _surfaces.Add(
             id,
             new SurfaceEntry(id, settings, window, isPrimary));

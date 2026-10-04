@@ -25,7 +25,7 @@ C++ Redistributable。
 
 如果要重新构建二进制，请安装 Visual Studio/Build Tools 2022、**使用 C++ 的桌面
 开发**、MSVC v143 x64/x86 工具、x64/x86 Spectre 缓解库、Windows SDK
-`10.0.26100.0` 和 MSBuild。只有模拟器应用和测试需要 .NET 9 SDK，单独构建 UMDF2
+`10.0.26100.0` 和 MSBuild。只有模拟器应用和测试需要 .NET 10 SDK，单独构建 UMDF2
 驱动不需要它。
 
 ## 只还原签名工具，不编译

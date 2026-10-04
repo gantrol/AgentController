@@ -1,0 +1,20 @@
+<UserControl x:Class="CodexController.Views.ControllerIconView"
+             x:Name="Root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False" Focusable="False">
+    <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Canvas Width="460" Height="352">
+            <Path Fill="#FFFFFF" Stroke="#10A37F" StrokeThickness="20"
+                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  Data="M183,126 C151,124 125,136 104,158 C88,175 80,197 74,220 L43,341 C34,376 42,408 67,426 C91,444 122,438 143,410 L176,366 C185,354 200,347 215,347 H297 C312,347 327,354 336,366 L369,410 C390,438 421,444 445,426 C470,408 478,376 469,341 L438,220 C432,197 424,175 408,158 C387,136 361,124 329,126 C318,127 308,131 300,139 L280,158 H232 L212,139 C204,131 194,127 183,126 Z">
+                <Path.RenderTransform><TranslateTransform X="-26" Y="-102" /></Path.RenderTransform>
+            </Path>
+            <Path Stroke="#176B5B" StrokeThickness="28"
+                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                  Data="M150,256 C150,208 202,202 256,256 C310,310 362,304 362,256 C362,208 310,202 256,256 C202,310 150,304 150,256 Z">
+                <Path.RenderTransform><TranslateTransform X="-26" Y="-102" /></Path.RenderTransform>
+            </Path>
+        </Canvas>
+    </Viewbox>
+</UserControl>

@@ -16,6 +16,9 @@
 
   <ItemGroup>
     <Compile Include="MicroSurfaceController.cs" />
+    <Compile Include="SoftwareControl\*.cs" />
+    <Compile Include="..\CodexMicro.Desktop\MainWindow.Software.cs" Link="MicroSurfaceWindow.Software.cs" />
+    <Compile Include="..\CodexMicro.Desktop\MainWindow.Software.Draft.cs" Link="MicroSurfaceWindow.Software.Draft.cs" />
     <Compile Include="..\CodexMicro.Desktop\MainWindow.Monitor.cs"
              Link="MicroSurfaceWindow.Monitor.cs" />
     <Compile Include="..\CodexMicro.Desktop\MainWindow.Reasoning.cs"
@@ -102,6 +105,8 @@
     <PackageReference Include="Microsoft.Windows.CsWinRT" PrivateAssets="all" ExcludeAssets="compile;runtime" GeneratePathProperty="true" />
     <PackageReference Include="NAudio.WinMM" />
     <ProjectReference Include="..\CodexMicro.Protocol\CodexMicro.Protocol.csproj" />
+    <ProjectReference Include="..\..\..\src\AgentController.Adapters.Codex.Software\AgentController.Adapters.Codex.Software.csproj" />
+    <ProjectReference Include="..\..\..\src\AgentController.Adapters.Codex.Windows\AgentController.Adapters.Codex.Windows.csproj" />
     <ProjectReference Include="..\..\..\src\AgentController.MicroBroker\AgentController.MicroBroker.csproj" />
   </ItemGroup>
 
@@ -111,6 +116,7 @@
     </AssemblyAttribute>
     <InternalsVisibleTo Include="CodexMicro.Desktop.Tests" />
     <InternalsVisibleTo Include="CodexMicro.AssetExporter" />
+    <InternalsVisibleTo Include="CodexMicro.Plugin" />
   </ItemGroup>
 
   <ItemGroup>

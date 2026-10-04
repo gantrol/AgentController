@@ -91,8 +91,6 @@ $docsPublicRoot = Join-Path $docsRoot "public\docs"
 New-Item -ItemType Directory -Path $docsPublicRoot -Force | Out-Null
 $docsDesignRoot = Join-Path $docsRoot "docs"
 New-Item -ItemType Directory -Path $docsDesignRoot -Force | Out-Null
-$docsVirtualMicroRoot = Join-Path $docsRoot "virtual-micro"
-New-Item -ItemType Directory -Path $docsVirtualMicroRoot -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") `
     -Destination $docsRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.zh-CN.md") `
@@ -118,27 +116,8 @@ Copy-Item -LiteralPath (
     Join-Path $repoRoot "public\docs\codex-micro-command-reference.md") `
     -Destination $docsPublicRoot
 Copy-Item -LiteralPath (
-    Join-Path $repoRoot "docs\CodexMicroSimulator-installation.md") `
-    -Destination $docsDesignRoot
-Copy-Item -LiteralPath (
     Join-Path $repoRoot "docs\maintainer-handbook.zh-CN.md") `
     -Destination $docsDesignRoot
-$installTutorials = @(
-    Get-ChildItem `
-        -LiteralPath (Join-Path $repoRoot "docs") `
-        -Filter "CodexMicroSimulator-*.zh-CN.md" `
-        -File)
-if ($installTutorials.Count -ne 1) {
-    throw "Expected exactly one Codex Micro installation tutorial, found $($installTutorials.Count)."
-}
-Copy-Item -LiteralPath $installTutorials[0].FullName `
-    -Destination $docsDesignRoot
-Copy-Item -LiteralPath (
-    Join-Path $repoRoot "virtual-micro\UNSIGNED-DRIVER.md") `
-    -Destination $docsVirtualMicroRoot
-Copy-Item -LiteralPath (
-    Join-Path $repoRoot "virtual-micro\UNSIGNED-DRIVER.zh-CN.md") `
-    -Destination $docsVirtualMicroRoot
 
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force

@@ -3,11 +3,15 @@
 [![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
 [![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-1.2.1-blue) ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20Preview-lightgrey)
+![version](https://img.shields.io/badge/version-1.2.1-blue) ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
-![Codex Micro 桌面模拟器](public/images/codex-micro-simulator.png)
+Agent Controller 是通过 XInput 手柄浏览和操作 Codex 的 Windows 应用。
 
-这是一个 Codex Micro 模拟器，只是这个仓库的一部分。
+> **Codex Micro 已独立维护，迁移至新仓库：[gantrol/codex-micro-monitor](https://github.com/gantrol/codex-micro-monitor)。**
+> 独立桌面小键盘与插件不再由 AgentController 仓库继续开发。
+> 截至 2026-10-04，新公开仓库已建立、目前为空；源码和新版安装包尚未上传。
+
+[下载 Agent Controller 1.2.1](https://github.com/gantrol/AgentController/releases/tag/v1.2.1) · [安装步骤](#从-release-下载安装) · [Micro 新仓库](https://github.com/gantrol/codex-micro-monitor)
 
 Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想买吗？但你注意到没有：
 
@@ -56,25 +60,29 @@ Codex Micro 很快就断货了。这款专为 Codex 设计的小键盘，你想�
 
 如果还不熟悉手柄缩写，首页提供可切换的动态教程：基础、点按 Y、按住 LB、扣住 RT、按住 RB 和按下摇杆。点击页签或实际按下对应按键都会切换说明；L3/R3 会同时标为 LS/RS，并用动画说明它们指的是把摇杆帽垂直按下，而不是把摇杆向下拨。
 
-### 独立的 Codex Micro 小键盘
+### Codex Micro 仓库迁移
 
-![Codex Micro 小键盘](public/images/codex-micro-simulator.png)
+独立小键盘、任务监控、键帽设置和插件已归入
+[codex-micro-monitor](https://github.com/gantrol/codex-micro-monitor)。后续 Micro
+源码更新与发行将放在新仓库。新公开仓库已经建立，但目前为空，暂时不能从中下载安装包或获取源码构建。
 
-这个 [Codex Micro 小键盘](virtual-micro/README.zh-CN.md) 已从 `AgentController.exe`
-独立出来，同时直接复用原 WPF XAML、控件模板和动画，透明与样式不再近似重画。
-framework-dependent 单文件 zip 约 6.4 MiB，需要安装
-[微软官方 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)；
-小键盘是可选的独立配套程序，拥有自己的可执行文件和通知区域命令。Agent Controller
-不再启动、重启或依赖小键盘进程。小键盘窗口固定大小并采用应用内移动，不会触发
-Windows Snap 自动改窗口大小；它自己的通知区域图标提供显示/收起、重启和退出。
+独立项目正在开发的软件接口版不需要虚拟 HID 驱动，也不需要安装 AgentController。
+其现有桌面 ZIP 打包方式需要
+[微软 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)，
+该版本尚未公开发布。本仓库保留的
+[旧 Micro Monitor 0.3.10](https://github.com/gantrol/AgentController/releases/tag/codex-micro-monitor-v0.3.10)
+仍需单独安装虚拟 HID 驱动才能获得完整功能；已有用户请遵循该版本的发行说明。
 
-可惜的是，也需要依赖驱动，**未签名开发者驱动包**。该驱动包可以省掉 C/C++ 编译步骤，但不是正式安装包；请先[在本机二次签名并安装](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)，或从源码自行构建驱动。
+本仓库继续维护 Agent Controller 的手柄输入、映射、Overlay 和 Agent 路由。
+旧 Micro 桌面和插件源码仅供历史查阅，不作为新 Micro 功能的开发入口。
+两个产品各自引用 `codex-control` 固定版本包，普通用户无需另装公共组件。
+维护边界见[三仓库说明](docs/architecture/micro-component-dependency.zh-CN.md)。
 
 > ⚠️ **安全提示——使用前请读**
 >
 > v1 仍是实验性软件，由早期一天完成的原型持续重构而来，没有经过独立的人工代码或安全审计。Codex 更新可能改变 Micro bridge、快捷键或辅助功能树，导致功能失效或误操作；程序和开发者驱动也未签名。请先审查源码，只用非关键任务试用，并自行承担全部风险。应用在你机器上会做的事：
 >
-> - 通过本机 Broker 向可选的 Micro 兼容设备发送 HID 报告，并在明确无法发送时对部分动作使用键盘快捷键或 UI Automation 回退；手柄输入默认要求 Codex 位于前台，关闭“桥接”后会阻止手柄控制；
+> - 已发布的 Controller 1.2.1 通过本机 Broker 发送 HID 报告，并在明确无法发送时对部分动作使用键盘快捷键或 UI Automation 回退；当前开发分支已改用软件接口，[真实手柄验收仍待完成](docs/architecture/agent-controller-driverless-uml.zh-CN.md)。手柄输入默认要求 Codex 位于前台，关闭“桥接”后会阻止手柄控制；
 > - 读取 `~/.codex` 下的本机任务数据；启用降级绑定时，可以向 Codex 的快捷键配置追加 F17/F18/F20/F22；
 > - 在 `%LOCALAPPDATA%` 写入自身设置；
 > - 可选注册开机自启（默认关闭）；
@@ -84,31 +92,32 @@ Windows Snap 自动改窗口大小；它自己的通知区域图标提供显示/
 
 ### 使用要求
 
-- Windows 10（build 19041+）或 Windows 11
+- Windows 10（build 19041+）或 Windows 11，x64
 - 已安装 Codex 桌面版
 - XInput 兼容手柄
 - 如果需要按住说话功能，还需要麦克风
 
 当前实测设备为 8BitDo Ultimate 2、Xbox Series 和 Flydigi Vader 4 Pro。其他 XInput 手柄能否正常使用取决于其 XInput 实现，仍需真机验证。
 
-### macOS Foundation Preview
+### macOS 方向
 
-仓库现已包含未签名、只读的 macOS 14+ Foundation Preview。Avalonia 壳可以观察
-Apple Game Controller 输入，分项显示平台权限，探测 Codex CLI，并提供原生 Menu
-Bar/Dock 菜单；可从 Windows 交叉生成 Apple Silicon 和 Intel 两种包。它暂时不会向
-Codex 发送动作，也不宣称具备虚拟 Micro 完整模式。构建与验收步骤见
-[macOS Foundation Preview 说明](docs/macos-foundation-preview.zh-CN.md)。
+AgentController 的旧 Avalonia Foundation Preview 已废弃并退出默认构建与发布。
+Codex Micro 当前目标为独立的 macOS 桌面版，尚无可运行客户端；先前 iOS / UIKit
+代码仅保留为历史原型。见[平台方向](docs/architecture/platform-direction.zh-CN.md)。
 
 ### 从 Release 下载安装
 
-1. 到 [Releases](../../releases) 下载最新 zip。
-2. 解压到任意目录，运行 `AgentController.exe`。
+1. 到 [Agent Controller 1.2.1 发行页](https://github.com/gantrol/AgentController/releases/tag/v1.2.1)，下载自带运行时的 `AgentController-1.2.1-win-x64.zip`。选择 Controller 应用附件，不要下载 Micro 包或 GitHub 自动生成的 `Source code` 压缩包。
+2. 核对对应 `.sha256`，将 ZIP 完整解压到准备长期保留的目录，以普通用户运行 `AgentController.exe`。
 3. 程序未签名，Windows SmartScreen 可能拦截。请先阅读上方安全提示，再选择 **更多信息 → 仍要运行**；介意的话也可以自行构建。
 4. 以 XInput 模式连接手柄，启动 Codex，并确认“桥接”已开启。连接成功后，设备页会显示手柄名称和本地化的 **实时输入 / Live input** 标记。
-5. 部分功能可能需要重启 Codex 桌面软件（ ChatGPT）后生效，尤其是 Agent Controller 首次写入或更新 Codex 快捷键之后。
-6. 如需完整的 Micro-first HID 路径，请另外安装仓库中唯一受支持的 `CodexMicroVhfUm`（UMDF2/VHF）Device Support。当前只提供未签名开发者流程，请先阅读[本地安装说明](docs/CodexMicroSimulator-安装教程.zh-CN.md)和[未签名驱动说明](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)。
+5. 按 **Menu** 将 Codex 置于前台，手柄回中后，用左摇杆选择一个空闲会话并按 **A**，核对 Codex 打开的是所选会话。首次写入或更新快捷键后若未生效，正常退出并重开 Codex。
+6. 已发布的 Controller 1.2.1 如需完整 Micro-first HID 功能，需另外安装 `CodexMicroVhfUm`（UMDF2/VHF）。这是未签名开发者流程，请先阅读[本地安装说明](docs/CodexMicroSimulator-安装教程.zh-CN.md)和[未签名驱动说明](virtual-micro/UNSIGNED-DRIVER.zh-CN.md)。此要求属于旧发行版，不适用于新的独立 Micro 软件接口版。
 
 v1.2.1 同时提供 Windows 自包含包和体积更小的 `-compact` 精简包。精简包需要安装[微软官方 .NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)，自包含包则不需要。没有驱动时，Agent Controller 仍可运行，但只会对明确 `NotSent` 的操作尝试有限回退，不能视为完整 Micro 兼容模式。
+
+开发分支的免驱改动尚未包含在该公开 ZIP 中。
+现有下载与待发布版本的区别见[普通用户从零安装路线](docs/distribution/first-install-route.zh-CN.md)。
 
 ### 按键速查
 
@@ -158,13 +167,13 @@ v1.2.1 同时提供 Windows 自包含包和体积更小的 `-compact` 精简包�
 
 ### 已知限制
 
-- Micro-first 路径依赖 Codex 当前的私有 HID 合同、`codex-micro-service` 和 `codex-micro-bridge`；这不是 OpenAI 承诺的稳定公共 ABI。
-- 完整 Micro 路径需要用户自行审查、构建或本机签名 `CodexMicroVhfUm`。不要关闭 Windows 驱动签名强制，也不要导入来源不明的证书。
+- 已发布的 Controller 1.2.1 的 Micro-first 路径依赖 Codex 私有 HID 合同、`codex-micro-service` 和 `codex-micro-bridge`；这不是 OpenAI 承诺的稳定公共 ABI。
+- 该发行版的完整 Micro 功能需要用户自行审查、构建或本机签名 `CodexMicroVhfUm`。不要关闭 Windows 驱动签名强制，也不要导入来源不明的证书。
 - 回退动作仍可能依赖 Codex 当前版本的快捷键与辅助功能树，Codex 界面更新可能导致功能失效。
 - 简易模型列表使用官方命令快捷键；快捷键冲突会被拦截。首次写入后若 Codex 未热加载，请重启一次 Codex。
 - 单元测试和 Release 编译通过，不能替代针对当前 Codex 版本、账户、模型选项的真实手柄端到端测试。
 - Agent 槽位目前取实时快照中的前六个任务；Agent 与 Command 槽位都还不能由用户配置。
-- macOS 当前仅提供未签名、只读的 Foundation Preview；App Server 动作、语音、原生 Micro、签名公证和 Mac 真机验收仍未完成。
+- AgentController 不再提供 macOS Foundation Preview；Micro 的 macOS 客户端尚未实现。
 - v1 尚未提供商业签名驱动安装器、可配置的 Agent/Command 槽位和完整 Plan 模式手柄路由。
 
 ### Codex 与 DeepSeek Harness
@@ -177,33 +186,16 @@ Codex 与 DeepSeek Harness 现在都是内置目标。在基础层按 **View** �
 
 维护者请先阅读[人类维护与发布手册](docs/maintainer-handbook.zh-CN.md)，包含环境检查、设置备份、版本准备、封包校验、草稿发布与回退步骤。
 
-先安装 .NET SDK 10.0.302。使用 IDE 构建时需要 Visual Studio 2026 与 MSBuild 18 或更新版本；Visual Studio 2022 无法加载 `global.json` 选择的 SDK。然后运行：
+先安装 .NET SDK 10.0.302。使用 IDE 构建时需要 Visual Studio 2026 与 MSBuild 18 或更新版本；Visual Studio 2022 无法加载 `global.json` 选择的 SDK。当前分支还需要尚未发布到公共源的 `codex-control` 固定版本包，构建前须按[组件导入说明](docs/architecture/micro-component-dependency.zh-CN.md)准备；新建的 Micro 空仓库暂不提供这些包。本地依赖齐备后运行：
 
 ```powershell
 dotnet build AgentController.sln -c Release
 dotnet test AgentController.sln -c Release
-./scripts/package-release.ps1 -Version 1.2.1
-./scripts/package-release.ps1 -Version 1.2.1 -Compact
 ```
 
-编译产物位于 `app/bin/Release/net10.0-windows10.0.19041.0/`。第一条封包命令生成 Windows x64 自包含包，`-Compact` 生成 framework-dependent 精简包；两种压缩包及其 SHA-256 都写入 `dist/`。
-
-如需交叉生成 Apple Silicon 与 Intel 的未签名 macOS Foundation Preview，请运行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
-```
-
-真机测试前先阅读
-[预览版说明](docs/macos-foundation-preview.zh-CN.md)。
-
-如需创建或更新 GitHub Release 并上传两个产物，请先安装并登录 GitHub CLI、推送对应标签，然后运行：
-
-```powershell
-./scripts/publish-release.ps1 -Version 1.2.1 -IncludeCompact
-```
-
-该命令会重新构建两种发布包、核验 SHA-256 和包内容，要求工作区干净且目标仓库的远程标签指向当前 HEAD，再创建或更新 Release。若只需上传现有产物，可加 `-SkipBuild`；先发草稿加 `-Draft`。同名附件默认拒绝覆盖，经核对后用 `-ReplaceAssets` 显式替换。完整流程见维护手册。
+编译产物位于 `app/bin/Release/net10.0-windows10.0.19041.0/`。
+打包与发布沿用维护手册。开发分支发布新版本时应分配独立版本号，
+不要复用已发布的 1.2.1 标签，也不要用新的免驱实现覆盖旧发行附件。
 
 ### 如果你想改源码
 
@@ -216,9 +208,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-macos.ps1
 仓库中的主要路径为：
 
 - `app/` —— Windows WPF 应用，也是运行时行为的事实来源；
+- `src/` —— Agent Controller 的领域、应用与平台适配模块；
 - `app.Tests/` —— 手柄输入、本地化、导航、桥接安全和 Codex 集成策略的回归测试；
 - `scripts/` —— 可复现的 Release 封包脚本；
-- `virtual-micro/` —— 直接复用原 XAML 的独立 WPF Micro 小键盘、共享协议、`CodexMicroVhfUm` 设备支持和运行时能力测试；
+- `virtual-micro/` —— 历史 Micro 源码及保留的 HID / DeepSeek 代码；当前 Micro 桌面开发已迁至 [codex-micro-monitor](https://github.com/gantrol/codex-micro-monitor)；
+- `micro-bridge/CodexPlugin/` —— 历史 Micro 插件源码；新插件由独立 Micro 项目维护；
 - `docs/` —— 交互规范，以及进行中的设计和咨询记录；
 - `public/docs/` —— 面向使用者的指令清单、版本说明和实验计划；
 - `todo/` —— 按大型工作流拆分的路线图；从 [`todo/README.md`](todo/README.md) 开始阅读。

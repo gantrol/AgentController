@@ -82,7 +82,8 @@ public sealed class CodexDataService
             }
 
             assignments.TryGetValue(item.Id, out var projectPath);
-            projectPath ??= ResolveProjectPath(metadata.WorkingDirectory, state);
+            if (projectPath is null && !state.ProjectlessThreadIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
+                projectPath = ResolveProjectPath(metadata.WorkingDirectory, state);
             var effectiveRecency =
                 metadata.RecencyAt ??
                 metadata.UpdatedAt ??
@@ -196,8 +197,13 @@ public sealed class CodexDataService
                 !explicitlyOrderedProjectless.Contains(thread.Id)))
             .ToList();
 
+        if (state.SidebarLayout is { } layout)
+            projectless = layout.ManualChatOrder
+                ? OrderByIds(projectless, layout.ChatOrder, thread => thread.Id).ToList()
+                : projectless.OrderByDescending(thread => thread.UpdatedAt).ToList();
+
         var projectPaths = state.KnownProjectPaths
-            .Concat(threads
+            .Concat((state.SidebarLayout is null ? threads : [])
                 .Select(thread => thread.ProjectPath)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Cast<string>())
@@ -219,8 +225,8 @@ public sealed class CodexDataService
         var projects = projectPaths
             .Select(path =>
             {
-                var explicitThreadOrder = state.ProjectThreadOrders
-                    .GetValueOrDefault(path, []);
+                var explicitThreadOrder = state.SidebarLayout is { ManualProjectThreadOrder: false }
+                    ? [] : state.ProjectThreadOrders.GetValueOrDefault(path, []);
                 var explicitThreadIndexes = explicitThreadOrder
                     .Select((id, index) => new { id, index })
                     .ToDictionary(
@@ -265,6 +271,7 @@ public sealed class CodexDataService
             PinnedThreads = pinned,
             ProjectlessThreads = projectless,
             Projects = projects,
+            SidebarLayout = state.SidebarLayout,
             ArchivedThreadCount = archivedThreadCount,
             UnavailableThreadCount = unavailableThreadCount,
         };
@@ -369,7 +376,7 @@ public sealed class CodexDataService
         CodexSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return
+        List<SidebarEntry> entries =
         [
             .. BuildEntries(
                 snapshot,
@@ -388,6 +395,37 @@ public sealed class CodexDataService
                 SidebarScope.ProjectlessTasks,
                 selectedProjectPath: null),
         ];
+        if (snapshot.SidebarLayout is not { } layout) return entries;
+
+        var customIds = layout.Sections.SelectMany(section => section.ItemIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var lookup = entries.ToDictionary(entry => entry.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var thread in snapshot.Threads.Where(thread => customIds.Contains(thread.Id)))
+            lookup.TryAdd(thread.Id, new(thread.Id, DisplayTitle(thread), RelativeTime(thread.UpdatedAt),
+                SidebarLayer.Tasks, ThreadId: thread.Id, ProjectPath: thread.ProjectPath,
+                NativeTitle: thread.NativeTitle, NavigationScope: SidebarScope.ProjectlessTasks));
+
+        var groups = new Dictionary<string, IReadOnlyList<SidebarEntry>>(StringComparer.Ordinal);
+        groups["pinned"] = OrderByIds(entries.Where(entry => entry.IsPinned && !customIds.Contains(entry.Id)),
+            layout.PinnedOrder, entry => entry.Id).Select(entry => entry with { SectionId = "pinned", SectionName = _localization.Strings.SidebarPinnedBadge }).ToArray();
+        groups["threads"] = OrderByIds(entries.Where(entry => entry.IsProject && !entry.IsPinned && !customIds.Contains(entry.Id)),
+            layout.ProjectOrder, entry => entry.Id).Select(entry => entry with { SectionId = "threads", SectionName = _localization.Strings.SidebarProjects }).ToArray();
+        groups["chats"] = entries.Where(entry => !entry.IsProject && !entry.IsPinned && !customIds.Contains(entry.Id))
+            .Select(entry => entry with { SectionId = "chats", SectionName = _localization.Strings.SidebarProjectlessTasks }).ToArray();
+        foreach (var section in layout.Sections)
+            groups[section.Id] = section.ItemIds.Where(lookup.ContainsKey)
+                .Select(id => lookup[id] with { SectionId = section.Id, SectionName = section.Name }).ToArray();
+
+        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return layout.OrderedSectionIds.SelectMany(id => groups[id].Where(entry => emitted.Add(entry.Id))
+            .Select((entry, index) => entry with { SectionHeader = index == 0 ? entry.SectionName : null })).ToArray();
+    }
+
+    private static IEnumerable<T> OrderByIds<T>(IEnumerable<T> items, IReadOnlyList<string> ids, Func<T, string> key)
+    {
+        var order = ids.Select((id, index) => (id, index)).ToDictionary(item => item.id,
+            item => item.index, StringComparer.OrdinalIgnoreCase);
+        return items.OrderBy(item => order.GetValueOrDefault(key(item), int.MaxValue));
     }
 
     private IReadOnlyList<SidebarEntry> BuildProjectTaskEntries(
@@ -407,7 +445,12 @@ public sealed class CodexDataService
         }
 
         var strings = _localization.Strings;
+        var section = snapshot.SidebarLayout?.Sections.FirstOrDefault(item =>
+            item.ItemIds.Contains(project.Path, PathComparer));
+        var customThreads = snapshot.SidebarLayout?.Sections.SelectMany(item => item.ItemIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return project.Threads
+            .Where(thread => customThreads?.Contains(thread.Id) != true)
             .Select(thread => new SidebarEntry(
                 thread.Id,
                 DisplayTitle(thread),
@@ -425,7 +468,9 @@ public sealed class CodexDataService
                     ? strings.SidebarPinnedBadge
                     : string.Empty,
                 ActionHint: strings.SidebarOpenAction,
-                NavigationScope: SidebarScope.ProjectTasks))
+                NavigationScope: SidebarScope.ProjectTasks,
+                SectionId: section?.Id ?? (snapshot.SidebarLayout is null ? null : "project:" + project.Path),
+                SectionName: section?.Name))
             .ToList();
     }
 
@@ -744,17 +789,19 @@ public sealed class CodexDataService
                 AddDistinctPath(knownProjects, path);
             }
 
+            var sidebarLayout = CodexSidebarLayoutReader.Read(root, projectPathsById, ReadAccountId());
             var state = new GlobalState
             {
                 PinnedThreadIds = pinnedThreads,
                 PinnedProjectIds = pinnedProjects,
-                KnownProjectPaths = knownProjects,
+                KnownProjectPaths = sidebarLayout is null ? knownProjects : projectPathsById.Values.Distinct(PathComparer).ToList(),
                 ProjectOrder = projectOrder,
                 ProjectlessThreadIds = projectlessThreads,
                 UnreadThreadIds = unreadThreads,
                 ThreadProjectAssignments = assignments,
                 WorkspaceRootLabels = workspaceRootLabels,
                 ProjectThreadOrders = projectThreadOrders,
+                SidebarLayout = sidebarLayout,
             };
             _lastGoodGlobalState = state;
             return state;
@@ -766,6 +813,22 @@ public sealed class CodexDataService
             // partially written refresh.
             return _lastGoodGlobalState ?? new GlobalState();
         }
+    }
+
+    private string? ReadAccountId()
+    {
+        try
+        {
+            using var stream = File.Open(Path.Combine(_codexHome, "auth.json"), FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            return document.RootElement.TryGetProperty("tokens", out var tokens) &&
+                tokens.TryGetProperty("account_id", out var account) && account.ValueKind == JsonValueKind.String
+                ? account.GetString() : null;
+        }
+        catch (IOException) { return null; }
+        catch (JsonException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
     private static void ReadStateContainer(
@@ -1306,6 +1369,7 @@ public sealed class CodexDataService
 
     private sealed class GlobalState
     {
+        public CodexSidebarLayout? SidebarLayout { get; init; }
         public IReadOnlyList<string> PinnedThreadIds { get; init; } = [];
         public IReadOnlyList<string> PinnedProjectIds { get; init; } = [];
         public IReadOnlyList<string> KnownProjectPaths { get; init; } = [];

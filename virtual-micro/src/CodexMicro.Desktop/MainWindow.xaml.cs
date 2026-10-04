@@ -30,6 +30,8 @@ public partial class MicroSurfaceWindow : Window
         TimeSpan.FromMilliseconds(24);
     private static readonly TimeSpan EncoderIntentMaximumAge =
         TimeSpan.FromMilliseconds(180);
+    private TimeSpan CurrentEncoderIntentMaximumAge => _broker.UsesSoftwareControl
+        ? TimeSpan.FromSeconds(5) : EncoderIntentMaximumAge;
     private static readonly TimeSpan QuotaRefreshInterval =
         TimeSpan.FromMinutes(2);
     private static readonly TimeSpan HarnessStateRefreshInterval =
@@ -104,7 +106,7 @@ public partial class MicroSurfaceWindow : Window
         Error,
     }
 
-    private readonly VirtualMicroBroker _broker = new();
+    private readonly IMicroTransport _broker;
     private readonly MicroLocalization _localization;
     private readonly DialDirectionSettings _dialDirectionSettings;
     private readonly MicroProfileSettings _profileSettings;
@@ -113,7 +115,7 @@ public partial class MicroSurfaceWindow : Window
     private readonly string _keypadDisplayName;
     private readonly bool _canCloseKeypad;
     private readonly CodexMicroConfigWriter _configWriter;
-    private readonly MicroHarnessRegistry _harnessRegistry = new();
+    private readonly MicroHarnessRegistry _harnessRegistry;
     private readonly DeepSeekSetupCoordinator _deepSeekSetupCoordinator;
     private bool _deepSeekManagedRuntimeChecked;
     private readonly MicroVoiceInputService _voiceInput;
@@ -278,8 +280,21 @@ public partial class MicroSurfaceWindow : Window
         Action<string>? openHarnessInNewKeypad = null,
         Action? closeKeypad = null,
         string? keypadDisplayName = null,
-        bool canCloseKeypad = false)
+        bool canCloseKeypad = false,
+        IMicroTransport? transport = null,
+        Func<Task<bool>>? activateSoftwareApplication = null,
+        Func<CancellationToken, Task<string?>>? readSoftwareSelection = null)
     {
+        _broker = transport ?? new VirtualMicroBroker();
+        _activateSoftwareApplication = activateSoftwareApplication ?? (() => ActivateCodexAsync(0, launchIfMissing: true));
+        _readSoftwareSelection = readSoftwareSelection ?? _softwareSelectionReader.ReadAsync;
+        _harnessRegistry = new MicroHarnessRegistry(codexOnly: _broker.UsesSoftwareControl);
+        _broker.CaptureContext = CaptureSoftwareContext;
+        _broker.ThreadOpened = SelectSoftwareThread;
+        _broker.ServiceTierApplied = _modelToggleService.ObserveServiceTierAcknowledged;
+        _broker.ValidateTargetAsync = ValidateSoftwareTargetAsync;
+        if (_broker.UsesSoftwareControl) _modelToggleService.ObserveSelectedThread(null);
+        if (_broker.UsesSoftwareControl) _status = _transportName = "Codex IPC";
         _localization = localization ??
             throw new ArgumentNullException(nameof(localization));
         _profileSettings = profileSettings ??
@@ -297,6 +312,14 @@ public partial class MicroSurfaceWindow : Window
         _deepSeekSetupCoordinator = new DeepSeekSetupCoordinator(
             _harnessRegistry);
         InitializeComponent();
+        Loaded += (_, _) => MicroWindowLayout.SizeKeypad(this, _profileSettings.Current.WindowScale);
+        SizeChanged += (_, _) =>
+        {
+            if (_actionKeys is not null)
+                foreach (var (_, icon) in _actionKeys.Values) icon.InvalidateVisual();
+        };
+        DpiChanged += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+            MicroWindowLayout.SizeKeypad(this, _profileSettings.Current.WindowScale)));
         InitializeMonitorPage();
         _codexDeviceFrameBackground = DeviceFrame.Background;
         _codexPearlLightGuideBackground = PearlLightGuide.Background;
@@ -396,6 +419,7 @@ public partial class MicroSurfaceWindow : Window
             ModelToggleService_CurrentThreadStateChanged;
         RefreshLocalizedChrome();
         InitializeHoverHelp();
+        ApplyCoreSurface();
         UpdateQuotaPresentation();
         ApplyLayout(_layoutObserver.Current);
         ApplyHarnessContext();
@@ -503,7 +527,7 @@ public partial class MicroSurfaceWindow : Window
         StopMonitorPage();
         try
         {
-            _broker.Dispose();
+            await _broker.DisposeAsync();
         }
         catch (Exception exception)
         {
@@ -647,6 +671,7 @@ public partial class MicroSurfaceWindow : Window
         RefreshActionTargetForegroundState();
         RefreshTopmostContinuity();
         RefreshDraftQuickModelObservation();
+        RefreshSoftwareThreadSelection();
     }
 
     private void RefreshActionTargetForegroundState()
@@ -946,6 +971,11 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task ConnectAsync()
     {
+        if (_broker.UsesSoftwareControl)
+        {
+            await ConnectSoftwareAsync();
+            return;
+        }
         if (_connecting)
         {
             return;
@@ -964,7 +994,7 @@ public partial class MicroSurfaceWindow : Window
             {
                 if (!_broker.TryConnect(out var info, out var error))
                 {
-                    SetLed(DriverLed, "#FFD66E", "虚拟 HID 未连接");
+                    SetLed(DriverLed, "#FFD66E", _broker.UsesSoftwareControl ? "Codex IPC" : "虚拟 HID 未连接");
                     SetLed(ActivityLed, "#B8B98B", "无事件链路");
                     SetStatus(LocalizeDriverError(error));
                     return;
@@ -1069,6 +1099,13 @@ public partial class MicroSurfaceWindow : Window
                         await RouteHarnessKeyAsync(harness, key);
                     }
 
+                    return;
+                }
+
+                if (_broker.UsesSoftwareControl)
+                {
+                    agentFocusResolvedBeforeTap = true;
+                    await HandleSoftwareKeyAsync(key, isAgentKey);
                     return;
                 }
 
@@ -1285,6 +1322,12 @@ public partial class MicroSurfaceWindow : Window
             return;
         }
 
+        if (_broker.UsesSoftwareControl && IsCodexHarnessActive())
+        {
+            await HandleSoftwareKeyAsync(button.Tag as string ?? "ACT10_ACT11", agentKey: false);
+            return;
+        }
+
         if (!_broker.IsReady)
         {
             await EnsureReadyFeedbackAsync();
@@ -1367,6 +1410,12 @@ public partial class MicroSurfaceWindow : Window
                 ActiveHarness(),
                 button,
                 captureMouse: false);
+            return;
+        }
+
+        if (_broker.UsesSoftwareControl && IsCodexHarnessActive())
+        {
+            await HandleSoftwareKeyAsync(button.Tag as string ?? "ACT10_ACT11", agentKey: false);
             return;
         }
 
@@ -1833,6 +1882,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void RestartVoiceBridgeMonitor()
     {
+        if (_broker.UsesSoftwareControl) return;
         _voiceBridgeCancellation?.Cancel();
         _voiceBridgeCancellation = null;
         if (_windowClosed)
@@ -3777,7 +3827,7 @@ public partial class MicroSurfaceWindow : Window
             {
                 var intent = _encoderSteps.TakeNext(
                     Stopwatch.GetTimestamp(),
-                    ToStopwatchTicks(EncoderIntentMaximumAge));
+                    ToStopwatchTicks(CurrentEncoderIntentMaximumAge));
                 if (intent is null)
                 {
                     return;
@@ -3785,13 +3835,15 @@ public partial class MicroSurfaceWindow : Window
 
                 var sendStarted = Stopwatch.GetTimestamp();
                 await SendEncoderStepAsync(intent.Value);
-                if (Stopwatch.GetTimestamp() - sendStarted >
+                if (!_broker.UsesSoftwareControl && Stopwatch.GetTimestamp() - sendStarted >
                     ToStopwatchTicks(EncoderIntentMaximumAge))
                 {
                     // Do not replay pointer input accumulated while a driver
                     // call or another encoder action was stalled.
                     _encoderSteps.Clear();
                 }
+                // Software actions can take seconds. TakeNext expires old input while
+                // retaining a fresh wheel step entered just as the previous result arrived.
 
                 if (_encoderSteps.Pending != 0)
                 {
@@ -3811,6 +3863,17 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task SendEncoderStepAsync(EncoderStepIntent intent)
     {
+        if (_broker.UsesSoftwareControl && IsCodexHarnessActive())
+        {
+            AnimateDialStep(intent.Direction > 0);
+            if (_layoutObserver.Current.EncoderMode == "reasoning")
+                await StepReasoningAsync(_dialDirectionSettings.ToReasoningSteps(intent.Direction));
+            else
+                await RunActionAsync(
+                    () => _broker.StepEncoderAsync(_dialDirectionSettings.ToReportedClockwise(intent.Direction > 0)),
+                    "encoder");
+            return;
+        }
         var inputGeneration = _reasoningInputGeneration;
         CancellationTokenSource? reasoningFeedback = null;
         ReasoningPreview? previousReasoningPreview = null;
@@ -3897,7 +3960,7 @@ public partial class MicroSurfaceWindow : Window
                     _modelToggleService.CurrentForegroundVisibleThreadId(foregroundCodexWindow),
                     DialDirectionSettings.ToReasoningStep(reportedClockwise),
                     awaitObservation: _draftQuickModelContext is { } draftContext &&
-                        _modelToggleService.CaptureForegroundDraftPresentationContext() == draftContext);
+                        CaptureDraftPresentationContext() == draftContext);
             }
 
             var result = await RunActionAsync(
@@ -3964,6 +4027,12 @@ public partial class MicroSurfaceWindow : Window
     private async Task TapEncoderAsync()
     {
         _encoderSteps.Clear();
+        if (_broker.UsesSoftwareControl && IsCodexHarnessActive())
+        {
+            if (_layoutObserver.Current.EncoderMode == "reasoning") await ToggleQuickModelAsync();
+            else await RunActionAsync(() => _broker.TapKeyAsync("ENC"), "encoder");
+            return;
+        }
         if (_reasoningAdjusting)
         {
             return;
@@ -4121,6 +4190,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void QueueDialSelectionFeedback()
     {
+        if (_broker.UsesSoftwareControl) return;
         _dialSelectionFeedbackVersion++;
         if (_dialSelectionFeedbackRunning || _windowClosed)
         {
@@ -4355,6 +4425,7 @@ public partial class MicroSurfaceWindow : Window
         ResolveCurrentAgentSlot();
         RefreshAgentSlotPresentation();
         RefreshDraftQuickModelObservation();
+        RefreshSoftwareFeedback();
     }
 
     private async Task<MicroSendResult?> RunCodexKeyActionAsync(
@@ -4362,6 +4433,8 @@ public partial class MicroSurfaceWindow : Window
         string label,
         string? resolvedAction)
     {
+        if (_broker.UsesSoftwareControl)
+            return await RunActionAsync(() => _broker.TapKeyAsync(key), label);
         var newTaskWindow = IntPtr.Zero;
         var newTaskDispatchedAt = DateTimeOffset.MinValue;
         var requirePostNavigationDraftEvidence = false;
@@ -4474,6 +4547,8 @@ public partial class MicroSurfaceWindow : Window
         SetStatus(_localization.IsEnglish
             ? $"Marking “{displayTitle}” unread in Codex…"
             : $"正在 Codex 中将“{displayTitle}”标记为未读…");
+        RefreshSoftwareFeedback();
+        if (_broker.UsesSoftwareControl) SetLed(ActivityLed, "#9EBDFF", "Mark unread", glow: true);
 
         var result = await _modelToggleService.MarkThreadUnreadAsync(threadId);
         if (_windowClosed)
@@ -4493,6 +4568,8 @@ public partial class MicroSurfaceWindow : Window
         {
             _manualUnreadThreads.Clear(threadId);
             RefreshAgentSlotPresentation();
+            RefreshSoftwareFeedback();
+            if (_broker.UsesSoftwareControl) SetLed(ActivityLed, "#FF7994", "Unread unconfirmed");
             SetStatus(_localization.IsEnglish
                 ? $"Codex did not confirm “{displayTitle}” as unread. " +
                     "Make sure Codex is running, then try again."
@@ -4502,8 +4579,13 @@ public partial class MicroSurfaceWindow : Window
         }
 
         _manualUnreadThreads.Confirm(threadId);
+        if (_broker.UsesSoftwareControl && _taskMonitor.ObserveUnreadConfirmed(threadId) is { } confirmedSnapshot)
+            ApplyMonitorSnapshot(confirmedSnapshot);
+        if (_broker.UsesSoftwareControl) SetLed(ActivityLed, "#74D9A0", "Unread confirmed");
         ReconcileConfirmedUnreadProjectionWithLighting();
         RefreshAgentSlotPresentation();
+        RefreshSoftwareFeedback();
+        _ = RefreshMonitorAsync();
         SetStatus(_localization.IsEnglish
             ? $"Codex confirmed “{displayTitle}” as unread; the state " +
                 "follows that chat if Agent slots reorder."
@@ -4520,7 +4602,7 @@ public partial class MicroSurfaceWindow : Window
     private void RefreshDraftQuickModelObservation()
     {
         var context = !_windowClosed && IsVisible && IsCodexHarnessActive()
-            ? _modelToggleService.CaptureForegroundDraftPresentationContext()
+            ? CaptureDraftPresentationContext()
             : null;
         var changed = context != _draftQuickModelContext;
         if (changed)
@@ -4575,13 +4657,13 @@ public partial class MicroSurfaceWindow : Window
                 _reasoningPreview is { AwaitingObservation: true } ||
                     (_lastEncoderReasoningAt != 0 &&
                         Stopwatch.GetElapsedTime(_lastEncoderReasoningAt) < TimeSpan.FromSeconds(2)),
-                () => _modelToggleService.CaptureForegroundDraftPresentationContext() == context,
+                () => CaptureDraftPresentationContext() == context,
                 cancellation.Token);
             if (_windowClosed || !IsVisible || !IsCodexHarnessActive() ||
                 _quickModelSwitching || _reasoningAdjusting || _encoderWarningPending || _encoderStepPumpRunning ||
                 revision != _quickModelPresentationRevision ||
                 _draftQuickModelContext != context ||
-                _modelToggleService.CaptureForegroundDraftPresentationContext() != context)
+                CaptureDraftPresentationContext() != context)
             {
                 return;
             }
@@ -4642,15 +4724,14 @@ public partial class MicroSurfaceWindow : Window
     {
         var foregroundCodexWindow =
             CodexWindowActivator.CaptureForegroundWindow();
-        var visibleThreadId =
-            _modelToggleService.CurrentForegroundVisibleThreadId(
-                foregroundCodexWindow);
+        var visibleThreadId = _modelToggleService.CurrentForegroundVisibleThreadId(foregroundCodexWindow);
+        if (_broker.UsesSoftwareControl) visibleThreadId = ResolveSoftwareThreadId(visibleThreadId);
         var next = ReduceQuickModelSnapshot(state, visibleThreadId);
         var effort = state is not null && QuickModelThreadIdsEqual(state.ThreadId, next.ThreadId)
             ? state.Effort
             : null;
         if (_draftQuickModelContext is { } draft &&
-            _modelToggleService.CaptureForegroundDraftPresentationContext() == draft &&
+            CaptureDraftPresentationContext() == draft &&
             QuickModelThreadIdsEqual(draft.VisibleThreadId, visibleThreadId) &&
             _draftQuickModelSelection is { } observed)
         {
@@ -4771,7 +4852,7 @@ public partial class MicroSurfaceWindow : Window
         if (state.Model != CodexQuickModel.Unknown &&
             _draftQuickModelContext is { } draft &&
             QuickModelThreadIdsEqual(state.ThreadId, draft.VisibleThreadId) &&
-            _modelToggleService.CaptureForegroundDraftPresentationContext() == draft)
+            CaptureDraftPresentationContext() == draft)
         {
             _draftQuickModelSelection = (state.Model, effort);
         }
@@ -5058,6 +5139,11 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task ToggleQuickModelAsync()
     {
+        if (_broker.UsesSoftwareControl)
+        {
+            await ToggleSoftwareQuickModelAsync();
+            return;
+        }
         if (_quickModelSwitching || _reasoningAdjusting || _encoderWarningPending ||
             _windowClosed ||
             !IsCodexHarnessActive())
@@ -6050,23 +6136,24 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task<MicroSendResult?> RunActionAsync(
         Func<Task<MicroSendResult>> action,
-        string label)
+        string label,
+        string? transportLabel = null)
     {
-        if (!_broker.IsReady)
+        if (!_broker.IsReady && !_broker.UsesSoftwareControl)
         {
             await EnsureReadyFeedbackAsync();
             return null;
         }
 
-        SetLed(ActivityLed, "#9EBDFF", $"正在发送 {label}");
+        SetLed(ActivityLed, "#9EBDFF", $"正在发送 {label}", glow: _broker.UsesSoftwareControl);
         try
         {
             var result = await action();
             switch (result.Disposition)
             {
                 case MicroSendDisposition.Accepted:
-                    SetLed(ActivityLed, "#9EBDFF", $"{label} 已交付");
-                    SetStatus($"{label} 已通过 {_transportName} 交付。\n{result.Detail}");
+                    SetLed(ActivityLed, _broker.UsesSoftwareControl ? "#74D9A0" : "#9EBDFF", $"{label} 已交付");
+                    SetStatus($"{label} 已通过 {transportLabel ?? _transportName} 交付。\n{result.Detail}");
                     break;
                 case MicroSendDisposition.OutcomeUnknown:
                     SetLed(ActivityLed, "#FFD66E", $"{label} 结果未知");
@@ -6094,6 +6181,11 @@ public partial class MicroSurfaceWindow : Window
 
     private async Task EnsureReadyFeedbackAsync()
     {
+        if (_broker.UsesSoftwareControl)
+        {
+            await ConnectAsync();
+            return;
+        }
         SetLed(ActivityLed, "#FF7994", "虚拟 HID 尚未连接");
         SetStatus("虚拟 HID 链路尚未就绪。\n右键左下黑色旋钮重新连接。");
         await Task.Delay(120);
@@ -6211,6 +6303,7 @@ public partial class MicroSurfaceWindow : Window
 
     internal void PopulateHarnessContextMenu()
     {
+        if (_broker.UsesSoftwareControl) return;
         // A fresh menu opening is a new selection gesture. Any suppression
         // left by the previous "+" gesture must not affect an intentional
         // click made after the menu is reopened.
@@ -6542,7 +6635,8 @@ public partial class MicroSurfaceWindow : Window
             ReconnectAsync,
             () => _broker.IsReady,
             () => _modelToggleService
-                .BroadcastUserSavedConfigInvalidationAsync())
+                .BroadcastUserSavedConfigInvalidationAsync(),
+            coreOnly: _broker.UsesSoftwareControl)
         {
             Owner = this,
             Topmost = Topmost,
@@ -6603,6 +6697,11 @@ public partial class MicroSurfaceWindow : Window
     {
         _ = Dispatcher.InvokeAsync(() =>
         {
+            if (_broker.UsesSoftwareControl)
+            {
+                ApplySoftwareConnectionState(state == "ready");
+                return;
+            }
             if (state == "ready")
             {
                 ApplyRuntimeReadyState();
@@ -6625,6 +6724,11 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplyRuntimeReadyState()
     {
+        if (_broker.UsesSoftwareControl)
+        {
+            ApplySoftwareConnectionState(_broker.IsReady);
+            return;
+        }
         SetLed(RuntimeLed, "#9EBDFF", "Codex 运行时握手已确认 · 无版本白名单");
         SetLed(DriverLed, "#9EBDFF", $"{_transportName} 已连接");
         SetLed(ActivityLed, "#9EBDFF", "HID / RPC 已就绪");
@@ -6635,6 +6739,11 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplyTransportReadyState()
     {
+        if (_broker.UsesSoftwareControl)
+        {
+            ApplySoftwareConnectionState(_broker.IsReady);
+            return;
+        }
         SetLed(
             RuntimeLed,
             "#FFD66E",
@@ -6734,7 +6843,9 @@ public partial class MicroSurfaceWindow : Window
         var canShowUnread = !protocolAppearance.IsActive ||
             lighting?.Color == 0xFFFFFF;
         if (canShowUnread &&
-            _manualUnreadThreads.IsUnread(rosterEntry?.ThreadId))
+            (_broker.UsesSoftwareControl
+                ? _manualUnreadThreads.IsConfirmed(rosterEntry?.ThreadId)
+                : _manualUnreadThreads.IsUnread(rosterEntry?.ThreadId)))
         {
             return AgentLightingAppearance.ManualUnread(isCurrentSession);
         }
@@ -7048,7 +7159,8 @@ public partial class MicroSurfaceWindow : Window
         {
             var binding = snapshot.GetSlot(slotId);
             var definition = CodexKeycapCatalog.Get(binding.KeycapId);
-            presentation.Icon.KeycapId = binding.KeycapId;
+            presentation.Icon.KeycapId = _broker.UsesSoftwareControl
+                ? _profileSettings.ResolveKeycapIcon(slotId, binding.KeycapId) : binding.KeycapId;
             var action = binding.ResolvedAction;
             var physicalKeys = slotId == "ACT10_ACT11"
                 ? "ACT10 / ACT11"
@@ -7138,7 +7250,7 @@ public partial class MicroSurfaceWindow : Window
 
     private bool SupportsHarnessComposerSubmit(
         MicroHarnessDefinition harness) =>
-        harness.Id == "codex" ||
+        (harness.Id == "codex" && !_broker.UsesSoftwareControl) ||
         (_harnessStateSnapshot?.HarnessId == harness.Id &&
             _harnessStateSnapshot.Capabilities.Supports(
                 MicroHarnessActionIds.ComposerSubmit));
@@ -7232,7 +7344,9 @@ public partial class MicroSurfaceWindow : Window
         var english = _localization.IsEnglish;
         var connected = _harnessStateSnapshot?.HarnessId == harness.Id;
         ActionIcon12.KeycapId = harness.Id == "codex"
-            ? _layoutObserver.Current.GetSlot("ACT12").KeycapId
+            ? _broker.UsesSoftwareControl
+                ? _profileSettings.ResolveKeycapIcon("ACT12", _layoutObserver.Current.GetSlot("ACT12").KeycapId)
+                : _layoutObserver.Current.GetSlot("ACT12").KeycapId
             : GetHarnessIconId(harness);
         SetHelp(
             ActionKey12,
@@ -7255,6 +7369,15 @@ public partial class MicroSurfaceWindow : Window
     private void RefreshActionKeyPresentation()
     {
         var harness = ActiveHarness();
+        if (_broker.UsesSoftwareControl)
+        {
+            ActionSendBadge.Visibility = _actionTargetIsForeground &&
+                _layoutObserver.Current.GetSlot("ACT12").ResolvedAction == "composer.submit"
+                    ? Visibility.Visible : Visibility.Collapsed;
+            SetHelp(ActionKey12, "Codex", string.Empty);
+            AutomationProperties.SetItemStatus(ActionKey12, string.Empty);
+            return;
+        }
         var english = _localization.IsEnglish;
         var canSend = SupportsHarnessComposerSubmit(harness);
         var sends = canSend && _actionTargetIsForeground;
@@ -7511,7 +7634,8 @@ public partial class MicroSurfaceWindow : Window
             foreach (var (slotId, presentation) in _actionKeys)
             {
                 var binding = snapshot.GetSlot(slotId);
-                presentation.Icon.KeycapId = binding.KeycapId;
+                presentation.Icon.KeycapId = _broker.UsesSoftwareControl
+                    ? _profileSettings.ResolveKeycapIcon(slotId, binding.KeycapId) : binding.KeycapId;
                 var physicalKeys = slotId == "ACT10_ACT11"
                     ? "ACT10 / ACT11"
                     : slotId;
@@ -7875,7 +7999,7 @@ public partial class MicroSurfaceWindow : Window
             ? QuotaKnobDisplayMode.Model
             : QuotaKnobDisplayMode.Auto;
         SettingsKey.ReasoningEffort = _reasoningPreview?.Effort ?? _quickModelEffort ?? string.Empty;
-        SettingsKey.IsUpdating = quickModelSwitching;
+        SettingsKey.IsUpdating = quickModelSwitching || (_broker.UsesSoftwareControl && _reasoningAdjusting);
         SettingsKey.HasFiveHourWindow = _quotaSnapshot?.FiveHourWindow is not null;
         SettingsKey.HasWeeklyWindow = _quotaSnapshot?.WeeklyWindow is not null;
         SettingsKey.FiveHourRemaining = _quotaSnapshot?.FiveHourWindow?.RemainingPercent;
@@ -8144,6 +8268,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void ApplyProfileSettingsChange()
     {
+        MicroWindowLayout.SizeKeypad(this, _profileSettings.Current.WindowScale);
         CancelReasoningInput();
         _dialDirectionSettings.InvertDirection =
             _profileSettings.Current.InvertDialDirection;
@@ -8154,6 +8279,7 @@ public partial class MicroSurfaceWindow : Window
 
     private void RestartKeypadVoiceWarmUp()
     {
+        if (_broker.UsesSoftwareControl) return;
         if (_windowClosed)
         {
             return;
@@ -8572,7 +8698,9 @@ public partial class MicroSurfaceWindow : Window
             : "Codex Micro 官方设置";
         KnobOpenOfficialSettingsMenuItem.Header =
             OpenOfficialSettingsMenuItem.Header;
-        ReconnectMenuItem.Header = Localize("重新连接虚拟 HID");
+        ReconnectMenuItem.Header = _broker.UsesSoftwareControl
+            ? (_localization.IsEnglish ? "Reconnect Codex" : "重新连接 Codex")
+            : Localize("重新连接虚拟 HID");
         KnobReconnectMenuItem.Header = ReconnectMenuItem.Header;
         HidePanelMenuItem.Header = Localize("隐藏面板");
         CloseKeypadMenuItem.Header = _localization.IsEnglish
@@ -8747,6 +8875,12 @@ public partial class MicroSurfaceWindow : Window
         }
 
         led.Fill = new SolidColorBrush(color);
+        if (led == ActivityLed && _broker.UsesSoftwareControl)
+        {
+            var version = ++_softwareActivityVersion;
+            if (color == (Color)ColorConverter.ConvertFromString("#74D9A0"))
+                _ = ClearSoftwareActivityAsync(version);
+        }
         led.Effect = glow
             ? new DropShadowEffect
             {
@@ -8759,9 +8893,9 @@ public partial class MicroSurfaceWindow : Window
         var helpTitle = !string.IsNullOrWhiteSpace(title)
             ? title
             : led == RuntimeLed
-                ? "Codex 运行时握手"
+                ? _broker.UsesSoftwareControl ? "Chat" : "Codex 运行时握手"
                 : led == DriverLed
-                    ? "虚拟 HID"
+                    ? _broker.UsesSoftwareControl ? "Codex IPC" : "虚拟 HID"
                     : "最近事件";
         SetHelp(led, helpTitle, tooltip);
     }

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -12,6 +13,8 @@ internal sealed partial class CodexDraftComposerModelSelector
     [ThreadStatic]
     private static CodexModelCatalog? _operationCatalog;
 
+    private CodexModelCatalog? _selectionCatalog;
+
     private static CodexModelCatalog ModelCatalog => _operationCatalog ?? CodexModelCatalog.Load();
     private const ushort VirtualKeyEscape = 0x1B;
     private const ushort VirtualKeyLeft = 0x25;
@@ -24,7 +27,7 @@ internal sealed partial class CodexDraftComposerModelSelector
     private static readonly TimeSpan MenuTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan SelectionTimeout =
         TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan UltraWarningAppearanceTimeout =
+    private static readonly TimeSpan UltraSelectionTimeout =
         TimeSpan.FromSeconds(8);
     private static readonly Regex PowerPositionPattern = new(
         @"(?<position>\d+)\s+of\s+(?<count>\d+)",
@@ -91,8 +94,18 @@ internal sealed partial class CodexDraftComposerModelSelector
         }
 
         ArgumentNullException.ThrowIfNull(isDraftCurrent);
-        var catalog = await CodexDraftModelToggleService.FetchModelCatalogAsync(cancellationToken);
-        return await Task.Run(
+#if DEBUG
+        var started = Stopwatch.GetTimestamp();
+#endif
+        var catalog = await GetSelectionCatalogAsync(cancellationToken, first.Id, second.Id);
+#if DEBUG
+        CodexModelToggleDiagnostics.RecordStage("draft-ui-catalog-ready", new
+        {
+            draftOperationId,
+            elapsedMilliseconds = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 1),
+        });
+#endif
+        var result = await Task.Run(
             () =>
             {
                 var previousCatalog = _operationCatalog;
@@ -116,6 +129,27 @@ internal sealed partial class CodexDraftComposerModelSelector
                 }
             },
             CancellationToken.None);
+#if DEBUG
+        CodexModelToggleDiagnostics.Record(result, Stopwatch.GetElapsedTime(started));
+#endif
+        return result;
+    }
+
+    private async Task<CodexModelCatalog> GetSelectionCatalogAsync(
+        CancellationToken cancellationToken,
+        params string[] requiredModels)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var catalog = CodexModelCatalog.Load();
+        if (CanUse(catalog)) return catalog;
+        if (_selectionCatalog is { } cached && CanUse(cached)) return cached;
+
+        catalog = await CodexDraftModelToggleService.FetchModelCatalogAsync(cancellationToken);
+        _selectionCatalog = catalog;
+        return catalog;
+
+        bool CanUse(CodexModelCatalog candidate) => candidate.IsFresh &&
+            requiredModels.All(id => candidate.Find(id) is { Hidden: false });
     }
 
     private static CodexModelToggleResult ToggleCore(
@@ -391,10 +425,9 @@ internal sealed partial class CodexDraftComposerModelSelector
                         selection.Position <= selection.Count)),
             "draft-ui-power-state-unavailable");
 #if DEBUG
-        RecordPowerDiagnostics(
+        CodexModelToggleDiagnostics.RecordStage(
             "draft-ui-power-ready",
-            foregroundWindow,
-            current);
+            new { model = current.Model.Id, current.Effort, current.Position, current.Count });
 #endif
 
         if (!current.Matches(target, targetEffort))
@@ -453,7 +486,6 @@ internal sealed partial class CodexDraftComposerModelSelector
             cancellationToken);
         var root = RequireRoot(foregroundWindow);
         EnsureNoUnexpectedDialog(root);
-        var permissionBefore = TryReadPermissionMode(root);
         var menu = EnsurePowerMenu(
             foregroundWindow,
             target,
@@ -496,7 +528,6 @@ internal sealed partial class CodexDraftComposerModelSelector
                 target,
                 targetEffort,
                 targetPosition,
-                permissionBefore,
                 autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
@@ -505,10 +536,8 @@ internal sealed partial class CodexDraftComposerModelSelector
         {
             current = WaitForDirectPowerSelection(
                 foregroundWindow,
-                current,
                 target,
                 targetEffort,
-                permissionBefore,
                 autoConfirmUltraFullAccess,
                 isDraftCurrent,
                 cancellationToken);
@@ -539,7 +568,6 @@ internal sealed partial class CodexDraftComposerModelSelector
         CodexQuickModel target,
         string targetEffort,
         int targetPosition,
-        string? permissionBefore,
         bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
@@ -584,10 +612,8 @@ internal sealed partial class CodexDraftComposerModelSelector
             {
                 return WaitForDirectPowerSelection(
                     foregroundWindow,
-                    current,
                     target,
                     targetEffort,
-                    permissionBefore,
                     autoConfirmUltraFullAccess,
                     isDraftCurrent,
                     cancellationToken);
@@ -698,10 +724,8 @@ internal sealed partial class CodexDraftComposerModelSelector
 
     private static ComposerSelection WaitForDirectPowerSelection(
         IntPtr foregroundWindow,
-        ComposerSelection before,
         CodexQuickModel target,
         string targetEffort,
-        string? permissionBefore,
         bool autoConfirmUltraFullAccess,
         Func<bool> isDraftCurrent,
         CancellationToken cancellationToken)
@@ -710,16 +734,11 @@ internal sealed partial class CodexDraftComposerModelSelector
             targetEffort,
             "ultra",
             StringComparison.Ordinal);
-        var waitForWarning = targetsUltra &&
-            !string.Equals(
-                permissionBefore,
-                "Full access",
-                StringComparison.OrdinalIgnoreCase);
         var deadline = DateTimeOffset.UtcNow +
-            (waitForWarning
-                ? UltraWarningAppearanceTimeout
+            (targetsUltra
+                ? UltraSelectionTimeout
                 : SelectionTimeout);
-        var latest = before;
+        var targetObserved = false;
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -737,17 +756,17 @@ internal sealed partial class CodexDraftComposerModelSelector
                     autoConfirmUltraFullAccess,
                     isDraftCurrent,
                     cancellationToken);
-                latest = ReadVerifiedSelection(
+                var confirmed = ReadVerifiedSelection(
                     foregroundWindow,
                     autoConfirmUltraFullAccess,
                     isDraftCurrent,
                     cancellationToken);
-                if (!latest.Matches(target, targetEffort))
+                if (!confirmed.Matches(target, targetEffort))
                 {
                     throw new DraftUiException("draft-ui-user-declined");
                 }
 
-                return latest;
+                return confirmed;
             }
 
             EnsureCurrent(
@@ -766,22 +785,22 @@ internal sealed partial class CodexDraftComposerModelSelector
                 : PreferPowerSelection(
                     triggerSelection,
                     ReadPowerSelection(power, menu!));
-            if (selection.Model != CodexQuickModel.Unknown)
+            if (selection.Matches(target, targetEffort))
             {
-                latest = selection;
-                if (selection.Matches(target, targetEffort) &&
-                    !waitForWarning)
+                if (!targetsUltra || targetObserved)
                 {
+                    EnsureCurrent(foregroundWindow, isDraftCurrent, cancellationToken);
+                    if (HasUltraWarning(RequireRoot(foregroundWindow))) continue;
                     return selection;
                 }
+                targetObserved = true;
+            }
+            else
+            {
+                targetObserved = false;
             }
 
             Thread.Sleep(PollInterval);
-        }
-
-        if (latest.Matches(target, targetEffort))
-        {
-            return latest;
         }
 
         throw new DraftUiException(targetsUltra
@@ -966,8 +985,6 @@ internal sealed partial class CodexDraftComposerModelSelector
             {
                 target = target.ToString(),
                 targetEffort,
-                permission = TryReadPermissionMode(
-                    RequireRoot(foregroundWindow)),
             });
 #endif
     }
@@ -1178,19 +1195,11 @@ internal sealed partial class CodexDraftComposerModelSelector
                 if (autoConfirmAttempted)
                 {
                     CodexModelToggleDiagnostics.RecordStage(
-                        "draft-ui-ultra-auto-confirmed",
-                        new
-                        {
-                            permission = TryReadPermissionMode(root),
-                        });
+                        "draft-ui-ultra-auto-confirmed");
                 }
 
                 CodexModelToggleDiagnostics.RecordStage(
-                    "draft-ui-ultra-decision-complete",
-                    new
-                    {
-                        permission = TryReadPermissionMode(root),
-                    });
+                    "draft-ui-ultra-decision-complete");
 #endif
                 return;
             }
@@ -1294,7 +1303,11 @@ internal sealed partial class CodexDraftComposerModelSelector
 
     private static void EnsureNoUnexpectedDialog(AutomationElement root)
     {
-        foreach (var element in FindAll(root))
+        var dialogs = root.FindAll(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.LocalizedControlTypeProperty,
+                "dialog", PropertyConditionFlags.IgnoreCase),
+            new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
+        foreach (AutomationElement element in dialogs)
         {
             if (!IsRendered(element))
             {
@@ -1341,38 +1354,6 @@ internal sealed partial class CodexDraftComposerModelSelector
         }
     }
 
-    private static string? TryReadPermissionMode(AutomationElement root)
-    {
-        foreach (var name in new[]
-                 {
-                     "Ask for approval",
-                     "Approve for me",
-                     "Full access",
-                 })
-        {
-            var candidates = FindAll(root)
-                .Where(IsRendered)
-                .Where(element =>
-                    SafeRead(
-                        () => element.Current.ControlType,
-                        ControlType.Custom) is var type &&
-                    (type == ControlType.Button ||
-                        type == ControlType.MenuItem))
-                .Where(element => string.Equals(
-                    SafeRead(
-                        () => element.Current.Name,
-                        string.Empty),
-                    name,
-                    StringComparison.OrdinalIgnoreCase));
-            if (candidates.Any())
-            {
-                return name;
-            }
-        }
-
-        return null;
-    }
-
     private static AutomationElement RequireRoot(IntPtr foregroundWindow)
     {
         var root = AutomationElement.FromHandle(foregroundWindow);
@@ -1389,74 +1370,8 @@ internal sealed partial class CodexDraftComposerModelSelector
         FindTrigger(root) ??
             throw new DraftUiException("draft-ui-trigger-unavailable");
 
-    private static AutomationElement? FindTrigger(AutomationElement root)
-    {
-        var rootRectangle = SafeRead(
-            () => root.Current.BoundingRectangle,
-            Rect.Empty);
-        var candidates = new List<TriggerCandidate>();
-        foreach (var button in FindElements(
-                     root,
-                     ControlType.Button,
-                     visibleOnly: true))
-        {
-            var pattern = GetExpandCollapsePattern(button);
-            if (pattern is null ||
-                !SafeRead(() => button.Current.IsEnabled, false))
-            {
-                continue;
-            }
-
-            var text = string.Join(" ", ReadAccessibleStrings(button));
-            var selection = ParseSelection(text);
-            var isKnownLabel =
-                text.Contains("Select model", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("Select effort", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains(
-                    "Select ChatGPT model",
-                    StringComparison.OrdinalIgnoreCase);
-            if (selection.Model == CodexQuickModel.Unknown && !isKnownLabel)
-            {
-                continue;
-            }
-
-            var rectangle = SafeRead(
-                () => button.Current.BoundingRectangle,
-                Rect.Empty);
-            var score = selection.Model == CodexQuickModel.Unknown ? 50 : 100;
-            if (!rootRectangle.IsEmpty &&
-                rectangle.Top >= rootRectangle.Top +
-                    (rootRectangle.Height * 0.45))
-            {
-                score += 20;
-            }
-
-            candidates.Add(new(
-                button,
-                score,
-                rectangle.IsEmpty
-                    ? double.MaxValue
-                    : rectangle.Width * rectangle.Height));
-        }
-
-        var ordered = candidates
-            .OrderByDescending(candidate => candidate.Score)
-            .ThenBy(candidate => candidate.Area)
-            .ToArray();
-        if (ordered.Length == 0)
-        {
-            return null;
-        }
-
-        if (ordered.Length > 1 &&
-            ordered[0].Score == ordered[1].Score &&
-            Math.Abs(ordered[0].Area - ordered[1].Area) < 0.5)
-        {
-            return null;
-        }
-
-        return ordered[0].Element;
-    }
+    private static AutomationElement? FindTrigger(AutomationElement root) =>
+        FindObservationTrigger(root, CreateObservationCache());
 
     private static AutomationElement? FindMenu(
         AutomationElement root,
@@ -1526,32 +1441,21 @@ internal sealed partial class CodexDraftComposerModelSelector
     private static AutomationElement? FindPowerSlider(
         AutomationElement menu)
     {
-        var sliders = FindElements(
-                menu,
-                ControlType.Slider,
-                visibleOnly: true)
-            .Where(element =>
-                IsRendered(element) &&
-                SafeRead(() => element.Current.IsEnabled, false) &&
-                element.TryGetCurrentPattern(
-                    RangeValuePattern.Pattern,
-                    out var pattern) &&
-                pattern is RangeValuePattern)
+        var ranged = menu.FindAll(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.IsRangeValuePatternAvailableProperty, true),
+                new PropertyCondition(AutomationElement.IsEnabledProperty, true),
+                new PropertyCondition(AutomationElement.IsOffscreenProperty, false)))
+            .Cast<AutomationElement>()
+            .Where(IsRendered)
+            .ToArray();
+        var sliders = ranged
+            .Where(element => SafeRead(() => element.Current.ControlType, ControlType.Custom) == ControlType.Slider)
             .ToArray();
         if (sliders.Length != 0)
         {
             return sliders.Length == 1 ? sliders[0] : null;
         }
 
-        var ranged = FindAll(menu)
-            .Where(element =>
-                IsRendered(element) &&
-                SafeRead(() => element.Current.IsEnabled, false) &&
-                element.TryGetCurrentPattern(
-                    RangeValuePattern.Pattern,
-                    out var pattern) &&
-                pattern is RangeValuePattern)
-            .ToArray();
         return ranged.Length == 1 ? ranged[0] : null;
     }
 
@@ -1634,11 +1538,13 @@ internal sealed partial class CodexDraftComposerModelSelector
     private static AutomationElement? FindMenuItem(
         AutomationElement root,
         string name) =>
-        FindElements(root, ControlType.MenuItem, visibleOnly: true)
-            .SingleOrDefault(element => string.Equals(
-                SafeRead(() => element.Current.Name, string.Empty),
-                name,
-                StringComparison.OrdinalIgnoreCase));
+        root.FindAll(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
+                new PropertyCondition(AutomationElement.NameProperty, name, PropertyConditionFlags.IgnoreCase),
+                new PropertyCondition(AutomationElement.IsOffscreenProperty, false)))
+            .Cast<AutomationElement>()
+            .Where(IsRendered)
+            .SingleOrDefault();
 
     private static IReadOnlyList<AutomationElement> FindByExactName(
         AutomationElement root,
@@ -1676,21 +1582,6 @@ internal sealed partial class CodexDraftComposerModelSelector
             {
                 result.Add(element);
             }
-        }
-
-        return result;
-    }
-
-    private static IReadOnlyList<AutomationElement> FindAll(
-        AutomationElement root)
-    {
-        var found = root.FindAll(
-            TreeScope.Descendants,
-            System.Windows.Automation.Condition.TrueCondition);
-        var result = new List<AutomationElement>(found.Count);
-        for (var index = 0; index < found.Count; index++)
-        {
-            result.Add(found[index]);
         }
 
         return result;
@@ -1768,46 +1659,8 @@ internal sealed partial class CodexDraftComposerModelSelector
     }
 
     private static IEnumerable<string> ReadAccessibleStrings(
-        AutomationElement root)
-    {
-        var elements = new List<AutomationElement> { root };
-        elements.AddRange(FindAll(root));
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var element in elements)
-        {
-            foreach (var value in ReadOwnAccessibleStrings(element))
-            {
-                if (seen.Add(value))
-                {
-                    yield return value;
-                }
-            }
-        }
-    }
-
-    private static IEnumerable<string> ReadOwnAccessibleStrings(
-        AutomationElement element)
-    {
-        foreach (var value in new[]
-                 {
-                     SafeRead(
-                         () => element.Current.Name,
-                         string.Empty),
-                     SafeRead(
-                         () => element.Current.HelpText,
-                         string.Empty),
-                     SafeRead(
-                         () => element.Current.ItemStatus,
-                         string.Empty),
-                 })
-        {
-            var normalized = value.Trim();
-            if (normalized.Length > 0)
-            {
-                yield return normalized;
-            }
-        }
-    }
+        AutomationElement root) =>
+        ReadObservationStrings(root.GetUpdatedCache(CreateObservationCache()));
 
     private static ComposerSelection ParseSelection(string text)
     {

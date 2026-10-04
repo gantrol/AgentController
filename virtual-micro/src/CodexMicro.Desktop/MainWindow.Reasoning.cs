@@ -36,7 +36,7 @@ public partial class MicroSurfaceWindow
         if (!QuickModelThreadIdsEqual(threadId, _quickModelThreadId) ||
             (string.IsNullOrWhiteSpace(threadId) &&
                 (_draftQuickModelContext is not { } draft ||
-                    _modelToggleService.CaptureForegroundDraftPresentationContext() != draft)))
+                    CaptureDraftPresentationContext() != draft)))
         {
             return null;
         }
@@ -258,11 +258,24 @@ public partial class MicroSurfaceWindow
             return;
         }
 
+        QueueReasoningSteps(
+            IsCodexHarnessActive() ? _dialDirectionSettings.ToReasoningSteps(steps) : steps,
+            encoderSteps: steps);
+    }
+
+    private void QueueReasoningSteps(int effortSteps, int? encoderSteps = null)
+    {
+        if (effortSteps == 0 || _windowClosed || _pageSwitching || _quickModelSwitching ||
+            _harnessModelSwitching || _encoderWarningPending ||
+            _broker.UsesSoftwareControl && _softwareNavigationPending)
+        {
+            return;
+        }
+
         if (IsCodexHarnessActive())
         {
             var window = CodexWindowActivator.CaptureForegroundWindow();
             var threadId = _modelToggleService.CurrentForegroundVisibleThreadId(window);
-            var effortSteps = _dialDirectionSettings.ToReasoningSteps(steps);
             if (window != IntPtr.Zero &&
                 ResolveReasoningTarget(threadId, effortSteps) is { } target)
             {
@@ -276,14 +289,14 @@ public partial class MicroSurfaceWindow
                 return;
             }
 
-            if (_layoutObserver.Current.EncoderMode == "reasoning")
+            if (encoderSteps is { } physicalSteps && _layoutObserver.Current.EncoderMode == "reasoning")
             {
-                EnqueueEncoderSteps(steps, "旋钮滚轮");
+                EnqueueEncoderSteps(physicalSteps, "旋钮滚轮");
                 return;
             }
         }
 
-        _reasoningSteps.Add(steps, Stopwatch.GetTimestamp());
+        _reasoningSteps.Add(effortSteps, Stopwatch.GetTimestamp());
         StartReasoningStepPump();
     }
 
@@ -292,7 +305,7 @@ public partial class MicroSurfaceWindow
         if (!_reasoningPumpRunning)
         {
             _reasoningPumpRunning = true;
-            _ = RunDialInputSafelyAsync(PumpReasoningStepsAsync, "旋钮滚轮");
+            _ = RunDialInputSafelyAsync(PumpReasoningStepsAsync, "思考强度调节");
         }
     }
 
@@ -317,7 +330,7 @@ public partial class MicroSurfaceWindow
                 }
 
                 var intent = _reasoningSteps.TakeNext(
-                    Stopwatch.GetTimestamp(), ToStopwatchTicks(EncoderIntentMaximumAge));
+                    Stopwatch.GetTimestamp(), ToStopwatchTicks(CurrentEncoderIntentMaximumAge));
                 if (intent is null)
                 {
                     return;
@@ -325,7 +338,7 @@ public partial class MicroSurfaceWindow
 
                 var started = Stopwatch.GetTimestamp();
                 await StepReasoningAsync(intent.Value.Direction);
-                if (generation == _reasoningInputGeneration &&
+                if (!_broker.UsesSoftwareControl && generation == _reasoningInputGeneration &&
                     Stopwatch.GetElapsedTime(started) > EncoderIntentMaximumAge)
                 {
                     _reasoningSteps.Clear();
@@ -347,7 +360,7 @@ public partial class MicroSurfaceWindow
         }
     }
 
-    private async Task StepReasoningAsync(int direction, CodexThreadModelState? target = null)
+    private async Task StepReasoningAsync(int effortStep, CodexThreadModelState? target = null)
     {
         if (_quickModelSwitching || _reasoningAdjusting || _windowClosed)
         {
@@ -357,7 +370,7 @@ public partial class MicroSurfaceWindow
 
         if (!IsCodexHarnessActive())
         {
-            var action = direction > 0
+            var action = effortStep > 0
                 ? MicroHarnessActionIds.ReasoningIncrease
                 : MicroHarnessActionIds.ReasoningDecrease;
             await ExecuteHarnessActionAsync(ActiveHarness(), action,
@@ -390,7 +403,13 @@ public partial class MicroSurfaceWindow
                 }
 
                 var threadId = _modelToggleService.CurrentForegroundVisibleThreadId(window);
-                if (string.IsNullOrWhiteSpace(threadId))
+                if (_broker.UsesSoftwareControl)
+                {
+                    if (_softwareNavigationPending) return;
+                    threadId = await _readSoftwareSelection(cancellation.Token);
+                    _modelToggleService.ObserveSelectedThread(threadId);
+                }
+                else if (string.IsNullOrWhiteSpace(threadId))
                 {
                     threadId = (await _modelToggleService.RefreshForegroundVisibleThreadSelectionAsync(
                         window, cancellation.Token)).VisibleThreadId;
@@ -401,10 +420,13 @@ public partial class MicroSurfaceWindow
                 }
                 var draft = string.IsNullOrWhiteSpace(threadId) ||
                     CodexDraftModelToggleService.IsDraftThreadId(threadId);
-                var lease = draft
+                var softwareDraft = draft && _broker.UsesSoftwareControl
+                    ? await _draftComposerModelSelector.CaptureDraftContextAsync(_softwareDraft, cancellation.Token)
+                    : null;
+                var lease = draft && !_broker.UsesSoftwareControl
                     ? await _modelToggleService.CaptureForegroundDraftLeaseAsync(cancellation.Token, window)
                     : null;
-                if (draft && lease is null)
+                if (draft && lease is null && softwareDraft is null)
                 {
                     return;
                 }
@@ -412,13 +434,12 @@ public partial class MicroSurfaceWindow
                 bool IsCurrent() => !cancellation.IsCancellationRequested &&
                     generation == _reasoningInputGeneration &&
                     CodexWindowActivator.IsForegroundWindow(window) &&
-                    (lease is { } captured
+                    (softwareDraft is not null ? softwareDraft.IsCurrent() : lease is { } captured
                         ? _modelToggleService.IsForegroundDraftLeaseCurrent(captured)
                         : string.Equals(threadId,
                             _modelToggleService.CurrentForegroundVisibleThreadId(window),
                             StringComparison.Ordinal));
 
-                var effortStep = _dialDirectionSettings.ToReasoningSteps(Math.Sign(direction));
                 if (!draft)
                 {
                     var catalog = _reasoningCatalog ?? CodexModelCatalog.Load();
@@ -461,6 +482,11 @@ public partial class MicroSurfaceWindow
                         IsCurrent, cancellation.Token);
                 if (IsCurrent())
                 {
+                    if (softwareDraft is not null)
+                    {
+                        _softwareDraft = softwareDraft;
+                        _draftQuickModelContext = softwareDraft.Presentation;
+                    }
                     if (lease is { } captured)
                     {
                         _modelToggleService.TryPreserveForegroundDraftAfterReasoningStep(captured);

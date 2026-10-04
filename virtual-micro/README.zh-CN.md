@@ -1,5 +1,7 @@
 # 独立 Codex Micro 小键盘与虚拟 HID
 
+> 当前 Codex Micro 已迁至独立仓库 `D:\codex-micro-monitor`，共用控制组件在 `D:\codex-control`。本目录的桌面与插件说明属于历史记录；后续功能在独立仓库维护。AgentController 仍使用的 HID / Broker 保留，见[仓库边界](../docs/architecture/micro-component-dependency.zh-CN.md)。
+
 [English](./README.md)
 
 `CodexMicro.exe` 是独立于 Agent Controller 的 Windows 小键盘。发行窗口直接复用

@@ -1,84 +1,105 @@
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Media;
+using CodexController.Controllers;
 using CodexController.Models;
+using CodexController.ViewModels;
 
 namespace CodexController.Views;
 
-public partial class ControllerTutorialView :
-    System.Windows.Controls.UserControl
+public partial class ControllerTutorialView : System.Windows.Controls.UserControl
 {
-    private bool _voiceActive;
-
     public ControllerTutorialView()
     {
         InitializeComponent();
+        foreach (var input in new[]
+        {
+            LogicalInput.LeftTrigger, LogicalInput.RightTrigger, LogicalInput.LeftShoulder, LogicalInput.RightShoulder,
+            LogicalInput.FaceNorth, LogicalInput.FaceEast, LogicalInput.FaceSouth, LogicalInput.FaceWest,
+            LogicalInput.View, LogicalInput.Menu, LogicalInput.DPadUp, LogicalInput.DPadRight,
+            LogicalInput.DPadDown, LogicalInput.DPadLeft,
+        })
+        {
+            var bounds = ControllerArtwork.InputBounds(input);
+            AddHotspot(input, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        }
+        AddStick(LogicalInput.LeftStick, LogicalInput.LeftStickPress);
+        AddStick(LogicalInput.RightStick, LogicalInput.RightStickPress);
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is INotifyPropertyChanged oldModel) oldModel.PropertyChanged -= ModelChanged;
+            if (e.NewValue is INotifyPropertyChanged model) model.PropertyChanged += ModelChanged;
+            RefreshHotspotNames();
+        };
     }
 
-    public void RenderControllerState(
-        ControllerState state,
-        double deadZone)
+    public void RenderControllerState(ControllerState state, double deadZone) =>
+        ControllerArtwork.RenderControllerState(state, deadZone);
+
+    public void SetVoiceHalo(bool active) => ControllerArtwork.SetVoiceHalo(active);
+
+    public void Highlight(TutorialInput? input)
     {
-        LeftStickTransform.X = state.LeftX * 8;
-        LeftStickTransform.Y = -state.LeftY * 8;
-        RightStickTransform.X = state.RightX * 8;
-        RightStickTransform.Y = -state.RightY * 8;
-        LeftStickHalo.Opacity =
-            state.IsConnected &&
-            Math.Max(Math.Abs(state.LeftX), Math.Abs(state.LeftY)) >
-            deadZone
-                ? 1
-                : 0;
-        RightStickHalo.Opacity =
-            state.IsConnected &&
-            Math.Max(Math.Abs(state.RightX), Math.Abs(state.RightY)) >
-            deadZone
-                ? 1
-                : 0;
-        LeftStickPressHalo.Opacity = state.Buttons.HasFlag(
-            ControllerButtons.LeftThumb)
-                ? 1
-                : 0;
-        RightStickPressHalo.Opacity = state.Buttons.HasFlag(
-            ControllerButtons.RightThumb)
-                ? 1
-                : 0;
-        DPadHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.DPadUp) ||
-            state.Buttons.HasFlag(ControllerButtons.DPadDown) ||
-            state.Buttons.HasFlag(ControllerButtons.DPadLeft) ||
-            state.Buttons.HasFlag(ControllerButtons.DPadRight)
-                ? 1
-                : 0;
-        ButtonAHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.A) ? 1 : 0;
-        ButtonXHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.X) ? 1 : 0;
-        ButtonBHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.B) ? 1 : 0;
-        ButtonYHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.Y) ? 1 : 0;
-        ViewButtonHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.Back) ? 1 : 0;
-        MenuButtonHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.Start) ? 1 : 0;
-        LeftShoulderHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.LeftShoulder) ? 1 : 0;
-        RightShoulderHalo.Opacity =
-            state.Buttons.HasFlag(ControllerButtons.RightShoulder) ? 1 : 0;
-        var physicalLeftTriggerOpacity =
-            state.LeftTrigger > 0.03
-                ? Math.Clamp(0.25 + state.LeftTrigger * 0.75, 0, 1)
-                : 0;
-        LeftTriggerHalo.Opacity = Math.Max(
-            _voiceActive ? 1 : 0,
-            physicalLeftTriggerOpacity);
-        RightTriggerHalo.Opacity =
-            state.RightTrigger > 0.03
-                ? Math.Clamp(0.25 + state.RightTrigger * 0.75, 0, 1)
-                : 0;
+        ControllerArtwork.Highlight(input?.ArtworkLayer);
+        foreach (var button in InputButtons(this))
+            button.IsLinkedHighlighted = input is { } current &&
+                (button is ControllerJoystick stick
+                    ? stick.Input == current.Input || stick.StickInput == current.Input
+                    : button.Input == current.Input && button.Direction == current.Direction);
     }
 
-    public void SetVoiceHalo(bool active)
+    public static IEnumerable<ControllerInputButton> InputButtons(DependencyObject parent)
     {
-        _voiceActive = active;
-        LeftTriggerHalo.Opacity = active ? 1 : 0;
+        if (parent is ControllerInputButton button) yield return button;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            foreach (var child in InputButtons(VisualTreeHelper.GetChild(parent, i)))
+                yield return child;
+    }
+
+    private void AddStick(LogicalInput stick, LogicalInput press)
+    {
+        var bounds = ControllerArtwork.InputBounds(stick);
+        var x = bounds.X;
+        var y = bounds.Y;
+        var width = bounds.Width;
+        var height = bounds.Height;
+        AddHotspot(stick, x, y - 65, width, 65, 1);
+        AddHotspot(stick, x + width, y, 65, height, 2);
+        AddHotspot(stick, x, y + height, width, 65, 3);
+        AddHotspot(stick, x - 65, y, 65, height, 4);
+        AddHotspot(press, x, y, width, height);
+    }
+
+    private void AddHotspot(LogicalInput input, double x, double y, double width, double height, int direction = 0)
+    {
+        var button = new ControllerInputButton
+        {
+            Input = input, Direction = direction, Width = width, Height = height,
+            Style = (Style)FindResource("Controller.Hotspot"),
+        };
+        button.SetBinding(ControllerInputButton.ModeProperty, new System.Windows.Data.Binding("Mode"));
+        Canvas.SetLeft(button, x);
+        Canvas.SetTop(button, y);
+        Hotspots.Children.Add(button);
+    }
+
+    private void ModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ControllerTutorialViewModel.Items) or nameof(ControllerTutorialViewModel.Mode))
+            RefreshHotspotNames();
+    }
+
+    private void RefreshHotspotNames()
+    {
+        if (DataContext is not ControllerTutorialViewModel model) return;
+        foreach (ControllerInputButton button in Hotspots.Children)
+        {
+            var name = model.InputName(button.Input);
+            var direction = button.Direction switch { 1 => " ↑", 2 => " →", 3 => " ↓", 4 => " ←", _ => "" };
+            button.ToolTip = name + direction;
+            System.Windows.Automation.AutomationProperties.SetName(button, name + direction);
+        }
     }
 }

@@ -144,7 +144,7 @@ public sealed class CodexUiCommandActionExecutor :
             ? ActionSafetyLevel.HighRisk
             : ActionSafetyLevel.Routine;
 
-    private static string[]? ActionNamesFor(ActionId actionId)
+    internal static string[]? ActionNamesFor(ActionId actionId)
     {
         if (actionId == ApprovalActionContract.AcceptId)
         {

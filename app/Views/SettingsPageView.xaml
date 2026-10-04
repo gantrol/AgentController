@@ -4,14 +4,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:loc="clr-namespace:CodexController.Localization"
              mc:Ignorable="d"
              d:DesignHeight="680"
              d:DesignWidth="900">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel MaxWidth="900">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="1060" Margin="0,0,0,12">
             <Grid Margin="4,0,4,14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal"
@@ -20,57 +22,68 @@
                                VerticalAlignment="Center"
                                FontSize="{StaticResource Font.Size.Display}"
                                FontWeight="SemiBold" />
-                    <Button Margin="7,0,0,0"
+                    <Button Margin="8,0,0,0"
                             Style="{StaticResource Shell.HelpButton}"
+                            Click="HelpButton_Click"
                             ToolTip="{Binding Strings.SettingsDescription, ElementName=Root}"
                             AutomationProperties.Name="{Binding Strings.SettingsDescription, ElementName=Root}" />
                 </StackPanel>
+                <Button x:Name="ComponentsButton" Grid.Column="1" Margin="0,0,12,0"
+                        Visibility="Collapsed"
+                        Style="{StaticResource Button.Secondary}"
+                        Content="{loc:Loc settings.components}"
+                        Click="ComponentsButton_Click" />
                 <Button x:Name="RestoreDefaultsButton"
-                        Grid.Column="1"
-                        Style="{StaticResource Button.CrystalKey.Icon}"
-                        Content="↺"
+                        Grid.Column="2"
+                        Style="{StaticResource Button.Icon}"
                         ToolTip="{Binding Strings.SettingsRestoreDefaults, ElementName=Root}"
                         AutomationProperties.Name="{Binding Strings.SettingsRestoreDefaults, ElementName=Root}"
-                        Command="{Binding ResetCommand}" />
+                        Command="{Binding ResetCommand}">
+                    <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Reset}" />
+                </Button>
             </Grid>
 
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="0.82*" />
-                    <ColumnDefinition Width="1.18*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
                         Style="{StaticResource Card.Divider.Right}">
                     <StackPanel>
-                        <TextBlock Text="{Binding Strings.SettingsBehavior, ElementName=Root}"
-                                   FontSize="{StaticResource Font.Size.Title}"
-                                   FontWeight="SemiBold" />
+                        <Border MinHeight="36">
+                            <TextBlock Text="{Binding Strings.SettingsBehavior, ElementName=Root}"
+                                       VerticalAlignment="Center"
+                                       FontSize="{StaticResource Font.Size.Title}"
+                                       FontWeight="SemiBold" />
+                        </Border>
 
-                        <Grid Margin="0,20,0,0"
-                              Background="Transparent"
-                              Style="{StaticResource Tooltip.HitRegion}"
-                              ToolTip="{Binding OnlyForegroundDescription}">
-                            <TextBlock Text="{Binding OnlyForegroundText}"
-                                       VerticalAlignment="Center"
-                                       FontSize="{StaticResource Font.Size.Body}" />
-                            <CheckBox HorizontalAlignment="Right"
-                                      Style="{StaticResource Shell.Toggle}"
-                                      IsChecked="{Binding OnlyWhenAgentForeground}" />
-                        </Grid>
-                        <Grid Margin="0,17,0,0">
+                        <Grid Margin="0,20,0,0" MinHeight="36">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsHaptic, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
-                            <CheckBox HorizontalAlignment="Right"
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                      AutomationProperties.Name="{Binding Strings.SettingsHaptic, ElementName=Root}"
                                       Style="{StaticResource Shell.Toggle}"
                                       IsChecked="{Binding HapticFeedback}" />
                         </Grid>
-                        <Grid Margin="0,17,0,0">
+                        <Grid Margin="0,17,0,0" MinHeight="36">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsOverlay, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
-                            <CheckBox HorizontalAlignment="Right"
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                      AutomationProperties.Name="{Binding Strings.SettingsOverlay, ElementName=Root}"
                                       Style="{StaticResource Shell.Toggle}"
                                       IsChecked="{Binding ShowOverlay}" />
                         </Grid>
@@ -80,12 +93,14 @@
                               ToolTip="{Binding Strings.SettingsRadialMenuDescription, ElementName=Root}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="142" />
+                                <ColumnDefinition Width="180" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsRadialMenu, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
                             <ComboBox Grid.Column="1"
+                                      AutomationProperties.Name="{Binding Strings.SettingsRadialMenu, ElementName=Root}"
                                       ItemsSource="{Binding RadialMenuOptions}"
                                       DisplayMemberPath="DisplayName"
                                       SelectedValuePath="Value"
@@ -94,17 +109,16 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="1"
-                        Style="{StaticResource Card.Plain}"
-                        ToolTip="{Binding Strings.SettingsStickDescription, ElementName=Root}">
+                <Border Grid.Column="1" Style="{StaticResource Card.Plain}">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{Binding Strings.SettingsStick, ElementName=Root}"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Title}"
                                        FontWeight="SemiBold" />
-                            <Button Margin="7,0,0,0"
+                            <Button Margin="8,0,0,0"
                                     Style="{StaticResource Shell.HelpButton}"
+                                    Click="HelpButton_Click"
                                     ToolTip="{Binding Strings.SettingsStickDescription, ElementName=Root}"
                                     AutomationProperties.Name="{Binding Strings.SettingsStickDescription, ElementName=Root}" />
                         </StackPanel>
@@ -113,12 +127,16 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="102" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="Auto" MinWidth="80" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsDeadZone, ElementName=Root}"
+                                       Margin="0,0,12,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Caption}" />
                             <Slider Grid.Column="1"
+                                    Margin="0,0,12,0"
+                                    AutomationProperties.Name="{Binding Strings.SettingsDeadZone, ElementName=Root}"
+                                    SmallChange="0.01" LargeChange="0.05"
                                     Minimum="0.35"
                                     Maximum="0.80"
                                     TickFrequency="0.01"
@@ -134,12 +152,16 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="102" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="Auto" MinWidth="80" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsInitialRepeat, ElementName=Root}"
+                                       Margin="0,0,12,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Caption}" />
                             <Slider Grid.Column="1"
+                                    Margin="0,0,12,0"
+                                    AutomationProperties.Name="{Binding Strings.SettingsInitialRepeat, ElementName=Root}"
+                                    SmallChange="10" LargeChange="50"
                                     Minimum="220"
                                     Maximum="600"
                                     TickFrequency="10"
@@ -155,12 +177,16 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="102" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="Auto" MinWidth="80" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsRepeatInterval, ElementName=Root}"
+                                       Margin="0,0,12,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Caption}" />
                             <Slider Grid.Column="1"
+                                    Margin="0,0,12,0"
+                                    AutomationProperties.Name="{Binding Strings.SettingsRepeatInterval, ElementName=Root}"
+                                    SmallChange="5" LargeChange="20"
                                     Minimum="140"
                                     Maximum="300"
                                     TickFrequency="5"
@@ -178,9 +204,13 @@
 
             <Border Style="{StaticResource Card.Divider.Top}"
                     Margin="0,14,0,0">
-                <Grid>
+                <Grid Grid.IsSharedSizeScope="True">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.1*" />
+                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -188,29 +218,39 @@
                         <TextBlock Text="{Binding Strings.SettingsSystem, ElementName=Root}"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <Grid Margin="0,18,0,0">
+                        <Grid Margin="0,18,0,0" MinHeight="40">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" SharedSizeGroup="SystemFirstRow" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100" />
-                                <ColumnDefinition Width="190" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="216" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsLanguage, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
                             <ComboBox Grid.Column="1"
+                                      AutomationProperties.Name="{Binding Strings.SettingsLanguage, ElementName=Root}"
                                       ItemsSource="{Binding Localization.LanguageOptions, ElementName=Root}"
                                       DisplayMemberPath="DisplayName"
                                       SelectedValuePath="SettingValue"
                                       SelectedValue="{Binding LanguageSetting, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         </Grid>
-                        <Grid Margin="0,14,0,0">
+                        <Grid Margin="0,14,0,0" MinHeight="40">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" SharedSizeGroup="SystemSecondRow" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="100" />
-                                <ColumnDefinition Width="190" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="216" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsTextSize, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
                             <ComboBox Grid.Column="1"
+                                      AutomationProperties.Name="{Binding Strings.SettingsTextSize, ElementName=Root}"
                                       ItemsSource="{Binding TextSizeOptions}"
                                       DisplayMemberPath="DisplayName"
                                       SelectedValuePath="Value"
@@ -221,42 +261,55 @@
                     <StackPanel Grid.Column="1"
                                 Margin="24,0,0,0"
                                 VerticalAlignment="Bottom">
-                        <Grid>
+                        <Grid MinHeight="40">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" SharedSizeGroup="SystemFirstRow" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsStartWithWindows, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
-                            <CheckBox HorizontalAlignment="Right"
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                      AutomationProperties.Name="{Binding Strings.SettingsStartWithWindows, ElementName=Root}"
                                       Style="{StaticResource Shell.Toggle}"
                                       IsChecked="{Binding StartWithWindows}" />
                         </Grid>
-                        <Grid Margin="0,17,0,0">
+                        <Grid Margin="0,14,0,0" MinHeight="40">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" SharedSizeGroup="SystemSecondRow" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding Strings.SettingsMinimizeToTray, ElementName=Root}"
+                                       Margin="0,0,16,0" TextWrapping="Wrap"
                                        VerticalAlignment="Center"
                                        FontSize="{StaticResource Font.Size.Body}" />
-                            <CheckBox HorizontalAlignment="Right"
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                      AutomationProperties.Name="{Binding Strings.SettingsMinimizeToTray, ElementName=Root}"
                                       Style="{StaticResource Shell.Toggle}"
                                       IsChecked="{Binding MinimizeToTray}" />
                         </Grid>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2"
-                                Margin="24,0,0,0"
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="3"
+                                Margin="0,16,0,0"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom"
                                 Orientation="Horizontal">
-                        <Button Style="{StaticResource Button.CrystalKey.Icon}"
-                                Content="◇"
+                        <Button Style="{StaticResource Button.Icon}"
                                 ToolTip="{Binding OpenVendorToolText}"
                                 AutomationProperties.Name="{Binding OpenVendorToolText}"
                                 IsEnabled="{Binding CanOpenVendorTool}"
-                                Command="{Binding OpenVendorToolCommand}" />
-                        <Button Style="{StaticResource Button.CrystalKey.Icon}"
-                                Margin="8,0,0,0"
-                                Content="⚙"
-                                ToolTip="{Binding OpenAgentSettingsText}"
-                                AutomationProperties.Name="{Binding OpenAgentSettingsText}"
-                                IsEnabled="{Binding CanOpenAgentSettings}"
-                                Command="{Binding OpenAgentSettingsCommand}" />
+                                Command="{Binding OpenVendorToolCommand}">
+                            <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Controller}"
+                                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>

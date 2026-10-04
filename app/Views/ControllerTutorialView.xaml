@@ -10,124 +10,38 @@
              d:DesignHeight="420"
              d:DesignWidth="760">
     <UserControl.Resources>
-        <Style x:Key="Tutorial.Pulse.Border"
-               TargetType="Border">
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="Background"
-                    Value="{StaticResource Brush.Accent.Halo}" />
-            <Setter Property="BorderBrush"
-                    Value="{StaticResource Brush.Accent}" />
-            <Setter Property="BorderThickness" Value="2" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}"
-                             Value="True">
-                    <Setter Property="Opacity" Value="0.82" />
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="BorderPulse">
-                            <Storyboard RepeatBehavior="3x"
-                                        AutoReverse="True"
-                                        FillBehavior="Stop">
-                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                 From="0.34"
-                                                 To="0.92"
-                                                 Duration="0:0:0.65" />
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="BorderPulse" />
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="Tutorial.Pulse.Ellipse"
-               TargetType="Ellipse">
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="Fill"
-                    Value="{StaticResource Brush.Accent.Halo}" />
-            <Setter Property="Stroke"
-                    Value="{StaticResource Brush.Accent}" />
-            <Setter Property="StrokeThickness" Value="2" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}"
-                             Value="True">
-                    <Setter Property="Opacity" Value="0.82" />
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="EllipsePulse">
-                            <Storyboard RepeatBehavior="3x"
-                                        AutoReverse="True"
-                                        FillBehavior="Stop">
-                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                 From="0.34"
-                                                 To="0.92"
-                                                 Duration="0:0:0.65" />
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="EllipsePulse" />
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="Tutorial.PressArrow"
-               TargetType="TextBlock">
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="RenderTransform">
-                <Setter.Value>
-                    <TranslateTransform />
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}"
-                             Value="True">
-                    <Setter Property="Opacity" Value="1" />
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard x:Name="PressArrowMotion">
-                            <Storyboard RepeatBehavior="3x"
-                                        AutoReverse="True"
-                                        FillBehavior="Stop">
-                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                 From="-3"
-                                                 To="3"
-                                                 Duration="0:0:0.48" />
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </DataTrigger.EnterActions>
-                    <DataTrigger.ExitActions>
-                        <RemoveStoryboard BeginStoryboardName="PressArrowMotion" />
-                    </DataTrigger.ExitActions>
-                </DataTrigger>
-            </Style.Triggers>
+        <Style x:Key="Tutorial.Artwork.Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Accent}" />
+            <Setter Property="FontFamily" Value="{StaticResource Font.Mono}" />
+            <Setter Property="FontSize" Value="44" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="Width" Value="140" />
+            <Setter Property="IsHitTestVisible" Value="False" />
         </Style>
 
         <DataTemplate x:Key="Tutorial.ActionItem">
-            <Border Padding="5,5"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    CornerRadius="0"
-                    ToolTipService.InitialShowDelay="180"
-                    ToolTipService.BetweenShowDelay="0"
-                    ToolTipService.ShowDuration="30000"
-                    ToolTip="{Binding AccessibleName}"
-                    AutomationProperties.Name="{Binding AccessibleName}">
-                <Grid>
-                    <Border Width="86"
-                            Height="28"
-                            HorizontalAlignment="Center"
-                            Padding="0"
-                            Style="{StaticResource Overlay.PhysicalKey.Compact}">
-                        <views:ControllerGlyphView Width="84"
-                                                   Glyph="{Binding Glyph}"
-                                                   Foreground="{StaticResource Brush.Text.Primary}"
-                                                   FontFamily="{StaticResource Font.Mono}"
-                                                   FontSize="{StaticResource Font.Size.Label}"
-                                                   FontWeight="Bold" />
+            <Grid Margin="2,4" Width="88">
+                <views:ControllerInputButton x:Name="Key" Input="{Binding Input}" Mode="{Binding DataContext.Mode, RelativeSource={RelativeSource AncestorType={x:Type views:ControllerTutorialView}}}"
+                                             Style="{StaticResource Controller.Input}"
+                                             ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding ToolTip}">
+                    <Border Width="72" Height="28" Padding="0" Style="{StaticResource Overlay.PhysicalKey.Compact}">
+                        <views:ControllerGlyphView Glyph="{Binding Glyph}" Foreground="{StaticResource Brush.Text.Primary}"
+                                                   FontFamily="{StaticResource Font.Mono}" FontSize="{StaticResource Font.Size.Label}" FontWeight="Bold" />
                     </Border>
-                </Grid>
-            </Border>
+                </views:ControllerInputButton>
+                <views:ControllerJoystick x:Name="Stick" Visibility="Collapsed"
+                                          Input="{Binding StickPressInput}" Content="{Binding Glyph}"
+                                          Mode="{Binding DataContext.Mode, RelativeSource={RelativeSource AncestorType={x:Type views:ControllerTutorialView}}}"
+                                          Style="{StaticResource Controller.Joystick}"
+                                          ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding AccessibleName}" />
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsStick}" Value="True">
+                    <Setter TargetName="Key" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Stick" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
     </UserControl.Resources>
 
@@ -138,7 +52,8 @@
         </Grid.RowDefinitions>
 
         <UniformGrid Columns="6"
-                     Margin="20,0">
+                     Margin="20,0"
+                     Panel.ZIndex="2">
             <RadioButton x:Name="OverviewTutorialButton"
                          GroupName="ControllerTutorialMode"
                          Style="{StaticResource Tab.Connected}"
@@ -191,341 +106,46 @@
 
         <Border Grid.Row="1"
                 x:Name="TutorialFrame"
-                Margin="0,0,0,0"
                 Padding="8"
                 Style="{StaticResource Panel.ConnectedTab}">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="158" />
+                <ColumnDefinition Width="216" />
                 </Grid.ColumnDefinitions>
 
             <Viewbox Grid.Column="0"
-                     Margin="0,0,10,0"
+                     Margin="8,12,12,8"
+                     VerticalAlignment="Top"
                      Stretch="Uniform">
-                <Grid Width="600" Height="380">
-                    <Image Source="/AgentController;component/Assets/controller.png"
-                           Width="600"
-                           Height="380"
-                           Stretch="Uniform"
-                           RenderOptions.BitmapScalingMode="HighQuality" />
-                    <Canvas Width="600"
-                            Height="380"
-                            IsHitTestVisible="False">
-                        <!-- Live input layer. -->
-                        <Border x:Name="LeftTriggerHalo"
-                                Canvas.Left="171"
-                                Canvas.Top="58"
-                                Width="54"
-                                Height="34"
-                                Background="{StaticResource Brush.Accent.Halo}"
-                                BorderBrush="{StaticResource Brush.Accent}"
-                                BorderThickness="2"
-                                CornerRadius="17"
-                                Opacity="0" />
-                        <Border x:Name="LeftShoulderHalo"
-                                Canvas.Left="176"
-                                Canvas.Top="82"
-                                Width="100"
-                                Height="25"
-                                Background="{StaticResource Brush.Accent.Halo}"
-                                BorderBrush="{StaticResource Brush.Accent}"
-                                BorderThickness="2"
-                                CornerRadius="12"
-                                Opacity="0" />
-                        <Border x:Name="RightShoulderHalo"
-                                Canvas.Left="324"
-                                Canvas.Top="82"
-                                Width="100"
-                                Height="25"
-                                Background="{StaticResource Brush.Accent.Halo}"
-                                BorderBrush="{StaticResource Brush.Accent}"
-                                BorderThickness="2"
-                                CornerRadius="12"
-                                Opacity="0" />
-                        <Border x:Name="RightTriggerHalo"
-                                Canvas.Left="375"
-                                Canvas.Top="58"
-                                Width="54"
-                                Height="34"
-                                Background="{StaticResource Brush.Accent.Halo}"
-                                BorderBrush="{StaticResource Brush.Accent}"
-                                BorderThickness="2"
-                                CornerRadius="17"
-                                Opacity="0" />
-                        <Ellipse x:Name="LeftStickHalo"
-                                 Canvas.Left="178"
-                                 Canvas.Top="138"
-                                 Width="46"
-                                 Height="46"
-                                 Stroke="{StaticResource SageBrush}"
-                                 StrokeThickness="2"
-                                 Opacity="0">
-                            <Ellipse.RenderTransform>
-                                <TranslateTransform x:Name="LeftStickTransform" />
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                        <Ellipse x:Name="RightStickHalo"
-                                 Canvas.Left="326"
-                                 Canvas.Top="196"
-                                 Width="46"
-                                 Height="46"
-                                 Stroke="{StaticResource SageBrush}"
-                                 StrokeThickness="2"
-                                 Opacity="0">
-                            <Ellipse.RenderTransform>
-                                <TranslateTransform x:Name="RightStickTransform" />
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                        <Ellipse x:Name="LeftStickPressHalo"
-                                 Canvas.Left="174"
-                                 Canvas.Top="134"
-                                 Width="54"
-                                 Height="54"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Ellipse x:Name="RightStickPressHalo"
-                                 Canvas.Left="322"
-                                 Canvas.Top="192"
-                                 Width="54"
-                                 Height="54"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Border x:Name="DPadHalo"
-                                Canvas.Left="210"
-                                Canvas.Top="178"
-                                Width="76"
-                                Height="76"
-                                Background="{StaticResource Brush.Accent.Halo}"
-                                BorderBrush="{StaticResource Brush.Accent}"
-                                BorderThickness="2"
-                                CornerRadius="18"
-                                Opacity="0" />
-                        <Ellipse x:Name="ButtonAHalo"
-                                 Canvas.Left="384"
-                                 Canvas.Top="172"
-                                 Width="28"
-                                 Height="28"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Ellipse x:Name="ButtonXHalo"
-                                 Canvas.Left="359"
-                                 Canvas.Top="146"
-                                 Width="28"
-                                 Height="28"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Ellipse x:Name="ButtonBHalo"
-                                 Canvas.Left="411"
-                                 Canvas.Top="146"
-                                 Width="28"
-                                 Height="28"
-                                 Fill="{StaticResource Brush.Status.Danger.Halo}"
-                                 Stroke="{StaticResource Brush.Status.Danger}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Ellipse x:Name="ButtonYHalo"
-                                 Canvas.Left="385"
-                                 Canvas.Top="120"
-                                 Width="28"
-                                 Height="28"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Ellipse x:Name="ViewButtonHalo"
-                                 Canvas.Left="264"
-                                 Canvas.Top="149"
-                                 Width="26"
-                                 Height="26"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-                        <Ellipse x:Name="MenuButtonHalo"
-                                 Canvas.Left="316"
-                                 Canvas.Top="149"
-                                 Width="26"
-                                 Height="26"
-                                 Fill="{StaticResource Brush.Accent.Halo}"
-                                 Stroke="{StaticResource Brush.Accent}"
-                                 StrokeThickness="2"
-                                 Opacity="0" />
-
-                        <!-- Tutorial layer is independent from live input. -->
-                        <Border x:Name="TutorialLeftShoulderHalo"
-                                Canvas.Left="176"
-                                Canvas.Top="82"
-                                Width="100"
-                                Height="25"
-                                CornerRadius="12"
-                                Tag="{Binding IsAgentMode}"
-                                Style="{StaticResource Tutorial.Pulse.Border}" />
-                        <Border x:Name="TutorialRightShoulderHalo"
-                                Canvas.Left="324"
-                                Canvas.Top="82"
-                                Width="100"
-                                Height="25"
-                                CornerRadius="12"
-                                Tag="{Binding IsCommandMode}"
-                                Style="{StaticResource Tutorial.Pulse.Border}" />
-                        <Border x:Name="TutorialRightTriggerHalo"
-                                Canvas.Left="375"
-                                Canvas.Top="58"
-                                Width="54"
-                                Height="34"
-                                CornerRadius="17"
-                                Tag="{Binding IsTurnMode}"
-                                Style="{StaticResource Tutorial.Pulse.Border}" />
-                        <Ellipse x:Name="TutorialActionButtonHalo"
-                                 Canvas.Left="381"
-                                 Canvas.Top="116"
-                                 Width="36"
-                                 Height="36"
-                                 Tag="{Binding IsActionMode}"
-                                 Style="{StaticResource Tutorial.Pulse.Ellipse}" />
-                        <Border x:Name="TutorialDPadHalo"
-                                Canvas.Left="208"
-                                Canvas.Top="176"
-                                Width="80"
-                                Height="80"
-                                CornerRadius="20"
-                                Tag="{Binding HighlightDPad}"
-                                Style="{StaticResource Tutorial.Pulse.Border}" />
-                        <Ellipse x:Name="TutorialFaceClusterHalo"
-                                 Canvas.Left="349"
-                                 Canvas.Top="109"
-                                 Width="102"
-                                 Height="102"
-                                 Tag="{Binding HighlightFaceCluster}"
-                                 Style="{StaticResource Tutorial.Pulse.Ellipse}" />
-                        <Border x:Name="TutorialMetaButtonsHalo"
-                                Canvas.Left="258"
-                                Canvas.Top="143"
-                                Width="90"
-                                Height="38"
-                                CornerRadius="18"
-                                Tag="{Binding HighlightViewMenu}"
-                                Style="{StaticResource Tutorial.Pulse.Border}" />
-                        <Ellipse x:Name="TutorialLeftStickPressHalo"
-                                 Canvas.Left="170"
-                                 Canvas.Top="130"
-                                 Width="62"
-                                 Height="62"
-                                 Tag="{Binding IsStickPressMode}"
-                                 Style="{StaticResource Tutorial.Pulse.Ellipse}" />
-                        <Ellipse x:Name="TutorialRightStickPressHalo"
-                                 Canvas.Left="318"
-                                 Canvas.Top="188"
-                                 Width="62"
-                                 Height="62"
-                                 Tag="{Binding IsStickPressMode}"
-                                 Style="{StaticResource Tutorial.Pulse.Ellipse}" />
-                        <TextBlock x:Name="TutorialLeftPressArrow"
-                                   Canvas.Left="192"
-                                   Canvas.Top="105"
-                                   Text="↓"
-                                   Tag="{Binding IsStickPressMode}"
-                                   Foreground="{StaticResource Brush.Text.Accent}"
-                                   FontSize="24"
-                                   FontWeight="Bold"
-                                   Style="{StaticResource Tutorial.PressArrow}" />
-                        <TextBlock x:Name="TutorialRightPressArrow"
-                                   Canvas.Left="340"
-                                   Canvas.Top="163"
-                                   Text="↓"
-                                   Tag="{Binding IsStickPressMode}"
-                                   Foreground="{StaticResource Brush.Text.Accent}"
-                                   FontSize="24"
-                                   FontWeight="Bold"
-                                   Style="{StaticResource Tutorial.PressArrow}" />
-
-                        <!-- Live profile labels. -->
-                        <Border Canvas.Left="158"
-                                Canvas.Top="46"
-                                Padding="6,2"
-                                Background="{StaticResource Brush.Bg.Inverse}"
-                                CornerRadius="8">
-                            <TextBlock Text="{Binding LeftTriggerGlyph}"
-                                       Foreground="{StaticResource Brush.Text.Inverse}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="{StaticResource Font.Size.Caption}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <Border Canvas.Left="238"
-                                Canvas.Top="72"
-                                Padding="6,2"
-                                Background="{StaticResource Brush.Bg.Inverse}"
-                                CornerRadius="8">
-                            <TextBlock Text="{Binding LeftShoulderGlyph}"
-                                       Foreground="{StaticResource Brush.Text.Inverse}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="{StaticResource Font.Size.Caption}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <Border Canvas.Left="338"
-                                Canvas.Top="72"
-                                Padding="6,2"
-                                Background="{StaticResource Brush.Bg.Inverse}"
-                                CornerRadius="8">
-                            <TextBlock Text="{Binding RightShoulderGlyph}"
-                                       Foreground="{StaticResource Brush.Text.Inverse}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="{StaticResource Font.Size.Caption}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <Border Canvas.Left="414"
-                                Canvas.Top="46"
-                                Padding="6,2"
-                                Background="{StaticResource Brush.Bg.Inverse}"
-                                CornerRadius="8">
-                            <TextBlock Text="{Binding RightTriggerGlyph}"
-                                       Foreground="{StaticResource Brush.Text.Inverse}"
-                                       FontFamily="{StaticResource Font.Mono}"
-                                       FontSize="{StaticResource Font.Size.Caption}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <Border Canvas.Left="248"
-                                Canvas.Top="144"
-                                Padding="4,1"
-                                Background="{StaticResource Brush.Bg.Inverse}"
-                                CornerRadius="6">
-                            <views:ControllerGlyphView Width="30"
-                                                       Height="16"
-                                                       Glyph="{Binding ViewGlyph}"
-                                                       Foreground="{StaticResource Brush.Text.Inverse}"
-                                                       FontFamily="{StaticResource Font.Mono}"
-                                                       FontSize="{StaticResource Font.Size.Caption}"
-                                                       FontWeight="SemiBold" />
-                        </Border>
-                        <Border Canvas.Left="314"
-                                Canvas.Top="144"
-                                Padding="4,1"
-                                Background="{StaticResource Brush.Bg.Inverse}"
-                                CornerRadius="6">
-                            <views:ControllerGlyphView Width="30"
-                                                       Height="16"
-                                                       Glyph="{Binding MenuGlyph}"
-                                                       Foreground="{StaticResource Brush.Text.Inverse}"
-                                                       FontFamily="{StaticResource Font.Mono}"
-                                                       FontSize="{StaticResource Font.Size.Caption}"
-                                                       FontWeight="SemiBold" />
-                        </Border>
-                    </Canvas>
-                </Grid>
+                <Canvas Width="2104" Height="1298">
+                    <views:ControllerArtworkView x:Name="ControllerArtwork"
+                                                 Canvas.Left="28" Canvas.Top="28"
+                                                 Width="2048" Height="1242"
+                                                 TutorialMode="{Binding Mode}" />
+                    <Canvas x:Name="Hotspots" Canvas.Left="28" Canvas.Top="28" Width="2048" Height="1242" />
+                    <TextBlock Canvas.Left="334" Canvas.Top="103"
+                               Text="{Binding LeftTriggerGlyph}"
+                               Style="{StaticResource Tutorial.Artwork.Label}" />
+                    <TextBlock Canvas.Left="418" Canvas.Top="212"
+                               Text="{Binding LeftShoulderGlyph}"
+                               Style="{StaticResource Tutorial.Artwork.Label}" />
+                    <TextBlock Canvas.Left="1556" Canvas.Top="212"
+                               Text="{Binding RightShoulderGlyph}"
+                               Style="{StaticResource Tutorial.Artwork.Label}" />
+                    <TextBlock Canvas.Left="1630" Canvas.Top="103"
+                               Text="{Binding RightTriggerGlyph}"
+                               Style="{StaticResource Tutorial.Artwork.Label}" />
+                </Canvas>
             </Viewbox>
 
             <Border Grid.Column="1"
-                    Margin="8,0,0,0"
-                    Padding="14,0,0,0"
+                    Margin="4,4,0,0"
+                    Padding="10,0,0,0"
                     Background="Transparent"
                     BorderBrush="{StaticResource Brush.Divider.Crystal.Vertical}"
                     BorderThickness="1,0,0,0"
@@ -535,10 +155,78 @@
                                   VerticalScrollBarVisibility="Auto"
                                   Focusable="False">
                         <ItemsControl ItemsSource="{Binding Items}"
-                                      ItemTemplate="{StaticResource Tutorial.ActionItem}" />
+                                      ItemTemplate="{StaticResource Tutorial.ActionItem}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
                     </ScrollViewer>
                 </Grid>
             </Border>
+                <Border x:Name="ContextHintBar" Grid.Row="1" Grid.ColumnSpan="2"
+                        views:ContextHint.IsDisplay="True"
+                        Margin="12,12,12,4" Padding="4,14,4,8" Height="112"
+                        BorderBrush="{StaticResource Brush.Divider.Crystal.Horizontal}" BorderThickness="0,1,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="2" Text="{Binding ActiveLayerText}"
+                                   Margin="12,0,0,0" VerticalAlignment="Top"
+                                   Foreground="{StaticResource Brush.Text.Accent}"
+                                   FontSize="{DynamicResource Font.Size.Caption}"
+                                   FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsLayerActive}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Info}"
+                                        Margin="0,1,12,0" VerticalAlignment="Top"
+                                        Foreground="{StaticResource Brush.Text.Secondary}" />
+                        <ScrollViewer Grid.Column="1" Focusable="False"
+                                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock FontSize="{DynamicResource Font.Size.Label}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Brush.Text.Primary}" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="{Binding RelativeSource={RelativeSource Self}, Path=(views:ContextHint.Title)}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=(views:ContextHint.Title)}" Value="">
+                                                <Setter Property="Text" Value="{Binding ModeTitle}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Margin="0,6,0,0" FontSize="{DynamicResource Font.Size.Caption}"
+                                       Foreground="{StaticResource Brush.Text.Secondary}" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="{Binding RelativeSource={RelativeSource Self}, Path=(views:ContextHint.Description)}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=(views:ContextHint.Title)}" Value="">
+                                                <Setter Property="Text" Value="{Binding ModeDescription}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
             </Grid>
         </Border>
 

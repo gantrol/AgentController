@@ -13,6 +13,16 @@
 | [Codex Micro 实体键盘接入、逆向证据与 UML](codex-micro-physical-connection.md) | USB/Bluetooth、vendor HID、build 指纹、wire/RPC、只读复现，以及实体与虚拟 Micro 的边界 |
 | [Codex Micro 指令参考](codex-micro-command-reference.md) | `ENC_CW`、`ENC_CC`、`ACT*`、`AG*`、RPC 与 64-byte report |
 
+## 免驱版实施设计
+
+- [AgentController 免驱版 UML](../../docs/architecture/agent-controller-driverless-uml.zh-CN.md)：现状、目标组件、执行时序、状态机与迁移顺序；共享软件后端及打开任务 / 新建草稿已接入，其余动作待迁移。
+
+## Codex Micro 平台方向
+
+- [当前平台方向](../../docs/architecture/platform-direction.zh-CN.md)：Micro 面向 macOS 桌面版；旧 AgentController Avalonia Foundation Preview 已废弃。
+- [设置、键帽编辑与尺寸规则](../../docs/architecture/codex-micro-settings-interaction.zh-CN.md)：macOS 桌面交互提案。
+- [历史 UIKit 架构与 UML](../../docs/architecture/codex-micro-ios-uikit-uml.zh-CN.md)：保留先前 iOS 原型记录，不是当前交付目标。
+
 ## 历史、证据与验收
 
 - [Codex / Deepseek Keypads v0.2.7 正式版说明](release-keypads-v0.2.7.md)

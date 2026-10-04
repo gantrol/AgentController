@@ -30,17 +30,10 @@ public sealed class MicroInputService : IDisposable
         _transport = transport ??
             throw new ArgumentNullException(nameof(transport));
         _layout = layout ?? throw new ArgumentNullException(nameof(layout));
-        if (transport is VhfMicroReportTransport vhf)
-        {
-            vhf.SlotLightingObserved += Transport_SlotLightingObserved;
-        }
     }
 
     public static MicroInputService Unavailable { get; } = new(
         UnavailableMicroReportTransport.Instance);
-
-    public event EventHandler<MicroSlotLightingSnapshot>?
-        SlotLightingObserved;
 
     public MicroTransportState State => _transport.State;
 
@@ -89,6 +82,11 @@ public sealed class MicroInputService : IDisposable
 
     public MicroReportSendResult SendPushToTalk(bool pressed)
     {
+        if (_transport.State == MicroTransportState.Unavailable)
+        {
+            return MicroReportSendResult.NotSent;
+        }
+
         if (
             pressed &&
             !_layout.AllowsCommand(
@@ -215,6 +213,7 @@ public sealed class MicroInputService : IDisposable
     /// declines when Codex owns the encoder in composer-navigation mode.
     /// </summary>
     public bool TryOpenReasoningControl() =>
+        _transport.State != MicroTransportState.Unavailable &&
         _layout.EncoderMode == CodexMicroLayoutResolver.ReasoningMode &&
         TryPressEncoder();
 
@@ -225,6 +224,7 @@ public sealed class MicroInputService : IDisposable
     public bool TryStepReasoning(int steps, bool openFirst)
     {
         if (
+            _transport.State == MicroTransportState.Unavailable ||
             _layout.EncoderMode !=
                 CodexMicroLayoutResolver.ReasoningMode ||
             steps == 0)
@@ -257,11 +257,6 @@ public sealed class MicroInputService : IDisposable
         }
 
         _disposed = true;
-        if (_transport is VhfMicroReportTransport vhf)
-        {
-            vhf.SlotLightingObserved -= Transport_SlotLightingObserved;
-        }
-
         BestEffortNeutralize();
         _transport.Dispose();
     }
@@ -273,6 +268,7 @@ public sealed class MicroInputService : IDisposable
         string layoutSlot,
         string wireKey,
         string commandId) =>
+        _transport.State != MicroTransportState.Unavailable &&
         _layout.AllowsCommand(layoutSlot, commandId)
             ? SendTap(wireKey)
             : MicroReportSendResult.NotSent;
@@ -345,30 +341,6 @@ public sealed class MicroInputService : IDisposable
         catch
         {
             // Shutdown neutralization is best effort and is never retried.
-        }
-    }
-
-    private void Transport_SlotLightingObserved(
-        object? sender,
-        MicroSlotLightingSnapshot snapshot)
-    {
-        var handlers = SlotLightingObserved;
-        if (handlers is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler<MicroSlotLightingSnapshot> handler in
-                 handlers.GetInvocationList())
-        {
-            try
-            {
-                handler(this, snapshot);
-            }
-            catch
-            {
-                // Slot lighting is advisory and cannot break input delivery.
-            }
         }
     }
 

@@ -42,6 +42,13 @@ public static class SidebarNavigationMenuProjector
                         Equals(entry, selectedRoot)))
                     .ToArray()))
             .ToArray();
+        if (rootEntries.Any(entry => entry.SectionId is not null))
+            rootSections = rootEntries.GroupBy(entry => entry.SectionKey)
+                .Select(group => new SidebarNavigationMenuSection(group.First().NavigationScope,
+                    group.First().SectionName ?? scopeLabel(group.First().NavigationScope),
+                    group.Select(entry => CreateItem(entry,
+                        entry.SectionName ?? scopeLabel(entry.NavigationScope), entry == selectedRoot)).ToArray()))
+                .ToArray();
 
         var hasDisclosedProject =
             selectedRoot is { IsProject: true } &&

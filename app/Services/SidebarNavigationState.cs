@@ -54,6 +54,7 @@ public sealed class SidebarNavigationState
         IReadOnlyList<SidebarEntry> synchronized;
         if (
             forceRebuild ||
+            candidates.Any(entry => entry.SectionId is not null) ||
             _frozenEntries.Count == 0 ||
             candidates.Count == 0)
         {
@@ -299,14 +300,14 @@ public sealed class SidebarNavigationState
         var emitted = new HashSet<SidebarNavigationKey>(
             SidebarNavigationKeyComparer.Instance);
         var scopeOrder = candidates
-            .Select(entry => entry.NavigationScope)
+            .Select(entry => entry.SectionKey)
             .Distinct()
             .ToList();
 
         foreach (var scope in scopeOrder)
         {
             foreach (var existing in _frozenEntries.Where(entry =>
-                         entry.NavigationScope == scope))
+                         entry.SectionKey == scope))
             {
                 var key = Key(existing);
                 if (
@@ -318,7 +319,7 @@ public sealed class SidebarNavigationState
             }
 
             foreach (var candidate in candidates.Where(entry =>
-                         entry.NavigationScope == scope))
+                         entry.SectionKey == scope))
             {
                 var key = Key(candidate);
                 if (emitted.Add(key))

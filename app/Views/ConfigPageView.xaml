@@ -8,7 +8,7 @@
              mc:Ignorable="d"
              d:DesignHeight="720"
              d:DesignWidth="1060">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel MaxWidth="1060">
             <Grid Margin="4,0,4,14">
                 <Grid.ColumnDefinitions>
@@ -21,19 +21,82 @@
                                VerticalAlignment="Center"
                                FontSize="{StaticResource Font.Size.Display}"
                                FontWeight="SemiBold" />
-                    <Button Margin="7,0,0,0"
+                    <Button x:Name="ConfigHelpButton" Margin="8,0,0,0"
                             Style="{StaticResource Shell.HelpButton}"
+                            Click="ConfigHelp_Click"
                             ToolTip="{Binding Description}"
                             AutomationProperties.Name="{Binding Description}" />
                 </StackPanel>
                 <Button x:Name="RestoreDefaultsButton"
                         Grid.Column="1"
-                        Style="{StaticResource Button.CrystalKey.Icon}"
-                        Content="↺"
+                        Style="{StaticResource Button.Icon}"
                         ToolTip="{Binding Strings.ConfigRestoreDefaults, ElementName=Root}"
                         AutomationProperties.Name="{Binding Strings.ConfigRestoreDefaults, ElementName=Root}"
-                        Command="{Binding ResetCommand}" />
+                        Command="{Binding ResetCommand}">
+                    <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Reset}" />
+                </Button>
             </Grid>
+
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,14">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="AgentTargetButton"
+                                Style="{StaticResource Button.Secondary}"
+                                ToolTip="{Binding AgentName, ElementName=Root}" AutomationProperties.Name="{Binding AgentName, ElementName=Root}"
+                                Click="AgentTargetButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Image x:Name="AgentTargetLogo"
+                                       Width="24" Height="24"
+                                       Source="{Binding AgentLogo, ElementName=Root}"
+                                       Stretch="Uniform"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                                <TextBlock Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Text="{Binding ToolTip, ElementName=AgentTargetButton}" />
+                            </StackPanel>
+                        </Button>
+                        <views:FullResetStatusView
+                            Grid.Column="1" Margin="16,0"
+                            Text="{Binding FullResetText, ElementName=Root}"
+                            ToolTipText="{Binding FullResetToolTip, ElementName=Root}"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center" />
+                        <Button Grid.Column="2"
+                                DataContext="{Binding AgentSettings, ElementName=Root}"
+                                Style="{StaticResource Button.Icon}"
+                                ToolTip="{Binding OpenAgentSettingsText}"
+                                AutomationProperties.Name="{Binding OpenAgentSettingsText}"
+                                IsEnabled="{Binding CanOpenAgentSettings}"
+                                Command="{Binding OpenAgentSettingsCommand}">
+                            <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.Settings}" />
+                        </Button>
+                    </Grid>
+                    <Grid Margin="0,17,0,0" MinHeight="36"
+                          DataContext="{Binding AgentSettings, ElementName=Root}"
+                          Background="Transparent"
+                          Style="{StaticResource Tooltip.HitRegion}"
+                          ToolTip="{Binding OnlyForegroundDescription}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding OnlyForegroundText}"
+                                   Margin="0,0,16,0" TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   FontSize="{StaticResource Font.Size.Body}" />
+                        <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                  AutomationProperties.Name="{Binding OnlyForegroundText}"
+                                  Style="{StaticResource Shell.Toggle}"
+                                  IsChecked="{Binding OnlyWhenAgentForeground}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -46,6 +109,7 @@
                         ToolTip="{Binding SidebarBehavior}">
                     <StackPanel>
                         <TextBlock Text="{Binding LeftStickSidebarTitle}"
+                                   TextWrapping="Wrap"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
                         <UniformGrid Margin="0,22,0,8" Columns="3">
@@ -98,6 +162,7 @@
                         ToolTip="{Binding SelectionBehavior}">
                     <StackPanel>
                         <TextBlock Text="{Binding Strings.ConfigRightStickComposer, ElementName=Root}"
+                                   TextWrapping="Wrap"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
                         <UniformGrid Margin="0,22,0,8" Columns="2">
@@ -140,31 +205,30 @@
 
             <Border x:Name="AgentShortcutsSection"
                     Style="{StaticResource Card.Divider.Top}"
-                    Margin="0,14,0,0"
-                    ToolTipService.InitialShowDelay="180"
-                    ToolTipService.BetweenShowDelay="0"
-                    ToolTipService.ShowDuration="30000"
-                    ToolTipService.Placement="MousePoint"
-                    ToolTipService.HorizontalOffset="14"
-                    ToolTipService.VerticalOffset="16"
-                    ToolTip="{Binding AgentShortcutsDescription}">
+                    Margin="0,14,0,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding AgentShortcutsTitle}"
+                                   Margin="0,0,12,0" TextWrapping="Wrap"
                                    VerticalAlignment="Center"
                                    FontSize="{StaticResource Font.Size.Title}"
                                    FontWeight="SemiBold" />
-                        <Button HorizontalAlignment="Right"
-                                Style="{StaticResource Button.CrystalKey.Icon}"
-                                Content="↗"
+                        <Button Grid.Column="1" HorizontalAlignment="Right"
+                                Style="{StaticResource Button.Icon}"
                                 ToolTip="{Binding OpenAgentShortcutsText}"
                                 AutomationProperties.Name="{Binding OpenAgentShortcutsText}"
                                 IsEnabled="{Binding CanOpenAgentShortcuts}"
-                                Command="{Binding OpenAgentShortcutsCommand}" />
+                                Command="{Binding OpenAgentShortcutsCommand}">
+                            <ContentControl Style="{StaticResource Icon}" Content="{StaticResource Icon.External}" />
+                        </Button>
                     </Grid>
 
                     <UniformGrid Grid.Row="1"
@@ -172,37 +236,57 @@
                                  Columns="5">
                         <StackPanel Margin="0,0,8,0">
                             <TextBlock Text="{Binding Strings.ConfigLowerReasoning, ElementName=Root}"
+                                       TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Secondary}"
                                        FontSize="{StaticResource Font.Size.Caption}" />
-                            <TextBox Margin="0,5,0,0"
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource TextBox.Shortcut}"
+                                     AutomationProperties.Name="{Binding Strings.ConfigLowerReasoning, ElementName=Root}"
+                                     AutomationProperties.HelpText="{Binding AgentShortcutsDescription}"
+                                     ToolTip="{Binding AgentShortcutsDescription}"
                                      Text="{Binding ReasoningDownShortcut, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Margin="4,0">
                             <TextBlock Text="{Binding Strings.ConfigRaiseReasoning, ElementName=Root}"
+                                       TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Secondary}"
                                        FontSize="{StaticResource Font.Size.Caption}" />
-                            <TextBox Margin="0,5,0,0"
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource TextBox.Shortcut}"
+                                     AutomationProperties.Name="{Binding Strings.ConfigRaiseReasoning, ElementName=Root}"
+                                     AutomationProperties.HelpText="{Binding AgentShortcutsDescription}"
+                                     ToolTip="{Binding AgentShortcutsDescription}"
                                      Text="{Binding ReasoningUpShortcut, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Margin="4,0">
                             <TextBlock Text="{Binding Strings.ConfigToggleFast, ElementName=Root}"
+                                       TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Secondary}"
                                        FontSize="{StaticResource Font.Size.Caption}" />
-                            <TextBox Margin="0,5,0,0"
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource TextBox.Shortcut}"
+                                     AutomationProperties.Name="{Binding Strings.ConfigToggleFast, ElementName=Root}"
+                                     AutomationProperties.HelpText="{Binding AgentShortcutsDescription}"
+                                     ToolTip="{Binding AgentShortcutsDescription}"
                                      Text="{Binding FastToggleShortcut, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Margin="4,0">
                             <TextBlock Text="{Binding Strings.ConfigDictation, ElementName=Root}"
+                                       TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Secondary}"
                                        FontSize="{StaticResource Font.Size.Caption}" />
-                            <TextBox Margin="0,5,0,0"
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource TextBox.Shortcut}"
+                                     AutomationProperties.Name="{Binding Strings.ConfigDictation, ElementName=Root}"
+                                     AutomationProperties.HelpText="{Binding AgentShortcutsDescription}"
+                                     ToolTip="{Binding AgentShortcutsDescription}"
                                      Text="{Binding DictationShortcut, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Margin="8,0,0,0">
                             <TextBlock Text="{Binding Strings.ConfigModelPicker, ElementName=Root}"
+                                       TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Secondary}"
                                        FontSize="{StaticResource Font.Size.Caption}" />
-                            <TextBox Margin="0,5,0,0"
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource TextBox.Shortcut}"
+                                     AutomationProperties.Name="{Binding Strings.ConfigModelPicker, ElementName=Root}"
+                                     AutomationProperties.HelpText="{Binding AgentShortcutsDescription}"
+                                     ToolTip="{Binding AgentShortcutsDescription}"
                                      Text="{Binding ModelPickerShortcut, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                     </UniformGrid>

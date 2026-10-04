@@ -175,25 +175,32 @@ internal static class CodexAutomationLocator
     internal static AutomationElement? FindComposerEditor(
         AutomationElement window)
     {
-        var groups = window.FindAll(
+        // Chromium exposes role="textbox" composers as Edit; older editors
+        // used Group or Document. The ProseMirror token identifies the editor.
+        var editors = window.FindAll(
             TreeScope.Descendants,
-            new PropertyCondition(
-                AutomationElement.ControlTypeProperty,
-                ControlType.Group));
-        foreach (AutomationElement group in groups)
+            new OrCondition(
+                new PropertyCondition(
+                    AutomationElement.ControlTypeProperty,
+                    ControlType.Edit),
+                new PropertyCondition(
+                    AutomationElement.ControlTypeProperty,
+                    ControlType.Group),
+                new PropertyCondition(
+                    AutomationElement.ControlTypeProperty,
+                    ControlType.Document)));
+        foreach (AutomationElement editor in editors)
         {
             try
             {
-                var className = group.Current.ClassName ?? string.Empty;
+                var className = editor.Current.ClassName ?? string.Empty;
                 if (
-                    group.Current.IsEnabled &&
-                    !group.Current.IsOffscreen &&
-                    !group.Current.BoundingRectangle.IsEmpty &&
-                    className
-                        .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                        .Contains("ProseMirror", StringComparer.Ordinal))
+                    editor.Current.IsEnabled &&
+                    !editor.Current.IsOffscreen &&
+                    !editor.Current.BoundingRectangle.IsEmpty &&
+                    ComposerDialPolicy.HasClassToken(className, "ProseMirror"))
                 {
-                    return group;
+                    return editor;
                 }
             }
             catch (ElementNotAvailableException)

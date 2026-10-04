@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codex-micro-keypad",
+  "version": "0.3.2",
+  "description": "Original Codex Micro keypad with callable software controls. Some device and composer operations are unavailable without HID.",
+  "author": { "name": "Agent Controller" },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Codex Micro Keypad",
+        "shortDescription": "原生控制 · 独立小键盘",
+        "developerName": "Agent Controller",
+        "category": "Productivity",
+        "capabilities": ["Interactive"],
+        "defaultPrompt": "打开 Codex Micro 小键盘，并列出可用操作",
+        "brandColor": "#9BBFB3"
+      }
+    }
+  }
+}

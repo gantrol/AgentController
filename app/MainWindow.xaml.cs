@@ -20,7 +20,6 @@ using CodexController.Presentation;
 using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
 using CodexController.Services;
-using CodexController.Services.Micro;
 using CodexController.ViewModels;
 using CodexController.Views;
 using Forms = System.Windows.Forms;
@@ -65,7 +64,6 @@ public partial class MainWindow : Window
     private readonly ThreadNavigationCoordinator _threadNavigation;
     private readonly BridgeEventHub _bridgeEvents;
     private readonly LocalizationService _localization;
-    private readonly MicroInputService _microInput;
     private readonly CodexCurrentControlExecutor _currentControlExecutor;
     private readonly ControllerProfileRegistry _controllerProfiles;
     private readonly AgentTargetSelection _agentSelection;
@@ -110,8 +108,8 @@ public partial class MainWindow : Window
     private SidebarReturnFrame? _sidebarReturnFrame;
     private ProjectDisclosureLease? _projectDisclosureLease;
     private bool _dictationInjected;
-    private ComposerAutomationChannel _dictationAutomationChannel =
-        ComposerAutomationChannel.Unknown;
+    private PhysicalDictationSession? _dictationSession;
+    private long _dictationRequestGeneration;
     private string? _dictationInputGlyph;
     private bool _rightStickPressHeld;
     private bool _rightStickHoldTriggered;
@@ -196,8 +194,12 @@ public partial class MainWindow : Window
             ThreadNavigation_NoticePublished;
         _bridgeEvents = dependencies.BridgeEvents;
         _localization = dependencies.Localization;
-        _microInput = dependencies.MicroInput;
-        _currentControlExecutor = new(_microInput);
+        _currentControlExecutor = new(() =>
+            _virtualDialMenuOpen
+                ? _composerAutomation.DialNavigate(
+                    ComposerDialNavigation.Right,
+                    _settings)
+                : _composerAutomation.DialPress(_settings));
         _controllerProfiles = dependencies.ControllerProfiles;
         _configSaveTimer = new DispatcherTimer
         {
@@ -218,6 +220,8 @@ public partial class MainWindow : Window
             QueueSettingsSave,
             ChangeLanguage);
         InitializeComponent();
+        DevicePage.SidebarSectionRequested += (_, section) => SetSidebarScope(
+            section.Scope, showFeedback: false, preferredId: section.EntryId);
         ConfigPage.DataContext = _configPageViewModel;
         ConfigPage.Strings = _localization.Strings;
         SettingsPage.DataContext = _settingsPageViewModel;
@@ -241,6 +245,7 @@ public partial class MainWindow : Window
                 showFeedback: false),
             RefreshTutorialDispatch);
         DevicePage.DataContext = _devicePageViewModel;
+        InitializeTutorialInput();
         // Set the shell DataContext only after every page has its own model.
         // Otherwise DevicePage briefly inherits LocalizedStrings and footer
         // bindings emit false property-path errors during construction.
@@ -375,6 +380,13 @@ public partial class MainWindow : Window
         _latestControllerState = state;
         UpdateControllerProfile(state);
         UpdateControllerVisual(state);
+
+        if (_tutorialVoiceSession is not null || _tutorialExecuting)
+        {
+            _controllerInteraction.CommitButtonHistory(state.Buttons, state.Buttons);
+            _controllerInteraction.RequireNeutralRouting();
+            return;
+        }
 
         if (!state.IsConnected)
         {
@@ -1122,27 +1134,8 @@ public partial class MainWindow : Window
 
     private void OpenAdjacentAgentTask(int direction)
     {
-        var tasks = _sidebarEntries
-            .Where(entry =>
-                !string.IsNullOrWhiteSpace(entry.ThreadId))
-            .GroupBy(
-                entry => entry.ThreadId!,
-                StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToList();
-        if (tasks.Count == 0)
-        {
-            tasks = _snapshot.Threads
-                .Select(thread => new SidebarEntry(
-                    thread.Id,
-                    thread.Title,
-                    string.Empty,
-                    SidebarLayer.Tasks,
-                    thread.Id,
-                    thread.ProjectPath,
-                    thread.NativeTitle))
-                .ToList();
-        }
+        var tasks = SidebarTaskOrder.Flatten(_workspaceReader.BuildUnifiedEntries(_snapshot),
+            path => _workspaceReader.BuildEntries(_snapshot, SidebarScope.ProjectTasks, path));
 
         if (tasks.Count == 0)
         {
@@ -1170,8 +1163,21 @@ public partial class MainWindow : Window
                 : 0
             : (currentIndex + Math.Sign(direction) + tasks.Count) %
               tasks.Count;
+        if (currentIndex < 0 && DevicePage.SelectedEntry is { IsProject: true, ProjectPath: { } path })
+        {
+            var children = tasks.Select((entry, index) => (entry, index)).Where(item =>
+                string.Equals(item.entry.ProjectPath, path, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (children.Length > 0) nextIndex = direction < 0 ? children[^1].index : children[0].index;
+        }
         var next = tasks[nextIndex];
-        SelectVisibleThread(next.ThreadId!);
+        var thread = _snapshot.Threads.FirstOrDefault(item => item.Id == next.ThreadId);
+        if (thread is not null)
+        {
+            RestoreProjectDisclosureLease();
+            PrepareSidebarAnchor(thread);
+            RebuildSidebarEntries(forceNavigationRebuild: true, preferredId: next.Id);
+            UpdateLayerTabs();
+        }
         _ = OpenThreadAsync(
             next.ThreadId!,
             next.Title,
@@ -1202,11 +1208,16 @@ public partial class MainWindow : Window
 
     private void ExecuteFastToggle()
     {
+        _ = ExecuteFastToggleAsync();
+    }
+
+    private async Task ExecuteFastToggleAsync()
+    {
         CancelPendingComposerSelection(cancelComposerPicker: false);
         var previousSpeedIndex = _speedIndex;
         var fast = previousSpeedIndex == 0;
         _speedIndex = fast ? 1 : 0;
-        _devicePageViewModel.UpdateRightModeValue(
+        _devicePageViewModel.UpdateRightModeStatus(
             _localization.Strings.Format(
                 StringKeys.MessageApplyingValue,
                 SpeedLabel(_speedIndex)));
@@ -1214,7 +1225,7 @@ public partial class MainWindow : Window
             _composerPickerMenuLikelyOpen ||
             IsVirtualDialContextActive;
         var cancellation = BeginComposerPickerAutomation();
-        _ = SetSimpleSpeedAsync(
+        await SetSimpleSpeedAsync(
             fast,
             menuWasLikelyOpen,
             previousSpeedIndex,
@@ -1841,7 +1852,7 @@ public partial class MainWindow : Window
 
         ResetRadialLayer(clearSuppression: true);
         ResetPushToTalk(stopDictation: true);
-        ResetVirtualDialInput(closeMenu: true);
+        if (!_tutorialDialActive) ResetVirtualDialInput(closeMenu: true);
 
         _controllerSession.Pause(
             requireNeutral:
@@ -2053,32 +2064,20 @@ public partial class MainWindow : Window
         _controllerHolds.CancelConversationBoundary();
     }
 
-    private void CycleRootSidebarScope()
+    private void CycleRootSidebarScope(bool showMenu = true)
     {
         _controllerInteraction.RequireLeftStickNeutral();
         _leftNavigationBlockedUntil =
             Environment.TickCount64 + BridgeTimings.GestureInputGuardMs;
-        var rootScope = _scope == SidebarScope.ProjectTasks
-            ? _sidebarReturnFrame?.Scope ?? SidebarScope.Projects
-            : ActiveSidebarNavigation
-                .SelectedEntry(_sidebarEntries)?
-                .NavigationScope ?? _scope;
-        var current = Array.IndexOf(RootSidebarScopes, rootScope);
         var rootEntries = _scope == SidebarScope.ProjectTasks
             ? _workspaceReader.BuildUnifiedEntries(_snapshot)
             : _sidebarEntries;
-        for (var offset = 1; offset <= RootSidebarScopes.Length; offset++)
+        var selectedId = _scope == SidebarScope.ProjectTasks
+            ? _selectedProjectPath : DevicePage.SelectedEntry?.Id;
+        if (SidebarTaskOrder.NextSection(rootEntries, selectedId) is { } next)
         {
-            var next =
-                (Math.Max(0, current) + offset) %
-                RootSidebarScopes.Length;
-            var candidate = RootSidebarScopes[next];
-            if (rootEntries.Any(entry =>
-                    entry.NavigationScope == candidate))
-            {
-                SetSidebarScope(candidate, showFeedback: true);
-                return;
-            }
+            SetSidebarScope(next.NavigationScope, showFeedback: false, preferredId: next.Id);
+            if (showMenu) ShowSidebarNavigationMenu();
         }
     }
 
@@ -2273,7 +2272,8 @@ public partial class MainWindow : Window
         _projectTasksPinnedOnly = false;
         _projectDisclosureLease = new ProjectDisclosureLease(
             project.Name,
-            project.IsPinned);
+            project.IsPinned,
+            _snapshot.SidebarLayout?.Sections.FirstOrDefault(section => section.ItemIds.Contains(project.Path, StringComparer.OrdinalIgnoreCase))?.Name);
         preferredThreadId ??=
             _projectTaskCursorIds.GetValueOrDefault(project.Path);
         RebuildSidebarEntries(
@@ -2465,6 +2465,11 @@ public partial class MainWindow : Window
             _selectedProjectPath = entry.ProjectPath;
             _devicePageViewModel.UpdateSidebarContextText(entry.Title);
         }
+
+        if (_scope != SidebarScope.ProjectTasks && entry.SectionName is { } sectionName)
+            _devicePageViewModel.UpdateSidebarContextText(sectionName);
+
+        UpdateDeviceSidebarSections();
 
         RememberCurrentSidebarCursor();
         AddEvent($"{ScopeLabel(_scope)} · {entry.Title}");
@@ -2815,8 +2820,7 @@ public partial class MainWindow : Window
             RestoreWindow();
             ShowPage(SettingsPage);
             SetSelectedNav(SettingsNavButton);
-            _devicePageViewModel.UpdateRightMode(
-                RightControlMode.Dial,
+            _devicePageViewModel.UpdateRightModeStatus(
                 _localization.Strings.ComposerDialSettingsOpened);
             Pulse(strength: 0.18);
         }
@@ -2890,44 +2894,14 @@ public partial class MainWindow : Window
     }
 
     private ComposerDialResult SendActiveEncoderSteps(int steps) =>
-        IsDeepSeekActive
-            ? _composerAutomation.DialStep(steps, _settings)
-            : MicroEncoderResult(_microInput.SendEncoderSteps(steps));
+        // Micro detents use positive for previous; Codex's software cursor
+        // uses positive for next. DeepSeek already maps raw Micro detents.
+        _composerAutomation.DialStep(
+            IsDeepSeekActive ? steps : -steps,
+            _settings);
 
     private ComposerDialResult SendActiveEncoderPress() =>
-        IsDeepSeekActive
-            ? _composerAutomation.DialPress(_settings)
-            : MicroEncoderResult(_microInput.SendEncoderPress());
-
-    private ComposerDialResult MicroEncoderResult(
-        MicroReportSendResult delivery)
-    {
-        var menuOpen = _virtualDialMenuOpen;
-        return delivery switch
-        {
-            MicroReportSendResult.Accepted or
-                MicroReportSendResult.OutcomeUnknown => new(
-                    true,
-                    "Codex Micro",
-                    IsMenuOpen: menuOpen,
-                    MenuWasPresent: menuOpen,
-                    StateVerified: false),
-            MicroReportSendResult.Rejected => new(
-                    false,
-                    "Codex Micro",
-                    IsMenuOpen: menuOpen,
-                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
-                    ErrorDetail: "micro.encoder-rejected",
-                    MenuWasPresent: menuOpen),
-            _ => new(
-                    false,
-                    "Codex Micro",
-                    IsMenuOpen: menuOpen,
-                    Error: AgentAutomationErrorCodes.InputInjectionFailed,
-                    ErrorDetail: "micro.encoder-unavailable",
-                    MenuWasPresent: menuOpen),
-        };
-    }
+        _composerAutomation.DialPress(_settings);
 
     private async Task PumpVirtualDialEncoderStepsAsync()
     {
@@ -2946,9 +2920,7 @@ public partial class MainWindow : Window
                 var generation =
                     Volatile.Read(ref _virtualDialGeneration);
                 var sendStarted = Stopwatch.GetTimestamp();
-                // Codex remains HID-only. DeepSeek uses its declared Harness
-                // composer actions; neither route can fall through to the
-                // other Agent's keyboard or UI automation channel.
+                // The selected Agent owns its software composer operations.
                 var result = await RunVirtualDialAutomationAsync(
                         () => SendActiveEncoderSteps(
                             intent.Value.Direction))
@@ -3037,6 +3009,7 @@ public partial class MainWindow : Window
 
     private bool CanExecuteCurrentControlIntent(
         ComposerDialNavigation navigation) =>
+        IsDeepSeekActive ||
         CurrentControlActionPolicy.Resolve(
             _microReadback,
             navigation) != CurrentControlAction.None;
@@ -3068,9 +3041,13 @@ public partial class MainWindow : Window
                 }
 
                 var result = await RunVirtualDialAutomationAsync(
-                        () => _currentControlExecutor.Execute(
-                            _microReadback,
-                            intent.Value.Navigation))
+                        () => IsDeepSeekActive
+                            ? _composerAutomation.DialNavigate(
+                                intent.Value.Navigation,
+                                _settings)
+                            : _currentControlExecutor.Execute(
+                                _microReadback,
+                                intent.Value.Navigation))
                     .ConfigureAwait(true);
                 if (
                     generation ==
@@ -3116,8 +3093,7 @@ public partial class MainWindow : Window
         CancelPendingComposerSelection();
         _virtualDialOpenPending = true;
         _virtualDialCancelRequested = false;
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
+        _devicePageViewModel.UpdateRightModeStatus(
             RadialText("正在打开…", "Opening…"));
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
@@ -3162,8 +3138,7 @@ public partial class MainWindow : Window
         PresentVirtualDialResult(result);
         if (result.Succeeded)
         {
-            _virtualDialSessionActive =
-                !IsDeepSeekActive || result.IsMenuOpen;
+            _virtualDialSessionActive = result.IsMenuOpen;
             if (!IsDeepSeekActive)
             {
                 QueueMicroReadback();
@@ -3218,13 +3193,6 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                if (
-                    readback.Surface == CodexMicroSurfaceKind.None &&
-                    !readback.SelectionVerified)
-                {
-                    readback = CodexMicroReadback.Closed;
-                }
-
                 ApplyMicroReadback(readback);
 
                 if (
@@ -3264,18 +3232,41 @@ public partial class MainWindow : Window
     {
         var menuWasOpen = _virtualDialMenuOpen;
         _microReadback = readback;
-        SetVirtualDialMenuOpen(
-            readback.IsMenuOpen,
-            readback.Surface == CodexMicroSurfaceKind.Dialog);
-        if (!string.IsNullOrWhiteSpace(readback.DisplayText))
+        if (
+            readback.SelectionVerified ||
+            readback.Surface != CodexMicroSurfaceKind.None)
+        {
+            SetVirtualDialMenuOpen(
+                readback.IsMenuOpen,
+                readback.Surface == CodexMicroSurfaceKind.Dialog);
+        }
+
+        if (readback.SelectionVerified && !readback.IsMenuOpen)
+        {
+            _virtualDialSessionActive = false;
+        }
+        if (!readback.SelectionVerified)
+        {
+            _devicePageViewModel.InvalidateRightModeValue();
+            _devicePageViewModel.UpdateRightModeStatus(
+                _localization.Strings.Get(StringKeys.ComposerSelectionUnverified),
+                isError: true);
+        }
+        else if (!string.IsNullOrWhiteSpace(readback.DisplayText))
         {
             _devicePageViewModel.UpdateRightMode(
                 RightControlMode.Dial,
                 readback.DisplayText);
         }
+        else if (readback.Surface == CodexMicroSurfaceKind.None)
+        {
+            _devicePageViewModel.InvalidateRightModeValue();
+            _devicePageViewModel.UpdateRightModeStatus(string.Empty);
+        }
 
         if (
             menuWasOpen &&
+            readback.SelectionVerified &&
             !readback.IsMenuOpen &&
             !_virtualDialSessionActive)
         {
@@ -3302,8 +3293,28 @@ public partial class MainWindow : Window
         CancelPendingComposerSelection();
         var generation =
             Volatile.Read(ref _virtualDialGeneration);
+        var composer = _composerAutomation;
         var result = await RunVirtualDialAutomationAsync(
-                SendActiveEncoderPress)
+                () =>
+                {
+                    if (generation != Volatile.Read(ref _virtualDialGeneration))
+                    {
+                        return new ComposerDialResult(
+                            false,
+                            Error: AgentAutomationErrorCodes.OperationCanceled,
+                            StateVerified: false);
+                    }
+
+                    var probe = composer.ProbeDialState();
+                    if (!probe.Succeeded || !probe.StateVerified)
+                    {
+                        return probe with { StateVerified = false };
+                    }
+
+                    return probe.IsMenuOpen
+                        ? composer.DialSelect(_settings)
+                        : probe;
+                })
             .ConfigureAwait(true);
         if (
             generation !=
@@ -3479,9 +3490,7 @@ public partial class MainWindow : Window
         var detail = RadialText(
             "请稍候，B 键暂时不可用。",
             "Please wait; B is temporarily disabled.");
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
-            title);
+        _devicePageViewModel.UpdateRightModeStatus(title);
         AddEvent($"{title} · {detail}");
         _overlayWindow?.ShowMessage(
             title,
@@ -3579,9 +3588,9 @@ public partial class MainWindow : Window
                     result.RequiresConfirmation);
             }
             var failure = VirtualDialFailureLabel(result);
-            _devicePageViewModel.UpdateRightMode(
-                RightControlMode.Dial,
-                failure);
+            if (!result.StateVerified)
+                _devicePageViewModel.InvalidateRightModeValue();
+            _devicePageViewModel.UpdateRightModeStatus(failure, isError: true);
             AddEvent(
                 VirtualDialEventText(failure, result));
             if (ShouldShowVirtualDialFailure(result))
@@ -3606,9 +3615,17 @@ public partial class MainWindow : Window
         var value = string.IsNullOrWhiteSpace(result.ControlName)
             ? _localization.Strings.ComposerDialReady
             : result.ControlName;
-        _devicePageViewModel.UpdateRightMode(
-            RightControlMode.Dial,
-            value);
+        if (result.StateVerified)
+        {
+            _devicePageViewModel.UpdateRightMode(RightControlMode.Dial, value);
+        }
+        else
+        {
+            _devicePageViewModel.InvalidateRightModeValue();
+            _devicePageViewModel.UpdateRightModeStatus(
+                _localization.Strings.Get(StringKeys.ComposerSelectionUnverified),
+                isError: true);
+        }
         AddEvent(
             VirtualDialEventText(value, result));
         Pulse(strength: result.IsMenuOpen ? 0.18 : 0.12);
@@ -3719,6 +3736,9 @@ public partial class MainWindow : Window
 
     private void ResetVirtualDialInput(bool closeMenu)
     {
+        _tutorialDialActive = false;
+        _devicePageViewModel.InvalidateRightModeValue();
+        _devicePageViewModel.UpdateRightModeStatus(string.Empty);
         var hadDialContext = IsVirtualDialContextActive;
         var hadPendingOpen = _virtualDialOpenPending;
         Interlocked.Increment(ref _virtualDialGeneration);
@@ -3779,8 +3799,7 @@ public partial class MainWindow : Window
             _composerCatalog is null ||
             _modelIndex < 0 || _modelIndex >= _composerCatalog.Models.Count)
         {
-            return _localization.Strings.ComposerAgentNotForeground(
-                _activeAgent.DisplayName);
+            return string.Empty;
         }
 
         var model = _composerCatalog.Models[_modelIndex];
@@ -3915,7 +3934,8 @@ public partial class MainWindow : Window
         if (!result.Succeeded)
         {
             var failure = SimplePickerFailureLabel(result);
-            _devicePageViewModel.UpdateRightModeValue(failure);
+            _devicePageViewModel.InvalidateRightModeValue();
+            _devicePageViewModel.UpdateRightModeStatus(failure, isError: true);
             AddEvent($"{title} · {failure}");
             ShowComposerPickerOverlayIfNeeded(
                 title,
@@ -4123,8 +4143,9 @@ public partial class MainWindow : Window
 
     private void StartDictation(string voiceGlyph)
     {
+        Interlocked.Increment(ref _dictationRequestGeneration);
         _dictationInputGlyph = voiceGlyph;
-        DevicePage.SetVoiceHalo(active: true);
+        _devicePageViewModel.UpdateVoiceState(VoicePresentationState.Starting);
         _pushToTalkAutomation.RequestStart();
         EnsurePushToTalkAutomationPump();
     }
@@ -4138,7 +4159,9 @@ public partial class MainWindow : Window
 
         var voiceGlyph =
             _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
+        Interlocked.Increment(ref _dictationRequestGeneration);
         _pushToTalkAutomation.RequestStop();
+        _devicePageViewModel.UpdateVoiceState(VoicePresentationState.Stopping);
         AddEvent(
             physicalRelease
                 ? _localization.Strings.Format(
@@ -4179,25 +4202,44 @@ public partial class MainWindow : Window
                 {
                     case PushToTalkAutomationAction.StartDictation:
                     {
+                        _devicePageViewModel.UpdateVoiceState(VoicePresentationState.Starting);
+                        var session = new PhysicalDictationSession(
+                            _activeAgent.Id,
+                            _composerAutomation,
+                            _agentShortcuts,
+                            _settings.DictationShortcut,
+                            Volatile.Read(ref _dictationRequestGeneration));
+                        _dictationSession = session;
                         var result =
                             await ExecuteDictationAutomationAsync(
-                                    microPressed: true,
+                                    session,
+                                    _settings,
                                     BridgeTimings.DictationStartTimeoutMs,
                                     PushToTalkAutomationPolicy
                                         .AllowsShortcutFallback(action),
                                     PushToTalkAutomationPolicy
                                         .StartActionNames,
-                                    ComposerAutomationChannel.Unknown,
                                     closeDialBeforeFallback:
                                         IsVirtualDialContextActive)
                                 .ConfigureAwait(true);
                         _pushToTalkAutomation.Complete(
                             action,
                             result.Executed);
-                        _dictationAutomationChannel =
-                            _pushToTalkAutomation.IsDictating
-                                ? result.Automation.Channel
-                                : ComposerAutomationChannel.Unknown;
+                        if (!result.Executed)
+                        {
+                            _dictationSession = null;
+                        }
+                        else if (
+                            session.RequestGeneration !=
+                                Volatile.Read(ref _dictationRequestGeneration) &&
+                            _pushToTalkAutomation.WantsDictation)
+                        {
+                            // A newer hold arrived before this start finished.
+                            // Release the owned recording before starting the
+                            // new request on the currently selected Agent.
+                            _pushToTalkAutomation.RequestStop();
+                            _pushToTalkAutomation.RequestStart();
+                        }
                         _dictationInjected =
                             _pushToTalkAutomation.IsDictating;
                         DevicePage.SetVoiceHalo(
@@ -4207,36 +4249,47 @@ public partial class MainWindow : Window
                     }
                     case PushToTalkAutomationAction.StopDictation:
                     {
-                        var sessionChannel =
-                            _dictationAutomationChannel;
-                        var result =
-                            await ExecuteDictationAutomationAsync(
-                                    microPressed: false,
+                        _devicePageViewModel.UpdateVoiceState(VoicePresentationState.Stopping);
+                        var session = _dictationSession;
+                        // An owned recording must be releasable after focus,
+                        // bridge enablement, or selected Agent changes.
+                        var cleanupSettings = new AppSettings
+                        {
+                            BridgeEnabled = true,
+                            OnlyWhenCodexForeground = false,
+                        };
+                        var result = session is null
+                            ? new DictationAutomationExecution(
+                                false,
+                                new ComposerAutomationResult(
+                                    false,
+                                    AgentAutomationErrorCodes.OperationCanceled,
+                                    "dictation-session-unavailable"))
+                            : await ExecuteDictationAutomationAsync(
+                                    session,
+                                    cleanupSettings,
                                     BridgeTimings.DictationStopTimeoutMs,
-                                    PushToTalkAutomationPolicy
-                                        .AllowsShortcutFallback(action),
+                                    allowShortcutFallback: false,
                                     PushToTalkAutomationPolicy
                                         .StopActionNames,
-                                    _dictationAutomationChannel,
                                     closeDialBeforeFallback: false)
                                 .ConfigureAwait(true);
                         var stopped =
                             result.Executed ||
-                            sessionChannel !=
-                                ComposerAutomationChannel.MicroHid &&
-                            _composerAutomation.IsActionAvailable(
-                                PushToTalkAutomationPolicy
-                                    .StartActionNames
-                                    .ToArray());
+                            session is not null &&
+                            await Task.Run(() =>
+                                    session.Composer.IsActionAvailable(
+                                        PushToTalkAutomationPolicy
+                                            .StartActionNames
+                                            .ToArray()))
+                                .ConfigureAwait(true);
                         _pushToTalkAutomation.Complete(
                             action,
                             stopped);
-                        if (!_pushToTalkAutomation.IsDictating)
+                        if (stopped)
                         {
-                            _dictationAutomationChannel =
-                                ComposerAutomationChannel.Unknown;
+                            _dictationSession = null;
                         }
-
                         _dictationInjected =
                             _pushToTalkAutomation.IsDictating;
                         DevicePage.SetVoiceHalo(
@@ -4259,10 +4312,11 @@ public partial class MainWindow : Window
                 !_pushToTalkAutomation.WantsDictation &&
                 !_pushToTalkAutomation.IsDictating)
             {
-                _dictationAutomationChannel =
-                    ComposerAutomationChannel.Unknown;
                 _dictationInputGlyph = null;
                 DevicePage.SetVoiceHalo(active: false);
+                if (_devicePageViewModel.VoiceState is VoicePresentationState.Starting
+                    or VoicePresentationState.Recording or VoicePresentationState.Stopping)
+                    _devicePageViewModel.UpdateVoiceState(VoicePresentationState.Idle);
             }
 
             if (
@@ -4275,7 +4329,7 @@ public partial class MainWindow : Window
     }
 
     private async Task<ComposerDialResult>
-        CloseVirtualDialForPushToTalkAsync()
+        CloseVirtualDialForPushToTalkAsync(IComposerAutomation composer)
     {
         var hadDialSession = IsVirtualDialContextActive;
         Interlocked.Increment(ref _virtualDialGeneration);
@@ -4289,7 +4343,7 @@ public partial class MainWindow : Window
         _controllerInteraction.RequireRightStickNeutral();
 
         var closeTask = RunVirtualDialAutomationAsync(
-            () => _composerAutomation.DialCancel(
+            () => composer.DialCancel(
                 _settings,
                 menuExpected: hadDialSession));
         try
@@ -4324,87 +4378,27 @@ public partial class MainWindow : Window
 
     private async Task<DictationAutomationExecution>
         ExecuteDictationAutomationAsync(
-            bool microPressed,
+            PhysicalDictationSession session,
+            AppSettings settings,
             int timeoutMs,
             bool allowShortcutFallback,
             IReadOnlyList<string> actionNames,
-            ComposerAutomationChannel requiredChannel,
             bool closeDialBeforeFallback)
     {
-        var microSession =
-            !IsDeepSeekActive &&
-            requiredChannel == ComposerAutomationChannel.MicroHid;
-        var mayStartMicroSession =
-            !IsDeepSeekActive &&
-            requiredChannel == ComposerAutomationChannel.Unknown &&
-            _settings.BridgeEnabled &&
-            (
-                !_settings.OnlyWhenCodexForeground ||
-                _foregroundApplication.IsForeground
-            );
-        if (microSession || mayStartMicroSession)
+        if (allowShortcutFallback && !CanContinueDictationStart(session))
         {
-            var rearmingUnconfirmedPress =
-                microPressed &&
-                _microInput.HasUnconfirmedPushToTalkState;
-            var micro = _microInput.SendPushToTalk(microPressed);
-            if (
-                (
-                    microSession &&
-                    !microPressed &&
-                    micro is
-                        MicroReportSendResult.NotSent or
-                        MicroReportSendResult.OutcomeUnknown
-                ) ||
-                (
-                    rearmingUnconfirmedPress &&
-                    micro == MicroReportSendResult.NotSent
-                ))
-            {
-                await Task.Delay(
-                        BridgeTimings.MicroReleaseRetryDelayMs)
-                    .ConfigureAwait(true);
-                micro = _microInput.SendPushToTalk(pressed: false);
-            }
-
-            if (micro is
-                MicroReportSendResult.Accepted or
-                MicroReportSendResult.OutcomeUnknown)
-            {
-                return new(
-                    true,
-                    new ComposerAutomationResult(
-                        true,
-                        Channel: ComposerAutomationChannel.MicroHid));
-            }
-
-            if (micro == MicroReportSendResult.Rejected)
-            {
-                return new(
+            return new(
+                false,
+                new ComposerAutomationResult(
                     false,
-                    new ComposerAutomationResult(
-                        false,
-                        AgentAutomationErrorCodes.Unexpected,
-                        "micro.input-rejected",
-                        ComposerAutomationChannel.MicroHid));
-            }
-
-            if (microSession)
-            {
-                return new(
-                    false,
-                    new ComposerAutomationResult(
-                        false,
-                        AgentAutomationErrorCodes.InputInjectionFailed,
-                        "micro.input-not-sent",
-                        ComposerAutomationChannel.MicroHid));
-            }
+                    AgentAutomationErrorCodes.OperationCanceled,
+                    "dictation-start-canceled"));
         }
 
         if (closeDialBeforeFallback && allowShortcutFallback)
         {
             var closeResult =
-                await CloseVirtualDialForPushToTalkAsync()
+                await CloseVirtualDialForPushToTalkAsync(session.Composer)
                     .ConfigureAwait(true);
             if (!closeResult.Succeeded || closeResult.IsMenuOpen)
             {
@@ -4420,9 +4414,19 @@ public partial class MainWindow : Window
             }
         }
 
+        if (allowShortcutFallback && !CanContinueDictationStart(session))
+        {
+            return new(
+                false,
+                new ComposerAutomationResult(
+                    false,
+                    AgentAutomationErrorCodes.OperationCanceled,
+                    "dictation-start-canceled"));
+        }
+
         using var cancellation = new CancellationTokenSource();
-        var automationTask = _composerAutomation.InvokeActionAsync(
-            _settings,
+        var automationTask = session.Composer.InvokeActionAsync(
+            settings,
             timeoutMs,
             cancellation.Token,
             actionNames.ToArray());
@@ -4453,14 +4457,16 @@ public partial class MainWindow : Window
         var fallback = false;
         if (
             allowShortcutFallback &&
+            CanContinueDictationStart(session) &&
             !automation.Succeeded &&
             automation.Error !=
                 AgentAutomationErrorCodes.OperationCanceled)
         {
             fallback = await Task.Run(() =>
-                    _agentShortcuts.Execute(
-                        _settings.DictationShortcut,
-                        _settings))
+                    CanContinueDictationStart(session) &&
+                    session.Shortcuts.Execute(
+                        session.Shortcut,
+                        settings))
                 .ConfigureAwait(true);
             if (fallback)
             {
@@ -4474,6 +4480,13 @@ public partial class MainWindow : Window
             automation.Succeeded || fallback,
             automation);
     }
+
+    private bool CanContinueDictationStart(PhysicalDictationSession session) =>
+        session.RequestGeneration ==
+            Volatile.Read(ref _dictationRequestGeneration) &&
+        _pushToTalkAutomation.WantsDictation &&
+        _agentSelection.Active.Id == session.TargetId &&
+        _settings.BridgeEnabled;
 
     private void PresentDictationDialCloseFailure(
         ComposerDialResult result)
@@ -4496,6 +4509,13 @@ public partial class MainWindow : Window
     private void PresentDictationStartResult(
         DictationAutomationExecution result)
     {
+        _devicePageViewModel.UpdateVoiceState(result.Executed
+            ? _pushToTalkAutomation.WantsDictation
+                ? VoicePresentationState.Recording
+                : VoicePresentationState.Stopping
+            : result.Automation.ErrorDetail == "dictation-start-canceled"
+                ? VoicePresentationState.Idle
+                : VoicePresentationState.StartFailed);
         var voiceGlyph =
             _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
         if (result.Executed)
@@ -4543,6 +4563,11 @@ public partial class MainWindow : Window
     private void PresentDictationStopResult(
         DictationAutomationExecution result)
     {
+        _devicePageViewModel.UpdateVoiceState(result.Executed
+            ? _pushToTalkAutomation.WantsDictation
+                ? VoicePresentationState.Starting
+                : VoicePresentationState.Idle
+            : VoicePresentationState.StopFailed);
         var voiceGlyph =
             _dictationInputGlyph ?? Glyph(LogicalInput.LeftTrigger);
         AddEvent(
@@ -4565,6 +4590,13 @@ public partial class MainWindow : Window
     private sealed record DictationAutomationExecution(
         bool Executed,
         ComposerAutomationResult Automation);
+
+    private sealed record PhysicalDictationSession(
+        AgentId TargetId,
+        IComposerAutomation Composer,
+        IAgentShortcuts Shortcuts,
+        string Shortcut,
+        long RequestGeneration);
 
     private void SendPrompt()
     {
@@ -4632,7 +4664,9 @@ public partial class MainWindow : Window
                 DevicePage.SetVoiceHalo(active: false);
             }
 
+            Interlocked.Increment(ref _dictationRequestGeneration);
             _pushToTalkAutomation.RequestStop();
+            _devicePageViewModel.UpdateVoiceState(VoicePresentationState.Stopping);
             EnsurePushToTalkAutomationPump();
             _threadNavigation.ClearUndo();
             var cancelGlyph = Glyph(LogicalInput.FaceEast);
@@ -4803,6 +4837,9 @@ public partial class MainWindow : Window
 
     private void UpdateLocalizedUi()
     {
+        ConfigPage.AgentLogo = (System.Windows.Media.ImageSource)FindResource(
+            _activeAgent is DeepSeekAgentTarget ? "Logo.DeepSeekHarness" : "Logo.Codex");
+        ConfigPage.AgentName = _activeAgent.DisplayName;
         var strings = _localization.Strings;
         var agentName = _activeAgent.DisplayName;
         var projectGlyph = Glyph(LogicalInput.FaceNorth);
@@ -4838,7 +4875,7 @@ public partial class MainWindow : Window
             _activeControllerProfile.DisplayName,
             agentName);
         FooterVersionText.Text =
-            $"v1.1 · {strings.StatusLocalBridge}";
+            $"v{typeof(App).Assembly.GetName().Version?.ToString(3)} · {strings.StatusLocalBridge}";
 
         UpdateSelectedScopeText();
         UpdateRightModeUi();
@@ -4980,6 +5017,12 @@ public partial class MainWindow : Window
 
     private void PrepareSidebarAnchor(CodexThread currentThread)
     {
+        if (_snapshot.SidebarLayout?.Sections.Any(section => section.ItemIds.Contains(currentThread.Id)) == true)
+        {
+            _scope = SidebarScope.ProjectlessTasks;
+            _sidebarReturnFrame = null;
+            return;
+        }
         if (currentThread.IsPinned)
         {
             _scope = SidebarScope.PinnedTasks;
@@ -5007,7 +5050,8 @@ public partial class MainWindow : Window
                     project.Path);
                 _projectDisclosureLease = new ProjectDisclosureLease(
                     project.Name,
-                    project.IsPinned);
+                    project.IsPinned,
+                    _snapshot.SidebarLayout?.Sections.FirstOrDefault(section => section.ItemIds.Contains(project.Path, StringComparer.OrdinalIgnoreCase))?.Name);
                 return;
             }
         }
@@ -5304,7 +5348,20 @@ public partial class MainWindow : Window
             activeRootScope: activeScope,
             selectedProjectName: projectName,
             projectTasksPinnedOnly: _projectTasksPinnedOnly);
+        if (_scope != SidebarScope.ProjectTasks && DevicePage.SelectedEntry?.SectionName is { } sectionName)
+            _devicePageViewModel.UpdateSidebarContextText(sectionName);
+        UpdateDeviceSidebarSections();
     }
+
+    private void UpdateDeviceSidebarSections() =>
+        _devicePageViewModel.UpdateSidebarSections(
+            _scope == SidebarScope.ProjectTasks
+                ? _workspaceReader.BuildUnifiedEntries(_snapshot)
+                : _sidebarEntries,
+            _snapshot.SidebarLayout,
+            _scope == SidebarScope.ProjectTasks
+                ? _selectedProjectPath
+                : DevicePage.SelectedEntry?.Id);
 
     private void ApplySettingsToControls()
     {
@@ -5345,6 +5402,7 @@ public partial class MainWindow : Window
 
     private void UpdateCodexStatus()
     {
+        _ = RefreshTutorialAvailabilityAsync();
         var foreground = _foregroundApplication.IsForeground;
         TryAutoArmController(foreground);
         _ = ObserveCodexForeground(foreground);
@@ -5359,33 +5417,23 @@ public partial class MainWindow : Window
         }
 
         var strings = _localization.Strings;
-        var wakeGlyph = Glyph(LogicalInput.Menu);
-        var statusText =
+        var statusKey =
             !_settings.BridgeEnabled
-                ? strings.Get(
-                    StringKeys.MessageBridgeSafePreview)
+                ? StringKeys.StatusControlDisabled
                 : !_controllerWasConnected
-                ? strings.WaitingForReconnect
-                : foreground
-                    ? !_controllerSession.IsArmed
-                        ? strings.AgentForegroundLocked(
-                            _activeAgent.DisplayName,
-                            wakeGlyph)
-                        : !_controllerSession.IsActive
-                            ? strings.AgentForegroundNeutral(
-                                _activeAgent.DisplayName)
-                            : strings.AgentForegroundArmed(
-                                _activeAgent.DisplayName)
-                    : !_settings.OnlyWhenCodexForeground
-                        ? _controllerSession.IsArmed
-                            ? strings.BackgroundArmed
-                            : strings.BackgroundLocked(wakeGlyph)
-                        : _controllerSession.IsArmed
-                            ? strings.AgentAwayPaused(
-                                _activeAgent.DisplayName)
-                            : strings.AgentNotForeground(
-                                _activeAgent.DisplayName,
-                                wakeGlyph);
+                    ? StringKeys.StatusControlDisconnected
+                    : !_controllerSession.IsArmed
+                        ? foreground
+                            ? StringKeys.StatusControlLocked
+                            : StringKeys.StatusControlAwaitingAgent
+                        : _settings.OnlyWhenCodexForeground && !foreground
+                            ? StringKeys.StatusControlPaused
+                            : !_controllerSession.IsActive
+                                ? StringKeys.StatusControlNeutral
+                                : foreground
+                                    ? StringKeys.StatusControlActive
+                                    : StringKeys.StatusControlBackground;
+        var statusText = strings.Format(statusKey, _activeAgent.DisplayName);
         var isActive =
             _settings.BridgeEnabled &&
             _controllerSession.IsArmed &&
@@ -5561,7 +5609,7 @@ public partial class MainWindow : Window
         }
 
         var strings = _localization.Strings;
-        var menu = new Forms.ContextMenuStrip();
+        var menu = new Themes.Controls.TrayMenu();
         menu.Items.Add(
             strings.TrayOpenApplication,
             null,
@@ -5878,8 +5926,11 @@ public partial class MainWindow : Window
     private bool IsDeepSeekActive =>
         _activeAgent.Id == DeepSeekAgentTarget.DeepSeekId;
 
+    private void AgentTargetButton_Click(object sender, RoutedEventArgs e) => SwitchActiveAgent();
+
     private void SwitchActiveAgent()
     {
+        CancelTutorialInteractions();
         CancelBaseCancelHold(showFeedback: false);
         CancelConversationBoundaryHold();
         ResetRadialLayer(clearSuppression: true);
@@ -6014,8 +6065,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
+        CancelTutorialInteractions();
+        if (_tutorialClosing) { e.Cancel = true; return; }
+        if (_tutorialVoiceSession is not null)
+        {
+            e.Cancel = true;
+            _tutorialClosing = true;
+            await EndTutorialVoiceAsync();
+            _tutorialClosing = false;
+            Close();
+            return;
+        }
         if (!_exitRequested && _settings.MinimizeToTray)
         {
             ResetRadialLayer(clearSuppression: true);
@@ -6047,9 +6109,9 @@ public partial class MainWindow : Window
         ResetVirtualDialInput(closeMenu: true);
         CancelPendingComposerSelection();
         _pushToTalkAutomation.Reset();
+        Interlocked.Increment(ref _dictationRequestGeneration);
+        _dictationSession = null;
         _dictationInjected = false;
-        _dictationAutomationChannel =
-            ComposerAutomationChannel.Unknown;
         _dictationInputGlyph = null;
         _threadNavigation.NoticePublished -=
             ThreadNavigation_NoticePublished;
