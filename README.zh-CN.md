@@ -1,6 +1,8 @@
 # Agent Controller
 
-[![README in English](https://img.shields.io/badge/README-English-blue.svg)](README.md)
+[![English | Click here](public/images/badges/en-US.svg)](README.md)
+
+<a href="https://apps.microsoft.com/store/detail/9NR1TV2Z8L5C?cid=DevShareMCLPCS"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" alt="从 Microsoft Store 获取" width="200" /></a>
 
 Agent Controller，用手柄控制 Codex，或者你自行适配其他 Agent。支持 Xbox、八位堂等以 XInput 模式连接的手柄。
 

@@ -1,6 +1,8 @@
 # Agent Controller
 
-[![简体中文说明](https://img.shields.io/badge/README-简体中文-red.svg)](README.zh-CN.md)
+[![中文 | 点我](public/images/badges/zh-CN.svg)](README.zh-CN.md)
+
+<a href="https://apps.microsoft.com/store/detail/9NR1TV2Z8L5C?cid=DevShareMCLPCS"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft Store" width="200" /></a>
 
 Control Codex with a gamepad, or adapt Agent Controller to another agent yourself. Supports Xbox, 8BitDo, and other controllers connected in XInput mode.
 

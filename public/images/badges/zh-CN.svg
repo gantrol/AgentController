@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="24" viewBox="0 0 108 24" role="img" aria-label="中文：点我">
+  <title>中文：点我</title>
+  <path fill="#354943" d="M0 0h52v24H0z"/>
+  <path fill="#197869" d="M52 0h56v24H52z"/>
+  <g fill="#fff" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="12" font-weight="600" text-anchor="middle">
+    <text x="26" y="16">中文</text>
+    <text x="80" y="16">点我</text>
+  </g>
+</svg>
