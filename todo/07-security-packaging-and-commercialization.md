@@ -61,7 +61,7 @@
 - [ ] 明确 Agent Controller、Codex、Codex Micro、Work Louder 的品牌边界。
 - [ ] 商业发行不使用未经书面许可的 VID/PID、设备身份或私有包代码；购买自有 VID 不能替代 Codex detection allowlist。
 - [ ] 对“虚拟 HID 是否落入 USB-IF 认证范围”和“兼容性描述是否构成第三方产品冒用”取得专业法律意见；在此之前按更严格边界执行。
-- [ ] 对 PolyForm Noncommercial、商业授权和第三方贡献做专业法律审查。
+- [ ] 对 GPL-3.0-only 的分发与源码提供义务、第三方贡献及素材授权做专业法律审查。
 - [ ] 保留独立项目、不隶属、不背书的清晰声明。
 
 ### 商业交付

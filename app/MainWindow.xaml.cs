@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using AgentController.Application.Actions;
 using AgentController.Application.Navigation;
@@ -16,6 +17,7 @@ using CodexController.Controllers;
 using CodexController.Core.Bridge;
 using CodexController.Localization;
 using CodexController.Models;
+using CodexController.Native;
 using CodexController.Presentation;
 using CodexController.Presentation.Dispatch;
 using CodexController.Presentation.Feedback;
@@ -274,9 +276,15 @@ public partial class MainWindow : Window
             PromoteRadialLearningCue();
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        WindowSizing.DisableMaximize(
+            (HwndSource)PresentationSource.FromVisual(this));
+    }
+
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        UpdateShellForWindowState();
         _localization.SetLanguage(_settings.Language);
         _localization.PropertyChanged +=
             Localization_PropertyChanged;
@@ -4784,13 +4792,6 @@ public partial class MainWindow : Window
     private void UpdateControllerVisual(ControllerState state)
     {
         _devicePageViewModel.UpdateControllerState(state);
-        ControllerStatusDot.SetResourceReference(
-            System.Windows.Shapes.Shape.FillProperty,
-            state.IsConnected
-                ? "Brush.Status.Success"
-                : "Brush.Status.Idle");
-        ControllerStatusText.Text =
-            _devicePageViewModel.ControllerStatusText;
         DevicePage.RenderControllerState(
             state,
             _settings.DeadZone);
@@ -5693,7 +5694,6 @@ public partial class MainWindow : Window
 
         if (e.ClickCount == 2)
         {
-            ToggleWindowState();
             e.Handled = true;
             return;
         }
@@ -5714,32 +5714,9 @@ public partial class MainWindow : Window
         WindowState = WindowState.Minimized;
     }
 
-    private void MaximizeButton_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleWindowState();
-    }
-
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
-    }
-
-    private void ToggleWindowState()
-    {
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
-    }
-
-    private void UpdateShellForWindowState()
-    {
-        var maximized = WindowState == WindowState.Maximized;
-        CrystalShell.Margin = maximized
-            ? new Thickness(7)
-            : new Thickness(18);
-        CrystalShell.CornerRadius = maximized
-            ? new CornerRadius(18)
-            : new CornerRadius(28);
     }
 
     private void BridgeEnabledCheckBox_Changed(
@@ -6054,7 +6031,12 @@ public partial class MainWindow : Window
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
-        UpdateShellForWindowState();
+        if (WindowState == WindowState.Maximized)
+        {
+            WindowState = WindowState.Normal;
+            return;
+        }
+
         if (
             WindowState == WindowState.Minimized &&
             _settings.MinimizeToTray)

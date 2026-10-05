@@ -4,7 +4,7 @@
   "version": "0.3.2",
   "description": "Original Codex Micro keypad with callable software controls. Some device and composer operations are unavailable without HID.",
   "author": { "name": "Agent Controller" },
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "GPL-3.0-only",
   "extensions": {
     "com.openai": {
       "interface": {

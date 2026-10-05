@@ -1,0 +1,42 @@
+{
+  "productName": "Agent Controller",
+  "category": "Productivity",
+  "locales": {
+    "en-US": {
+      "shortDescription": "Control Codex and DeepSeek Harness with a gamepad: browse chats, switch models, and trigger common actions.",
+      "description": "Use a gamepad to navigate your coding agent. Agent Controller connects compatible Windows controllers to Codex Desktop and DeepSeek Harness, with a desktop panel for button mappings, chat navigation and settings.\n\nBrowse projects and chats, return to the current agent, choose supported model and reasoning settings, and trigger common actions from controller buttons. Layered controls put additional commands on shoulder and trigger combinations. Adjust dead zones, repeat timing, haptic feedback and text size. The interface supports English and Simplified Chinese.\n\nRequires Windows 10 build 19041 or later, or Windows 11, on an x64 PC. A compatible Windows gamepad and a separately installed, configured agent application are required for gamepad control. Agent accounts and subscriptions are not included. Available actions depend on the agent, its version, permissions and current state. Voice shortcuts invoke the target application's voice feature.\n\nThe Microsoft Store package includes the .NET runtime. This is an independent third-party project, not affiliated with or endorsed by OpenAI, DeepSeek or controller manufacturers. Product names and trademarks belong to their respective owners. Screenshots show example data.\n\nSource code is publicly available on GitHub under the GNU General Public License v3.0 only (GPL-3.0-only).\nSource and project information: https://github.com/gantrol/AgentController\nBug reports and feature requests: https://github.com/gantrol/AgentController/issues\nLicense terms: https://github.com/gantrol/AgentController/blob/main/LICENSE",
+      "features": [
+        "Browse projects and chats with a compatible gamepad.",
+        "Access agent actions through button and shoulder combinations.",
+        "Adjust supported model and reasoning settings.",
+        "Customize controller response, haptics and interface text size."
+      ],
+      "captions": {
+        "device": "Gamepad overview and project navigation. Example data.",
+        "actions": "Layered action mappings for controller buttons. Example data.",
+        "settings": "Adjust controller response and application preferences."
+      },
+      "additionalLicenseTerms": "GNU General Public License v3.0 only (GPL-3.0-only). See the LICENSE included with the application and https://github.com/gantrol/AgentController/blob/main/LICENSE"
+    },
+    "zh-CN": {
+      "shortDescription": "用手柄控制 Codex 和 DeepSeek Harness：浏览会话、切换模型，并触发常用操作。",
+      "description": "用手柄操作你的编程助手。Agent Controller 将兼容的 Windows 手柄连接到 Codex 桌面应用和 DeepSeek Harness，并提供按键映射、会话导航与设置面板。\n\n浏览项目与会话、唤起当前 Agent、选择受支持的模型与推理设置，通过手柄按键触发常用操作。肩键和扳机组合提供更多分层命令，可调整死区、重复间隔、震动反馈与文字大小。界面支持简体中文和英语。\n\n需要 Windows 10 build 19041 或更高版本，或 Windows 11 x64。手柄控制需要兼容的 Windows 手柄，以及另行安装并配置的 Agent 应用。不包含 Agent 账号或订阅。操作可用性取决于 Agent、版本、权限及当前状态。语音快捷操作调用目标应用自身的语音功能。\n\nMicrosoft Store 包自带 .NET 运行时。本项目为独立第三方项目，与 OpenAI、DeepSeek 及手柄厂商无隶属关系，也未获得其背书。相关名称与商标归各自权利人所有。配图使用示例数据。\n\n源码已在 GitHub 公开，采用 GNU General Public License v3.0 only（GPL-3.0-only）。\n源码与项目信息：https://github.com/gantrol/AgentController\n问题反馈与功能建议：https://github.com/gantrol/AgentController/issues\n许可条款：https://github.com/gantrol/AgentController/blob/main/LICENSE",
+      "features": [
+        "使用兼容手柄浏览项目与会话。",
+        "通过按键、肩键和扳机组合访问 Agent 操作。",
+        "调整受支持的模型与推理设置。",
+        "自定义手柄响应、震动反馈与界面字号。"
+      ],
+      "captions": {
+        "device": "手柄总览与项目导航，使用示例数据。",
+        "actions": "查看手柄按键的分层动作映射，使用示例数据。",
+        "settings": "调整手柄响应与应用偏好。"
+      },
+      "additionalLicenseTerms": "采用 GNU General Public License v3.0 only（GPL-3.0-only）。完整条款见应用随附的 LICENSE 文件及 https://github.com/gantrol/AgentController/blob/main/LICENSE"
+    }
+  },
+  "websiteUrl": "https://github.com/gantrol/AgentController",
+  "supportUrl": "https://github.com/gantrol/AgentController/issues",
+  "licenseUrl": "https://github.com/gantrol/AgentController/blob/main/LICENSE",
+  "license": "GPL-3.0-only"
+}

@@ -2,6 +2,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CodexController.Models;
 using CodexController.Controllers;
@@ -11,9 +12,79 @@ namespace CodexController.Views;
 public partial class DevicePageView :
     System.Windows.Controls.UserControl
 {
+    public static readonly DependencyProperty IsSidebarExpandedProperty =
+        DependencyProperty.Register(nameof(IsSidebarExpanded), typeof(bool), typeof(DevicePageView),
+            new PropertyMetadata(true, OnSidebarExpandedChanged));
+
+    private int _sidebarTransitionVersion;
+
     public DevicePageView()
     {
         InitializeComponent();
+        IsVisibleChanged += (_, _) => UpdateSidebarLayout(animate: false);
+        Unloaded += (_, _) => UpdateSidebarLayout(animate: false);
+    }
+
+    public bool IsSidebarExpanded
+    {
+        get => (bool)GetValue(IsSidebarExpandedProperty);
+        set => SetValue(IsSidebarExpandedProperty, value);
+    }
+
+    private static void OnSidebarExpandedChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e) =>
+        ((DevicePageView)sender).UpdateSidebarLayout(animate: true);
+
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e) =>
+        SetCurrentValue(IsSidebarExpandedProperty, !IsSidebarExpanded);
+
+    private void UpdateSidebarLayout(bool animate)
+    {
+        if (SidebarHost is null) return;
+
+        var version = ++_sidebarTransitionVersion;
+        var width = SidebarHost.Width;
+        var opacity = SidebarContent.Opacity;
+        SidebarHost.BeginAnimation(WidthProperty, null);
+        SidebarContent.BeginAnimation(OpacityProperty, null);
+
+        if (!IsSidebarExpanded && SidebarContent.IsKeyboardFocusWithin)
+            SidebarToggle.Focus();
+
+        var targetWidth = IsSidebarExpanded
+            ? SidebarContent.Width
+            : SidebarToggle.Width + SidebarToggle.Margin.Left + SidebarToggle.Margin.Right;
+        SidebarHost.Width = targetWidth;
+        SidebarContent.Opacity = IsSidebarExpanded ? 1 : 0;
+        SidebarContent.IsEnabled = IsSidebarExpanded;
+        SidebarContent.IsHitTestVisible = IsSidebarExpanded;
+
+        if (!animate || !IsVisible || !SystemParameters.ClientAreaAnimation || SystemParameters.HighContrast)
+        {
+            SidebarContent.Visibility = IsSidebarExpanded ? Visibility.Visible : Visibility.Hidden;
+            return;
+        }
+
+        // Keep the content at its full width while the viewport closes, so text
+        // and task rows do not reflow on every animation frame.
+        SidebarContent.Visibility = Visibility.Visible;
+        var resize = new DoubleAnimation(width, targetWidth, (Duration)FindResource("Duration.Base"))
+        {
+            EasingFunction = (IEasingFunction)FindResource("Ease.Out"),
+            FillBehavior = FillBehavior.Stop,
+        };
+        resize.Completed += (_, _) =>
+        {
+            if (version != _sidebarTransitionVersion) return;
+            SidebarContent.Visibility = IsSidebarExpanded ? Visibility.Visible : Visibility.Hidden;
+            SidebarHost.BeginAnimation(WidthProperty, null);
+            SidebarContent.BeginAnimation(OpacityProperty, null);
+        };
+        SidebarContent.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(opacity, SidebarContent.Opacity, (Duration)FindResource("Duration.Fast"))
+            {
+                FillBehavior = FillBehavior.Stop,
+            });
+        SidebarHost.BeginAnimation(WidthProperty, resize);
     }
 
     public event SelectionChangedEventHandler? SidebarSelectionChanged;

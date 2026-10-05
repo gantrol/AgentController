@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CodexController.Localization;
@@ -40,14 +42,25 @@ public sealed class SettingsPageViewDesignTests
         view.Arrange(new Rect(0, 0, 900, 680));
         view.UpdateLayout();
 
-        Assert.Equal("↺", view.RestoreDefaultsButton.Content);
+        var icon = Assert.IsType<ContentControl>(
+            view.RestoreDefaultsButton.Content);
+        Assert.Same(view.FindResource("Icon.Reset"), icon.Content);
+        Assert.False(Assert.IsAssignableFrom<Geometry>(icon.Content).Bounds.IsEmpty);
+        Assert.Equal(
+            "恢复默认值",
+            AutomationProperties.GetName(view.RestoreDefaultsButton));
+        Assert.Same(viewModel.ResetCommand, view.RestoreDefaultsButton.Command);
+        Assert.True(view.RestoreDefaultsButton.Focusable);
         Assert.Equal(
             "恢复默认值",
             view.RestoreDefaultsButton.ToolTip);
         Assert.Equal(
             Visibility.Visible,
             view.RestoreDefaultsButton.Visibility);
-        Assert.True(view.RestoreDefaultsButton.ActualWidth >= 38);
+        Assert.Same(view.FindResource("Button.Icon"), view.RestoreDefaultsButton.Style);
+        var iconButtonSize = Assert.IsType<double>(view.FindResource("Control.H.LG"));
+        Assert.Equal(iconButtonSize, view.RestoreDefaultsButton.ActualWidth);
+        Assert.Equal(iconButtonSize, view.RestoreDefaultsButton.ActualHeight);
         Assert.True(
             view.RestoreDefaultsButton
                 .TransformToAncestor(view)

@@ -15,6 +15,8 @@ public sealed record ControllerTutorialItem(
 {
     public string ActionId { get; init; } = string.Empty;
     public string Shortcut { get; init; } = Glyph;
+    public IReadOnlyList<ControllerTutorialItem> Directions { get; init; } = [];
+    public bool IsDirectionalPad => Directions.Count > 0;
     public string ToolTip => HasDescription
         ? $"{Shortcut} · {Title}\n{Description}"
         : $"{Shortcut} · {Title}";
@@ -328,7 +330,27 @@ public sealed class ControllerTutorialViewModel : ObservableObject
     public IReadOnlyList<ControllerTutorialItem> Items
     {
         get => _items;
-        private set => SetProperty(ref _items, value);
+        private set
+        {
+            if (SetProperty(ref _items, value)) OnPropertyChanged(nameof(LayoutItems));
+        }
+    }
+
+    public IReadOnlyList<ControllerTutorialItem> LayoutItems
+    {
+        get
+        {
+            if (!IsOverviewMode || _strings is null || Items.Count == 0) return Items;
+            return
+            [
+                .. Items.Take(2),
+                new("✚", _strings.Get(StringKeys.ControlBrowseMessages), string.Empty)
+                {
+                    Directions = Items.Where(item => item.Input is LogicalInput.DPadUp or LogicalInput.DPadDown).ToArray(),
+                },
+                .. Items.Skip(2),
+            ];
+        }
     }
 
     public void UpdateContext(
@@ -575,7 +597,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
     [
         new(
             Glyph(LogicalInput.LeftStick),
-            Text("左摇杆：浏览任务", "Left stick: browse tasks"),
+            _strings!.Get(StringKeys.ControlBrowseTasks),
             string.IsNullOrWhiteSpace(_leftStickHint)
                 ? Text(
                 "上下移动，左右进入或退出项目",
@@ -583,7 +605,7 @@ public sealed class ControllerTutorialViewModel : ObservableObject
                 : _leftStickHint, LogicalInput.LeftStick),
         new(
             Glyph(LogicalInput.RightStick),
-            Text("右摇杆：Micro 控制", "Right stick: Micro control"),
+            _strings.Get(StringKeys.ControlModelSettings),
             string.IsNullOrWhiteSpace(_rightStickHint)
                 ? Text(
                 "上或左选上一项，下或右选下一项；按 R3 进入或确认",
@@ -598,11 +620,13 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             Text("确认 / 控制设置", "Confirm / control settings"),
             RightStickPressGuide, LogicalInput.RightStickPress),
         new(
-            "↑", Text("上一条用户消息", "Previous user message"),
-            string.Empty, LogicalInput.DPadUp),
+            Glyph(LogicalInput.FaceSouth),
+            _strings!.Get(StringKeys.ControlPrimaryTitle),
+            _strings.ControlPrimaryDescription, LogicalInput.FaceSouth),
         new(
-            "↓", Text("下一条用户消息", "Next user message"),
-            string.Empty, LogicalInput.DPadDown),
+            Glyph(LogicalInput.FaceEast),
+            _strings.Get(StringKeys.ControlCancelUndoTitle),
+            _strings.ControlCancelUndoDescription, LogicalInput.FaceEast),
         new(
             LeftTriggerGlyph,
             Text("按住说话", "Hold to talk"),
@@ -612,15 +636,23 @@ public sealed class ControllerTutorialViewModel : ObservableObject
             Text("发送当前输入", "Send current input"),
             string.Empty, LogicalInput.FaceWest),
         new(
+            Glyph(LogicalInput.FaceNorth),
+            _strings.Get(StringKeys.ControlProjectContextTitle),
+            _strings.ControlProjectContextDescription, LogicalInput.FaceNorth),
+        new(
+            MenuGlyph,
+            Text("Menu：唤醒当前 Agent", "Menu: wake current Agent"),
+            Text("需要时将当前 Agent 置于前台", "Bring the current Agent to the foreground when needed"), LogicalInput.Menu),
+        new("↑", _strings.Get(StringKeys.ControlPreviousUserMessage),
+            string.Empty, LogicalInput.DPadUp),
+        new("↓", _strings.Get(StringKeys.ControlNextUserMessage),
+            string.Empty, LogicalInput.DPadDown),
+        new(
             ViewGlyph,
             Text("View：切换 Agent", "View: switch Agent"),
             Text(
                 "在 Codex 与 DeepSeek Harness 间切换当前控制目标",
                 "Switch the current control target between Codex and DeepSeek Harness"), LogicalInput.View),
-        new(
-            MenuGlyph,
-            Text("Menu：唤醒当前 Agent", "Menu: wake current Agent"),
-            Text("需要时将当前 Agent 置于前台", "Bring the current Agent to the foreground when needed"), LogicalInput.Menu),
     ];
 
     private IReadOnlyList<ControllerTutorialItem> AgentItems()
@@ -671,7 +703,8 @@ public sealed class ControllerTutorialViewModel : ObservableObject
         _profile.GetGlyph(input);
 
     public string InputName(LogicalInput input) =>
-        Items.FirstOrDefault(item => item.Input == input)?.ToolTip ?? Glyph(input);
+        Items.FirstOrDefault(item => item.Input == input)?.ToolTip ??
+        Glyph(input);
 
     private string Text(string zhCn, string enUs) =>
         ControllerLayerPresentationFactory.Text(

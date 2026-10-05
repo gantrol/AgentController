@@ -404,6 +404,11 @@ public sealed class DevicePageViewModel : ObservableObject
     public bool HasRightModeValue => !_usesConnectionAwareRightModePrompt &&
         !string.IsNullOrWhiteSpace(_rightModeSourceValue);
 
+    public bool HasComposerSelection => _isVirtualDialMenuOpen && HasRightModeValue;
+
+    public bool HasComposerFeedback => _isVirtualDialMenuOpen ||
+        !string.IsNullOrEmpty(_rightModeStatusText);
+
     public string RightModeStatusText
     {
         get
@@ -438,6 +443,8 @@ public sealed class DevicePageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(RightModeStatusText));
         OnPropertyChanged(nameof(IsRightModeWarning));
+        OnPropertyChanged(nameof(HasComposerSelection));
+        OnPropertyChanged(nameof(HasComposerFeedback));
     }
 
     public SidebarScope CurrentSidebarScope

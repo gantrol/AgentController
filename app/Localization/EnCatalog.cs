@@ -35,6 +35,8 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.DeviceGamepadBridge] = "Gamepad bridge",
             [StringKeys.DeviceLiveInput] = "Live input",
             [StringKeys.DeviceIdle] = "Idle",
+            [StringKeys.DeviceExpandSidebar] = "Expand sidebar",
+            [StringKeys.DeviceCollapseSidebar] = "Collapse sidebar",
             [StringKeys.StatusControlDisabled] = "Controller input off",
             [StringKeys.StatusControlDisconnected] = "Controller disconnected",
             [StringKeys.StatusControlLocked] = "Controller locked",
@@ -52,9 +54,15 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ControlPendingConfirmation] = "Awaiting confirmation",
             [StringKeys.ComposerMenuOpen] = "Menu open",
             [StringKeys.ComposerValueUnknown] = "Not read",
+            [StringKeys.ComposerCurrentSelection] = "Current selection",
             [StringKeys.ComposerSelectionUnverified] = "Selection unverified",
 
             [StringKeys.ControlLeftStick] = "Left stick",
+            [StringKeys.ControlBrowseTasks] = "Browse tasks",
+            [StringKeys.ControlModelSettings] = "Model settings",
+            [StringKeys.ControlBrowseMessages] = "Browse messages",
+            [StringKeys.ControlPreviousUserMessage] = "Previous user message",
+            [StringKeys.ControlNextUserMessage] = "Next user message",
             [StringKeys.ControlLeftStickHint] =
                 "↑↓ Move focus · → Enter project · ← Exit project · {1} Open task · press {0} (L3) to change root",
             [StringKeys.ControlRightStick] = "Right stick",
@@ -65,6 +73,7 @@ public sealed class EnCatalog : DictionaryStringCatalog
             [StringKeys.ControlRightStickHintConfirmation] =
                 "Model selection confirmation · {2} Confirm · {1} Cancel",
             [StringKeys.ControlPrimary] = "{0} · Open task",
+            [StringKeys.ControlPrimaryTitle] = "Open task",
             [StringKeys.ControlPrimaryDescription] =
                 "Open the focused task; use → to enter a project",
             [StringKeys.ControlHoldToTalk] = "{0} · Hold to talk",
@@ -75,10 +84,12 @@ public sealed class EnCatalog : DictionaryStringCatalog
                 "Submit the current prompt",
             [StringKeys.ControlCancelUndo] =
                 "{0} · Close / undo · hold 3s to cancel turn",
+            [StringKeys.ControlCancelUndoTitle] = "Close / undo",
             [StringKeys.ControlCancelUndoDescription] =
                 "Short press closes menus or undoes local navigation; hold for 3 seconds to cancel the active turn",
             [StringKeys.ControlProjectContext] =
                 "{0} · Action panel",
+            [StringKeys.ControlProjectContextTitle] = "Action panel",
             [StringKeys.ControlProjectContextDescription] =
                 "New task, sidebar, history, and clear input",
             [StringKeys.ControlWakeAgent] = "{0} · Wake {1}",

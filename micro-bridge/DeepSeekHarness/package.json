@@ -1,8 +1,8 @@
 {
   "name": "@agentcontroller/dsh-micro-bridge-deepseek-harness",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "External DeepSeek Harness adapter for Agent Controller gamepad actions and optional keypad dictation",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -14,6 +14,7 @@
     "lib",
     "cordis.patch.yml",
     "scripts",
+    "LICENSE",
     "README.md",
     "README.zh.md"
   ],

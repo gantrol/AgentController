@@ -79,4 +79,4 @@
 
 ## 许可证
 
-[PolyForm Noncommercial 1.0.0](https://github.com/gantrol/AgentController/blob/main/LICENSE)。
+[GNU General Public License v3.0 only（GPL-3.0-only）](https://github.com/gantrol/AgentController/blob/main/LICENSE)。

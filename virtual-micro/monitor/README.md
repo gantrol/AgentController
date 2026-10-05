@@ -79,4 +79,4 @@ If the panel will not start, check that **Desktop Runtime x64** is installed. If
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](https://github.com/gantrol/AgentController/blob/main/LICENSE).
+[GNU General Public License v3.0 only (GPL-3.0-only)](https://github.com/gantrol/AgentController/blob/main/LICENSE).

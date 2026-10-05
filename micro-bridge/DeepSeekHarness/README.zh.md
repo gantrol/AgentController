@@ -99,3 +99,7 @@ pnpm run test:e2e
 - 模型切换只使用 Harness 的共享模型目录，不代理 LLM provider 请求。
 - Harness 能接收图片不等于纯文本后端自动获得视觉能力；当前 provider 模型必须
   真正接受原生图片请求。
+
+## 许可证
+
+[GNU General Public License v3.0 only（GPL-3.0-only）](LICENSE)。第三方依赖保留各自的许可证。

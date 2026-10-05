@@ -11,302 +11,93 @@
              d:DesignWidth="1184">
 
 <UserControl.Resources>
-    <Style x:Key="Device.VoiceInput" TargetType="{x:Type views:ControllerInputButton}"
-           BasedOn="{StaticResource Controller.Input}">
-        <Style.Triggers>
-            <DataTrigger Binding="{Binding HasVoiceFeedback}" Value="True">
-                <Setter Property="Opacity" Value="1" />
-            </DataTrigger>
-        </Style.Triggers>
-    </Style>
+    <Geometry x:Key="Device.Sidebar.Collapse">M 3,4 H 21 V 20 H 3 Z M 15,4 V 20 M 7,9 L 10,12 L 7,15</Geometry>
+    <Geometry x:Key="Device.Sidebar.Expand">M 3,4 H 21 V 20 H 3 Z M 15,4 V 20 M 10,9 L 7,12 L 10,15</Geometry>
+    <DataTemplate x:Key="Device.VoiceFeedback">
+        <Grid ToolTip="{Binding VoiceActionTitle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <views:ControllerGlyphView Glyph="{Binding VoiceGlyph}" Margin="0,0,8,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{DynamicResource Font.Size.Caption}" />
+            <TextBlock Grid.Column="1" Text="{Binding VoiceActionTitle}"
+                       AutomationProperties.LiveSetting="Polite">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Status}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsVoiceRecording}" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Status.Success}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding HasVoiceError}" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Status.Danger}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Grid>
+    </DataTemplate>
 </UserControl.Resources>
 
 <Grid x:Name="DevicePage">
     <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="410" />
+        <ColumnDefinition Width="Auto" />
     </Grid.ColumnDefinitions>
 
     <Grid Grid.Column="0" Margin="0,0,14,0" views:ContextHint.IsScope="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <views:ContextHint.DefaultText>
             <MultiBinding StringFormat="{}{0}&#x0a;{1}">
                 <Binding Path="Tutorial.ModeTitle" />
                 <Binding Path="Tutorial.ModeDescription" />
             </MultiBinding>
         </views:ContextHint.DefaultText>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" MinHeight="148" />
-        </Grid.RowDefinitions>
-
-        <Border Grid.Row="0" Style="{StaticResource Card.Plain}">
+        <Border Style="{StaticResource Card.Plain}">
             <views:ControllerTutorialView x:Name="ControllerTutorial"
                                           DataContext="{Binding Tutorial}" />
         </Border>
-
-        <UniformGrid Grid.Row="1" Margin="8,12,8,0" Columns="3" Rows="2">
-            <views:ControllerInputButton Input="FaceSouth" Style="{StaticResource Controller.Input}" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" AutomationProperties.Name="{Binding PrimaryActionTitle}"
-                                         ToolTip="{loc:Loc control.primary-description}">
-                    <Border Grid.Column="0"
-                        Style="{StaticResource Card.ActionSlot}" Padding="8,6">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                            <views:ControllerGlyphView x:Name="PrimaryGlyphText"
-                                       Glyph="{Binding PrimaryGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Accent}"
-                                       FontSize="{StaticResource Font.Size.TitleLg}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <TextBlock x:Name="PrimaryActionTitle"
-                                   Grid.Column="1"
-                                   Text="{Binding PrimaryActionTitle}"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{StaticResource Font.Size.Body}"
-                                   FontWeight="SemiBold" />
-                    </Grid>
-                </Border>
-            </views:ControllerInputButton>
-            <views:ControllerInputButton Input="LeftTrigger" Style="{StaticResource Device.VoiceInput}" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" AutomationProperties.Name="{Binding VoiceActionTitle}"
-                                         ToolTip="{loc:Loc control.hold-to-talk-description}">
-                    <Border Grid.Column="1"
-                        Style="{StaticResource Card.ActionSlot}" Padding="8,6">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                            <views:ControllerGlyphView x:Name="VoiceGlyphText"
-                                       Glyph="{Binding VoiceGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Accent}"
-                                       FontSize="{StaticResource Font.Size.TitleLg}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <TextBlock x:Name="VoiceActionTitle"
-                                   Grid.Column="1"
-                                   Text="{Binding VoiceActionTitle}"
-                                   AutomationProperties.LiveSetting="Polite"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{StaticResource Font.Size.Body}"
-                                   FontWeight="SemiBold">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsVoiceRecording}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.Status.Success}" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding HasVoiceError}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.Status.Danger}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Grid>
-                </Border>
-            </views:ControllerInputButton>
-            <views:ControllerInputButton Input="FaceWest" Style="{StaticResource Controller.Input}" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" AutomationProperties.Name="{Binding SendActionTitle}"
-                                         ToolTip="{loc:Loc control.send-description}">
-                    <Border Grid.Column="2"
-                        Style="{StaticResource Card.ActionSlot}" Padding="8,6">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                            <views:ControllerGlyphView x:Name="SendGlyphText"
-                                       Glyph="{Binding SendGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       FontSize="{StaticResource Font.Size.TitleLg}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <TextBlock x:Name="SendActionTitle"
-                                   Grid.Column="1"
-                                   Text="{Binding SendActionTitle}"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{StaticResource Font.Size.Body}"
-                                   FontWeight="SemiBold" />
-                    </Grid>
-                </Border>
-            </views:ControllerInputButton>
-            <views:ControllerInputButton Input="FaceEast" Style="{StaticResource Controller.Input}" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" AutomationProperties.Name="{Binding CancelActionTitle}"
-                                         ToolTip="{loc:Loc control.cancel-undo-description}">
-                    <Border Grid.Column="3"
-                        Style="{StaticResource Card.ActionSlot}" Padding="8,6">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                            <views:ControllerGlyphView x:Name="CancelGlyphText"
-                                       Glyph="{Binding CancelGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Status.Danger}"
-                                       FontSize="{StaticResource Font.Size.TitleLg}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <TextBlock x:Name="CancelActionTitle"
-                                   Grid.Column="1"
-                                   Text="{Binding CancelActionTitle}"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{StaticResource Font.Size.Body}"
-                                   FontWeight="SemiBold" />
-                    </Grid>
-                </Border>
-            </views:ControllerInputButton>
-            <views:ControllerInputButton Input="FaceNorth" Style="{StaticResource Controller.Input}" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" AutomationProperties.Name="{Binding ProjectActionTitle}"
-                                         ToolTip="{loc:Loc control.project-context-description}">
-                    <Border Grid.Column="4"
-                        Style="{StaticResource Card.ActionSlot}" Padding="8,6">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                            <views:ControllerGlyphView x:Name="ProjectGlyphText"
-                                       Glyph="{Binding ProjectGlyph}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource Brush.Text.Accent}"
-                                       FontSize="{StaticResource Font.Size.TitleLg}"
-                                       FontWeight="Bold" />
-                        </Border>
-                        <TextBlock x:Name="ProjectActionTitle"
-                                   Grid.Column="1"
-                                   Text="{Binding ProjectActionTitle}"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{StaticResource Font.Size.Body}"
-                                   FontWeight="SemiBold" />
-                    </Grid>
-                </Border>
-            </views:ControllerInputButton>
-            <views:ControllerInputButton Input="Menu" Style="{StaticResource Controller.Input}" Padding="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" AutomationProperties.Name="{Binding WakeActionTitle}"
-                                         ToolTip="{Binding WakeActionDescription}">
-                    <Border Grid.Column="5"
-                        Style="{StaticResource Card.ActionSlot.Last}" Padding="8,6">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border HorizontalAlignment="Left"
-                                Style="{StaticResource Overlay.PhysicalKey.Chip}">
-                            <views:ControllerGlyphView x:Name="WakeGlyphText"
-                                                       Glyph="{Binding WakeGlyph}"
-                                                       Foreground="{StaticResource Brush.Text.Accent}"
-                                                       FontSize="{StaticResource Font.Size.Title}"
-                                                       FontWeight="Bold" />
-                        </Border>
-                        <TextBlock x:Name="WakeActionTitle"
-                                   Grid.Column="1"
-                                   Text="{Binding WakeActionTitle}"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   FontSize="{StaticResource Font.Size.Body}"
-                                   FontWeight="SemiBold" />
-                        <TextBlock x:Name="WakeActionDescription"
-                                   Text="{Binding WakeActionDescription}"
-                                   Visibility="Collapsed" />
-                    </Grid>
-                </Border>
-            </views:ControllerInputButton>
-        </UniformGrid>
-    </Grid>
-
-    <Grid Grid.Column="1">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" MinHeight="132" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <Border Grid.Row="0"
-                Style="{StaticResource Card.Plain}"
-                ToolTip="{Binding RightStickHint}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{loc:Loc control.right-stick}"
-                               Margin="0,0,12,0"
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource Brush.Text.Primary}"
-                               FontSize="{StaticResource Font.Size.BodyLg}"
-                               FontWeight="SemiBold" />
-                    <TextBlock x:Name="RightModeLabel" Grid.Column="1"
-                               Text="{Binding RightModeLabel}"
-                               Style="{StaticResource Text.Status}" VerticalAlignment="Center" />
-                </Grid>
-                <Grid Grid.Row="1" Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Ellipse Margin="0,6,8,0" VerticalAlignment="Top">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse" BasedOn="{StaticResource StatusDot}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsAgentStatusActive}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource Brush.Status.Success}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
-                    <TextBlock Grid.Column="1" Text="{Binding AgentStatusText}"
-                               Style="{StaticResource Text.Status}"
-                               AutomationProperties.LiveSetting="Polite" />
-                </Grid>
-                <TextBlock x:Name="RightModeValue" Grid.Row="2" Margin="0,12,0,0"
-                           TextWrapping="Wrap" FontSize="{DynamicResource Font.Size.Title}"
-                           FontWeight="SemiBold">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Text" Value="{Binding RightModeValue}" />
-                            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}" />
+        <StackPanel Grid.Row="1" Margin="16,0,16,0">
+            <StackPanel Margin="0,8,0,8">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasComposerFeedback}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <Grid Margin="0,0,0,4">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed" />
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasRightModeValue}" Value="False">
-                                    <Setter Property="Text" Value="{loc:Loc composer.value-unknown}" />
-                                    <Setter Property="Foreground" Value="{StaticResource Brush.Text.Secondary}" />
+                                <DataTrigger Binding="{Binding HasComposerSelection}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-                <TextBlock Grid.Row="3" Margin="0,4,0,0" Text="{Binding RightModeStatusText}"
-                           AutomationProperties.LiveSetting="Polite">
+                    </Grid.Style>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Margin="0,0,12,0" Text="{loc:Loc composer.current-selection}"
+                               Style="{StaticResource Text.Status}" />
+                    <TextBlock Grid.Column="1" Text="{Binding RightModeValue}"
+                               Style="{StaticResource Text.Status}"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite" />
+                </Grid>
+                <TextBlock Text="{Binding RightModeStatusText}" AutomationProperties.LiveSetting="Polite">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Status}">
                             <Style.Triggers>
@@ -317,19 +108,40 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-            </Grid>
-        </Border>
+            </StackPanel>
+            <ContentControl Margin="0,8,0,8" Focusable="False"
+                            Content="{Binding}" ContentTemplate="{StaticResource Device.VoiceFeedback}">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasVoiceFeedback}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
+        </StackPanel>
+    </Grid>
 
-        <Border Grid.Row="1"
+    <Grid x:Name="SidebarHost" Grid.Column="1" Width="410" ClipToBounds="True">
+    <Grid x:Name="SidebarContent" Width="410" HorizontalAlignment="Left">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
                 Style="{StaticResource CardStyle}"
-                Margin="0,12">
+                Margin="0,0,0,12">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <Grid>
+                <Grid Margin="0,0,36,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -466,7 +278,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource Card.Plain}">
+        <Border Grid.Row="1" Style="{StaticResource Card.Plain}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -488,6 +300,31 @@
                 </ScrollViewer>
             </Grid>
         </Border>
+    </Grid>
+        <Button x:Name="SidebarToggle" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="4,8,4,0" Click="SidebarToggle_Click"
+                AutomationProperties.Name="{Binding ToolTip, RelativeSource={RelativeSource Self}}">
+            <Button.Style>
+                <Style TargetType="Button" BasedOn="{StaticResource Button.Icon}">
+                    <Setter Property="ToolTip" Value="{loc:Loc device.collapse-sidebar}" />
+                    <Setter Property="Content" Value="{StaticResource Device.Sidebar.Collapse}" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSidebarExpanded, ElementName=Root}" Value="False">
+                            <Setter Property="ToolTip" Value="{loc:Loc device.expand-sidebar}" />
+                            <Setter Property="Content" Value="{StaticResource Device.Sidebar.Expand}" />
+                            <Setter Property="Background" Value="{StaticResource Brush.Accent.Soft}" />
+                            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Accent}" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+            <Button.ContentTemplate>
+                <DataTemplate>
+                    <ContentControl Style="{StaticResource Icon}" Content="{Binding}"
+                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                </DataTemplate>
+            </Button.ContentTemplate>
+        </Button>
     </Grid>
 </Grid>
 </UserControl>

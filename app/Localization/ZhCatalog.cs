@@ -34,6 +34,8 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.DeviceGamepadBridge] = "手柄桥接",
             [StringKeys.DeviceLiveInput] = "实时输入",
             [StringKeys.DeviceIdle] = "空闲",
+            [StringKeys.DeviceExpandSidebar] = "展开侧边栏",
+            [StringKeys.DeviceCollapseSidebar] = "收起侧边栏",
             [StringKeys.StatusControlDisabled] = "手柄控制已关闭",
             [StringKeys.StatusControlDisconnected] = "手柄未连接",
             [StringKeys.StatusControlLocked] = "手柄待解锁",
@@ -51,9 +53,15 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ControlPendingConfirmation] = "待确认",
             [StringKeys.ComposerMenuOpen] = "菜单已打开",
             [StringKeys.ComposerValueUnknown] = "未读取",
+            [StringKeys.ComposerCurrentSelection] = "当前选项",
             [StringKeys.ComposerSelectionUnverified] = "当前选项未确认",
 
             [StringKeys.ControlLeftStick] = "左摇杆",
+            [StringKeys.ControlBrowseTasks] = "浏览任务",
+            [StringKeys.ControlModelSettings] = "模型设置",
+            [StringKeys.ControlBrowseMessages] = "浏览消息",
+            [StringKeys.ControlPreviousUserMessage] = "上一条用户消息",
+            [StringKeys.ControlNextUserMessage] = "下一条用户消息",
             [StringKeys.ControlLeftStickHint] =
                 "↑↓ 移动焦点 · → 进入项目 · ← 退出项目 · {1} 打开任务 · 按下左摇杆 {0}（L3）切根区域",
             [StringKeys.ControlRightStick] = "右摇杆",
@@ -64,6 +72,7 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ControlRightStickHintConfirmation] =
                 "模型选择确认 · {2} 确认 · {1} 取消",
             [StringKeys.ControlPrimary] = "{0} · 打开任务",
+            [StringKeys.ControlPrimaryTitle] = "打开任务",
             [StringKeys.ControlPrimaryDescription] =
                 "打开当前焦点任务；进入项目请按 →",
             [StringKeys.ControlHoldToTalk] = "{0} · 按住说话",
@@ -73,9 +82,11 @@ public sealed class ZhCatalog : DictionaryStringCatalog
             [StringKeys.ControlSendDescription] = "提交当前提示词",
             [StringKeys.ControlCancelUndo] =
                 "{0} · 关闭 / 撤回 · 长按 3 秒取消会话",
+            [StringKeys.ControlCancelUndoTitle] = "关闭 / 撤回",
             [StringKeys.ControlCancelUndoDescription] =
                 "短按关闭菜单或撤回本地导航；长按 3 秒取消当前会话",
             [StringKeys.ControlProjectContext] = "{0} · 动作面板",
+            [StringKeys.ControlProjectContextTitle] = "动作面板",
             [StringKeys.ControlProjectContextDescription] =
                 "新建任务、侧边栏、前后导航与清空输入",
             [StringKeys.ControlWakeAgent] = "{0} · 唤醒 {1}",

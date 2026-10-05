@@ -26,6 +26,8 @@ public static class StringKeys
     public const string DeviceGamepadBridge = "device.gamepad-bridge";
     public const string DeviceLiveInput = "device.live-input";
     public const string DeviceIdle = "device.idle";
+    public const string DeviceExpandSidebar = "device.expand-sidebar";
+    public const string DeviceCollapseSidebar = "device.collapse-sidebar";
     public const string StatusControlDisabled = "status.control-disabled";
     public const string StatusControlDisconnected = "status.control-disconnected";
     public const string StatusControlLocked = "status.control-locked";
@@ -43,9 +45,15 @@ public static class StringKeys
     public const string ControlPendingConfirmation = "control.pending-confirmation";
     public const string ComposerMenuOpen = "composer.menu-open";
     public const string ComposerValueUnknown = "composer.value-unknown";
+    public const string ComposerCurrentSelection = "composer.current-selection";
     public const string ComposerSelectionUnverified = "composer.selection-unverified";
 
     public const string ControlLeftStick = "control.left-stick";
+    public const string ControlBrowseTasks = "control.browse-tasks";
+    public const string ControlModelSettings = "control.model-settings";
+    public const string ControlBrowseMessages = "control.browse-messages";
+    public const string ControlPreviousUserMessage = "control.previous-user-message";
+    public const string ControlNextUserMessage = "control.next-user-message";
     public const string ControlLeftStickHint = "control.left-stick-hint";
     public const string ControlRightStick = "control.right-stick";
     public const string ControlRightStickHint = "control.right-stick-hint";
@@ -54,6 +62,7 @@ public static class StringKeys
     public const string ControlRightStickHintConfirmation =
         "control.right-stick-hint-confirmation";
     public const string ControlPrimary = "control.primary";
+    public const string ControlPrimaryTitle = "control.primary-title";
     public const string ControlPrimaryDescription =
         "control.primary-description";
     public const string ControlHoldToTalk = "control.hold-to-talk";
@@ -63,10 +72,12 @@ public static class StringKeys
     public const string ControlSendDescription =
         "control.send-description";
     public const string ControlCancelUndo = "control.cancel-undo";
+    public const string ControlCancelUndoTitle = "control.cancel-undo-title";
     public const string ControlCancelUndoDescription =
         "control.cancel-undo-description";
     public const string ControlProjectContext =
         "control.project-context";
+    public const string ControlProjectContextTitle = "control.project-context-title";
     public const string ControlProjectContextDescription =
         "control.project-context-description";
     public const string ControlWakeAgent = "control.wake-agent";
@@ -584,6 +595,8 @@ public static class StringKeys
         DeviceGamepadBridge,
         DeviceLiveInput,
         DeviceIdle,
+        DeviceExpandSidebar,
+        DeviceCollapseSidebar,
         StatusControlDisabled,
         StatusControlDisconnected,
         StatusControlLocked,
@@ -601,22 +614,31 @@ public static class StringKeys
         ControlPendingConfirmation,
         ComposerMenuOpen,
         ComposerValueUnknown,
+        ComposerCurrentSelection,
         ComposerSelectionUnverified,
         ControlLeftStick,
+        ControlBrowseTasks,
+        ControlModelSettings,
+        ControlBrowseMessages,
+        ControlPreviousUserMessage,
+        ControlNextUserMessage,
         ControlLeftStickHint,
         ControlRightStick,
         ControlRightStickHint,
         ControlRightStickHintOpen,
         ControlRightStickHintConfirmation,
         ControlPrimary,
+        ControlPrimaryTitle,
         ControlPrimaryDescription,
         ControlHoldToTalk,
         ControlHoldToTalkDescription,
         ControlSend,
         ControlSendDescription,
         ControlCancelUndo,
+        ControlCancelUndoTitle,
         ControlCancelUndoDescription,
         ControlProjectContext,
+        ControlProjectContextTitle,
         ControlProjectContextDescription,
         ControlWakeAgent,
         ControlWakeAgentDescription,

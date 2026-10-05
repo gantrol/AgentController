@@ -113,3 +113,7 @@ builds both Host and browser bundles.
   provider requests.
 - Harness accepting an image does not add vision to a text-only backend; the
   selected provider model must actually accept the native image request.
+
+## License
+
+[GNU General Public License v3.0 only (GPL-3.0-only)](LICENSE). Third-party dependencies retain their own licenses.

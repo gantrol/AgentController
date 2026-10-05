@@ -1,0 +1,29 @@
+Agent Controller Privacy Policy
+Effective date: October 4, 2026
+
+Agent Controller is a Windows desktop companion published by Gantrol. It processes local information to connect a gamepad to separately installed agent applications.
+
+Local data: The application reads supported agents' local workspace and session information, including project paths, chat titles, pinned items, status and usage information. Codex integration may read the account identifier in the local Codex authentication file to select account-specific data. The app stores controller and interface preferences in local application data. It may update target application shortcut configuration when needed for supported controls.
+
+Controls: Gamepad input, Windows window information and accessibility automation are used to navigate and control the selected agent application. Actions you trigger may cause that separate application to send prompts or other data to its provider. Voice shortcuts invoke the target application's voice feature; that application's privacy policy governs its audio processing.
+
+Sharing: Agent Controller does not include advertising or a developer-operated analytics service, and does not upload local chat or workspace data to Gantrol. Its integrations use local application interfaces. External links open in your browser. Microsoft Store and the separate agent applications process information under their own policies.
+
+Your choices: You can disable the controller bridge, change settings, close the app or uninstall it. Local settings may remain after uninstalling a portable copy; deleting the AgentController folder in your local application data removes those preferences. Deleting preferences does not delete data stored by the separate agent applications.
+
+Contact: https://github.com/gantrol/AgentController/issues
+
+Agent Controller 隐私政策
+生效日期：2026 年 10 月 4 日
+
+Agent Controller 由 Gantrol 发布，是将手柄连接到另行安装的 Agent 应用的 Windows 桌面工具。
+
+本地数据：应用读取受支持 Agent 的本地工作区与会话信息，包括项目路径、会话标题、置顶项目、状态与额度信息。Codex 集成可能读取本地认证文件中的账号标识，以选择对应账号的数据。手柄与界面偏好保存在本地应用数据目录。为实现受支持的控制，应用可能更新目标应用的快捷键配置。
+
+操作：应用使用手柄输入、Windows 窗口信息及辅助功能自动化来导航并控制选定的 Agent。用户触发的动作可能使目标应用向其服务提供方发送提示词或其他数据。语音快捷操作调用目标应用的语音功能，音频处理遵循该应用的隐私政策。
+
+共享：Agent Controller 不包含广告或开发者运营的分析服务，不向 Gantrol 上传本地会话或工作区数据。集成使用本地应用接口。外部链接由浏览器打开。Microsoft Store 和独立 Agent 应用按各自政策处理信息。
+
+用户选择：可关闭控制桥接、修改设置、退出或卸载应用。便携版卸载后可能保留本地偏好；删除本地应用数据中的 AgentController 文件夹可移除这些设置，不会删除独立 Agent 应用保存的数据。
+
+联系：https://github.com/gantrol/AgentController/issues

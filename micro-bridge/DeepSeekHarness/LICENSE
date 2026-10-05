@@ -1,11 +1,10 @@
-Agent Controller
+AgentController DeepSeek Harness bridge
 Copyright (C) 2026 gantrol
 
 SPDX-License-Identifier: GPL-3.0-only
 
-Agent Controller is licensed under the GNU General Public License, version 3 only.
-Third-party materials retain their own licenses and notices. This license grants
-only rights that the copyright holders are entitled to grant.
+This bridge is licensed under the GNU General Public License, version 3 only.
+Third-party dependencies retain their own licenses and notices.
 The complete license text follows.
 
 GNU GENERAL PUBLIC LICENSE

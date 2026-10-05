@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -38,7 +39,7 @@ public sealed class ControllerTutorialViewDesignTests
             "common actions",
             Assert.IsType<string>(view.OverviewTutorialButton.ToolTip),
             StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(9, english.Items.Count);
+        Assert.Equal(10, english.Items.Count);
         Assert.Contains(english.Items, item => item.Glyph == "LS");
         Assert.Contains(english.Items, item => item.Glyph == "RS");
         Assert.Contains(
@@ -47,32 +48,28 @@ public sealed class ControllerTutorialViewDesignTests
         Assert.Contains(
             FindVisualChildren<ControllerGlyphView>(view),
             glyph => glyph.Glyph == "☰");
+        AssertHotspots(view, english, ControllerTutorialMode.Overview);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.Overview, LogicalInput.LeftStick, 1), 2);
         WritePreviewFromEnvironment(
             view,
             "AGENT_CONTROLLER_OVERVIEW_PREVIEW_PATH");
 
         english.SelectActionCommand.Execute(null);
         view.UpdateLayout();
-        Assert.True(view.TutorialActionButtonHalo.Tag is true);
-        Assert.True(view.TutorialDPadHalo.Tag is true);
-        Assert.True(view.TutorialFaceClusterHalo.Tag is true);
-        Assert.True(view.TutorialActionButtonHalo.HasAnimatedProperties);
-        Assert.Equal(208d, Canvas.GetLeft(view.TutorialDPadHalo));
-        Assert.Equal(176d, Canvas.GetTop(view.TutorialDPadHalo));
+        Assert.True(view.ActionTutorialButton.IsChecked);
+        AssertHotspots(view, english, ControllerTutorialMode.Action);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.Action, LogicalInput.DPadUp), 2);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.Action, LogicalInput.FaceSouth), 2);
         WritePreviewFromEnvironment(
             view,
             "AGENT_CONTROLLER_TUTORIAL_PREVIEW_PATH");
 
         english.SelectStickPressCommand.Execute(null);
         view.UpdateLayout();
-        Assert.True(view.TutorialLeftStickPressHalo.Tag is true);
-        Assert.True(view.TutorialRightStickPressHalo.Tag is true);
-        Assert.True(
-            view.TutorialLeftPressArrow.RenderTransform
-                .HasAnimatedProperties);
-        Assert.True(
-            view.TutorialRightPressArrow.RenderTransform
-                .HasAnimatedProperties);
+        Assert.True(view.StickPressTutorialButton.IsChecked);
+        AssertHotspots(view, english, ControllerTutorialMode.StickPress);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.StickPress, LogicalInput.LeftStickPress), 2);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.StickPress, LogicalInput.RightStickPress), 2);
         Assert.Equal(2, english.Items.Count);
         Assert.Equal("LS / L3", english.Items[0].Glyph);
         WritePreviewFromEnvironment(
@@ -86,7 +83,10 @@ public sealed class ControllerTutorialViewDesignTests
         chinese.SelectAgentCommand.Execute(null);
         Arrange(view, width: 603, height: 320);
         AssertTabs(view);
-        Assert.True(view.TutorialLeftShoulderHalo.Tag is true);
+        Assert.True(view.AgentTutorialButton.IsChecked);
+        AssertHotspots(view, chinese, ControllerTutorialMode.Agent);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.Agent, LogicalInput.LeftShoulder), 1);
+        AssertLinkedHighlight(view, new(ControllerTutorialMode.Agent, LogicalInput.View), 2);
         Assert.Equal(6, chinese.Items.Count);
         Assert.True(view.ActualWidth >= 602.5);
         Assert.True(view.ActualHeight >= 319.5);
@@ -95,6 +95,74 @@ public sealed class ControllerTutorialViewDesignTests
             "AGENT_CONTROLLER_TUTORIAL_MIN_PREVIEW_PATH");
 
         RenderDashboardPreview();
+    }
+
+    private static void AssertHotspots(
+        ControllerTutorialView view,
+        ControllerTutorialViewModel model,
+        ControllerTutorialMode mode)
+    {
+        AssertTabs(view);
+        Assert.Equal(mode, view.ControllerArtwork.TutorialMode);
+        var hotspots = view.Hotspots.Children.Cast<ControllerInputButton>().ToArray();
+        var buttons = new[]
+        {
+            LogicalInput.LeftTrigger, LogicalInput.RightTrigger,
+            LogicalInput.LeftShoulder, LogicalInput.RightShoulder,
+            LogicalInput.FaceNorth, LogicalInput.FaceEast,
+            LogicalInput.FaceSouth, LogicalInput.FaceWest,
+            LogicalInput.View, LogicalInput.Menu,
+            LogicalInput.DPadUp, LogicalInput.DPadRight,
+            LogicalInput.DPadDown, LogicalInput.DPadLeft,
+            LogicalInput.LeftStickPress, LogicalInput.RightStickPress,
+        };
+        Assert.Equal(buttons.Length + 8, hotspots.Length);
+        foreach (var input in buttons)
+        {
+            var hotspot = Assert.Single(hotspots, button => button.Input == input);
+            Assert.Equal(0, hotspot.Direction);
+        }
+        foreach (var stick in new[] { LogicalInput.LeftStick, LogicalInput.RightStick })
+        {
+            Assert.Equal(new[] { 1, 2, 3, 4 }, hotspots
+                .Where(button => button.Input == stick)
+                .Select(button => button.Direction).Order());
+        }
+        Assert.All(hotspots, button =>
+        {
+            Assert.Equal(mode, button.Mode);
+            Assert.True(button.Focusable);
+            Assert.True(button.IsHitTestVisible);
+            Assert.True(button.Width > 0 && button.Height > 0);
+            Assert.InRange(Canvas.GetLeft(button), 0, view.Hotspots.Width - button.Width);
+            Assert.InRange(Canvas.GetTop(button), 0, view.Hotspots.Height - button.Height);
+            var name = AutomationProperties.GetName(button);
+            Assert.False(string.IsNullOrWhiteSpace(name));
+            Assert.StartsWith(model.InputName(button.Input), name);
+            Assert.Equal(name, button.ToolTip);
+        });
+    }
+
+    private static void AssertLinkedHighlight(
+        ControllerTutorialView view, TutorialInput input, int expectedHighlights)
+    {
+        var buttons = ControllerTutorialView.InputButtons(view)
+            .Where(button => button.Visibility == Visibility.Visible)
+            .ToArray();
+        var hotspot = Assert.Single(view.Hotspots.Children.Cast<ControllerInputButton>(),
+            button => button.Input == input.Input && button.Direction == input.Direction);
+        view.Highlight(input);
+        Assert.True(hotspot.IsLinkedHighlighted);
+        var highlighted = buttons.Where(button => button.IsLinkedHighlighted).ToArray();
+        Assert.Equal(expectedHighlights, highlighted.Length);
+        if (expectedHighlights == 2)
+        {
+            Assert.Contains(highlighted, button =>
+                button.DataContext is ControllerTutorialItem item && item.Input == input.Input);
+        }
+        Assert.All(buttons, button => Assert.False(button.IsInputPressed));
+        view.Highlight(null);
+        Assert.All(buttons, button => Assert.False(button.IsLinkedHighlighted));
     }
 
     private static void RenderDashboardPreview()
@@ -202,13 +270,14 @@ public sealed class ControllerTutorialViewDesignTests
                 $"Tutorial tab '{tab.Content}' must accept keyboard focus.");
             Assert.Equal(180, ToolTipService.GetInitialShowDelay(tab));
             Assert.Equal(30000, ToolTipService.GetShowDuration(tab));
-            var connector = Assert.IsType<Grid>(
-                tab.Template.FindName("PanelConnector", tab));
+            Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(tab)));
+            var outline = Assert.IsType<ConnectedTabOutline>(
+                tab.Template.FindName("SelectedOutline", tab));
             Assert.Equal(
                 tab.IsChecked == true
                     ? Visibility.Visible
                     : Visibility.Collapsed,
-                connector.Visibility);
+                outline.Visibility);
         });
     }
 

@@ -21,8 +21,8 @@ if (-not (Test-Path -LiteralPath $notesPath -PathType Leaf) -or
 }
 foreach ($readme in @('README.md', 'README.zh-CN.md')) {
     $content = Get-Content -LiteralPath (Join-Path $repoRoot $readme) -Raw -Encoding UTF8
-    if (-not $content.Contains("badge/version-$Version-blue")) {
-        throw "Update the version badge in $readme to $Version."
+    if (-not $content.Contains("public/docs/release-v$Version.md")) {
+        throw "Link the current release notes in ${readme}: public/docs/release-v$Version.md"
     }
 }
 if ($RequireClean) {

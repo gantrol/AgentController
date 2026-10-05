@@ -20,32 +20,128 @@
             <Setter Property="IsHitTestVisible" Value="False" />
         </Style>
 
+        <Style x:Key="Tutorial.DPadDirection" TargetType="{x:Type views:ControllerInputButton}"
+               BasedOn="{StaticResource Controller.Input}">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Secondary}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type views:ControllerInputButton}">
+                        <Grid Background="Transparent">
+                            <Path x:Name="Face" Data="M 8,12 H 28 V 40 H 8 Z"
+                                  Fill="Transparent" Stroke="Transparent" StrokeThickness="1.5" />
+                            <Path Data="M 14,23 L 18,19 L 22,23" Stroke="{TemplateBinding Foreground}"
+                                  StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" />
+                            <Border Width="16" Height="2" Margin="0,0,0,2" VerticalAlignment="Bottom"
+                                    Background="{StaticResource Brush.Text.Accent}" CornerRadius="1"
+                                    RenderTransformOrigin="0,0.5" IsHitTestVisible="False">
+                                <Border.RenderTransform>
+                                    <ScaleTransform ScaleX="{Binding HoldProgress, RelativeSource={RelativeSource TemplatedParent}}" />
+                                </Border.RenderTransform>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Face" Property="Stroke" Value="{StaticResource Brush.Text.Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsLinkedHighlighted" Value="True">
+                                <Setter TargetName="Face" Property="Fill" Value="{StaticResource Brush.Accent.Soft}" />
+                                <Setter TargetName="Face" Property="Stroke" Value="{StaticResource Brush.Border.Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsInputPressed" Value="True">
+                                <Setter TargetName="Face" Property="Fill" Value="{StaticResource Brush.Accent.Soft}" />
+                                <Setter TargetName="Face" Property="Stroke" Value="{StaticResource Brush.Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="Tutorial.DirectionalPad">
+            <Grid Width="84" Height="84" HorizontalAlignment="Center">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Ellipse Grid.RowSpan="2" Margin="3" Fill="{StaticResource Brush.Bg.Sunken}"
+                         Stroke="{StaticResource Brush.Border.Strong}" StrokeThickness="1"
+                         IsHitTestVisible="False" />
+                <Path Grid.RowSpan="2" Data="M 32,12 H 52 V 32 H 72 V 52 H 52 V 72 H 32 V 52 H 12 V 32 H 32 Z"
+                      Fill="{StaticResource Brush.Bg.Surface}" Stroke="{StaticResource Brush.Border.Strong}"
+                      StrokeThickness="1" StrokeLineJoin="Round" IsHitTestVisible="False" />
+                <views:ControllerInputButton DataContext="{Binding Directions[0]}" Input="{Binding Input}"
+                                             Mode="{Binding DataContext.Mode, RelativeSource={RelativeSource AncestorType={x:Type views:ControllerTutorialView}}}"
+                                             Style="{StaticResource Tutorial.DPadDirection}"
+                                             ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding AccessibleName}" />
+                <views:ControllerInputButton Grid.Row="1" DataContext="{Binding Directions[1]}" Input="{Binding Input}"
+                                             Mode="{Binding DataContext.Mode, RelativeSource={RelativeSource AncestorType={x:Type views:ControllerTutorialView}}}"
+                                             Style="{StaticResource Tutorial.DPadDirection}"
+                                             ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding AccessibleName}"
+                                             RenderTransformOrigin="0.5,0.5">
+                    <views:ControllerInputButton.RenderTransform>
+                        <RotateTransform Angle="180" />
+                    </views:ControllerInputButton.RenderTransform>
+                </views:ControllerInputButton>
+            </Grid>
+        </DataTemplate>
+
         <DataTemplate x:Key="Tutorial.ActionItem">
-            <Grid Margin="2,4" Width="88">
+            <Grid Margin="2,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <views:ControllerInputButton x:Name="Key" Input="{Binding Input}" Mode="{Binding DataContext.Mode, RelativeSource={RelativeSource AncestorType={x:Type views:ControllerTutorialView}}}"
                                              Style="{StaticResource Controller.Input}"
                                              ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding ToolTip}">
-                    <Border Width="72" Height="28" Padding="0" Style="{StaticResource Overlay.PhysicalKey.Compact}">
-                        <views:ControllerGlyphView Glyph="{Binding Glyph}" Foreground="{StaticResource Brush.Text.Primary}"
-                                                   FontFamily="{StaticResource Font.Mono}" FontSize="{StaticResource Font.Size.Label}" FontWeight="Bold" />
-                    </Border>
+                    <StackPanel>
+                        <Border Width="72" Height="Auto" MinHeight="28" Padding="0" Style="{StaticResource Overlay.PhysicalKey.Compact}">
+                            <views:ControllerGlyphView Glyph="{Binding Glyph}" Foreground="{StaticResource Brush.Text.Primary}"
+                                                       FontFamily="{StaticResource Font.Mono}" FontSize="{DynamicResource Font.Size.Label}" FontWeight="Bold" />
+                        </Border>
+                        <TextBlock Text="{Binding Title}" Margin="0,6,0,0"
+                                   Foreground="{StaticResource Brush.Text.Primary}"
+                                   FontSize="{DynamicResource Font.Size.Caption}"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
                 </views:ControllerInputButton>
                 <views:ControllerJoystick x:Name="Stick" Visibility="Collapsed"
                                           Input="{Binding StickPressInput}" Content="{Binding Glyph}"
                                           Mode="{Binding DataContext.Mode, RelativeSource={RelativeSource AncestorType={x:Type views:ControllerTutorialView}}}"
                                           Style="{StaticResource Controller.Joystick}"
                                           ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding AccessibleName}" />
+                <ContentControl x:Name="DirectionalPad" Visibility="Collapsed" Focusable="False"
+                                Content="{Binding}" HorizontalContentAlignment="Center" />
+                <TextBlock x:Name="StickTitle" Grid.Row="1" Text="{Binding Title}"
+                           Visibility="Collapsed" Margin="0,6,0,0"
+                           Foreground="{StaticResource Brush.Text.Primary}"
+                           FontSize="{DynamicResource Font.Size.Caption}"
+                           TextAlignment="Center" TextWrapping="Wrap" />
             </Grid>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsStick}" Value="True">
                     <Setter TargetName="Key" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="Stick" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="StickTitle" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDirectionalPad}" Value="True">
+                    <Setter TargetName="Key" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="DirectionalPad" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="DirectionalPad" Property="ContentTemplate" Value="{StaticResource Tutorial.DirectionalPad}" />
+                    <Setter TargetName="StickTitle" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
     </UserControl.Resources>
 
-    <Grid>
+    <Grid MaxWidth="1120">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -114,13 +210,14 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="216" />
+                <ColumnDefinition Width="4*" />
+                <ColumnDefinition Width="3*" MinWidth="288" MaxWidth="432" />
                 </Grid.ColumnDefinitions>
 
             <Viewbox Grid.Column="0"
                      Margin="8,12,12,8"
-                     VerticalAlignment="Top"
+                     MaxWidth="640"
+                     VerticalAlignment="Center"
                      Stretch="Uniform">
                 <Canvas Width="2104" Height="1298">
                     <views:ControllerArtworkView x:Name="ControllerArtwork"
@@ -154,11 +251,11 @@
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto"
                                   Focusable="False">
-                        <ItemsControl ItemsSource="{Binding Items}"
+                        <ItemsControl ItemsSource="{Binding LayoutItems}"
                                       ItemTemplate="{StaticResource Tutorial.ActionItem}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel />
+                                    <views:TutorialActionsPanel />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>

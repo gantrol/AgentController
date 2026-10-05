@@ -12,6 +12,8 @@
         Height="800"
         MinWidth="1060"
         MinHeight="690"
+        MaxWidth="1440"
+        MaxHeight="960"
         Icon="Assets/AgentController.ico"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
@@ -133,15 +135,29 @@
                                     Background="Transparent"
                                     BorderThickness="0"
                                     CornerRadius="0"
-                                    ToolTip="{Binding Text, ElementName=ControllerStatusText}">
+                                    ToolTip="{Binding DataContext.ControllerStatusText, ElementName=DevicePage}">
                                 <Ellipse x:Name="ControllerStatusDot"
                                          Width="7"
-                                         Height="7"
-                                         Fill="{StaticResource FaintBrush}" />
+                                         Height="7">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse" BasedOn="{StaticResource StatusDot}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.IsAgentStatusActive, ElementName=DevicePage}" Value="True">
+                                                    <Setter Property="Fill" Value="{StaticResource Brush.Status.Success}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
                             </Border>
                             <TextBlock x:Name="ControllerStatusText"
-                                       Text="{loc:Loc device.waiting}"
-                                       Visibility="Collapsed" />
+                                       Text="{Binding DataContext.AgentStatusText, ElementName=DevicePage}"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                                       Margin="0,0,10,0" MaxWidth="180"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource Brush.Text.Secondary}"
+                                       FontSize="{StaticResource Font.Size.Caption}"
+                                       AutomationProperties.LiveSetting="Polite" />
                             <CheckBox x:Name="BridgeEnabledCheckBox"
                                       Margin="0,0,10,0"
                                       Style="{StaticResource Shell.Toggle}"
@@ -154,8 +170,6 @@
                                     Content="{StaticResource Icon.Window.Minimize}"
                                     ToolTip="{loc:Loc window.minimize}"
                                     Click="MinimizeButton_Click" />
-                            <Button Style="{StaticResource Shell.WindowButton.Maximize}"
-                                    Click="MaximizeButton_Click" />
                             <Button Style="{StaticResource Shell.CaptionButton.Close}"
                                     Content="{StaticResource Icon.Window.Close}"
                                     ToolTip="{loc:Loc window.close}"

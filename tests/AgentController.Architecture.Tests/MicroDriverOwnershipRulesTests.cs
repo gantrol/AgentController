@@ -29,14 +29,27 @@ public sealed class MicroDriverOwnershipRulesTests
             owners);
     }
 
-    [Theory]
-    [InlineData("app/AgentController.csproj")]
-    [InlineData(
-        "virtual-micro/src/CodexMicro.DesktopHost/" +
-        "CodexMicro.DesktopHost.csproj")]
-    public void DesktopClientsReferenceTheSharedBroker(string projectPath)
+    [Fact]
+    public void ControllerUsesSoftwareAdaptersWithoutTheDriverBroker()
     {
-        var document = XDocument.Load(Resolve(projectPath));
+        var document = XDocument.Load(Resolve("app/AgentController.csproj"));
+        var references = document.Descendants("ProjectReference")
+            .Select(element => Path.GetFileNameWithoutExtension(
+                element.Attribute("Include")!.Value))
+            .ToArray();
+
+        Assert.Contains("AgentController.Adapters.Codex.Software", references);
+        Assert.Contains("AgentController.Adapters.Codex.Windows", references);
+        Assert.DoesNotContain("AgentController.MicroBroker", references);
+        Assert.DoesNotContain("AgentController.MicroSurface.Wpf", references);
+    }
+
+    [Fact]
+    public void LegacyMicroHostStillReferencesTheSharedDriverBroker()
+    {
+        var document = XDocument.Load(Resolve(
+            "virtual-micro/src/CodexMicro.DesktopHost/" +
+            "CodexMicro.DesktopHost.csproj"));
         var references = document
             .Descendants("ProjectReference")
             .Select(element => element.Attribute("Include")?.Value)
@@ -154,27 +167,22 @@ public sealed class MicroDriverOwnershipRulesTests
     }
 
     [Fact]
-    public void PhysicalRightStickKeepsCodexHidAndDeepSeekRoutesIsolated()
+    public void PhysicalRightStickUsesTheActiveComposerWithoutDirectHidFallback()
     {
         var mainWindow = File.ReadAllText(Resolve(
             "app/MainWindow.xaml.cs"));
 
-        Assert.Contains(
-            "_microInput.SendEncoderSteps(steps)",
-            mainWindow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "_microInput.SendEncoderPress()",
-            mainWindow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "? _composerAutomation.DialStep(",
-            mainWindow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "? _composerAutomation.DialPress(",
-            mainWindow,
-            StringComparison.Ordinal);
+        Assert.Matches(
+            @"SendActiveEncoderSteps\(int steps\)\s*=>\s*" +
+            @"(?://[^\r\n]*\s*)*" +
+            @"_composerAutomation\.DialStep\(\s*" +
+            @"IsDeepSeekActive\s*\?\s*steps\s*:\s*-steps,\s*_settings\s*\)",
+            mainWindow);
+        Assert.Matches(
+            @"SendActiveEncoderPress\(\)\s*=>\s*" +
+            @"_composerAutomation\.DialPress\(\s*_settings\s*\)",
+            mainWindow);
+        Assert.DoesNotContain("_microInput", mainWindow, StringComparison.Ordinal);
 
         var selection = File.ReadAllText(Resolve(
             "app/Agents/AgentTargetSelection.cs"));
@@ -536,7 +544,8 @@ public sealed class MicroDriverOwnershipRulesTests
                          "*.cs",
                          SearchOption.AllDirectories))
             {
-                if (!path.Contains(
+                if (!path.Contains("trash", StringComparison.OrdinalIgnoreCase) &&
+                    !path.Contains(
                         $"{Path.DirectorySeparatorChar}obj" +
                         Path.DirectorySeparatorChar,
                         StringComparison.OrdinalIgnoreCase))
